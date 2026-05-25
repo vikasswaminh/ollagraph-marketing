@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import bodyHtml from '../bodies/pricing.body.html?raw';
+import headExtras from '../bodies/pricing.head.html?raw';
+import { navHtml, footerHtml } from '../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml("pricing"))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="Pricing — Ollagraph">
+  <Fragment slot="head" set:html={headExtras} />
+  <Fragment set:html={rendered} />
+  <script is:inline src="/scripts/pricing.js"></script>
+</BaseLayout>

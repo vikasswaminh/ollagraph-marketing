@@ -1,0 +1,13 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import bodyHtml from '../bodies/index.body.html?raw';
+import { navHtml, footerHtml } from '../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml("Ollagraph"))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="Ollagraph — The Web Intelligence Layer for AI Agents">
+  <Fragment set:html={rendered} />
+  <script is:inline src="/scripts/index.js"></script>
+</BaseLayout>

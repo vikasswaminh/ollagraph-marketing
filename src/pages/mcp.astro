@@ -1,0 +1,14 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import bodyHtml from '../bodies/mcp.body.html?raw';
+import headExtras from '../bodies/mcp.head.html?raw';
+import { navHtml, footerHtml } from '../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml("mcp"))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="MCP — Ollagraph">
+  <Fragment slot="head" set:html={headExtras} />
+  <Fragment set:html={rendered} />
+</BaseLayout>
