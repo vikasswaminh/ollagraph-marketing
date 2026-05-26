@@ -1,0 +1,14 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import bodyHtml from '../bodies/for-intel.body.html?raw';
+import headExtras from '../bodies/for-intel.head.html?raw';
+import { navHtml, footerHtml } from '../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml(""))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="For security &amp; intel teams — Ollagraph">
+  <Fragment slot="head" set:html={headExtras} />
+  <Fragment set:html={rendered} />
+</BaseLayout>

@@ -1,0 +1,119 @@
+
+  <div class="bg-grid"></div>
+  <div class="bg-noise"></div>
+  <div id="nav-root"></div>
+
+  <!-- Hero -->
+  <section style="padding: 80px 0 32px; position: relative;">
+    <div class="container" style="max-width: 760px;">
+      <a class="pill" style="margin-bottom: 24px;"><span class="pill-dot"></span>Changelog</a>
+      <h1 class="h-display h-1" style="margin: 0 0 18px;">What we shipped.</h1>
+      <p style="font-size: 17px; color: var(--text-muted); line-height: 1.55;">
+        Every meaningful change, by date. Subscribe via
+        <a href="#" style="color: var(--accent);">RSS</a> or
+        <a href="#" style="color: var(--accent);">webhook</a>.
+      </p>
+    </div>
+  </section>
+
+  <!-- Entries -->
+  <section style="padding: 0 0 80px;">
+    <div class="container" style="max-width: 760px;">
+
+      <article class="cl-entry">
+        <div class="cl-date">2026-05-26</div>
+        <h2 class="cl-title">We're Ollagraph now.</h2>
+        <div class="cl-tags">
+          <span class="cl-tag changed">REBRAND</span>
+          <span class="cl-tag new">NEW POSITIONING</span>
+        </div>
+        <div class="cl-body">
+          <p>
+            We rebranded from Qcrawl to <strong>Ollagraph</strong>. The reason is honest:
+            "Qcrawl" said we were a scraping API. We aren't. Web scraping is one of eight
+            capability families on the platform. The tagline is now "Web infrastructure
+            for AI agents" because that's what we actually are.
+          </p>
+          <p>What this means for you:</p>
+          <ul>
+            <li>Marketing site moves to <code>ollagraph.com</code></li>
+            <li>Dashboard moves to <code>app.ollagraph.com</code></li>
+            <li>API stays on <code>api.qcrawl.com</code> for now — migrating to <code>api.ollagraph.com</code> in a future release with a long deprecation window</li>
+            <li>Your API keys (<code>osk_*</code>) still work. No code change needed today.</li>
+            <li>Your credit balance, plan, webhook secret, and usage history are unchanged.</li>
+          </ul>
+          <p>
+            Eight capability families, 148 endpoints, one MCP server. See the new
+            <a href="/capabilities" style="color: var(--accent);">capabilities page</a>
+            for the full layout.
+          </p>
+        </div>
+      </article>
+
+      <article class="cl-entry">
+        <div class="cl-date">2026-05-25</div>
+        <h2 class="cl-title">Render backend integration (silent).</h2>
+        <div class="cl-tags">
+          <span class="cl-tag new">NEW</span>
+        </div>
+        <div class="cl-body">
+          <p>
+            Behind the scenes, <code>/v1/scrape</code> and four AEO/SEO endpoints now
+            try an internal browser-render backend before falling back to our existing
+            provider. No customer-facing change. Same response shape. Same credit cost.
+          </p>
+          <p>
+            What does change: success rates go up on hard-to-fetch sites. The
+            <code>proxy_used</code> field in responses now reports
+            <code>render_backend</code>, <code>isp</code>, or <code>residential</code>
+            so you can see which path served your request.
+          </p>
+        </div>
+      </article>
+
+      <article class="cl-entry">
+        <div class="cl-date">2026-05-24</div>
+        <h2 class="cl-title">Refund-on-failure for premium proxy.</h2>
+        <div class="cl-tags">
+          <span class="cl-tag changed">FIX</span>
+        </div>
+        <div class="cl-body">
+          <p>
+            Four endpoints that accept <code>use_residential_proxy=true</code>
+            (<code>/v1/aeo/citation-readiness</code>, <code>/v1/aeo/schema-coverage</code>,
+            <code>/v1/seo/meta-audit</code>, <code>/v1/seo/snippet-candidates</code>)
+            now auto-refund the +3 credit surcharge when the residential fetch fails.
+          </p>
+          <p>
+            Previously, a Bloomberg or FT request that came back 403 still charged
+            you 4 credits (1 base + 3 surcharge). Now: 0 credits net. Refund events
+            are logged to your usage history.
+          </p>
+        </div>
+      </article>
+
+      <article class="cl-entry">
+        <div class="cl-date">2026-05-22</div>
+        <h2 class="cl-title">MarkItDown-equivalent document converters.</h2>
+        <div class="cl-tags">
+          <span class="cl-tag new">NEW</span>
+        </div>
+        <div class="cl-body">
+          <p>
+            Five new endpoints under <code>/v1/convert/</code>: PDF, DOCX, XLSX, PPTX,
+            CSV → Markdown. All MIT-licensed open source under the hood (pdfplumber,
+            python-docx, openpyxl, python-pptx). 1 credit per call. 1 MB body cap.
+          </p>
+          <p>
+            Image-only PDFs are flagged in the response (<code>likely_scanned_pdf: true</code>)
+            so your agent knows to use a different path. A layout-aware
+            <code>/v1/convert/pdf-to-structured</code> endpoint is shipping next that
+            handles forms, multi-column papers, and scanned docs.
+          </p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <div id="footer-root"></div>

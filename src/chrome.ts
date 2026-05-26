@@ -5,12 +5,12 @@
 // original.
 
 const NAV_LINKS: { label: string; href: string; key: string }[] = [
-  { label: "Platform",   href: "/#platform",  key: "Ollagraph" },
-  { label: "MCP",        href: "/mcp",        key: "mcp" },
-  { label: "AEO",        href: "/aeo",        key: "aeo" },
-  { label: "Docs",       href: "/docs",       key: "docs" },
-  { label: "Pricing",    href: "/pricing",    key: "pricing" },
-  { label: "Enterprise", href: "/enterprise", key: "enterprise" },
+  { label: "Capabilities", href: "/capabilities", key: "capabilities" },
+  { label: "MCP",          href: "/mcp",          key: "mcp" },
+  { label: "AEO",          href: "/aeo",          key: "aeo" },
+  { label: "Docs",         href: "/docs",         key: "docs" },
+  { label: "Pricing",      href: "/pricing",      key: "pricing" },
+  { label: "Enterprise",   href: "/enterprise",   key: "enterprise" },
 ];
 
 export const LOGO_SVG = `
@@ -54,10 +54,10 @@ export function navHtml(activeKey: string = ""): string {
 
 export function footerHtml(): string {
   const cols = [
-    { h: "Product",     items: ["Crawl", "Extract", "Browser", "Observability", "MCP", "AEO", "DNS Intelligence", "Markdown"] },
-    { h: "Developers",  items: ["Docs", "API Reference", "Changelog", "Status", "SDKs", "Examples"] },
-    { h: "Company",     items: ["About", "Customers", "Pricing", "Enterprise", "Careers", "Press"] },
-    { h: "Resources",   items: ["Blog", "Guides", "Security", "Compliance", "Trust Center", "Contact"] },
+    { h: "Product",     items: ["Capabilities", "MCP", "AEO", "Intel", "Convert", "Audit"] },
+    { h: "Developers",  items: ["Docs", "API reference", "Changelog", "OpenAPI spec", "Postman collection"] },
+    { h: "For",         items: ["AI agents", "SEO consultants", "Security teams", "Pricing", "Enterprise"] },
+    { h: "Company",     items: ["About", "Blog", "Contact"] },
   ];
   const colsHTML = cols.map((c) => `
         <div class="footer-col">
@@ -75,7 +75,7 @@ export function footerHtml(): string {
                   <span>Ollagraph</span>
                 </a>
                 <p style="color:var(--text-muted); font-size:13.5px; max-width:300px; margin-top:18px; line-height:1.6;">
-                  The web intelligence layer for AI agents. Crawl, extract, observe, verify, and understand the web through one platform.
+                  Web infrastructure for AI agents. Fetch, extract, audit, and reason about the live web through one API.
                 </p>
                 <div style="display:flex; gap:10px; margin-top:22px;">
                   <a href="#" aria-label="GitHub" style="width:32px;height:32px;border:1px solid var(--border-2);border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--text-muted);">
@@ -92,7 +92,7 @@ export function footerHtml(): string {
               ${colsHTML}
             </div>
             <div class="footer-bottom">
-              <div>© 2026 Ollagraph Labs, Inc. All rights reserved.</div>
+              <div>© 2026 Ollagraph</div>
               <div style="display:flex; gap:24px;">
                 <a href="#" style="color:inherit;">Terms</a>
                 <a href="#" style="color:inherit;">Privacy</a>
