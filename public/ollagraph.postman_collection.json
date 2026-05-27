@@ -5,7 +5,7 @@
       "description": "Fetch single URLs or batches. Smart routing picks fast HTTP for static pages, full stealth browser for dynamic ones.",
       "item": [
         {
-          "id": "6964549b-6521-4d73-b989-cfbbb4cae743",
+          "id": "92939cc7-4f8a-45aa-aa14-6d07b240e80e",
           "name": "Scrape Endpoint",
           "request": {
             "name": "Scrape Endpoint",
@@ -46,7 +46,7 @@
           },
           "response": [
             {
-              "id": "b827a03e-60ee-4fdf-8995-1f2893c3b771",
+              "id": "643a3a11-7b74-4f13-9bb0-77f159c03975",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -103,7 +103,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "ae0ad41b-2f6a-43aa-9f63-5e4aedcd8d54",
+              "id": "f2b7130f-d39f-4743-b6ce-9e4e1244f14a",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -166,7 +166,7 @@
           }
         },
         {
-          "id": "2b31e9e1-0630-4f9a-90e8-91ec81091c24",
+          "id": "aa53a75a-2685-4bae-bdd4-de4d518d38b2",
           "name": "Batch Scrape Endpoint",
           "request": {
             "name": "Batch Scrape Endpoint",
@@ -208,7 +208,7 @@
           },
           "response": [
             {
-              "id": "b59fb512-20c8-4762-8955-cd27298af216",
+              "id": "e4abca28-02e5-4754-94b1-2ef54c93c3d7",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -266,7 +266,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "8892ea53-41b0-4d56-9a78-a5ea80bcb00a",
+              "id": "b0fdf833-e4b2-4526-a133-ff24f962055c",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -330,7 +330,174 @@
           }
         },
         {
-          "id": "0370b7ae-ea0f-4a4d-b44d-aede9bd84e5a",
+          "id": "87ead17b-a103-442e-a1c3-95dcb13c1a8d",
+          "name": "Scrape Llm Ready Endpoint",
+          "request": {
+            "name": "Scrape Llm Ready Endpoint",
+            "description": {
+              "content": "Fetch a URL, extract the article body, chunk it for RAG ingest.\n\nReturns chunks sized for an embedding model's context window with\nconfigurable overlap. Each chunk carries byte offsets into the\nsource page so customers can attribute citations back to exact\npositions. Same response shape regardless of fetch path (own infra\nvs Bright Data residential vs Spider fallback) — proxy_used field\ncarries the diagnostic.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "scrape",
+                "llm-ready"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\",\n  \"max_tokens\": 512,\n  \"overlap_tokens\": \"<integer>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "aa85399a-6937-4701-a10e-92728a17c54c",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "scrape",
+                    "llm-ready"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"max_tokens\": 512,\n  \"overlap_tokens\": \"<integer>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "7c2ce3b5-135f-4cd7-b04a-bdb497dec12c",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "scrape",
+                    "llm-ready"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"max_tokens\": 512,\n  \"overlap_tokens\": \"<integer>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "6b96fb86-1a16-40d2-83d6-a6c3c086b2e7",
           "name": "Scrape Async Endpoint",
           "request": {
             "name": "Scrape Async Endpoint",
@@ -372,7 +539,7 @@
           },
           "response": [
             {
-              "id": "22fb5304-ce99-4f53-a795-2e1d7ee66ef3",
+              "id": "a20308aa-18e5-4c13-9cca-c7bfdd77f330",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -430,7 +597,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "7ed888de-8448-4a36-aebf-54826d251619",
+              "id": "61003299-90a7-42b4-8be0-ee2a89187b2d",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -494,7 +661,7 @@
           }
         },
         {
-          "id": "597aa480-12ba-4b2c-91ec-31e29c31d02f",
+          "id": "a84aca71-85a8-4506-9236-776d5494e332",
           "name": "Batch Scrape Async Endpoint",
           "request": {
             "name": "Batch Scrape Async Endpoint",
@@ -537,7 +704,7 @@
           },
           "response": [
             {
-              "id": "29ecca6c-d910-4241-bc8e-1793ccc4314a",
+              "id": "a71b3777-7908-4702-a011-e89475a09205",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -596,7 +763,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "f5d09ce9-54d5-4c01-90fb-1a958bfecc66",
+              "id": "19a6cf3f-391d-4fb3-b3aa-cb7a4b7a016a",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -661,7 +828,7 @@
           }
         },
         {
-          "id": "c0e9564e-4c49-453d-946c-6d54eeff1397",
+          "id": "18d96cf7-d774-4ae4-80cf-9624080cc391",
           "name": "Smart Scrape Endpoint",
           "request": {
             "name": "Smart Scrape Endpoint",
@@ -703,7 +870,7 @@
           },
           "response": [
             {
-              "id": "1f7d6862-8bac-4305-a526-ebd22108b1cd",
+              "id": "c48f1614-a2ee-4e59-a3d8-b4ee4223e527",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -761,7 +928,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "0d28058c-83a2-4b49-9595-9b8454ac1ae6",
+              "id": "87a7ffa2-bc99-406f-863d-fcc2d4476478",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -831,7 +998,7 @@
       "description": "Turn raw HTML into clean article content or structured metadata (JSON-LD, OpenGraph, Microdata).",
       "item": [
         {
-          "id": "eab67087-00a3-4d9c-93ae-ff87b52bffc7",
+          "id": "e712b03b-927e-4102-afca-8adde7b1382c",
           "name": "Extract Clean Endpoint",
           "request": {
             "name": "Extract Clean Endpoint",
@@ -873,7 +1040,7 @@
           },
           "response": [
             {
-              "id": "7b80861a-170b-402e-8110-af4a7f666e0e",
+              "id": "baf04c11-b66b-465f-b22e-15bc5a456bfe",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -931,7 +1098,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "75c053aa-4ed3-46fc-93b1-190b07f16d84",
+              "id": "ba8e65e2-d755-456f-a87e-d1165c8edb08",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -995,7 +1162,7 @@
           }
         },
         {
-          "id": "a89a2739-e1fe-4f08-81d1-31d81fc92fb2",
+          "id": "bcc4033c-af2c-4196-b9ba-e0336b5da5e9",
           "name": "Extract Structured Endpoint",
           "request": {
             "name": "Extract Structured Endpoint",
@@ -1037,7 +1204,7 @@
           },
           "response": [
             {
-              "id": "de25c463-bb61-4b92-a998-f5572100d657",
+              "id": "9aec04dd-c6a5-4e10-9b1b-6119e14fa414",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -1095,7 +1262,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "b7c29fb1-5bf4-4991-973f-097c3e00e522",
+              "id": "0284da98-a664-43ee-8379-ccb8c15c9189",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -1159,7 +1326,7 @@
           }
         },
         {
-          "id": "0cc1a6ef-a4a3-45f0-9a7a-cd8fcede4e96",
+          "id": "c18d6674-7e12-4e5d-9122-6d8a3b3b3753",
           "name": "Extract Contacts Endpoint",
           "request": {
             "name": "Extract Contacts Endpoint",
@@ -1204,7 +1371,7 @@
           },
           "response": [
             {
-              "id": "4ae1de88-8e3b-4050-9a40-2fe5a708debe",
+              "id": "a26f6d80-c61c-4a5c-b021-7a599f74650c",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -1262,7 +1429,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "c7e93928-349c-4988-82f5-92f0b96185ac",
+              "id": "55ef40e5-319d-4079-9cdd-10474b309849",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -1326,7 +1493,7 @@
           }
         },
         {
-          "id": "dcf01a3a-3dfb-4894-b7d6-06944aecf625",
+          "id": "314a7fff-7aa8-472a-ae5c-98c916f51612",
           "name": "Extract Tables Endpoint",
           "request": {
             "name": "Extract Tables Endpoint",
@@ -1371,7 +1538,7 @@
           },
           "response": [
             {
-              "id": "be1bebd5-4c15-4386-b524-a48ecb5b9f0c",
+              "id": "48553a73-79e2-4247-a77d-4b670b122408",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -1429,7 +1596,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "5153ec3f-9222-44f7-876b-fd9ea977df57",
+              "id": "1c578185-8d7d-44b7-91fc-6cf34381ed64",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -1499,7 +1666,341 @@
       "description": "Domain and IP intelligence: DNS, WHOIS, SSL certificates, IP geolocation, page tech stack, sitemap, robots.txt, email verification.",
       "item": [
         {
-          "id": "66e2ab45-ab5f-421a-8206-c862d9cfbcfe",
+          "id": "cb64514e-f209-4ca9-9e79-97f60063e8b5",
+          "name": "Intel Cert Transparency Endpoint",
+          "request": {
+            "name": "Intel Cert Transparency Endpoint",
+            "description": {
+              "content": "Query Certificate Transparency logs via crt.sh for every cert ever\nissued for the domain or any subdomain. Free, no auth needed.\nReturns deduplicated certs sorted newest-first.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "intel",
+                "cert-transparency-history"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"domain\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "e57e57b9-4af0-420f-a962-31c380da4d2d",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "intel",
+                    "cert-transparency-history"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"domain\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "86d27ecb-266c-40a6-9d3d-55ea8c0579f7",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "intel",
+                    "cert-transparency-history"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"domain\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "d8b0eb42-3ee1-4026-8d45-be5e9c8b0067",
+          "name": "Intel Subdomain Enumerate Endpoint",
+          "request": {
+            "name": "Intel Subdomain Enumerate Endpoint",
+            "description": {
+              "content": "Enumerate subdomains for a domain via Certificate Transparency.\n\nPublic CT logs (crt.sh) — no DNS brute-forcing, no paid feeds. Returns the\ndeduplicated SAN list. Stale entries are possible since we don't resolve;\npair with a resolver if you need live-only hostnames.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "intel",
+                "subdomain-enumerate"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"domain\": \"<string>\",\n  \"max_results\": 500\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "3640c954-7ae0-4ed1-9c31-3268cc190420",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "intel",
+                    "subdomain-enumerate"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"domain\": \"<string>\",\n  \"max_results\": 500\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "3b673a7a-56b6-472e-b592-8d02e77c5538",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "intel",
+                    "subdomain-enumerate"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"domain\": \"<string>\",\n  \"max_results\": 500\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "4cf4dc97-ffd3-4843-bf3b-6e90abd79b60",
           "name": "Dns Lookup Endpoint",
           "request": {
             "name": "Dns Lookup Endpoint",
@@ -1541,7 +2042,7 @@
           },
           "response": [
             {
-              "id": "2f9a88ad-dc71-4cb3-985f-ad4cc7fd9b5d",
+              "id": "a45d646b-3665-4454-9dcf-7aca2716546d",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -1599,7 +2100,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "d3e6a546-07a2-44c3-a732-4b31f718534d",
+              "id": "114c135c-5858-4c20-a57a-a4d2d244e3f1",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -1663,7 +2164,7 @@
           }
         },
         {
-          "id": "4d32379a-4a38-4938-9975-65f502f3d7a6",
+          "id": "bd4e7048-7db7-48d0-9237-9f6bf3584abc",
           "name": "Dns Intel Endpoint",
           "request": {
             "name": "Dns Intel Endpoint",
@@ -1705,7 +2206,7 @@
           },
           "response": [
             {
-              "id": "d53c687d-15df-4b11-8e24-1792b6f980dc",
+              "id": "8e143e6a-40f0-4815-a889-34226158bc19",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -1763,7 +2264,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "d05e16a0-7b39-4b34-9c0d-ec63f37c0229",
+              "id": "f9dbf1e1-68c5-4b45-beb8-461c75cadd5b",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -1827,7 +2328,7 @@
           }
         },
         {
-          "id": "97b8ce83-fc52-4a2c-9ef6-9987986091e2",
+          "id": "841726bf-8128-4639-aef0-6281641716d6",
           "name": "Email Verify Endpoint",
           "request": {
             "name": "Email Verify Endpoint",
@@ -1869,7 +2370,7 @@
           },
           "response": [
             {
-              "id": "c5e43862-fd48-4901-b26a-bbd3fe8e2180",
+              "id": "b56c95eb-0124-4f6e-9d82-c5d8682f9e74",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -1927,7 +2428,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "d8f22fa0-d746-441b-a0b7-fd589962c0d1",
+              "id": "c3a12570-feed-4be8-9692-b1016c7eca14",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -1991,7 +2492,7 @@
           }
         },
         {
-          "id": "e9ff4719-6d8f-49ef-b79d-0622f1eb1cea",
+          "id": "24282e0f-f87b-4a0a-b95e-307a8735460f",
           "name": "Intel Ssl Endpoint",
           "request": {
             "name": "Intel Ssl Endpoint",
@@ -2033,7 +2534,7 @@
           },
           "response": [
             {
-              "id": "ecfe8389-9e58-4e92-8973-1a64c9c13122",
+              "id": "d5417a50-ac62-4a95-aec6-185a758c9307",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -2091,7 +2592,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "b33d5093-9117-4654-8792-d665281c6b2a",
+              "id": "f94a10a0-1a2b-42ef-8453-df07ec5c61d8",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -2155,7 +2656,7 @@
           }
         },
         {
-          "id": "4bd0e9f4-f44c-4a9f-a267-f9233e89b136",
+          "id": "9284296b-6928-4d39-b216-9f7d6aa7a2d3",
           "name": "Intel Whois Endpoint",
           "request": {
             "name": "Intel Whois Endpoint",
@@ -2197,7 +2698,7 @@
           },
           "response": [
             {
-              "id": "a0ffb163-3312-4978-b5ea-a2cb53fbfd36",
+              "id": "3c03e9f0-739e-40ff-a2de-0568e43b3dd6",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -2255,7 +2756,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "f045eb00-9f67-4e73-b25f-9ac3f87da4b2",
+              "id": "b1d9659f-ddec-43e2-9af1-920bc17a1212",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -2319,7 +2820,7 @@
           }
         },
         {
-          "id": "5efd82bc-2faf-4457-b119-516476ce945b",
+          "id": "f8382afa-0d73-4002-b104-d311cdabcef8",
           "name": "Intel Page Endpoint",
           "request": {
             "name": "Intel Page Endpoint",
@@ -2361,7 +2862,7 @@
           },
           "response": [
             {
-              "id": "8575fac0-a974-4e77-bd8c-91fe057115fb",
+              "id": "84d58381-9783-4ac6-a4ea-6a27e2c8bac8",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -2419,7 +2920,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "3ab6c909-4688-425f-b40e-6babfed14dfd",
+              "id": "8943841f-8494-43b0-ba53-a60a62a978ac",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -2483,7 +2984,7 @@
           }
         },
         {
-          "id": "040008c7-d29e-41ba-839e-fa0406256cd8",
+          "id": "0f2f8d2e-30b9-46fc-9de9-599785df04ed",
           "name": "Intel Sitemap Endpoint",
           "request": {
             "name": "Intel Sitemap Endpoint",
@@ -2525,7 +3026,7 @@
           },
           "response": [
             {
-              "id": "74b37a60-9246-4019-a8d3-ea865ceb1918",
+              "id": "833e045f-9b46-4aab-af52-47fb714fdb13",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -2583,7 +3084,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "bc2e2858-dfaf-4e92-9aa4-cf244fb89865",
+              "id": "527fa5d6-b705-4e79-8a85-b8ed7d1e6120",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -2647,7 +3148,7 @@
           }
         },
         {
-          "id": "4c33d7eb-bc37-4152-891f-8b28c9b5d369",
+          "id": "ad2b7939-c3f3-4d13-9b88-e80f9f85ad9f",
           "name": "Intel Robots Endpoint",
           "request": {
             "name": "Intel Robots Endpoint",
@@ -2689,7 +3190,7 @@
           },
           "response": [
             {
-              "id": "cf5ca067-a6cc-4eb5-b767-4d2d6d439b6b",
+              "id": "619df7c5-3b0d-4a68-9d67-cb93dd815852",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -2747,7 +3248,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "fd89c177-2907-4d6b-9f3b-18dfc1c262b3",
+              "id": "6125daf9-00ef-48a4-b71c-49f191affcfa",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -2811,7 +3312,7 @@
           }
         },
         {
-          "id": "8e16b78e-7339-43b0-8fa5-fb8e8deafc20",
+          "id": "ebe3573c-5284-46f6-a254-0b125dca6020",
           "name": "Intel Geoip Endpoint",
           "request": {
             "name": "Intel Geoip Endpoint",
@@ -2856,7 +3357,7 @@
           },
           "response": [
             {
-              "id": "ad9c4a47-319b-4601-8ecb-76fbdda2fe4c",
+              "id": "d4c8b178-150d-402e-acf0-41417f7a9309",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -2914,7 +3415,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "7f91ccb3-c5fa-4a81-b66d-08062e750fd9",
+              "id": "3f7a6ee4-23ff-4388-bd27-d4437b4bad88",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -2978,7 +3479,7 @@
           }
         },
         {
-          "id": "6fd86645-f2e9-4d60-bb73-9cc7c8aee32d",
+          "id": "5600339f-d379-446e-b7bc-0087ce5512aa",
           "name": "Intel Asn Endpoint",
           "request": {
             "name": "Intel Asn Endpoint",
@@ -3023,7 +3524,7 @@
           },
           "response": [
             {
-              "id": "92ab08db-1aa9-4b51-b3b8-5d855fa78f6c",
+              "id": "7b6fec4c-845b-496e-97d2-2e9b36e91ca9",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -3081,7 +3582,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "cb65ddfb-b7ed-47f5-b1da-af25366bbd12",
+              "id": "02679701-9459-4ef9-b4a2-ec8c56acca1a",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -3145,7 +3646,7 @@
           }
         },
         {
-          "id": "792b66e9-2af3-434a-bd08-33f0905f0cc5",
+          "id": "6b6e4b9f-b277-4a9c-bb96-76d8057fadba",
           "name": "Intel Geoip Bulk Endpoint",
           "request": {
             "name": "Intel Geoip Bulk Endpoint",
@@ -3191,7 +3692,7 @@
           },
           "response": [
             {
-              "id": "8a3a178d-aea2-43f2-a0c2-2d80fc4482cd",
+              "id": "86a80912-a687-4195-a3ca-7f97b6aeec4f",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -3250,7 +3751,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "8e92f065-d210-4349-ba47-7f1dcbd3fb7d",
+              "id": "3755ccfe-5d09-457d-b4b0-562151542e69",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -3315,7 +3816,7 @@
           }
         },
         {
-          "id": "4bf5310f-86ec-4ec2-ae3f-b26d9ad2d3bb",
+          "id": "dbb6cbb6-f38a-4774-afd5-20d456de2b0c",
           "name": "Intel Headers Endpoint",
           "request": {
             "name": "Intel Headers Endpoint",
@@ -3360,7 +3861,7 @@
           },
           "response": [
             {
-              "id": "e8e5eee3-c523-482a-9936-9e9d1448de76",
+              "id": "aa006e41-f970-47f4-80f7-7baf58a15f8c",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -3418,7 +3919,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "e846e66d-3863-4836-8547-547db263daf4",
+              "id": "35f21cbb-7de1-4726-83d0-967e8b421b7c",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -3482,7 +3983,7 @@
           }
         },
         {
-          "id": "418905e0-fb60-455f-8980-cbd6fb684625",
+          "id": "1cb9c54b-ef3b-4114-b162-f0d7535c9f2c",
           "name": "Intel Redirects Endpoint",
           "request": {
             "name": "Intel Redirects Endpoint",
@@ -3527,7 +4028,7 @@
           },
           "response": [
             {
-              "id": "91600045-76b4-4a29-86d5-fc2a64ffa403",
+              "id": "d58cd850-c6d0-4c2e-8bfa-6626e7a3ce08",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -3585,7 +4086,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "eea5f1dd-aaaf-4c96-93ea-93f39b43f5f7",
+              "id": "b8043f83-d4ab-4c38-9efd-89ae7de0f165",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -3649,7 +4150,7 @@
           }
         },
         {
-          "id": "52c0d0ad-031a-4aa7-b2a5-5c5b7f47b513",
+          "id": "71c9d78c-2842-454c-a1ed-e6781c5124fc",
           "name": "Intel Uptime Endpoint",
           "request": {
             "name": "Intel Uptime Endpoint",
@@ -3694,7 +4195,7 @@
           },
           "response": [
             {
-              "id": "d2cafff7-5a4a-40c3-88e2-19f4146ed709",
+              "id": "7c8f3b92-6feb-4174-b553-79f568819849",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -3752,7 +4253,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "439a4a85-a97d-4f8d-91ec-623716cddbdf",
+              "id": "c47760a0-f0ad-4267-9731-98f6852985b6",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -3816,7 +4317,7 @@
           }
         },
         {
-          "id": "b979eefb-dbe9-4a9d-978d-4718458462f5",
+          "id": "30b1bc34-0c54-41fb-aa2e-52da042f9096",
           "name": "Intel Email Auth Endpoint",
           "request": {
             "name": "Intel Email Auth Endpoint",
@@ -3861,7 +4362,7 @@
           },
           "response": [
             {
-              "id": "2ff59974-cd2a-4459-8b0c-086d793f5ff6",
+              "id": "6f5e33ef-a46d-4d27-a7a6-a1746ab8d068",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -3919,7 +4420,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "f8f4e861-afc3-4f8b-9fed-a70f957c8739",
+              "id": "c7363a32-ba3f-4648-aaba-f417aae3f9f9",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -3983,7 +4484,7 @@
           }
         },
         {
-          "id": "48020f1a-14f0-450d-85b2-d485150078ac",
+          "id": "1c2dd772-763f-4684-b425-ea767cb106a6",
           "name": "Intel Blacklist Endpoint",
           "request": {
             "name": "Intel Blacklist Endpoint",
@@ -4028,7 +4529,7 @@
           },
           "response": [
             {
-              "id": "6ed16fe8-0ce1-407f-a3b5-ca97f5093d76",
+              "id": "eecb79e2-c15f-4f56-b395-f469b7d19c3e",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -4086,7 +4587,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "060a7243-b2b6-47f7-8d30-292a728b338a",
+              "id": "aea985d1-e248-4c1b-8f3a-e70895d1bdc2",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -4150,7 +4651,7 @@
           }
         },
         {
-          "id": "9a83f87b-5b66-43be-9d5f-ac44272cc5cc",
+          "id": "922cf77c-a08a-4f86-88c9-92cbd16f5f84",
           "name": "Intel Dns Propagation Endpoint",
           "request": {
             "name": "Intel Dns Propagation Endpoint",
@@ -4195,7 +4696,7 @@
           },
           "response": [
             {
-              "id": "40907012-641e-4370-81a0-129513333f60",
+              "id": "ec839fc7-0f05-4734-8606-d53523695613",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -4253,7 +4754,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "61c89ec5-dbba-40ec-9514-80c72b443232",
+              "id": "06524f8f-d22a-4178-a6e4-93f3d08dde52",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -4317,7 +4818,7 @@
           }
         },
         {
-          "id": "6536819b-d0e2-4bf2-bab7-c394d4c2ae21",
+          "id": "ad6ada8c-f236-4ab6-ac19-714d3c60c7dd",
           "name": "Intel Ip Reputation Endpoint",
           "request": {
             "name": "Intel Ip Reputation Endpoint",
@@ -4362,7 +4863,7 @@
           },
           "response": [
             {
-              "id": "8fe715bc-b204-4e8d-bf06-107a6bba615a",
+              "id": "94766295-18d9-4db1-b165-c58dce4e9991",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -4420,7 +4921,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "67861807-f935-4655-889b-e3669337c545",
+              "id": "6a8b8c9a-0aa5-44f6-aaae-c20bb2b7c7f2",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -4490,7 +4991,7 @@
       "description": "Stateless, offline parsers: URL decomposition, User-Agent breakdown, email syntax + role/disposable/free-provider flags. No network calls.",
       "item": [
         {
-          "id": "a7efe7cf-fead-4d45-bbcb-23bd68b30b7b",
+          "id": "8e8d659b-a325-4a67-b651-a318008bf39a",
           "name": "Parse Url Endpoint",
           "request": {
             "name": "Parse Url Endpoint",
@@ -4532,7 +5033,7 @@
           },
           "response": [
             {
-              "id": "4b265359-253f-47e3-8f95-cebfc52c2b74",
+              "id": "12103bb9-2f9f-4a5a-93c0-2770734cd7ec",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -4590,7 +5091,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "cf39bd38-569b-42d5-9fca-7735ce42e1b8",
+              "id": "e49c7b07-f75d-4bb3-85f7-1535b70dd5a1",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -4654,7 +5155,7 @@
           }
         },
         {
-          "id": "dd111d16-1c3f-47c1-bac2-3cb8a31cfe7a",
+          "id": "b21f6638-afc6-49c9-bae7-a20f708b3902",
           "name": "Parse Useragent Endpoint",
           "request": {
             "name": "Parse Useragent Endpoint",
@@ -4696,7 +5197,7 @@
           },
           "response": [
             {
-              "id": "497852ed-4638-4d10-a202-b592d1f24279",
+              "id": "663a6f19-e879-4d81-bf3b-387fd9b7d912",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -4754,7 +5255,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "e4266d66-22e9-40f7-8fda-dfb9a0de616e",
+              "id": "e32cbb71-69f6-4b51-b48e-05c028bb16f9",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -4818,7 +5319,7 @@
           }
         },
         {
-          "id": "aa07a407-fdda-4026-b69c-40f286b4043e",
+          "id": "88f50185-995e-4d44-948e-54a80860b40c",
           "name": "Parse Email Endpoint",
           "request": {
             "name": "Parse Email Endpoint",
@@ -4860,7 +5361,7 @@
           },
           "response": [
             {
-              "id": "cbb6911d-8607-45b3-bdf6-74e799ed2339",
+              "id": "9fb86ca9-d73f-4c3d-9b40-c6dbea45bda2",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -4918,7 +5419,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "a7fec49a-e7d6-440a-9ab5-e904736b9133",
+              "id": "83b4ff9f-26f2-4c71-b057-7b0fefc253b8",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -4988,7 +5489,174 @@
       "description": "Pure HTML → Markdown transformation. No fetch — caller supplies the HTML.",
       "item": [
         {
-          "id": "1b872e26-3216-4eec-b95e-ee736553d967",
+          "id": "79794ad2-d401-4928-91c8-8d7a3ebea547",
+          "name": "Convert Ocr Endpoint",
+          "request": {
+            "name": "Convert Ocr Endpoint",
+            "description": {
+              "content": "OCR an image (PNG/JPEG/WebP/BMP/TIFF) to text. Proxies to the convert\nLXC running RapidOCR — CPU-only, no GPU. Optionally returns per-region\nbounding boxes and confidence scores.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "convert",
+                "ocr"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image_b64\": \"<string>\",\n  \"return_boxes\": false\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "fea650f7-29ab-41a3-befb-ae4ef9e37ffa",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "convert",
+                    "ocr"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"image_b64\": \"<string>\",\n  \"return_boxes\": false\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "25304a28-46cf-40f1-851f-7e0be0f96431",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "convert",
+                    "ocr"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"image_b64\": \"<string>\",\n  \"return_boxes\": false\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "0d1dcc9c-62f8-4f94-8182-38e9e0885c3d",
           "name": "Html To Markdown Endpoint",
           "request": {
             "name": "Html To Markdown Endpoint",
@@ -5033,7 +5701,7 @@
           },
           "response": [
             {
-              "id": "58bd474e-2bf8-4e59-85c0-3f256f6a50b4",
+              "id": "f2c49272-cccf-48dd-84f1-1aa5f6b3682a",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -5091,7 +5759,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "51fc5b84-8ffe-4991-88bb-4af4077cf217",
+              "id": "58129a30-3c60-48cd-98cf-b8415958f88f",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -5155,7 +5823,7 @@
           }
         },
         {
-          "id": "41faec56-a338-46a3-a0d1-c15099b501ae",
+          "id": "f6db63b9-1c32-4961-b0c7-93cd27757ec8",
           "name": "Pdf To Markdown Endpoint",
           "request": {
             "name": "Pdf To Markdown Endpoint",
@@ -5200,7 +5868,7 @@
           },
           "response": [
             {
-              "id": "bc0553a8-614c-4b49-8091-da917b1c3a63",
+              "id": "d08c436a-0f95-4ff6-95fe-afae260a53f7",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -5258,7 +5926,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "e1f204d9-21d8-4090-9b0c-6c356916f836",
+              "id": "bb70ee88-3bd3-4d74-a0f1-e0a6a05348c8",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -5322,7 +5990,7 @@
           }
         },
         {
-          "id": "c5db4a48-ef87-4a79-86be-aaba842449ed",
+          "id": "8ffdff6c-1881-4d91-b091-f01272699f4c",
           "name": "Docx To Markdown Endpoint",
           "request": {
             "name": "Docx To Markdown Endpoint",
@@ -5367,7 +6035,7 @@
           },
           "response": [
             {
-              "id": "773d8aa9-3f65-472a-b957-4bf0d248df3a",
+              "id": "403ab62a-99ee-4c8c-96d3-fd5c33be93e8",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -5425,7 +6093,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "51da82ea-a676-4c74-9245-817611e557a1",
+              "id": "e5a4a195-04b9-4f3e-8061-8d50b98ea4b4",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -5489,7 +6157,7 @@
           }
         },
         {
-          "id": "3bc08235-7ad1-4748-8e8f-4f19b6022bed",
+          "id": "441d4359-a079-4f9b-a2a8-7a7e7226fe9d",
           "name": "Xlsx To Markdown Endpoint",
           "request": {
             "name": "Xlsx To Markdown Endpoint",
@@ -5534,7 +6202,7 @@
           },
           "response": [
             {
-              "id": "e1237bb0-6b78-4e13-a324-3af4be5e7d19",
+              "id": "2ca208ad-bfd3-46fe-9c1a-6110c454a34c",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -5592,7 +6260,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "d21d2a1d-079c-4f89-943f-6386b99a4121",
+              "id": "0eca993d-33d1-4c26-8bc7-dad2be330552",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -5656,7 +6324,7 @@
           }
         },
         {
-          "id": "d8d071a3-d3f8-49fc-91ce-24edcf959703",
+          "id": "762bd895-1852-4cbb-9e0e-1cfec89bf2d5",
           "name": "Pptx To Markdown Endpoint",
           "request": {
             "name": "Pptx To Markdown Endpoint",
@@ -5701,7 +6369,7 @@
           },
           "response": [
             {
-              "id": "f718415e-3614-410b-a8c3-04790c73d2da",
+              "id": "6a0eea3f-b65a-456b-9fbc-10fa4b692620",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -5759,7 +6427,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "f371d50f-7bde-45da-aed5-e265ea159de3",
+              "id": "3e278baf-23bf-4f2c-abcb-92b9cb85c1a1",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -5823,7 +6491,7 @@
           }
         },
         {
-          "id": "457dc23c-6891-4acc-be9e-15997d5f02a5",
+          "id": "d580eafc-ad76-4704-ad72-37beab331024",
           "name": "Csv To Markdown Endpoint",
           "request": {
             "name": "Csv To Markdown Endpoint",
@@ -5868,7 +6536,7 @@
           },
           "response": [
             {
-              "id": "07b48c61-6737-4ba6-a6fc-638f3a2744a8",
+              "id": "1c89d45b-e2b5-4334-ac0e-94a3f1af1657",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -5926,7 +6594,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "1223eb46-942d-4a62-90f4-246c3014e302",
+              "id": "40d9572c-896e-4e92-ba7e-393bfaf9c333",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -5996,7 +6664,7 @@
       "description": "Full-site crawl with depth, budget, and robots.txt controls. Results delivered via webhook or polled with the jobs endpoint.",
       "item": [
         {
-          "id": "7f84a291-5c16-4892-a741-5db19aea63aa",
+          "id": "031506d8-45ae-434c-8bec-f88dc5fae64d",
           "name": "Crawl Endpoint",
           "request": {
             "name": "Crawl Endpoint",
@@ -6037,7 +6705,7 @@
           },
           "response": [
             {
-              "id": "5f38a891-0c1f-43e9-821d-757d09561af8",
+              "id": "92e90f9e-7dfe-4cc4-93be-0e92b7094513",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -6094,7 +6762,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "0ce6f73f-bda0-41d6-aa29-cf298ca77d79",
+              "id": "d3cc8090-eef7-408f-a5ff-e3f56a9dbfff",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -6163,7 +6831,7 @@
       "description": "Solve reCAPTCHA v3 invisible challenges. v3 only — by design.",
       "item": [
         {
-          "id": "e8481764-1899-464c-8e22-9d405626a964",
+          "id": "bb705832-da73-4132-b57d-2c29cc4362f9",
           "name": "Captcha Solve Endpoint",
           "request": {
             "name": "Captcha Solve Endpoint",
@@ -6205,7 +6873,7 @@
           },
           "response": [
             {
-              "id": "fab7a450-f66a-403a-a0ae-4e4419415ff1",
+              "id": "6cf61fa1-0882-4a93-906a-edf3fdc86319",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -6263,7 +6931,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "2cfddeb0-d69a-4621-b290-46538be5432c",
+              "id": "6dcef10b-eb11-47a2-9a10-8130bb6d687a",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -6327,7 +6995,7 @@
           }
         },
         {
-          "id": "b5753e59-876e-472d-afde-1b9842046b73",
+          "id": "5e435701-e929-43aa-95dd-32071aac424e",
           "name": "Captcha Auto Endpoint",
           "request": {
             "name": "Captcha Auto Endpoint",
@@ -6369,7 +7037,7 @@
           },
           "response": [
             {
-              "id": "2f5da1d4-2ad1-4353-8410-28e29c3c7a25",
+              "id": "58aa7aa0-ef19-45b3-a06e-209acac2b468",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -6427,7 +7095,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "384b5597-5a9f-43b1-8ce3-ac3084b4adca",
+              "id": "61c7b0b8-450a-477c-b355-7fb9056bf713",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -6497,7 +7165,7 @@
       "description": "Identity, usage, credits, API keys, password, and webhook secret for the authenticated user.",
       "item": [
         {
-          "id": "26790654-08aa-4558-b33c-004c06674551",
+          "id": "69a6a239-4012-4c62-9d05-9ca550123afe",
           "name": "Get Me",
           "request": {
             "name": "Get Me",
@@ -6525,7 +7193,7 @@
           },
           "response": [
             {
-              "id": "dcd36fd6-07f9-4a7b-bae8-9fdda31e184c",
+              "id": "f313e96f-b85c-4b04-bf32-92e8d16e00f5",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -6569,7 +7237,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "45e9ccad-86ce-426d-934e-a06d14d1424b",
+              "id": "958bd2b9-ff77-400e-8c99-bcd6d7c99b21",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -6619,7 +7287,7 @@
           }
         },
         {
-          "id": "b3bd701a-3139-4cee-b7d7-3b965a37048b",
+          "id": "5387fd31-29a1-46fd-9acf-1771c4c557d5",
           "name": "Rotate My Webhook Secret",
           "request": {
             "name": "Rotate My Webhook Secret",
@@ -6652,7 +7320,7 @@
           },
           "response": [
             {
-              "id": "19de4ac9-1c09-46b4-8fb8-7e430c03fdc4",
+              "id": "13c92184-4a34-4931-a288-b92ac3c2e1a2",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -6698,7 +7366,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "0d028bfe-abe4-4944-98af-740d7a27a289",
+              "id": "866bdde4-49da-42ba-9bbd-d612194b2e9c",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -6750,7 +7418,7 @@
           }
         },
         {
-          "id": "52c6896f-408b-4c27-89e5-d2528c60c5e0",
+          "id": "d12b7707-0003-4213-9b52-afd4935dcd9f",
           "name": "Change My Password",
           "request": {
             "name": "Change My Password",
@@ -6795,7 +7463,7 @@
           },
           "response": [
             {
-              "id": "ab1c4a9c-130a-45a7-a7f3-b14de6b64407",
+              "id": "8f58c0c2-6a56-445d-afed-12b473ab1a0e",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -6853,7 +7521,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "bec636ff-ddf7-476c-8f88-dbe7c3fefb0f",
+              "id": "afbbc533-dd8f-4805-aaa4-e5aa4774268e",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -6917,7 +7585,7 @@
           }
         },
         {
-          "id": "e97dc33f-906e-4109-be1a-9add24d56a9e",
+          "id": "491c4972-2964-4276-a9c6-b848c28bed44",
           "name": "Get My Jobs",
           "request": {
             "name": "Get My Jobs",
@@ -6968,7 +7636,7 @@
           },
           "response": [
             {
-              "id": "68484663-bfac-44ac-9c0c-b6263e247058",
+              "id": "013e89ab-2278-448a-a921-939ebcf1196b",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -7032,7 +7700,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "7d95b61d-8490-479e-ad20-967c53b45315",
+              "id": "1e253c13-a5ce-4231-adb4-a9d403f2a295",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -7102,7 +7770,7 @@
           }
         },
         {
-          "id": "b6f39289-5a5d-4f30-9ee1-4f093a3a312e",
+          "id": "523b7884-6089-4f31-b7d7-bf6c1a11df36",
           "name": "Get My Credits",
           "request": {
             "name": "Get My Credits",
@@ -7153,7 +7821,7 @@
           },
           "response": [
             {
-              "id": "baf9b95e-e193-4bb9-8cd7-f915411e6c93",
+              "id": "bc2cf117-415f-4e1f-bce3-bfa5cac8c5d3",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -7217,7 +7885,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "2a470ef1-ba5c-4b49-afa9-011eead130b2",
+              "id": "6dfe1e13-8d7c-4cf9-9a6d-eed99d532f63",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -7287,7 +7955,7 @@
           }
         },
         {
-          "id": "21253b42-f886-4949-bf7e-1825ecd838ac",
+          "id": "e6c3e43e-c8c3-453e-acab-900111279058",
           "name": "Get My Usage",
           "request": {
             "name": "Get My Usage",
@@ -7347,7 +8015,7 @@
           },
           "response": [
             {
-              "id": "0d1956d4-a6fa-4650-94e3-fe7309be9365",
+              "id": "77db1fc7-ac43-4a35-acc1-956636a92133",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -7420,7 +8088,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "da57bbcf-0b45-417c-b235-137907c7f659",
+              "id": "efcd74ac-543c-478a-bfa4-997fc8398944",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -7499,7 +8167,7 @@
           }
         },
         {
-          "id": "2d32fdbb-b4fb-42f1-bbc7-dd517739931a",
+          "id": "bc3c9b60-3560-47a8-86d2-2a5c75865138",
           "name": "Get My Usage Summary",
           "request": {
             "name": "Get My Usage Summary",
@@ -7542,7 +8210,7 @@
           },
           "response": [
             {
-              "id": "4e9de552-f785-4bf0-b364-14d73186c7f4",
+              "id": "f7eee579-2a9b-4725-8e49-be27428f790e",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -7598,7 +8266,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "f830ee57-638c-4597-b05f-b0df4f447f47",
+              "id": "e5b6c6fb-de6b-4ab8-a897-6b459eea75fd",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -7660,7 +8328,7 @@
           }
         },
         {
-          "id": "5989ed54-b652-4588-a32e-d7a8cde04ef1",
+          "id": "15b96ef0-517f-416b-9c54-f71ecca010db",
           "name": "List My Keys",
           "request": {
             "name": "List My Keys",
@@ -7691,7 +8359,7 @@
           },
           "response": [
             {
-              "id": "e767fc34-5d7c-4c61-b276-3c2fea23c026",
+              "id": "a679795a-1c3f-4d33-a9bb-6163d7709b63",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -7735,7 +8403,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "14e52edb-f1d3-4668-86fd-fc2160ba8a67",
+              "id": "bc6fcdf7-624d-4af9-8284-59fc5f0aa108",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -7785,7 +8453,7 @@
           }
         },
         {
-          "id": "1fb912e4-32d1-4e51-8d80-fdae3c522fa3",
+          "id": "29fbe442-8cb9-4103-8515-00f71637ce7b",
           "name": "Create My Key",
           "request": {
             "name": "Create My Key",
@@ -7829,7 +8497,7 @@
           },
           "response": [
             {
-              "id": "fbf65f13-e1e0-4658-8fed-5810d535c1ee",
+              "id": "6206fbab-c21c-405f-a7af-3e39581259fc",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -7886,7 +8554,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "ff2afceb-6f38-4dae-a6e1-5941bfec9fa6",
+              "id": "b033d947-7e18-4e71-b8db-028843c618d4",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -7949,7 +8617,7 @@
           }
         },
         {
-          "id": "1c7802aa-31b3-4d01-a116-b12c2d75470b",
+          "id": "95f0d342-a26d-43ad-abf1-9c6bf5852b63",
           "name": "Delete My Key",
           "request": {
             "name": "Delete My Key",
@@ -7992,7 +8660,7 @@
           },
           "response": [
             {
-              "id": "d6f30dc4-1633-4981-99c7-03d7188d8d6c",
+              "id": "ae33c916-c8e0-4024-8726-c6b1e72b8c66",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -8048,7 +8716,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "e85a776a-ef45-4514-8222-3e34ea85fd12",
+              "id": "f5ccba83-34e3-4143-9997-07d121f44fc0",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -8116,7 +8784,7 @@
       "description": "Sign up, log in, verify email, mint a session-scoped API key.",
       "item": [
         {
-          "id": "976e09c4-d42b-4b34-853c-ca90137c7334",
+          "id": "d3b66018-2bfb-4122-859b-905ec39ab6b8",
           "name": "Auth Signup",
           "request": {
             "name": "Auth Signup",
@@ -8146,7 +8814,7 @@
             "method": "POST",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"name\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+              "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"name\": \"<string>\"\n}",
               "options": {
                 "raw": {
                   "headerFamily": "json",
@@ -8158,7 +8826,7 @@
           },
           "response": [
             {
-              "id": "5903074e-d6b0-4eac-a114-9b427457dded",
+              "id": "4e8d2047-6b2b-4195-afcb-69318c23597d",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -8194,7 +8862,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"name\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"name\": \"<string>\"\n}",
                   "options": {
                     "raw": {
                       "headerFamily": "json",
@@ -8216,7 +8884,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "b915da69-a7aa-4dd3-8fea-50904996a250",
+              "id": "3e75e5f4-d9b8-466d-8ffb-fc4f6595ce4b",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -8252,7 +8920,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"name\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"name\": \"<string>\"\n}",
                   "options": {
                     "raw": {
                       "headerFamily": "json",
@@ -8280,7 +8948,7 @@
           }
         },
         {
-          "id": "f1286ea1-2b70-4f8c-979f-6d6dccd0b169",
+          "id": "fc4ddf40-005a-445c-9ff1-4d1cd3ad2ba2",
           "name": "Auth Verify Email",
           "request": {
             "name": "Auth Verify Email",
@@ -8322,7 +8990,7 @@
           },
           "response": [
             {
-              "id": "250b3bca-d313-4a7a-ad69-ce095ee86e25",
+              "id": "f750dbf2-2314-4919-a68a-314288c2234e",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -8377,7 +9045,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "4b11729c-8ffe-4c23-afcf-d36ae46e32b1",
+              "id": "4430fdb0-3ebc-4d72-a5b5-3f5f84ff2b55",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -8438,7 +9106,7 @@
           }
         },
         {
-          "id": "cc89ff50-27b2-4f98-b11e-ee706f6f7c22",
+          "id": "934106e7-7d34-4db5-b51a-ec75920371f2",
           "name": "Auth Login",
           "request": {
             "name": "Auth Login",
@@ -8471,7 +9139,7 @@
             "method": "POST",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+              "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\"\n}",
               "options": {
                 "raw": {
                   "headerFamily": "json",
@@ -8483,7 +9151,7 @@
           },
           "response": [
             {
-              "id": "bf261fc7-6674-45de-9bb8-7a7db6b5fca8",
+              "id": "36536449-02fc-49d9-ace3-1350d629704f",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -8519,7 +9187,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\"\n}",
                   "options": {
                     "raw": {
                       "headerFamily": "json",
@@ -8541,7 +9209,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "0b005825-c26d-4a4f-b36f-61464d0989b9",
+              "id": "d58c0c15-80c7-4b69-843a-8c21d333178c",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -8577,7 +9245,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\"\n}",
                   "options": {
                     "raw": {
                       "headerFamily": "json",
@@ -8605,7 +9273,7 @@
           }
         },
         {
-          "id": "9e730b3b-7eda-433c-9bec-e7a5b627434f",
+          "id": "a38e1e22-c413-44bf-af58-5d0093ca92c7",
           "name": "Auth Login And Mint Key",
           "request": {
             "name": "Auth Login And Mint Key",
@@ -8638,7 +9306,7 @@
             "method": "POST",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+              "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\"\n}",
               "options": {
                 "raw": {
                   "headerFamily": "json",
@@ -8650,7 +9318,7 @@
           },
           "response": [
             {
-              "id": "f66f097f-e4b1-4869-9be5-39b04afc5cec",
+              "id": "68195872-b854-4c85-96d6-99ca65f8c390",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -8686,7 +9354,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\"\n}",
                   "options": {
                     "raw": {
                       "headerFamily": "json",
@@ -8708,7 +9376,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "5d795704-336d-4adc-86ab-9b24130ef2bc",
+              "id": "c8d74ebc-b3f8-4dd3-a6f2-c94c5cbf521d",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -8744,7 +9412,7 @@
                 "method": "POST",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\",\n  \"cf_turnstile_token\": \"<string>\"\n}",
+                  "raw": "{\n  \"email\": \"<string>\",\n  \"password\": \"<string>\"\n}",
                   "options": {
                     "raw": {
                       "headerFamily": "json",
@@ -8772,7 +9440,7 @@
           }
         },
         {
-          "id": "38496a16-3b07-4a53-9e0f-e94d780904f7",
+          "id": "df542f34-b412-4fcd-8d76-5dd795e4d503",
           "name": "Auth Me",
           "request": {
             "name": "Auth Me",
@@ -8804,7 +9472,7 @@
           },
           "response": [
             {
-              "id": "931beb59-94ba-4b6d-bfce-b63d52119767",
+              "id": "50b06bcf-c2d6-421c-bbed-1fe0917ce1e5",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -8849,7 +9517,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "8ea166a0-9f40-426a-ba74-2e085837564c",
+              "id": "f886b699-dff4-4b6f-8d47-eb8b3311efcd",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -8906,7 +9574,7 @@
       "description": "Stripe checkout session creation and webhook receiver.",
       "item": [
         {
-          "id": "e24c340c-17a7-419c-8ced-d3d1d6a36367",
+          "id": "1fe5be38-7f7b-4c72-8b8c-79c8bfe24a5b",
           "name": "Create Checkout Session",
           "request": {
             "name": "Create Checkout Session",
@@ -8938,7 +9606,7 @@
           },
           "response": [
             {
-              "id": "f3baa08b-c370-4992-ba9d-0d63d507815e",
+              "id": "efadadc1-bcd4-4ffb-96af-2dc0a45e5d66",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -8983,7 +9651,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "3f71a44e-46fc-43a6-be2f-4b1cf0611170",
+              "id": "f166545e-2a49-49f2-8065-ee6a3fa6b54d",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -9034,7 +9702,7 @@
           }
         },
         {
-          "id": "9ca112f5-0e39-44ac-9eaa-0983cd71b46f",
+          "id": "3977d3e7-45e2-4a04-b204-b8a8cc1402ce",
           "name": "Stripe Webhook",
           "request": {
             "name": "Stripe Webhook",
@@ -9066,7 +9734,7 @@
           },
           "response": [
             {
-              "id": "3095ad73-f692-4310-9841-f940367a73b9",
+              "id": "4c6bf405-a846-4f8f-ab5c-d366a7677a59",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -9123,7 +9791,7 @@
       "description": "Poll the status of any async job (scrape, batch, crawl).",
       "item": [
         {
-          "id": "2170bf96-77c9-457f-9673-36db960c97f0",
+          "id": "75c5683a-e617-4a27-a82a-73dae495d745",
           "name": "Get Job Status",
           "request": {
             "name": "Get Job Status",
@@ -9163,7 +9831,7 @@
           },
           "response": [
             {
-              "id": "3e995d96-8d29-40b3-9a1f-49ca9f0f8eb2",
+              "id": "1cae2936-9e23-4f28-8cdd-57af9b6863d7",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -9219,7 +9887,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "30f1925d-df0f-4226-a2ed-03112646e13e",
+              "id": "cafa0c2a-6b87-431f-b069-6c31612dabc5",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -9287,7 +9955,7 @@
       "description": "Liveness probe for monitoring.",
       "item": [
         {
-          "id": "d74f9aeb-4f53-4ca5-9a36-1e4c816c13cf",
+          "id": "e56e89cf-06e9-4d06-b63c-336bd0b84cd1",
           "name": "Health",
           "request": {
             "name": "Health",
@@ -9317,7 +9985,7 @@
           },
           "response": [
             {
-              "id": "c232e61b-21d6-4262-aa7a-473e26972c34",
+              "id": "251f806b-6d5f-465b-8681-6fdd2407e273",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -9372,7 +10040,7 @@
       "description": "Operator-only endpoints. Requires X-Admin-Token header.",
       "item": [
         {
-          "id": "fc9c7225-2630-4694-a2bb-0a915a6bcd39",
+          "id": "a6f364aa-2f40-4e8d-a4e7-2006bf34302b",
           "name": "Admin Create User",
           "request": {
             "name": "Admin Create User",
@@ -9421,7 +10089,7 @@
           },
           "response": [
             {
-              "id": "5bbcc60f-ee4f-4a2a-8987-b7860b6f3b97",
+              "id": "f4a7532f-6e7f-40fa-8aad-3b67605b92f5",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -9487,7 +10155,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "5cc54e9d-8453-4085-a9c3-212d7eb06fb4",
+              "id": "3bfe7dd5-35ef-4f06-8500-32f8d3d4c499",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -9532,173 +10200,6 @@
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"email\": \"<string>\",\n  \"name\": \"<string>\",\n  \"plan\": \"free\"\n}",
-                  "options": {
-                    "raw": {
-                      "headerFamily": "json",
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
-              "code": 422,
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
-              "cookie": [],
-              "_postman_previewlanguage": "json"
-            }
-          ],
-          "event": [],
-          "protocolProfileBehavior": {
-            "disableBodyPruning": true
-          }
-        }
-      ]
-    },
-    {
-      "name": "PDF (preview)",
-      "description": "",
-      "item": [
-        {
-          "id": "b4cd9e4a-4690-48db-a2d0-b3d899fae00e",
-          "name": "Pdf Endpoint",
-          "request": {
-            "name": "Pdf Endpoint",
-            "description": {},
-            "url": {
-              "path": [
-                "v1",
-                "pdf"
-              ],
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "query": [],
-              "variable": []
-            },
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Accept",
-                "value": "application/json"
-              }
-            ],
-            "method": "POST",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"url\": \"<string>\",\n  \"page_size\": \"A4\",\n  \"landscape\": false,\n  \"grayscale\": false,\n  \"margin_top\": 10,\n  \"margin_bottom\": 10,\n  \"margin_left\": 10,\n  \"margin_right\": 10\n}",
-              "options": {
-                "raw": {
-                  "headerFamily": "json",
-                  "language": "json"
-                }
-              }
-            },
-            "auth": null
-          },
-          "response": [
-            {
-              "id": "b5a7884e-ecb5-476f-96fd-0fde0792115f",
-              "name": "Successful Response",
-              "originalRequest": {
-                "url": {
-                  "path": [
-                    "v1",
-                    "pdf"
-                  ],
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "query": [],
-                  "variable": []
-                },
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "application/json"
-                  },
-                  {
-                    "description": {
-                      "content": "Added as a part of security scheme: bearer",
-                      "type": "text/plain"
-                    },
-                    "key": "Authorization",
-                    "value": "Bearer <token>"
-                  }
-                ],
-                "method": "POST",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"url\": \"<string>\",\n  \"page_size\": \"A4\",\n  \"landscape\": false,\n  \"grayscale\": false,\n  \"margin_top\": 10,\n  \"margin_bottom\": 10,\n  \"margin_left\": 10,\n  \"margin_right\": 10\n}",
-                  "options": {
-                    "raw": {
-                      "headerFamily": "json",
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "status": "OK",
-              "code": 200,
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "body": "",
-              "cookie": [],
-              "_postman_previewlanguage": "json"
-            },
-            {
-              "id": "d9929e54-31ec-46a2-9461-ff3428f69bf5",
-              "name": "Validation Error",
-              "originalRequest": {
-                "url": {
-                  "path": [
-                    "v1",
-                    "pdf"
-                  ],
-                  "host": [
-                    "{{baseUrl}}"
-                  ],
-                  "query": [],
-                  "variable": []
-                },
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  },
-                  {
-                    "key": "Accept",
-                    "value": "application/json"
-                  },
-                  {
-                    "description": {
-                      "content": "Added as a part of security scheme: bearer",
-                      "type": "text/plain"
-                    },
-                    "key": "Authorization",
-                    "value": "Bearer <token>"
-                  }
-                ],
-                "method": "POST",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"url\": \"<string>\",\n  \"page_size\": \"A4\",\n  \"landscape\": false,\n  \"grayscale\": false,\n  \"margin_top\": 10,\n  \"margin_bottom\": 10,\n  \"margin_left\": 10,\n  \"margin_right\": 10\n}",
                   "options": {
                     "raw": {
                       "headerFamily": "json",
@@ -9732,7 +10233,7 @@
       "description": "",
       "item": [
         {
-          "id": "acd60e14-536a-4500-a36b-4adca49df4e8",
+          "id": "77abc4e7-fa9d-4056-ab33-6695ff27ee0a",
           "name": "Actor Amazon Endpoint",
           "request": {
             "name": "Actor Amazon Endpoint",
@@ -9774,7 +10275,7 @@
           },
           "response": [
             {
-              "id": "65327d65-fd4c-4e21-b87f-7af4117b45b1",
+              "id": "00eb1012-92b6-4eee-9eb8-3158628952d8",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -9832,7 +10333,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "7b607fb4-30d0-4273-ab20-fac4a996ad24",
+              "id": "28e631aa-734c-4bcc-a78b-87c4f95272c2",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -9896,7 +10397,7 @@
           }
         },
         {
-          "id": "700850fc-e93c-4a33-9d93-683a6c580140",
+          "id": "526e62cb-0ea5-44e5-862e-57befbacf6d6",
           "name": "Actor Google Maps Endpoint",
           "request": {
             "name": "Actor Google Maps Endpoint",
@@ -9938,7 +10439,7 @@
           },
           "response": [
             {
-              "id": "dde64d2e-f6ca-4548-9467-a418c05eeef8",
+              "id": "e541dacf-6efd-4c17-b45e-c977e82d0eaa",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -9996,7 +10497,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "bb7a7447-2297-4e58-be82-21148de6b02f",
+              "id": "814b2c1e-0cb6-4e05-b470-a35c8b1f9319",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -10060,7 +10561,7 @@
           }
         },
         {
-          "id": "cc24b8ea-d9ee-46e5-bd29-0e3b5a589a8c",
+          "id": "499d07fc-2aa3-41d6-8dec-317633438563",
           "name": "Actor Markdown Endpoint",
           "request": {
             "name": "Actor Markdown Endpoint",
@@ -10102,7 +10603,7 @@
           },
           "response": [
             {
-              "id": "d5ce4caa-5810-4413-944a-4add8f1b5aa1",
+              "id": "2a9469b5-bf93-4939-8b5a-df07163b19cb",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -10160,7 +10661,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "046b6134-f780-4f6a-8812-6baa13f00ba9",
+              "id": "2d97f236-064c-47f9-b3ec-15ccd7d06fe1",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -10224,7 +10725,7 @@
           }
         },
         {
-          "id": "b9fb4331-c230-4d4f-ac7b-6cbda3fb5bb5",
+          "id": "119eeb3d-3a99-42da-8814-0e232cb6521c",
           "name": "Actor Zillow Endpoint",
           "request": {
             "name": "Actor Zillow Endpoint",
@@ -10266,7 +10767,7 @@
           },
           "response": [
             {
-              "id": "4cb5f93a-1a87-4fcd-ad87-db1487be31a4",
+              "id": "ba31c61d-66c8-45da-9c31-dac5bda74cce",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -10324,7 +10825,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "28fecf4b-2083-4e74-bf5c-43d86a96971e",
+              "id": "6f3b0ee2-7f75-45db-a5d1-2bf1cc89ba77",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -10394,7 +10895,1009 @@
       "description": "On-page SEO audit: meta scoring, readability, candidate snippet extraction.",
       "item": [
         {
-          "id": "cf642ddb-db2a-4d96-8686-c6f814d7aadc",
+          "id": "4f29656f-2cfd-4922-a71f-7f53d04108c2",
+          "name": "Seo Redirect Chain Endpoint",
+          "request": {
+            "name": "Seo Redirect Chain Endpoint",
+            "description": {
+              "content": "Trace the full redirect chain from a URL to its final destination.\nReturns the hops + SEO-flavored scoring: too-long chain, HTTPS->HTTP\ndowngrade, 302/307 used where 301 would be appropriate.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "seo",
+                "redirect-chain-map"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "5c50f26c-5593-4f1e-9a16-eea1b8c2edb7",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "redirect-chain-map"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "e94dee49-a493-4237-8348-a26c3e54571a",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "redirect-chain-map"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "5cb9ef91-01f0-4fdb-a4a0-488ebee369b8",
+          "name": "Seo Broken Links Endpoint",
+          "request": {
+            "name": "Seo Broken Links Endpoint",
+            "description": {
+              "content": "Scan a single page for broken outbound + internal links. HEAD\nprobe with GET fallback, parallel, configurable cap. Returns\nfull status code + final URL per link, with broken ones flagged.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "seo",
+                "broken-links-audit"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\",\n  \"max_links\": 50,\n  \"concurrency\": 8,\n  \"timeout_seconds\": 8\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "6af7b96b-4f58-44f7-b9ba-ab01ca87e453",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "broken-links-audit"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"max_links\": 50,\n  \"concurrency\": 8,\n  \"timeout_seconds\": 8\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "9f731772-3789-41da-b60a-ae24232fe9c8",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "broken-links-audit"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"max_links\": 50,\n  \"concurrency\": 8,\n  \"timeout_seconds\": 8\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "015da4a7-2872-4832-8a2b-d7678052a180",
+          "name": "Seo Anchor Text Audit Endpoint",
+          "request": {
+            "name": "Seo Anchor Text Audit Endpoint",
+            "description": {
+              "content": "Audit every <a href> on the page. Flags generic anchors\n('click here', 'read more') and over-optimized repeats (same exact-\nmatch anchor used 3+ times pointing at the same URL).",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "seo",
+                "anchor-text-audit"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "7293d630-9f90-4e94-9494-9ffea5dcd36e",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "anchor-text-audit"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "58096f69-ac70-4de2-b4b2-7c962af464b8",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "anchor-text-audit"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "5fade913-a4e4-4814-baa3-12669b2fbb27",
+          "name": "Seo Schema Validate Endpoint",
+          "request": {
+            "name": "Seo Schema Validate Endpoint",
+            "description": {
+              "content": "Validate JSON-LD blocks against Google's required-field lists for\n20+ rich-result types (Product, Recipe, Article, Event, FAQPage,\nHowTo, JobPosting, LocalBusiness, Review, ...). Returns the list of\ntypes the page is rich-result-eligible for.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "seo",
+                "schema-validate"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "0abd31d7-ad38-4c09-8710-425587539ba6",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "schema-validate"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "8e9a232c-e796-499f-855b-1db4244eca84",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "schema-validate"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "6dbe07f8-1505-417b-859f-452269eec5b6",
+          "name": "Seo Mixed Content Endpoint",
+          "request": {
+            "name": "Seo Mixed Content Endpoint",
+            "description": {
+              "content": "Find HTTP subresources loaded by an HTTPS page (mixed content).\nReports every <img>, <script>, <link>, <iframe>, <audio>, <video>,\n<source>, <embed>, <object> that uses http:// instead of https://.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "seo",
+                "mixed-content"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "fb314969-579f-4376-886f-b7155cde5dbb",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "mixed-content"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "1fd777b1-6bbd-4946-aa5f-d744ca2ee402",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "mixed-content"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "356398d9-0d2c-450c-a57d-255a2f8ca574",
+          "name": "Seo Keyword Extract Endpoint",
+          "request": {
+            "name": "Seo Keyword Extract Endpoint",
+            "description": {
+              "content": "Extract top keywords + multi-word phrases from text or a URL.\nUses lightweight TextRank-style co-occurrence ranking; no LLM\ncalls, no paid keyword feeds. Bring your own text or let us\nfetch+clean the URL for you.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "seo",
+                "keyword-extract"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"<string>\",\n  \"url\": \"<string>\",\n  \"top_k\": 20\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "c75593c2-6df9-4924-84a5-d278622385c0",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "keyword-extract"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"text\": \"<string>\",\n  \"url\": \"<string>\",\n  \"top_k\": 20\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "afc1ceb1-0fb3-4178-aa12-b9c66b0db5df",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "seo",
+                    "keyword-extract"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"text\": \"<string>\",\n  \"url\": \"<string>\",\n  \"top_k\": 20\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "b879eeac-ee65-4329-969e-efbdfc3e62bb",
           "name": "Seo Meta Audit Endpoint",
           "request": {
             "name": "Seo Meta Audit Endpoint",
@@ -10439,7 +11942,7 @@
           },
           "response": [
             {
-              "id": "3284f12a-21f6-4a89-b641-166bfc119c87",
+              "id": "4057624b-07ce-4252-972f-aef915a001c9",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -10497,7 +12000,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "2bf4d48f-34c3-4a8b-a6ca-aefbc5578881",
+              "id": "c8700265-8911-4218-8bd6-bb4f897f52b1",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -10561,7 +12064,7 @@
           }
         },
         {
-          "id": "71c7a1aa-b48b-4ea5-909f-62186c2bcd6d",
+          "id": "58c73038-5c11-430d-9986-23615f45fdb9",
           "name": "Seo Readability Endpoint",
           "request": {
             "name": "Seo Readability Endpoint",
@@ -10606,7 +12109,7 @@
           },
           "response": [
             {
-              "id": "3082f9ba-af5a-48af-99c9-175413d753d2",
+              "id": "7cb37668-fddc-4994-9418-2d7557133762",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -10664,7 +12167,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "a7b4e55d-c25b-430b-a6c6-e51419546230",
+              "id": "fe6c07ea-4c08-4fdf-aa55-9dc1657f96d2",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -10728,7 +12231,7 @@
           }
         },
         {
-          "id": "e47224b2-22bc-4dd0-8a05-c91af9404de4",
+          "id": "753b271e-3e9c-40bf-888e-aa8c582ca7a5",
           "name": "Seo Snippet Candidates Endpoint",
           "request": {
             "name": "Seo Snippet Candidates Endpoint",
@@ -10773,7 +12276,7 @@
           },
           "response": [
             {
-              "id": "0820243d-57fa-41dc-9095-17cd78841592",
+              "id": "275bea58-f2df-4033-9f8b-98f8d52c222f",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -10831,7 +12334,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "3f7a0f6e-2724-42a3-b729-a0dfcb5d905c",
+              "id": "eee9cba4-9949-4eb4-ab05-f2745c17ed8f",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -10901,7 +12404,508 @@
       "description": "Answer Engine Optimization: AI-crawler allowlist audit, llms.txt validation for the post-ChatGPT search era.",
       "item": [
         {
-          "id": "e3a03ea5-75e2-4d1b-b86e-2a671bb85136",
+          "id": "a627883f-8968-44cf-bd45-4078d206a9af",
+          "name": "Aeo Freshness Signal Endpoint",
+          "request": {
+            "name": "Aeo Freshness Signal Endpoint",
+            "description": {
+              "content": "Audit a page's freshness signals from schema.org dateModified,\nOpenGraph article:modified_time, HTTP Last-Modified, visible 'Updated'\ntext, and copyright year. Returns a 0-100 freshness score + the\nmost-recent dated signal + any inconsistencies between them.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "aeo",
+                "freshness-signal"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "e630df68-3113-43c6-9e1f-067536be021a",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "aeo",
+                    "freshness-signal"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "ca17fcd1-481c-4770-82c6-8c2cfe2d1561",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "aeo",
+                    "freshness-signal"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "00861d97-c7f0-43b9-9cdc-d57a7157ac9f",
+          "name": "Aeo Snippet Format Detect Endpoint",
+          "request": {
+            "name": "Aeo Snippet Format Detect Endpoint",
+            "description": {
+              "content": "Classify a page's content into the four featured-snippet shapes\nGoogle pulls from: paragraph, list, table, definition. Returns\ncounts + example snippets for each kind + a best-fit prediction.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "aeo",
+                "snippet-format-detect"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "adbd03a0-05f8-40ee-ae5f-a9e3d7cad5bd",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "aeo",
+                    "snippet-format-detect"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "faf62700-4620-4bb4-92d9-5f1ea894765b",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "aeo",
+                    "snippet-format-detect"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "087e2ce0-bf33-4bae-8078-019076fc10c6",
+          "name": "Aeo Heading Hierarchy Endpoint",
+          "request": {
+            "name": "Aeo Heading Hierarchy Endpoint",
+            "description": {
+              "content": "Audit H1-H6 hierarchy on a page. Surfaces missing H1, multiple H1s,\nhierarchy skips (H2 -> H4 without H3 between), and the count of\nquestion-style headings — important for AI Overview eligibility.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "aeo",
+                "heading-hierarchy-score"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "78612f01-0dab-4c6d-8f8b-2ff2c1289da3",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "aeo",
+                    "heading-hierarchy-score"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "6c60ddb9-b80d-40d0-ade2-77605325aabe",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "aeo",
+                    "heading-hierarchy-score"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"html\": \"<string>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "e30ab3ee-6d9a-4434-925a-856aefe6d655",
           "name": "Aeo Ai Bot Allowlist Endpoint",
           "request": {
             "name": "Aeo Ai Bot Allowlist Endpoint",
@@ -10946,7 +12950,7 @@
           },
           "response": [
             {
-              "id": "d93c9059-a899-4af8-9599-dd1678889b31",
+              "id": "9659c468-a302-4fab-b4ed-9e1fe0ba8bf5",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -11004,7 +13008,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "22ea49e6-d7b2-47a5-857c-53f96bcac8fa",
+              "id": "07826443-16c7-4be6-8910-2f9252b008bd",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -11068,7 +13072,7 @@
           }
         },
         {
-          "id": "f602f60b-b055-4162-9957-bd47aad5bb00",
+          "id": "3e8fd7a4-daaf-4362-a84c-15c3900b18fe",
           "name": "Aeo Llms Txt Audit Endpoint",
           "request": {
             "name": "Aeo Llms Txt Audit Endpoint",
@@ -11113,7 +13117,7 @@
           },
           "response": [
             {
-              "id": "aa7dd96c-8c7d-442f-aa67-74eebdb320c7",
+              "id": "166ee537-4de2-44c0-9528-6122c8729ec6",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -11171,7 +13175,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "9ccafde9-b83b-45b3-a968-3904af8df071",
+              "id": "f2541509-e7f7-4521-b1a9-ee31bf21aef1",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -11235,7 +13239,7 @@
           }
         },
         {
-          "id": "8346629a-d2b4-4a24-9c81-514fd70f0d06",
+          "id": "c79a25ef-09bd-4379-a724-b7aa95c106ae",
           "name": "Aeo Schema Coverage Endpoint",
           "request": {
             "name": "Aeo Schema Coverage Endpoint",
@@ -11280,7 +13284,7 @@
           },
           "response": [
             {
-              "id": "18fa7e00-b183-43d7-acd8-617b477a286f",
+              "id": "efb1e30a-f02f-46d6-a2d7-bb67825b720f",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -11338,7 +13342,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "1a9d731f-bbe9-42cc-8446-d56a87ad94c0",
+              "id": "79cf3770-90d1-4097-af30-55ea9acf1547",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -11402,7 +13406,7 @@
           }
         },
         {
-          "id": "d541f659-a271-4aa0-92ab-39287c75eab0",
+          "id": "6371f958-639e-40e1-a67f-f5eae154c677",
           "name": "Aeo Citation Readiness Endpoint",
           "request": {
             "name": "Aeo Citation Readiness Endpoint",
@@ -11447,7 +13451,7 @@
           },
           "response": [
             {
-              "id": "e218799b-b838-4d8e-b78d-8ffe1f9fb173",
+              "id": "0e8a141b-60e0-4639-aa1a-6c7d2414661a",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -11505,7 +13509,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "dd68d406-a9a6-4372-9714-5a944872dd94",
+              "id": "223132a1-556d-4d2e-a29c-0dc19497b742",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -11569,7 +13573,7 @@
           }
         },
         {
-          "id": "bd5d22cb-13f3-49d1-a5a8-0d87e54a9ca6",
+          "id": "546f2ffd-4166-4cc0-9a39-f04a0d0b2399",
           "name": "Aeo Llm Fetch Simulator Endpoint",
           "request": {
             "name": "Aeo Llm Fetch Simulator Endpoint",
@@ -11614,7 +13618,7 @@
           },
           "response": [
             {
-              "id": "a311ed38-eb59-4068-9ad0-f679eb3ee099",
+              "id": "42c3f8a7-61b6-459b-8a81-63b20bb37806",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -11672,7 +13676,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "a3e85088-ac31-4c12-80d6-2c061491c153",
+              "id": "8b09a4d2-5726-441d-b440-92341f226993",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -11736,7 +13740,7 @@
           }
         },
         {
-          "id": "d702234a-2571-4f97-bcea-346d2babfee3",
+          "id": "9b6c5bf3-8f38-4f7e-8688-1c1e9e23b8d0",
           "name": "Aeo Page Audit Endpoint",
           "request": {
             "name": "Aeo Page Audit Endpoint",
@@ -11781,7 +13785,7 @@
           },
           "response": [
             {
-              "id": "2438cec4-46d9-48f5-8fa2-f983aa9297af",
+              "id": "22464e7c-2e2b-4d99-b053-8aca4b3ba4f0",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -11839,7 +13843,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "f9d9a850-eb49-464c-b07e-fcf89321b2bb",
+              "id": "0d38a94a-c38e-4054-90f6-d1235456cb2e",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -11903,7 +13907,7 @@
           }
         },
         {
-          "id": "4fbbf9c3-b51d-45e4-8e4c-881142b7e328",
+          "id": "e99d0b73-614c-4721-8bf7-80195c7ec2ca",
           "name": "Aeo Competitor Diff Endpoint",
           "request": {
             "name": "Aeo Competitor Diff Endpoint",
@@ -11948,7 +13952,7 @@
           },
           "response": [
             {
-              "id": "fc607077-4e61-4e1e-9760-1f9c6afca75c",
+              "id": "b6a75fb7-85eb-4b2c-8191-19b483469391",
               "name": "Successful Response",
               "originalRequest": {
                 "url": {
@@ -12006,7 +14010,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "6d5239ec-05dd-4241-87ec-2938fab80b1a",
+              "id": "41063164-abc1-40fe-87bf-560259a4b202",
               "name": "Validation Error",
               "originalRequest": {
                 "url": {
@@ -12070,6 +14074,179 @@
           }
         }
       ]
+    },
+    {
+      "name": "Other",
+      "description": "",
+      "item": [
+        {
+          "id": "256d157a-4fb1-443d-9019-c63d4af61892",
+          "name": "Enrich Company Endpoint",
+          "request": {
+            "name": "Enrich Company Endpoint",
+            "description": {
+              "content": "Lite company profile from a single page. Pulls Organization JSON-LD,\nog:* tags, social anchors, contact patterns. Best when pointed at a\nhomepage or /about — no paid company-data feeds involved.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "enrich",
+                "company"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"<string>\",\n  \"use_residential_proxy\": false\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "a011fbc1-ee71-41b0-beff-b90c58e16c0c",
+              "name": "Successful Response",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "enrich",
+                    "company"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"use_residential_proxy\": false\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "0cc7f491-47b4-4469-8860-9033609b7eab",
+              "name": "Validation Error",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "enrich",
+                    "company"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"url\": \"<string>\",\n  \"use_residential_proxy\": false\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"detail\": [\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    },\n    {\n      \"loc\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"msg\": \"<string>\",\n      \"type\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        }
+      ]
     }
   ],
   "auth": {
@@ -12098,9 +14275,9 @@
     }
   ],
   "info": {
-    "_postman_id": "c44ec3c1-2f2d-408f-97b9-1ac43ade9c7c",
+    "_postman_id": "7cbae347-1065-4ab3-98bd-bf6987978daf",
     "name": "Ollagraph API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Official Ollagraph API collection — 148 endpoints across fetch, extract,\naudit, intelligence, and AEO/SEO families. Web infrastructure for AI agents.\n\nGet started:\n1. Sign up free at https://app.ollagraph.com (1,000 credits on signup, no card).\n2. Copy your API key.\n3. Set the {{api_key}} collection variable below.\n4. Hit Send on any request.\n\nDocs: https://ollagraph.com/docs/\nCapabilities: https://ollagraph.com/capabilities\nSupport: support@ollagraph.com"
+    "description": "Official Ollagraph API collection — 87 endpoints across fetch, extract,\naudit, intelligence, and AEO/SEO families. Web infrastructure for AI agents.\n\nGet started:\n1. Sign up free at https://app.ollagraph.com (1,000 credits on signup, no card).\n2. Copy your API key.\n3. Set the {{api_key}} collection variable below.\n4. Hit Send on any request.\n\nDocs: https://ollagraph.com/docs/\nCapabilities: https://ollagraph.com/capabilities\nSupport: support@ollagraph.com"
   }
 }

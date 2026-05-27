@@ -2,11 +2,94 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import bodyHtml from '../bodies/docs.body.html?raw';
 import headExtras from '../bodies/docs.head.html?raw';
+import { navHtml, footerHtml } from '../chrome';
+import openapi from '../openapi.json';
 
-const rendered = bodyHtml;
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
+const TAG_ORDER = [
+  'Scraping', 'Extraction', 'Conversion',
+  'AEO', 'SEO', 'Intelligence', 'DNS', 'Actors',
+  'Parsing', 'Captcha', 'Crawl', 'Jobs',
+  'Account', 'Keys', 'Billing', 'Auth', 'Verify', 'Health', 'Admin',
+];
+
+const TAG_BLURBS: Record<string, string> = {
+  Scraping:     'Fetch a page. Static or JS-rendered. Single or batch. Sync or async. Plus llm-ready chunking for RAG.',
+  Extraction:   'Pull the article, the contacts, the tables. Clean HTML to text your agent can read.',
+  Conversion:   'PDF, DOCX, XLSX, PPTX, CSV, HTML to Markdown. OCR for images. Docling-powered layout-aware extraction.',
+  AEO:          'Audit how AI crawlers see, cite, and rank your site. Page audit, citation readiness, llms.txt, fetch simulator.',
+  SEO:          'Meta-tag audits, readability, schema validation, redirect chains, broken links, anchor text, freshness.',
+  Intelligence: 'WHOIS, RDAP, DNS, SSL, GeoIP, ASN. Certificate transparency. Subdomain enumeration. Email auth.',
+  DNS:          'DNS resolution and propagation. Cross-resolver checks.',
+  Actors:       'Higher-cost vendor-routed lookups for hard-to-fetch sources. Use sparingly.',
+  Parsing:      'URL, user-agent, and email parsers. Cheap, structured, no fetch.',
+  Captcha:      'reCAPTCHA v2/v3 solving + auto-solve flow for sites behind a challenge.',
+  Crawl:        'Walk a site within budget and depth limits. Returns each page asynchronously.',
+  Jobs:         'Poll long-running scrape/crawl jobs by id.',
+  Account:      'Your user record, usage, current credit balance.',
+  Keys:         'API key CRUD. Create, list, revoke from the dashboard or the API.',
+  Billing:      'Stripe checkout sessions, customer portal links, plan info.',
+  Auth:         'Email/password signup + login, password reset, email verification.',
+  Verify:       'Email mailbox verifier (MX + SMTP-level checks).',
+  Health:       'Liveness probe. Free, unauthenticated.',
+  Admin:        'Internal-only admin endpoints. Not part of the public surface.',
+};
+
+type EP = { method: string; path: string; summary: string; href: string };
+const groupsRaw: Record<string, EP[]> = {};
+for (const [path, ops] of Object.entries(openapi.paths as Record<string, any>)) {
+  for (const [method, op] of Object.entries(ops as Record<string, any>)) {
+    const M = method.toUpperCase();
+    if (!HTTP_METHODS.includes(M)) continue;
+    const tag = (op.tags && op.tags[0]) || 'Other';
+    const summary = String(op.summary || op.operationId || '')
+      .replace(/\s*Endpoint\s*$/i, '')
+      .trim();
+    // FastAPI's Swagger UI anchors use operationId, falling back to the
+    // auto-generated method+path slug when the route doesn't set one.
+    const operationId = op.operationId || (method.toLowerCase() + '_' + path.replace(/[^a-zA-Z0-9]/g, '_'));
+    const href = 'https://api.ollagraph.com/docs#/' + tag + '/' + operationId;
+    (groupsRaw[tag] = groupsRaw[tag] || []).push({ method: M, path, summary, href });
+  }
+}
+for (const tag of Object.keys(groupsRaw)) {
+  groupsRaw[tag].sort((a, b) => a.path.localeCompare(b.path));
+}
+const tagsOrdered = [
+  ...TAG_ORDER.filter((t) => groupsRaw[t]),
+  ...Object.keys(groupsRaw).filter((t) => !TAG_ORDER.includes(t)),
+];
+const totalOps = Object.values(groupsRaw).reduce((s, eps) => s + eps.length, 0);
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const cardsHtml = tagsOrdered.map((tag) => {
+  const blurb = TAG_BLURBS[tag] || '';
+  const rows = groupsRaw[tag].map((ep) => {
+    const mClass = 'ep-method m-' + ep.method.toLowerCase();
+    return '<a href="' + escapeHtml(ep.href) + '" style="display:block; text-decoration:none;">'
+      + '<div class="ep-row">'
+      + '<span class="' + mClass + '">' + ep.method + '</span>'
+      + '<span class="ep-path">' + escapeHtml(ep.path) + '</span>'
+      + '<span class="ep-sum">' + escapeHtml(ep.summary) + '</span>'
+      + '</div></a>';
+  }).join('');
+  return '<div class="cat-card"><h3>' + escapeHtml(tag) + '</h3>'
+    + (blurb ? '<p class="cat-sub">' + escapeHtml(blurb) + '</p>' : '')
+    + rows
+    + '</div>';
+}).join('\n');
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml('docs'))
+  .replace('<div id="footer-root"></div>', footerHtml())
+  .replace(/__TOTAL_OPS__/g, String(totalOps))
+  .replace('__CATEGORY_CARDS__', cardsHtml);
 ---
-<BaseLayout title="Docs — Ollagraph">
+<BaseLayout title="Docs — Ollagraph" description="Full API reference for Ollagraph. Endpoints across scraping, extraction, conversion, AEO, SEO, and intelligence — one Bearer token, one Postman collection, one MCP server.">
   <Fragment slot="head" set:html={headExtras} />
   <Fragment set:html={rendered} />
-  <script is:inline src="/scripts/docs.js"></script>
 </BaseLayout>

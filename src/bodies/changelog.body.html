@@ -22,6 +22,36 @@
 
       <article class="cl-entry">
         <div class="cl-date">2026-05-27</div>
+        <h2 class="cl-title">Sprint 2: llm-ready SPA fix, 3 new endpoints, marketing site cleanup.</h2>
+        <div class="cl-tags">
+          <span class="cl-tag new">NEW</span>
+          <span class="cl-tag changed">FIXED</span>
+        </div>
+        <div class="cl-body">
+          <p>Two fixes worth calling out and three new endpoints.</p>
+          <ul>
+            <li>
+              <strong><code>/v1/scrape/llm-ready</code> now handles SPAs correctly.</strong>
+              Anthropic, Linear, Vercel, Shopify and other modern marketing sites server-render minimal HTML and hydrate everything client-side. The endpoint was returning one chunk of 9–65 tokens of &ldquo;Loading&hellip;&rdquo; shell text on these pages. It now detects under-rendering, retries through a JS-capable residential pool, and falls back to plain-text extraction when Readability can&rsquo;t find an article block. Same sites now return 3–5 chunks and 1,200&ndash;2,700 tokens. The response carries <code>rendered_with_js</code> and <code>rendered_via</code> for diagnostics.
+            </li>
+            <li>
+              <strong>New: <code>/v1/convert/ocr</code></strong>. Send a base64 image (PNG / JPEG / WebP / BMP / TIFF), get back text. Optionally bounding boxes and per-region scores. Proxies to a dedicated RapidOCR backend &mdash; CPU-only, no GPU on your side. 1 credit per call.
+            </li>
+            <li>
+              <strong>New: <code>/v1/intel/subdomain-enumerate</code></strong>. Certificate-transparency-log enumeration via crt.sh. Returns the deduplicated SAN list for a domain. Passive recon &mdash; no DNS brute force, no paid feeds.
+            </li>
+            <li>
+              <strong>New: <code>/v1/enrich/company</code></strong>. Lite company profile from a single page: name, description, logo, socials, address, contact patterns. Built from JSON-LD Organization, OpenGraph, and an anchor scan. No paid company-data feed in the path.
+            </li>
+            <li>
+              <strong>Marketing site cleanup.</strong> Killed two fake auth forms that silently dropped credentials, rewrote the AEO and MCP pages to describe real API capabilities (no more mockup dashboards), regenerated the full Postman collection from the live OpenAPI spec, and stripped lingering promises for endpoints we don&rsquo;t ship.
+            </li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="cl-entry">
+        <div class="cl-date">2026-05-27</div>
         <h2 class="cl-title">Sprint 1: Bright Data backbone, PDF reader done right, 11 new endpoints.</h2>
         <div class="cl-tags">
           <span class="cl-tag new">NEW</span>
