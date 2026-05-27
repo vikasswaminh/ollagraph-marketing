@@ -21,6 +21,63 @@
     <div class="container" style="max-width: 760px;">
 
       <article class="cl-entry">
+        <div class="cl-date">2026-05-27</div>
+        <h2 class="cl-title">Sprint 1: Bright Data backbone, PDF reader done right, 11 new endpoints.</h2>
+        <div class="cl-tags">
+          <span class="cl-tag new">NEW</span>
+          <span class="cl-tag changed">UPGRADED</span>
+          <span class="cl-tag deprecated">REMOVED</span>
+        </div>
+        <div class="cl-body">
+          <p>
+            Two weeks of work landed in one push. Headlines:
+          </p>
+          <ul>
+            <li>
+              <strong>Bright Data residential proxy</strong> is now the default outbound for every URL-fetching
+              endpoint. Targets that were 403-ing us (FT, NYT, Bloomberg-class) now succeed transparently —
+              <code>proxy_used</code> in the response carries the diagnostic. Spider stays as a permanent fallback.
+            </li>
+            <li>
+              <strong>PDF reader, properly fixed.</strong> <code>/v1/convert/pdf-to-markdown</code> now routes
+              to a Docling-backed convert backend by default. IRS forms that pdfplumber rendered backwards
+              (literally — "<code>.epyt ro tnirP</code>" instead of "<code>Print or type</code>") read
+              forwards now. Layout-aware extraction, table detection, OCR fallback for scans. Old pdfplumber
+              path still runs as a fallback when the backend's down.
+            </li>
+            <li>
+              <strong>New: <code>/v1/scrape/llm-ready</code></strong>. Single call: scrape → readability →
+              tokenizer-aware recursive chunks (cl100k_base, 512 tokens default, 15% overlap). Drop the
+              result straight into Pinecone, Weaviate, Chroma, anything. 1 credit.
+            </li>
+            <li>
+              <strong>10 new AEO/SEO/Intel endpoints</strong>, all 1 credit:
+              <code>/v1/aeo/freshness-signal</code>,
+              <code>/v1/aeo/snippet-format-detect</code>,
+              <code>/v1/aeo/heading-hierarchy-score</code>,
+              <code>/v1/seo/redirect-chain-map</code>,
+              <code>/v1/seo/broken-links-audit</code>,
+              <code>/v1/seo/anchor-text-audit</code>,
+              <code>/v1/seo/schema-validate</code>,
+              <code>/v1/seo/mixed-content</code>,
+              <code>/v1/intel/cert-transparency-history</code>,
+              <code>/v1/seo/keyword-extract</code>.
+            </li>
+            <li>
+              <strong>Removed <code>/v1/pdf</code></strong> (URL-to-PDF rendering). It hadn't worked since
+              wkhtmltopdf was dropped from Ubuntu 24.04, and the marketing site never advertised it. Different
+              product from PDF reading (<code>/v1/convert/pdf-to-markdown</code>) which is live and now better
+              than ever.
+            </li>
+          </ul>
+          <p>
+            All changes verified end-to-end with Playwright against live <code>api.ollagraph.com</code>.
+            No customer code changes needed.
+          </p>
+        </div>
+      </article>
+
+      <article class="cl-entry">
         <div class="cl-date">2026-05-26</div>
         <h2 class="cl-title">We're Ollagraph now.</h2>
         <div class="cl-tags">
