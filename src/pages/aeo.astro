@@ -2,10 +2,13 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import bodyHtml from '../bodies/aeo.body.html?raw';
 import headExtras from '../bodies/aeo.head.html?raw';
+import { navHtml, footerHtml } from '../chrome';
 
-const rendered = bodyHtml;
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml("aeo"))
+  .replace('<div id="footer-root"></div>', footerHtml());
 ---
-<BaseLayout title="AEO — Ollagraph">
+<BaseLayout title="AEO audits for AI-citation surfaces — Ollagraph" description="Audit how ChatGPT, Perplexity, Claude, Gemini, and Google AI Overviews see, cite, and rank your site. 10 AEO endpoints, one Bearer token.">
   <Fragment slot="head" set:html={headExtras} />
   <Fragment set:html={rendered} />
 </BaseLayout>

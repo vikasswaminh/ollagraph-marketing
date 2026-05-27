@@ -1,11 +1,31 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
-import bodyHtml from '../bodies/login.body.html?raw';
-import headExtras from '../bodies/login.head.html?raw';
-
-const rendered = bodyHtml;
+// The marketing site does NOT host an auth surface. The real login lives
+// on the dashboard at app.ollagraph.com. This page exists only because
+// inbound links (search results, old emails, sitemap) still point here —
+// we redirect them through.
+const target = 'https://app.ollagraph.com/login';
 ---
-<BaseLayout title="Log in — Ollagraph">
-  <Fragment slot="head" set:html={headExtras} />
-  <Fragment set:html={rendered} />
-</BaseLayout>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Log in — Ollagraph</title>
+    <link rel="canonical" href={target} />
+    <meta http-equiv="refresh" content={`0; url=${target}`} />
+    <script is:inline define:vars={{ target }}>window.location.replace(target);</script>
+    <style>
+      body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #0a0a0a; color: #e5e5e5; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+      .card { text-align: center; padding: 32px 40px; }
+      a { color: #da291c; text-decoration: none; font-weight: 500; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <p>Taking you to the dashboard…</p>
+      <p><a href={target}>app.ollagraph.com/login</a></p>
+    </div>
+  </body>
+</html>

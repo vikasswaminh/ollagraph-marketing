@@ -18,7 +18,7 @@
           the web breaks every Tuesday. Ollagraph is the layer that fixes all of that.
         </p>
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-          <a class="btn btn-primary btn-lg" href="/signup">Start free</a>
+          <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
           <a class="btn btn-secondary btn-lg" href="/mcp">Install MCP server</a>
         </div>
       </div>
@@ -64,33 +64,33 @@
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;">
         <div class="usecase">
           <h3>Research agents</h3>
-          <p>SERP → fetch top-N → clean → chunk → cite. One <code class="text-mono">/v1/scrape/llm-ready</code> call returns the whole RAG-ready payload, including source URLs for citation.</p>
-          <div class="endpoints">/v1/seo/serp · /v1/scrape/llm-ready · /v1/extract/clean</div>
-        </div>
-        <div class="usecase">
-          <h3>Grounding agents</h3>
-          <p>The agent claims something. You verify it against the live web before responding. Time-boxed multi-source search returns dated, attributed snippets the LLM can cite.</p>
-          <div class="endpoints">/v1/search/web · /v1/search/news · /v1/extract/structured</div>
+          <p>Fetch a page, clean to article, chunk to fit a model's context. One <code class="text-mono">/v1/scrape/llm-ready</code> call returns the RAG-ready payload — JS-rendered when the page needs it, with the source URL retained for citation.</p>
+          <div class="endpoints">/v1/scrape/llm-ready · /v1/extract/clean · /v1/seo/keyword-extract</div>
         </div>
         <div class="usecase">
           <h3>Document agents</h3>
-          <p>Customer uploads a PDF, DOCX, or XLSX. The agent needs structured text, tables, and layout. Layout-aware extraction handles forms, scans, and multi-column papers.</p>
-          <div class="endpoints">/v1/convert/pdf-to-markdown · /v1/convert/pdf-to-structured · /v1/convert/ocr</div>
+          <p>Customer uploads a PDF or image. The agent needs structured text, tables, layout. Layout-aware extraction via Docling handles forms, multi-column papers, and scans — OCR falls in for image-only docs.</p>
+          <div class="endpoints">/v1/convert/pdf-to-markdown · /v1/convert/ocr · /v1/extract/tables</div>
         </div>
         <div class="usecase">
           <h3>Site-audit agents</h3>
-          <p>Customer hands the agent a URL. The agent runs 30+ technical/SEO/AEO checks, scores the site, and writes a remediation plan. 100+ audit endpoints in one family.</p>
-          <div class="endpoints">/v1/aeo/page-audit · /v1/seo/core-web-vitals · /v1/seo/schema-validate</div>
+          <p>Customer hands the agent a URL. The agent scores schema coverage, meta-tag health, readability, broken links, AEO citation-readiness — then writes a remediation plan from the findings.</p>
+          <div class="endpoints">/v1/aeo/page-audit · /v1/seo/schema-validate · /v1/seo/meta-audit</div>
         </div>
         <div class="usecase">
           <h3>Lead-research agents</h3>
-          <p>Email or domain in, company profile out: industry, size, HQ, socials, tech stack, careers page activity. Built from public scrape, not paid feeds.</p>
-          <div class="endpoints">/v1/enrich/company · /v1/enrich/tech-stack · /v1/enrich/jobs</div>
+          <p>Domain in, company profile out: name, description, logo, socials, contact patterns, address. Built from a single page's JSON-LD + OpenGraph + anchor scan — no paid company-data feed.</p>
+          <div class="endpoints">/v1/enrich/company · /v1/intel/email-auth · /v1/extract/contacts</div>
         </div>
         <div class="usecase">
           <h3>Security agents</h3>
-          <p>Investigate a domain or IP: WHOIS, RDAP, DNS records, certificate transparency, ASN, subdomains via passive recon. No threat-intel feed lock-in.</p>
+          <p>Investigate a domain or IP: WHOIS, RDAP, DNS records, certificate transparency, ASN, subdomains via passive recon (CT logs). No threat-intel feed lock-in.</p>
           <div class="endpoints">/v1/intel/rdap · /v1/intel/cert-transparency-history · /v1/intel/subdomain-enumerate</div>
+        </div>
+        <div class="usecase">
+          <h3>Grounding agents</h3>
+          <p>The agent claims something. You verify it against the live source: fetch the page, extract the article body, pull keywords or schema. Real fetches, dated artifacts, attributable to a URL.</p>
+          <div class="endpoints">/v1/scrape · /v1/extract/clean · /v1/aeo/citation-readiness</div>
         </div>
       </div>
     </div>
@@ -136,7 +136,7 @@
         1,000 credits on signup. 84 endpoints. MCP server. No card. No vendor sprawl.
       </p>
       <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-        <a class="btn btn-primary btn-lg" href="/signup">Start free</a>
+        <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
         <a class="btn btn-secondary btn-lg" href="/capabilities">See capabilities</a>
       </div>
     </div>

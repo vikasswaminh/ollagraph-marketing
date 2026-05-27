@@ -40,9 +40,9 @@ export function navHtml(activeKey: string = ""): string {
               </a>
               <nav class="nav-links">${linksHTML}</nav>
               <div class="nav-right">
-                <a class="btn btn-ghost" href="/login">Log in</a>
-                <a class="btn btn-secondary" href="/signup">Sign up</a>
-                <a class="btn btn-primary" href="/signup">
+                <a class="btn btn-ghost" href="https://app.ollagraph.com/login">Log in</a>
+                <a class="btn btn-secondary" href="https://app.ollagraph.com/signup">Sign up</a>
+                <a class="btn btn-primary" href="https://app.ollagraph.com/signup">
                   Start free
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
                 </a>
