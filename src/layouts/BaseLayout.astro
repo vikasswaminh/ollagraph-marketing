@@ -31,12 +31,12 @@ const canonicalUrl = canonical || Astro.url.href;
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Self-hosted fonts (see @font-face in /styles.css). The two below
+         are the ones the first paint actually needs — Inter Tight for the
+         hero headline, Inter for body copy. Preloading them lets the
+         browser start the GET before it has even parsed styles.css. -->
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-tight-latin.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin.woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
     <slot name="head" />
   </head>
