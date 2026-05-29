@@ -98,7 +98,7 @@ curl https://api.ollagraph.com/v1/scrape/llm-ready \
   -H <span style="color:#c7f751;">"Authorization: Bearer $OLLAGRAPH_API_KEY"</span> \
   -H <span style="color:#c7f751;">"Content-Type: application/json"</span> \
   -d <span style="color:#c7f751;">'{
-    "url": "https://www.anthropic.com",
+    "url": "https://en.wikipedia.org/wiki/Web_scraping",
     "max_tokens": 512,
     "overlap_tokens": 64
   }'</span></code></pre>
@@ -108,22 +108,22 @@ curl https://api.ollagraph.com/v1/scrape/llm-ready \
               <div style="padding:18px 20px;">
                 <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.12em; color:var(--text-dim); margin-bottom:10px; display:flex; align-items:center; gap:8px;">
                   RESPONSE
-                  <span style="color:var(--text-faint); font-weight:normal; letter-spacing:normal;">abridged · 1,271 tokens · 3 chunks</span>
+                  <span style="color:var(--text-faint); font-weight:normal; letter-spacing:normal;">abridged · ~2,400 tokens · 5 chunks</span>
                 </div>
                 <pre style="margin:0; font-family:var(--font-mono); font-size:12.5px; line-height:1.65; color:var(--text); overflow-x:auto;"><code>{
   <span style="color:#8aa9ff;">"status"</span>: <span style="color:#c7f751;">"success"</span>,
-  <span style="color:#8aa9ff;">"url"</span>: <span style="color:#c7f751;">"https://www.anthropic.com"</span>,
-  <span style="color:#8aa9ff;">"title"</span>: <span style="color:#c7f751;">"Home \ Anthropic"</span>,
-  <span style="color:#8aa9ff;">"rendered_with_js"</span>: <span style="color:#ffc879;">true</span>,
-  <span style="color:#8aa9ff;">"rendered_via"</span>:    <span style="color:#c7f751;">"residential"</span>,
+  <span style="color:#8aa9ff;">"url"</span>: <span style="color:#c7f751;">"https://en.wikipedia.org/wiki/Web_scraping"</span>,
+  <span style="color:#8aa9ff;">"title"</span>: <span style="color:#c7f751;">"Web scraping - Wikipedia"</span>,
+  <span style="color:#8aa9ff;">"rendered_with_js"</span>: <span style="color:#ffc879;">false</span>,
+  <span style="color:#8aa9ff;">"rendered_via"</span>:    <span style="color:#c7f751;">"brightdata"</span>,
   <span style="color:#8aa9ff;">"chunks"</span>: [
     {
-      <span style="color:#8aa9ff;">"text"</span>:        <span style="color:#c7f751;">"Anthropic is an AI safety company…"</span>,
-      <span style="color:#8aa9ff;">"token_count"</span>: <span style="color:#ffc879;">487</span>,
+      <span style="color:#8aa9ff;">"text"</span>:        <span style="color:#c7f751;">"Web scraping is the process of automatically extracting data from websites…"</span>,
+      <span style="color:#8aa9ff;">"token_count"</span>: <span style="color:#ffc879;">498</span>,
       <span style="color:#8aa9ff;">"byte_start"</span>:  <span style="color:#ffc879;">0</span>,
-      <span style="color:#8aa9ff;">"byte_end"</span>:    <span style="color:#ffc879;">2104</span>
+      <span style="color:#8aa9ff;">"byte_end"</span>:    <span style="color:#ffc879;">2196</span>
     },
-    <span style="color:var(--text-dim);">{ /* chunk 2, 3 */ }</span>
+    <span style="color:var(--text-dim);">{ /* chunk 2, 3, 4, 5 */ }</span>
   ]
 }</code></pre>
               </div>
@@ -193,7 +193,7 @@ curl https://api.ollagraph.com/v1/scrape/llm-ready \
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
           </div>
           <h3>Structured extraction</h3>
-          <p>LLM-graded extraction with JSON schemas, retries, and verification — typed end-to-end.</p>
+          <p>Structured extraction with JSON schemas, retries, and verification — typed end-to-end.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon" style="--ic:var(--violet);">
@@ -324,7 +324,6 @@ curl https://api.ollagraph.com/v1/scrape/llm-ready \
       points:  <span class="tok-str">"int"</span>,
       author:  <span class="tok-str">"string"</span>,
     },
-    grader: <span class="tok-str">"claude-haiku-4.5"</span>,
   },
   observe: { trace: <span class="tok-kw">true</span>, redact: [<span class="tok-str">"email"</span>] },
 });
@@ -349,7 +348,6 @@ job = og.crawl.<span class="tok-fn">start</span>(
             <span class="tok-str">"points"</span>: <span class="tok-str">"int"</span>,
             <span class="tok-str">"author"</span>: <span class="tok-str">"string"</span>,
         },
-        <span class="tok-str">"grader"</span>: <span class="tok-str">"claude-haiku-4.5"</span>,
     },
     observe={<span class="tok-str">"trace"</span>: <span class="tok-kw">True</span>, <span class="tok-str">"redact"</span>: [<span class="tok-str">"email"</span>]},
 )
@@ -371,8 +369,7 @@ job = og.crawl.<span class="tok-fn">start</span>(
         "url":    "url",
         "points": "int",
         "author": "string"
-      },
-      "grader": "claude-haiku-4.5"
+      }
     },
     "observe": { "trace": true, "redact": ["email"] }
   }'</span>
@@ -410,7 +407,7 @@ job = og.crawl.<span class="tok-fn">start</span>(
           </thead>
           <tbody>
             <tr><td>Render-aware crawl</td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="cx">manual</span></td></tr>
-            <tr><td>Structured extraction w/ LLM grader</td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">DIY</span></td></tr>
+            <tr><td>Structured extraction with JSON schemas</td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">DIY</span></td></tr>
             <tr><td>Agent traces &amp; replay</td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">DIY</span></td></tr>
             <tr><td>MCP server visibility</td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td></tr>
             <tr><td>DNS / SSL / redirect graph</td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cp">partial</span></td><td><span class="cx">DIY</span></td></tr>
