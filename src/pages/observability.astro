@@ -1,0 +1,14 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import bodyHtml from '../bodies/observability.body.html?raw';
+import headExtras from '../bodies/observability.head.html?raw';
+import { navHtml, footerHtml } from '../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml(""))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="Observability — Ollagraph" description="Stream every API call, Postgres query, and outbound fetch we make on your behalf to Datadog, Better Stack, Logfire, Honeycomb, Axiom, Grafana Cloud, or any OTLP receiver. OpenTelemetry-native. Zero vendor lock-in.">
+  <Fragment slot="head" set:html={headExtras} />
+  <Fragment set:html={rendered} />
+</BaseLayout>

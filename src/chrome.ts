@@ -5,12 +5,12 @@
 // original.
 
 const NAV_LINKS: { label: string; href: string; key: string }[] = [
-  { label: "Capabilities", href: "/capabilities", key: "capabilities" },
-  { label: "MCP",          href: "/mcp",          key: "mcp" },
-  { label: "AEO",          href: "/aeo",          key: "aeo" },
-  { label: "Docs",         href: "/docs",         key: "docs" },
-  { label: "Pricing",      href: "/pricing",      key: "pricing" },
-  { label: "Enterprise",   href: "/enterprise",   key: "enterprise" },
+  { label: "Capabilities",  href: "/capabilities",  key: "capabilities" },
+  { label: "Observability", href: "/observability", key: "observability" },
+  { label: "MCP",           href: "/mcp",           key: "mcp" },
+  { label: "AEO",           href: "/aeo",           key: "aeo" },
+  { label: "Docs",          href: "/docs",          key: "docs" },
+  { label: "Pricing",       href: "/pricing",       key: "pricing" },
 ];
 
 export const LOGO_SVG = `
@@ -60,11 +60,12 @@ export function footerHtml(): string {
     {
       h: "Product",
       items: [
-        { label: "Capabilities",  href: "/capabilities" },
-        { label: "MCP server",    href: "/mcp" },
-        { label: "AEO",           href: "/aeo" },
-        { label: "Pricing",       href: "/pricing" },
-        { label: "Enterprise",    href: "/enterprise" },
+        { label: "Capabilities",   href: "/capabilities" },
+        { label: "Observability",  href: "/observability" },
+        { label: "MCP server",     href: "/mcp" },
+        { label: "AEO",            href: "/aeo" },
+        { label: "Pricing",        href: "/pricing" },
+        { label: "Enterprise",     href: "/enterprise" },
       ],
     },
     {
