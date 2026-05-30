@@ -1,14 +1,14 @@
 # Ollagraph
 
-> Web infrastructure for AI agents. One API, one MCP server, one bill for 148 endpoints across fetch, extract, search, audit, intelligence, verify, and agent-native tooling.
+> Web infrastructure for AI agents. One API, one MCP server, one bill for 92 endpoints across fetch, extract, search, audit, intelligence, verify, and agent-native tooling.
 
 Ollagraph is a unified API platform that lets AI agents read, audit, and reason about the live web. Built for AI agent developers, RAG builders, SEO/AEO consultants, and security teams who need reliable, structured access to web data without integrating six different vendors.
 
 ## Capabilities
 
-- [Capabilities overview](https://ollagraph.com/capabilities): All 8 capability families and 148 endpoints, organized by what an AI agent actually does
+- [Capabilities overview](https://ollagraph.com/capabilities): All 8 capability families and 92 endpoints, organized by what an AI agent actually does
 - [MCP server](https://ollagraph.com/mcp): Drop-in MCP integration for Claude Desktop, Cursor, Cline. Every Ollagraph endpoint becomes an MCP tool.
-- [AEO audit](https://ollagraph.com/aeo): Answer-engine optimization toolkit — 20+ endpoints for AI-citation readiness, llms.txt audits, AI crawler intelligence
+- [AEO audit](https://ollagraph.com/aeo): Answer-engine optimization toolkit — 10+ endpoints for AI-citation readiness, llms.txt audits, AI crawler intelligence
 - [Docs](https://ollagraph.com/docs): Full API reference with code samples in TypeScript, Python, curl
 - [Pricing](https://ollagraph.com/pricing): Usage-based credits. Free 1,000 on signup. Plans from $29/mo. Self-hosted on Enterprise.
 - [Enterprise / self-hosted](https://ollagraph.com/enterprise): Run Ollagraph in your own VPC. Helm + Terraform. Customer-managed keys.
@@ -16,18 +16,165 @@ Ollagraph is a unified API platform that lets AI agents read, audit, and reason 
 ## For specific buyers
 
 - [For AI agent builders](https://ollagraph.com/for-ai): Stop integrating six vendors. One API, MCP-native, RAG-ready.
-- [For SEO &amp; AEO consultants](https://ollagraph.com/for-seo): 100+ technical SEO, AEO, and structured data audits as API calls
+- [For SEO &amp; AEO consultants](https://ollagraph.com/for-seo): Technical SEO, AEO, and structured data audits as API calls
 - [For security teams](https://ollagraph.com/for-intel): Domain intel, certificate transparency, subdomain enum, typosquat detection — without paid feeds
 
 ## Key facts
 
-- 148 endpoints across 8 capability families
+- 92 endpoints across 8 capability families
 - One Bearer token authenticates everything
 - MCP server included — works with Claude Desktop, Cursor, Cline out of the box
 - Failed calls auto-refund credits
 - Self-hostable on Enterprise (Helm chart + Terraform)
 - Free tier: 1,000 credits on signup, no credit card
 
+## Endpoints
+
+Base URL: `https://api.ollagraph.com`. All endpoints require `Authorization: Bearer osk_...` unless noted.
+
+### Scraping
+
+- POST https://api.ollagraph.com/v1/scrape — Scrape
+- POST https://api.ollagraph.com/v1/scrape/async — Scrape Async
+- POST https://api.ollagraph.com/v1/scrape/batch — Batch Scrape
+- POST https://api.ollagraph.com/v1/scrape/batch/async — Batch Scrape Async
+- POST https://api.ollagraph.com/v1/scrape/llm-ready — Scrape LLM Ready
+- POST https://api.ollagraph.com/v1/scrape/smart — Smart Scrape
+
+### Extraction
+
+- POST https://api.ollagraph.com/v1/extract/clean — Extract Clean
+- POST https://api.ollagraph.com/v1/extract/contacts — Extract Contacts
+- POST https://api.ollagraph.com/v1/extract/structured — Extract Structured
+- POST https://api.ollagraph.com/v1/extract/tables — Extract Tables
+
+### AEO
+
+- POST https://api.ollagraph.com/v1/aeo/ai-bot-allowlist — AEO Ai Bot Allowlist
+- POST https://api.ollagraph.com/v1/aeo/citation-readiness — AEO Citation Readiness
+- POST https://api.ollagraph.com/v1/aeo/competitor-diff — AEO Competitor Diff
+- POST https://api.ollagraph.com/v1/aeo/freshness-signal — AEO Freshness Signal
+- POST https://api.ollagraph.com/v1/aeo/heading-hierarchy-score — AEO Heading Hierarchy
+- POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator — AEO LLM Fetch Simulator
+- POST https://api.ollagraph.com/v1/aeo/llms-txt-audit — AEO llms.txt Audit
+- POST https://api.ollagraph.com/v1/aeo/page-audit — AEO Page Audit
+- POST https://api.ollagraph.com/v1/aeo/schema-coverage — AEO Schema Coverage
+- POST https://api.ollagraph.com/v1/aeo/snippet-format-detect — AEO Snippet Format Detect
+
+### SEO
+
+- POST https://api.ollagraph.com/v1/seo/anchor-text-audit — SEO Anchor Text Audit
+- POST https://api.ollagraph.com/v1/seo/broken-links-audit — SEO Broken Links
+- POST https://api.ollagraph.com/v1/seo/keyword-extract — SEO Keyword Extract
+- POST https://api.ollagraph.com/v1/seo/meta-audit — SEO Meta Audit
+- POST https://api.ollagraph.com/v1/seo/mixed-content — SEO Mixed Content
+- POST https://api.ollagraph.com/v1/seo/readability — SEO Readability
+- POST https://api.ollagraph.com/v1/seo/redirect-chain-map — SEO Redirect Chain
+- POST https://api.ollagraph.com/v1/seo/schema-validate — SEO Schema Validate
+- POST https://api.ollagraph.com/v1/seo/snippet-candidates — SEO Snippet Candidates
+
+### Conversion
+
+- POST https://api.ollagraph.com/v1/convert/csv-to-markdown — CSV To Markdown
+- POST https://api.ollagraph.com/v1/convert/docx-to-markdown — DOCX To Markdown
+- POST https://api.ollagraph.com/v1/convert/html-to-markdown — HTML To Markdown
+- POST https://api.ollagraph.com/v1/convert/ocr — Convert OCR
+- POST https://api.ollagraph.com/v1/convert/pdf-to-markdown — PDF To Markdown
+- POST https://api.ollagraph.com/v1/convert/pptx-to-markdown — PPTX To Markdown
+- POST https://api.ollagraph.com/v1/convert/xlsx-to-markdown — XLSX To Markdown
+
+### Intelligence
+
+- POST https://api.ollagraph.com/v1/dns/intelligence — DNS Intel
+- POST https://api.ollagraph.com/v1/dns/lookup — DNS Lookup
+- POST https://api.ollagraph.com/v1/intel/asn — Intel ASN
+- POST https://api.ollagraph.com/v1/intel/blacklist — Intel Blacklist
+- POST https://api.ollagraph.com/v1/intel/cert-transparency-history — Intel Cert Transparency
+- POST https://api.ollagraph.com/v1/intel/dns-propagation — Intel DNS Propagation
+- POST https://api.ollagraph.com/v1/intel/email-auth — Intel Email Auth
+- POST https://api.ollagraph.com/v1/intel/geoip — Intel GeoIP
+- POST https://api.ollagraph.com/v1/intel/geoip/bulk — Intel GeoIP Bulk
+- POST https://api.ollagraph.com/v1/intel/headers — Intel Headers
+- POST https://api.ollagraph.com/v1/intel/ip-reputation — Intel IP Reputation
+- POST https://api.ollagraph.com/v1/intel/page — Intel Page
+- POST https://api.ollagraph.com/v1/intel/redirects — Intel Redirects
+- POST https://api.ollagraph.com/v1/intel/robots — Intel Robots
+- POST https://api.ollagraph.com/v1/intel/sitemap — Intel Sitemap
+- POST https://api.ollagraph.com/v1/intel/ssl — Intel SSL
+- POST https://api.ollagraph.com/v1/intel/subdomain-enumerate — Intel Subdomain Enumerate
+- POST https://api.ollagraph.com/v1/intel/uptime — Intel Uptime
+- POST https://api.ollagraph.com/v1/intel/whois — Intel Whois
+- POST https://api.ollagraph.com/v1/verify/email — Email Verify
+
+### Parsing
+
+- POST https://api.ollagraph.com/v1/parse/email — Parse Email
+- POST https://api.ollagraph.com/v1/parse/url — Parse URL
+- POST https://api.ollagraph.com/v1/parse/useragent — Parse User-Agent
+
+### Captcha
+
+- POST https://api.ollagraph.com/v1/captcha/auto — Captcha Auto
+- POST https://api.ollagraph.com/v1/captcha/solve — Captcha Solve
+
+### Crawling
+
+- POST https://api.ollagraph.com/v1/crawl — Crawl
+
+### Actors (preview)
+
+- POST https://api.ollagraph.com/v1/actors/amazon — Actor Amazon
+- POST https://api.ollagraph.com/v1/actors/google-maps — Actor Google Maps
+- POST https://api.ollagraph.com/v1/actors/markdown — Actor Markdown
+- POST https://api.ollagraph.com/v1/actors/zillow — Actor Zillow
+
+### Billing
+
+- POST https://api.ollagraph.com/v1/billing/checkout — Create Checkout Session
+- POST https://api.ollagraph.com/v1/billing/webhook — Stripe Webhook
+
+### Account
+
+- GET https://api.ollagraph.com/v1/keys — List My Keys
+- POST https://api.ollagraph.com/v1/keys — Create My Key
+- DELETE https://api.ollagraph.com/v1/keys/{key_id} — Delete My Key
+- GET https://api.ollagraph.com/v1/me — Get Me
+- GET https://api.ollagraph.com/v1/me/credits — Get My Credits
+- GET https://api.ollagraph.com/v1/me/forwarders — Get My Forwarders
+- POST https://api.ollagraph.com/v1/me/forwarders — Create My Forwarder
+- DELETE https://api.ollagraph.com/v1/me/forwarders/{forwarder_id} — Delete My Forwarder
+- POST https://api.ollagraph.com/v1/me/forwarders/{forwarder_id}/test — Test My Forwarder
+- GET https://api.ollagraph.com/v1/me/jobs — Get My Jobs
+- POST https://api.ollagraph.com/v1/me/password — Change My Password
+- GET https://api.ollagraph.com/v1/me/requests/{request_id} — Get My Request
+- GET https://api.ollagraph.com/v1/me/usage — Get My Usage
+- GET https://api.ollagraph.com/v1/me/usage/summary — Get My Usage Summary
+- POST https://api.ollagraph.com/v1/me/webhook-secret/rotate — Rotate My Webhook Secret
+
+### Jobs
+
+- GET https://api.ollagraph.com/v1/jobs/{job_id} — Get Job Status
+
+### Authentication
+
+- POST https://api.ollagraph.com/v1/auth/keys — Auth Login And Mint Key
+- POST https://api.ollagraph.com/v1/auth/login — Auth Login
+- GET https://api.ollagraph.com/v1/auth/me — Auth Me
+- POST https://api.ollagraph.com/v1/auth/signup — Auth Signup
+- GET https://api.ollagraph.com/v1/auth/verify — Auth Verify Email
+
+### Health
+
+- GET https://api.ollagraph.com/health — Health
+
+### Admin
+
+- POST https://api.ollagraph.com/admin/users — Admin Create User
+
+### Enrichment
+
+- POST https://api.ollagraph.com/v1/enrich/company — Enrich Company
+
 ## How to integrate
 
-Sign up at https://ollagraph.com/signup to get an API key, then `Authorization: Bearer osk_...` against `https://api.qcrawl.com` (migrating to `api.ollagraph.com`). For MCP, install `@ollagraph/mcp` and add to your client config.
+Sign up at https://ollagraph.com/signup to get an API key, then `Authorization: Bearer osk_...` against `https://api.ollagraph.com`. For MCP, install `@ollagraph/mcp` and add to your client config.

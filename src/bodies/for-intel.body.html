@@ -13,8 +13,8 @@
           Domain intel without<br>the <span style="background:linear-gradient(120deg,#c7f751 0%, #5eead4 100%); -webkit-background-clip:text; background-clip:text; color:transparent;">enterprise contract</span>.
         </h1>
         <p style="font-size: 18px; color: var(--text-muted); line-height: 1.55; max-width: 640px; margin: 0 auto 32px;">
-          WHOIS, RDAP, DNS, SSL, GeoIP, ASN, certificate transparency, subdomain
-          enumeration, passive DNS, typosquat detection. One API. Built on public
+          WHOIS, DNS, SSL, GeoIP, ASN, certificate transparency, subdomain
+          enumeration, IP reputation, email auth. One API. Built on public
           data sources, not paid feeds. Self-hostable when you can't send IPs offsite.
         </p>
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
@@ -36,44 +36,16 @@
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;">
         <div class="usecase">
           <h3>Domain investigation</h3>
-          <p>You got a suspicious URL. Pull WHOIS/RDAP, DNS records, certificate
+          <p>You got a suspicious URL. Pull WHOIS, DNS records, certificate
           history from crt.sh, ASN, GeoIP, and IP reputation in one workflow.
           Output is structured JSON, drop into your SOAR.</p>
-          <div class="endpoints">/v1/intel/whois · /v1/intel/rdap · /v1/intel/cert-transparency-history · /v1/intel/asn · /v1/intel/geoip · /v1/intel/ip-reputation</div>
-        </div>
-        <div class="usecase">
-          <h3>Attack surface mapping</h3>
-          <p>Enumerate every subdomain from crt.sh, DNS brute, Common Crawl, and
-          Wayback. Wildcard DNS detection. Then audit each subdomain's security
-          headers and TLS config.</p>
-          <div class="endpoints">/v1/intel/subdomain-enumerate · /v1/intel/wildcard-dns-detect · /v1/intel/tls-config-grade · /v1/intel/security-headers-score</div>
-        </div>
-        <div class="usecase">
-          <h3>Brand protection</h3>
-          <p>Generate every typosquat of your domain, resolve them, score which ones
-          are real risks. Monitor certificate transparency for new certs issued for
-          your brand. Phishing-domain detection without a vendor feed.</p>
-          <div class="endpoints">/v1/intel/typosquat-detect · /v1/intel/cert-transparency-history · /v1/intel/dns/lookup</div>
+          <div class="endpoints">/v1/intel/whois · /v1/intel/cert-transparency-history · /v1/intel/asn · /v1/intel/geoip · /v1/intel/ip-reputation · /v1/dns/lookup</div>
         </div>
         <div class="usecase">
           <h3>Email reputation</h3>
-          <p>Validate SPF, DKIM, DMARC records. Check MX deliverability. Parse uploaded
-          DMARC RUA reports. Verify single emails or batch up to 1,000 at a time.</p>
-          <div class="endpoints">/v1/intel/email-auth · /v1/intel/mx-deliverability · /v1/intel/dmarc-aggregate-parse · /v1/verify/email</div>
-        </div>
-        <div class="usecase">
-          <h3>Network forensics</h3>
-          <p>Trace HTTP redirects across hostile redirect chains. Inspect TLS handshakes
-          and cipher selection. Map ASN and BGP history of an IP. CDN detection
-          from headers and CNAME analysis.</p>
-          <div class="endpoints">/v1/intel/redirects · /v1/intel/tls-config-grade · /v1/intel/asn-history · /v1/intel/cdn-detect · /v1/intel/bgp-route-info</div>
-        </div>
-        <div class="usecase">
-          <h3>Compliance auditing</h3>
-          <p>HSTS preload list checks. DNSSEC validation. Cookie audits for Secure,
-          HttpOnly, SameSite. Subresource Integrity checks. Mixed-content detection.
-          Reports ready for compliance review.</p>
-          <div class="endpoints">/v1/intel/hsts-preload-check · /v1/intel/dnssec-audit · /v1/intel/cookie-audit · /v1/intel/subresource-integrity · /v1/seo/mixed-content</div>
+          <p>Validate SPF, DKIM, DMARC records on a domain. Verify single emails
+          against the live mailbox or batch-verify at scale.</p>
+          <div class="endpoints">/v1/intel/email-auth · /v1/verify/email</div>
         </div>
       </div>
     </div>

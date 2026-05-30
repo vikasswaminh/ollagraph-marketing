@@ -106,13 +106,13 @@
         <h2 class="h-display h-2" style="margin: 0 0 16px;">One credit per call.<br>Heavy endpoints cost more.</h2>
         <p style="color: var(--text-muted); font-size: 16px; line-height: 1.55;">
           Most endpoints (scrape, extract, intel, DNS, SEO audits) are 1 credit.
-          A few that do real work — premium proxy fetches, audit orchestrators,
-          BrightData-routed intel — cost 3-5 credits each. Failed calls are refunded
-          automatically.
+          A few that do real work — audit orchestrators (page-audit, competitor-diff) cost 3 credits.
+          Residential proxy is opt-in (use_residential_proxy=true) and adds +3 to the base 1 credit (4 total).
+          Failed calls are refunded automatically.
         </p>
       </div>
 
-      <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 14px; max-width: 980px; margin: 0 auto;">
+      <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 14px; max-width: 760px; margin: 0 auto;">
         <div class="card" style="padding: 22px;">
           <div class="h-eyebrow" style="margin-bottom: 8px; color: var(--accent);">1 CREDIT</div>
           <h3 style="font-family: var(--font-display); font-size: 18px; font-weight: 500; margin: 0 0 8px;">Most endpoints</h3>
@@ -136,15 +136,6 @@
             <span class="text-mono">/v1/aeo/competitor-diff</span>) that run 8-9 probes internally.
           </p>
         </div>
-        <div class="card" style="padding: 22px;">
-          <div class="h-eyebrow" style="margin-bottom: 8px; color: var(--violet);">5 CREDITS</div>
-          <h3 style="font-family: var(--font-display); font-size: 18px; font-weight: 500; margin: 0 0 8px;">Vendor-routed intel</h3>
-          <p style="color: var(--text-muted); font-size: 13.5px; line-height: 1.55; margin: 0;">
-            Endpoints that route to Bright Data for hard-to-scrape targets:
-            Amazon products, Walmart, Yelp, Trustpilot, G2, Glassdoor, Crunchbase,
-            Indeed. We pass the upstream cost through with a small margin.
-          </p>
-        </div>
       </div>
     </div>
   </section>
@@ -156,7 +147,7 @@
       <h2 class="h-display h-2" style="margin: 0 0 36px;">Pricing, plainly.</h2>
 
       <div class="faq-q"><h4>What is a credit?</h4><span style="color: var(--text-muted);">+</span></div>
-      <div class="faq-a">One credit = one API call. Most endpoints are 1 credit. A handful cost 3 or 5 (see the table above). You see the exact cost in the response of every call.</div>
+      <div class="faq-a">One credit = one API call. Most endpoints are 1 credit. A handful cost 3 (page-audit, competitor-diff). Any endpoint becomes 4 if you opt into the residential proxy surcharge. You see the exact cost in the response of every call.</div>
 
       <div class="faq-q"><h4>What happens if a call fails?</h4><span style="color: var(--text-muted);">+</span></div>
       <div class="faq-a">You don't pay. Failed calls (status: error) are refunded automatically — the credit goes straight back to your balance, and we log the refund event so you can audit.</div>
@@ -171,7 +162,7 @@
       <div class="faq-a">Plan-based rate limiting — a token bucket that refills continuously. Free is 10 req/min, Starter 30, Pro 60, Business 120, Enterprise 300. Independent from credits, applies even within your monthly allotment.</div>
 
       <div class="faq-q"><h4>Why are Bright Data endpoints more expensive?</h4><span style="color: var(--text-muted);">+</span></div>
-      <div class="faq-a">Sites like Amazon, Yelp, and Glassdoor are hard to scrape reliably. We route those through Bright Data's residential network — it costs us money, so we pass it through at 5 credits per call. Everything we self-host stays at 1 credit.</div>
+      <div class="faq-a">Residential proxy is opt-in (use_residential_proxy=true) and adds +3 credits to the base cost, because Bright Data costs us money. Everything we self-host stays at 1 credit.</div>
 
       <div class="faq-q"><h4>What payment methods do you accept?</h4><span style="color: var(--text-muted);">+</span></div>
       <div class="faq-a">Credit card on all plans via Stripe. Wire transfer, ACH, and POs on Enterprise. Annual commitments get a discount — talk to us.</div>
