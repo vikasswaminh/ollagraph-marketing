@@ -1,0 +1,299 @@
+[
+  {
+    "slug": "aeo",
+    "name": "AEO",
+    "tagline": "10 endpoints for auditing how AI engines fetch, parse, and cite your content, plus llm-ready chunking.",
+    "persona": "For AI-discovery teams, agencies, and content engineers measuring AEO posture across pages and competitors.",
+    "color": "lime",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/aeo/page-audit", "credits": 3, "summary": "Orchestrator over 8-9 component AEO probes for a single URL." },
+      { "method": "POST", "path": "/v1/aeo/competitor-diff", "credits": 3, "summary": "Diff a domain's AEO posture against named competitors." },
+      { "method": "POST", "path": "/v1/aeo/citation-readiness", "credits": 1, "summary": "Likelihood that AI engines cite this page." },
+      { "method": "POST", "path": "/v1/aeo/schema-coverage", "credits": 1, "summary": "Coverage of JSON-LD schema types vs intent." },
+      { "method": "POST", "path": "/v1/aeo/llm-fetch-simulator", "credits": 1, "summary": "Simulate fetch from GPTBot, ClaudeBot, and PerplexityBot." },
+      { "method": "POST", "path": "/v1/aeo/llms-txt-audit", "credits": 1, "summary": "Audit an existing llms.txt for completeness and link rot." },
+      { "method": "POST", "path": "/v1/aeo/ai-bot-allowlist", "credits": 1, "summary": "Report robots.txt posture for 14 named AI crawlers." },
+      { "method": "POST", "path": "/v1/aeo/freshness-signal", "credits": 1, "summary": "lastmod and visible dateline coverage." },
+      { "method": "POST", "path": "/v1/aeo/heading-hierarchy-score", "credits": 1, "summary": "h1..h6 nesting quality score." },
+      { "method": "POST", "path": "/v1/aeo/snippet-format-detect", "credits": 1, "summary": "Detect list, table, definition, and FAQ snippet formats." },
+      { "method": "POST", "path": "/v1/scrape/llm-ready", "credits": 1, "summary": "Fetch and token-chunk a page for downstream AEO scoring or RAG ingest." }
+    ],
+    "recipe": {
+      "title": "Audit then iterate",
+      "steps": [
+        "Run /v1/aeo/page-audit against the target URL to get an aggregate score plus component breakdowns.",
+        "For any sub-score below threshold, call the corresponding component endpoint (e.g. /v1/aeo/schema-coverage, /v1/aeo/heading-hierarchy-score) to see the underlying findings.",
+        "Apply fixes, then re-run /v1/aeo/llm-fetch-simulator with the GPTBot and PerplexityBot user-agents to confirm the rendered page reaches the bot intact.",
+        "Track over time by storing the page-audit JSON keyed by URL + run timestamp."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/aeo/page-audit \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"url\":\"https://example.com/pricing\"}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/aeo/page-audit\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"url\": \"https://example.com/pricing\"},\n    timeout=60.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/aeo/page-audit\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ url: \"https://example.com/pricing\" }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "Does page-audit count as one call or many?", "a": "One call, 3 credits. The orchestrator runs ~9 probes server-side but you only pay once and only refund once on error." },
+      { "q": "Which AI bots does llm-fetch-simulator emulate?", "a": "GPTBot, ChatGPT-User, ClaudeBot, anthropic-ai, PerplexityBot, Google-Extended, and Amazonbot, with each user-agent string verbatim from their published docs." },
+      { "q": "Can I run AEO checks on a page behind login?", "a": "No. AEO endpoints fetch as the named bot would, which means anonymously. Gate-removed preview URLs are the workaround." }
+    ]
+  },
+  {
+    "slug": "seo",
+    "name": "SEO",
+    "tagline": "13 endpoints for technical SEO: meta, schema, redirects, broken links, mixed content, plus crawlability.",
+    "persona": "For SEO consultants and in-house technical SEO leads.",
+    "color": "teal",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/seo/meta-audit", "credits": 1, "summary": "Title, description, canonical, og, and twitter card audit." },
+      { "method": "POST", "path": "/v1/seo/schema-validate", "credits": 1, "summary": "JSON-LD schema.org validation." },
+      { "method": "POST", "path": "/v1/seo/readability", "credits": 1, "summary": "Six readability formulas (Flesch, FK grade, Gunning, ARI, SMOG, Coleman-Liau)." },
+      { "method": "POST", "path": "/v1/seo/redirect-chain-map", "credits": 1, "summary": "Walk 301/302/308 chains and tag each hop." },
+      { "method": "POST", "path": "/v1/seo/broken-links-audit", "credits": 1, "summary": "Crawl and report 4xx/5xx links on a page." },
+      { "method": "POST", "path": "/v1/seo/anchor-text-audit", "credits": 1, "summary": "Anchor-text distribution and over-optimisation flags." },
+      { "method": "POST", "path": "/v1/seo/mixed-content", "credits": 1, "summary": "https-on-http resource detection." },
+      { "method": "POST", "path": "/v1/seo/snippet-candidates", "credits": 1, "summary": "Featured-snippet-eligible passages from the page." },
+      { "method": "POST", "path": "/v1/seo/keyword-extract", "credits": 1, "summary": "Keyword surfacing with TF and density bands." },
+      { "method": "POST", "path": "/v1/intel/sitemap", "credits": 1, "summary": "sitemap.xml parse with per-URL summary." },
+      { "method": "POST", "path": "/v1/intel/robots", "credits": 1, "summary": "robots.txt parse and rule evaluation." },
+      { "method": "POST", "path": "/v1/intel/redirects", "credits": 1, "summary": "Follow and tag a redirect chain from a starting URL." },
+      { "method": "POST", "path": "/v1/scrape/smart", "credits": 1, "summary": "Fetch with auto-escalation through the render cascade." }
+    ],
+    "recipe": {
+      "title": "Page-level technical audit",
+      "steps": [
+        "Pull the sitemap with /v1/intel/sitemap to get a URL inventory plus lastmod.",
+        "For each URL, call /v1/seo/meta-audit and /v1/seo/schema-validate in parallel to score on-page tags.",
+        "Run /v1/seo/broken-links-audit and /v1/seo/redirect-chain-map on high-traffic pages to catch dangling links and redirect loops.",
+        "Roll the per-URL JSON into a single client-facing report and store deltas between runs."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/seo/meta-audit \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"url\":\"https://example.com/blog/seo-checklist\"}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/seo/meta-audit\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"url\": \"https://example.com/blog/seo-checklist\"},\n    timeout=30.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/seo/meta-audit\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ url: \"https://example.com/blog/seo-checklist\" }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "Does broken-links-audit follow off-site links?", "a": "Yes, but only HEAD-checks them. It will not crawl beyond the seed page." },
+      { "q": "What schema.org version does schema-validate target?", "a": "Latest schema.org core plus pending. We do not enforce Google's rich-results subset — use the report's `google_eligibility` flag." },
+      { "q": "Why does meta-audit sometimes report missing og tags on pages that render them client-side?", "a": "Server-rendered HTML is what counts for crawlers. If your og tags are injected by JS, escalate to /v1/scrape/smart so we get the rendered DOM, then re-run meta-audit on that HTML." }
+    ]
+  },
+  {
+    "slug": "dns",
+    "name": "DNS",
+    "tagline": "6 endpoints for DNS lookups, propagation checks, certificate-transparency search, and subdomain enumeration.",
+    "persona": "For DevOps doing migrations, security researchers, and domain investigators.",
+    "color": "blue",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/dns/lookup", "credits": 1, "summary": "A, AAAA, MX, TXT, NS, and CNAME per record type." },
+      { "method": "POST", "path": "/v1/dns/intelligence", "credits": 1, "summary": "Resolver-diverse summary of a domain's DNS posture." },
+      { "method": "POST", "path": "/v1/intel/dns-propagation", "credits": 1, "summary": "Propagation status across geographically distributed resolvers." },
+      { "method": "POST", "path": "/v1/intel/cert-transparency-history", "credits": 1, "summary": "crt.sh-backed certificate transparency timeline." },
+      { "method": "POST", "path": "/v1/intel/subdomain-enumerate", "credits": 1, "summary": "Subdomain discovery via certificate transparency logs." },
+      { "method": "POST", "path": "/v1/intel/whois", "credits": 1, "summary": "WHOIS / RDAP registry record." }
+    ],
+    "recipe": {
+      "title": "Migration cutover check",
+      "steps": [
+        "Before the cutover, snapshot the current state with /v1/dns/intelligence to capture all record types in one payload.",
+        "Push the DNS change at the registrar.",
+        "Poll /v1/intel/dns-propagation every 30 seconds until target resolvers in your priority regions return the new value.",
+        "After propagation, call /v1/intel/cert-transparency-history to confirm the new certificate was logged and trusted CAs picked it up."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/dns/intelligence \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"domain\":\"example.com\"}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/dns/intelligence\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"domain\": \"example.com\"},\n    timeout=30.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/dns/intelligence\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ domain: \"example.com\" }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "Which resolvers does dns-propagation hit?", "a": "Cloudflare 1.1.1.1, Google 8.8.8.8 / 8.8.4.4, Quad9 9.9.9.9, OpenDNS, plus regional resolvers in EU, APAC, and SA. Result includes per-resolver answers so you can detect splits." },
+      { "q": "How fresh is cert-transparency-history?", "a": "Bound by crt.sh's own ingest lag — typically minutes to a couple of hours after CA log submission. We do not cache." },
+      { "q": "Does subdomain-enumerate brute-force or only use CT logs?", "a": "CT logs only. That misses wildcard certs but avoids generating any traffic at the target. If you need active enumeration, run it yourself and feed candidates into /v1/dns/lookup." }
+    ]
+  },
+  {
+    "slug": "email",
+    "name": "Email",
+    "tagline": "4 endpoints for email deliverability: verification, SPF / DKIM / DMARC posture, contact extraction, format parsing.",
+    "persona": "For outbound sales, ESP integrators, fraud and onboarding teams.",
+    "color": "amber",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/verify/email", "credits": 1, "summary": "Syntactic, MX, and disposable-domain detection." },
+      { "method": "POST", "path": "/v1/intel/email-auth", "credits": 1, "summary": "SPF, DKIM, and DMARC posture for a domain." },
+      { "method": "POST", "path": "/v1/extract/contacts", "credits": 1, "summary": "Pull emails, phones, and socials from a page." },
+      { "method": "POST", "path": "/v1/parse/email", "credits": 1, "summary": "Parse an address into local-part, domain, plus-tag, and display-name." }
+    ],
+    "recipe": {
+      "title": "List hygiene before send",
+      "steps": [
+        "Parse each address with /v1/parse/email to normalize and strip plus-tags before deduplication.",
+        "Call /v1/verify/email on the deduped list to drop syntactic failures, MX-less domains, and disposable providers.",
+        "For surviving addresses, call /v1/intel/email-auth on the domain to flag any sending domains with no DMARC alignment — those are higher bounce risk."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/verify/email \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"email\":\"jane@example.com\"}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/verify/email\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"email\": \"jane@example.com\"},\n    timeout=15.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/verify/email\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ email: \"jane@example.com\" }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "Do you do SMTP RCPT-TO probing?", "a": "No. We stop at syntactic checks, MX resolution, and disposable-domain matching. SMTP probes get IPs blacklisted and producers false-negatives on greylisting servers." },
+      { "q": "Will you flag @ollagraph.com or @qcrawl.com as nonexistent?", "a": "No — both are catch-all domains in our knowledge base. They always validate as deliverable at the MX level." },
+      { "q": "Why does email-auth sometimes return DMARC `policy=none`?", "a": "That is the published policy at the domain. We report what the DNS says; we do not infer intent." }
+    ]
+  },
+  {
+    "slug": "domain-intelligence",
+    "name": "Domain Intelligence",
+    "tagline": "11 endpoints for WHOIS, ASN, GeoIP, SSL, IP reputation, blacklist, plus company enrichment.",
+    "persona": "For security teams, sign-up enrichment pipelines, fraud detection, compliance.",
+    "color": "violet",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/intel/whois", "credits": 1, "summary": "WHOIS / RDAP registry record." },
+      { "method": "POST", "path": "/v1/intel/ssl", "credits": 1, "summary": "TLS certificate, chain, issuer, and validity." },
+      { "method": "POST", "path": "/v1/intel/asn", "credits": 1, "summary": "ASN, announcing organisation, and prefix coverage." },
+      { "method": "POST", "path": "/v1/intel/geoip", "credits": 1, "summary": "Country, city, and coordinates from an IP." },
+      { "method": "POST", "path": "/v1/intel/geoip/bulk", "credits": 1, "summary": "Batched geoip lookup." },
+      { "method": "POST", "path": "/v1/intel/ip-reputation", "credits": 1, "summary": "Tor, cloud, datacenter, and CDN flagging." },
+      { "method": "POST", "path": "/v1/intel/blacklist", "credits": 1, "summary": "DNSBL aggregate across known lists." },
+      { "method": "POST", "path": "/v1/intel/cert-transparency-history", "credits": 1, "summary": "crt.sh-backed certificate transparency timeline." },
+      { "method": "POST", "path": "/v1/intel/headers", "credits": 1, "summary": "HTTP response headers snapshot." },
+      { "method": "POST", "path": "/v1/intel/page", "credits": 1, "summary": "HTML summary, meta, and canonical hints." },
+      { "method": "POST", "path": "/v1/enrich/company", "credits": 1, "summary": "Company-from-domain enrichment." }
+    ],
+    "recipe": {
+      "title": "Sign-up enrichment + risk score",
+      "steps": [
+        "On signup, take the email domain and call /v1/enrich/company to attach firmographics.",
+        "Take the request IP and call /v1/intel/ip-reputation plus /v1/intel/geoip — flag Tor, datacenter IPs, and country mismatches against the billing address.",
+        "If the domain is unknown, run /v1/intel/whois and /v1/intel/cert-transparency-history to check age and CA history. A week-old domain with one DV cert is a fraud signal.",
+        "Compose into a single risk score and decide allow / step-up / block."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/intel/ip-reputation \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"ip\":\"185.220.101.1\"}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/intel/ip-reputation\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"ip\": \"185.220.101.1\"},\n    timeout=15.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/intel/ip-reputation\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ ip: \"185.220.101.1\" }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "What sources feed ip-reputation?", "a": "Tor exit-node lists (live), public datacenter/cloud ASN ranges (refreshed daily), and CDN-owned prefixes. We do not subscribe to commercial threat feeds." },
+      { "q": "How big can a geoip/bulk batch be?", "a": "Up to 1000 IPs per call. We charge one credit per call, not per IP." },
+      { "q": "Does enrich/company give me employee counts and funding?", "a": "Domain, industry, country, and size band only. We do not resell funding-round data." }
+    ]
+  },
+  {
+    "slug": "scraping",
+    "name": "Scraping",
+    "tagline": "13 endpoints for single, batch, async, smart, and llm-ready scraping, plus extraction, crawl, and captcha solve.",
+    "persona": "For AI agents, data engineers, and RAG pipelines fetching the live web.",
+    "color": "rose",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/scrape", "credits": 1, "summary": "Single-page fetch." },
+      { "method": "POST", "path": "/v1/scrape/batch", "credits": 1, "summary": "Batch of URLs, synchronous return." },
+      { "method": "POST", "path": "/v1/scrape/async", "credits": 1, "summary": "Single fetch, returns job_id." },
+      { "method": "POST", "path": "/v1/scrape/batch/async", "credits": 1, "summary": "Batched fetch, returns job_id." },
+      { "method": "POST", "path": "/v1/scrape/smart", "credits": 1, "summary": "Auto-escalate through the render cascade." },
+      { "method": "POST", "path": "/v1/scrape/llm-ready", "credits": 1, "summary": "Fetch and token-chunk for RAG ingest." },
+      { "method": "POST", "path": "/v1/extract/clean", "credits": 1, "summary": "Boilerplate strip and reading-text extraction." },
+      { "method": "POST", "path": "/v1/extract/structured", "credits": 1, "summary": "Schema-driven extract via JSON schema input." },
+      { "method": "POST", "path": "/v1/extract/tables", "credits": 1, "summary": "Table rows from HTML." },
+      { "method": "POST", "path": "/v1/extract/contacts", "credits": 1, "summary": "Emails, phones, and socials extraction." },
+      { "method": "POST", "path": "/v1/crawl", "credits": 1, "summary": "Recursive crawl with depth and budget caps." },
+      { "method": "POST", "path": "/v1/captcha/solve", "credits": 1, "summary": "reCAPTCHA v2 / v3 solve." },
+      { "method": "POST", "path": "/v1/captcha/auto", "credits": 1, "summary": "Automatic captcha solve flow for sites behind a challenge." }
+    ],
+    "recipe": {
+      "title": "RAG ingest of a site section",
+      "steps": [
+        "Call /v1/crawl with the seed URL, max_depth=2, and a same-host filter to discover candidate pages.",
+        "For each discovered URL, call /v1/scrape/llm-ready to fetch and token-chunk in one step.",
+        "Embed the chunks and write to your vector store. We do not persist any scraped content — your store is the only record.",
+        "On pages that come back bot-blocked, retry through /v1/scrape/smart, which auto-escalates to the render backend and then to residential proxy if needed."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/scrape/smart \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"url\":\"https://example.com/article\",\"render_js\":true}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/scrape/smart\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"url\": \"https://example.com/article\", \"render_js\": True},\n    timeout=60.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/scrape/smart\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ url: \"https://example.com/article\", render_js: true }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "What's the difference between /scrape and /scrape/smart?", "a": "/scrape is a direct fetch. /scrape/smart auto-escalates: direct first, then internal render backend, then Spider.cloud ISP proxy on 401/403/429. Same response shape from all tiers." },
+      { "q": "How do I get residential proxy?", "a": "Pass `use_residential_proxy: true` on /scrape or /scrape/smart. It adds a +3 credit surcharge on top of the base 1 credit per call." },
+      { "q": "Do you store the HTML I scrape?", "a": "No. We never persist scraped content — only the URL, status, and credit-event metadata for your usage log." }
+    ]
+  },
+  {
+    "slug": "conversion",
+    "name": "Conversion",
+    "tagline": "7 endpoints converting PDF, DOCX, XLSX, PPTX, CSV, HTML, and image OCR to clean markdown.",
+    "persona": "For RAG ingest, knowledge-base pipelines, and document-processing SaaS.",
+    "color": "slate",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/convert/pdf-to-markdown", "credits": 1, "summary": "PDF to markdown." },
+      { "method": "POST", "path": "/v1/convert/docx-to-markdown", "credits": 1, "summary": "Word .docx to markdown." },
+      { "method": "POST", "path": "/v1/convert/xlsx-to-markdown", "credits": 1, "summary": "Excel .xlsx to markdown." },
+      { "method": "POST", "path": "/v1/convert/pptx-to-markdown", "credits": 1, "summary": "PowerPoint .pptx to markdown." },
+      { "method": "POST", "path": "/v1/convert/csv-to-markdown", "credits": 1, "summary": "CSV to markdown table." },
+      { "method": "POST", "path": "/v1/convert/html-to-markdown", "credits": 1, "summary": "HTML to markdown (clean)." },
+      { "method": "POST", "path": "/v1/convert/ocr", "credits": 1, "summary": "Image OCR." }
+    ],
+    "recipe": {
+      "title": "Mixed-format knowledge-base ingest",
+      "steps": [
+        "Inspect the file's MIME type and route to the corresponding /v1/convert/* endpoint.",
+        "For scanned PDFs where pdf-to-markdown returns empty or very low text density, fall back to /v1/convert/ocr page by page.",
+        "Post-process the returned markdown into chunks of your preferred size, embed, and write to your store."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/convert/pdf-to-markdown \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"url\":\"https://example.com/whitepaper.pdf\"}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/convert/pdf-to-markdown\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"url\": \"https://example.com/whitepaper.pdf\"},\n    timeout=120.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/convert/pdf-to-markdown\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ url: \"https://example.com/whitepaper.pdf\" }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "Can I send the file body inline or only a URL?", "a": "Both. Pass `url` for us to fetch, or `file_b64` for an inline base64 body. Inline is capped at 25 MB; URL fetches at 100 MB." },
+      { "q": "Does pdf-to-markdown preserve tables?", "a": "Yes, as markdown table syntax when the layout is recoverable. Complex multi-column layouts with merged cells degrade to plain text rows." },
+      { "q": "What OCR engine backs /convert/ocr?", "a": "Tesseract 5 in our standard tier. Layout-aware OCR (Docling) is in pilot on a separate worker — contact us for access." }
+    ]
+  },
+  {
+    "slug": "site-audit",
+    "name": "Site Audit",
+    "tagline": "10 endpoints composing AEO + SEO + Intelligence into a full domain health check.",
+    "persona": "For agencies running monthly client audits combining uptime, security, SEO, and AEO.",
+    "color": "emerald",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/aeo/page-audit", "credits": 3, "summary": "Orchestrator AEO audit for the page." },
+      { "method": "POST", "path": "/v1/intel/uptime", "credits": 1, "summary": "Uptime probe with TTFB." },
+      { "method": "POST", "path": "/v1/intel/headers", "credits": 1, "summary": "HTTP response headers snapshot." },
+      { "method": "POST", "path": "/v1/seo/broken-links-audit", "credits": 1, "summary": "Broken link crawl." },
+      { "method": "POST", "path": "/v1/seo/redirect-chain-map", "credits": 1, "summary": "Redirect chain walk." },
+      { "method": "POST", "path": "/v1/seo/mixed-content", "credits": 1, "summary": "Mixed-content detection." },
+      { "method": "POST", "path": "/v1/intel/ssl", "credits": 1, "summary": "TLS certificate inspection." },
+      { "method": "POST", "path": "/v1/intel/robots", "credits": 1, "summary": "robots.txt parse." },
+      { "method": "POST", "path": "/v1/intel/sitemap", "credits": 1, "summary": "sitemap.xml parse." },
+      { "method": "POST", "path": "/v1/seo/schema-validate", "credits": 1, "summary": "JSON-LD validation." }
+    ],
+    "recipe": {
+      "title": "Monthly client audit",
+      "steps": [
+        "Start with /v1/intel/uptime and /v1/intel/ssl on the apex to score availability and certificate health.",
+        "Pull /v1/intel/sitemap and /v1/intel/robots to confirm crawlability, then sample 5-10 top pages from the sitemap.",
+        "For each sampled page run /v1/aeo/page-audit, /v1/seo/schema-validate, /v1/seo/broken-links-audit, /v1/seo/redirect-chain-map, and /v1/seo/mixed-content.",
+        "Aggregate into a single client-facing report, score against last month's run, and call out regressions."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/intel/uptime \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"url\":\"https://example.com\"}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/intel/uptime\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"url\": \"https://example.com\"},\n    timeout=30.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/intel/uptime\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ url: \"https://example.com\" }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "How many credits does a full site-audit run cost?", "a": "Per page sampled: 3 (page-audit) + 8 x 1 = 11 credits, plus 2 credits for the domain-level uptime and SSL probes. A 10-page audit lands around 112 credits." },
+      { "q": "Can I run site-audit endpoints in parallel?", "a": "Yes. All 10 are independent and idempotent. Your rate limit applies as the only constraint." },
+      { "q": "Do you store a history for diffing month-over-month?", "a": "No — we do not persist response bodies. Save the JSON yourself, keyed by domain + run date, and diff client-side." }
+    ]
+  }
+]

@@ -1,0 +1,104 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import bodyHtml from '../bodies/bundles.body.html?raw';
+import headExtras from '../bodies/bundles.head.html?raw';
+import { navHtml, footerHtml } from '../chrome';
+import bundles from '../content/bundles.json';
+
+// Color map — bundle.color → hex token. `lime` reuses the existing accent.
+const COLOR_MAP: Record<string, string> = {
+  lime:    'var(--accent)',
+  teal:    '#5eead4',
+  blue:    '#60a5fa',
+  amber:   '#fbbf24',
+  violet:  '#c4b5fd',
+  rose:    '#fb7185',
+  slate:   '#94a3b8',
+  emerald: '#34d399',
+};
+
+const escapeHtml = (s: string): string =>
+  String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const truncate = (s: string, n: number): string =>
+  s.length <= n ? s : s.slice(0, n - 1).trimEnd() + '…';
+
+// 4 × 2 card grid. Each card: name, tagline, endpoint count, link to /bundles/{slug}.
+const cardHtml = bundles.map((b: any) => {
+  const accent = COLOR_MAP[b.color] || 'var(--accent)';
+  return `
+        <a class="pcard" href="/bundles/${escapeHtml(b.slug)}" style="border-left-color: ${accent}; text-decoration: none; color: inherit; display: block;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+            <div class="ico" style="background: ${accent}22; border-color: ${accent}55; color: ${accent};">${escapeHtml(b.name.slice(0, 2).toUpperCase())}</div>
+            <h3 style="margin:0;">${escapeHtml(b.name)}</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">${b.endpoints.length} endpoints</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 13.5px; line-height: 1.55; margin: 0 0 14px;">
+            ${escapeHtml(b.tagline)}
+          </p>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: ${accent};">
+            View bundle &rarr;
+          </span>
+        </a>`;
+}).join('');
+
+// Comparison table rows.
+const rowHtml = bundles.map((b: any) => {
+  const totalCredits = b.endpoints.reduce((acc: number, e: any) => acc + (e.credits ?? 0), 0);
+  const costBand = Math.round(totalCredits / 4);
+  const accent = COLOR_MAP[b.color] || 'var(--accent)';
+  return `
+            <tr>
+              <td class="cmp-name">
+                <a href="#b-${escapeHtml(b.slug)}" style="color: inherit; text-decoration: none; border-bottom: 2px solid ${accent}; padding-bottom: 1px;">${escapeHtml(b.name)}</a>
+              </td>
+              <td>${b.endpoints.length}</td>
+              <td><span class="text-mono">~${costBand} credits</span></td>
+              <td>${escapeHtml(truncate(b.persona, 70))}</td>
+            </tr>`;
+}).join('');
+
+// Per-bundle anchored summary blocks.
+const anchorHtml = bundles.map((b: any) => {
+  const accent = COLOR_MAP[b.color] || 'var(--accent)';
+  const endpointItems = b.endpoints.map((e: any) => `
+            <li class="endpoint-row">
+              <span class="method">${escapeHtml(e.method)}</span>
+              <span>
+                <span class="path">${escapeHtml(e.path)}</span>
+                <span class="summary">${escapeHtml(e.summary || '')}</span>
+              </span>
+              <span class="cost">${e.credits} cr</span>
+            </li>`).join('');
+  return `
+        <section id="b-${escapeHtml(b.slug)}" class="bundle-anchor" style="border-left-color: ${accent};">
+          <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px;">
+            <h2 style="margin:0;">${escapeHtml(b.name)}</h2>
+            <span class="badge badge-mute">${b.endpoints.length} endpoints</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 15px; line-height: 1.55; margin: 0 0 8px;">${escapeHtml(b.tagline)}</p>
+          <p class="persona">${escapeHtml(b.persona)}</p>
+          <ul class="endpoint-list">${endpointItems}
+          </ul>
+          <a class="btn btn-secondary" href="/bundles/${escapeHtml(b.slug)}" style="border-color: ${accent}55; color: ${accent};">
+            Open the ${escapeHtml(b.name)} deep dive &rarr;
+          </a>
+        </section>`;
+}).join('');
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml("bundles"))
+  .replace('<div id="footer-root"></div>', footerHtml())
+  .replace('<!-- __BUNDLE_CARDS__ -->', cardHtml)
+  .replace('<!-- __COMPARISON_ROWS__ -->', rowHtml)
+  .replace('<!-- __BUNDLE_ANCHORS__ -->', anchorHtml);
+---
+<BaseLayout title="Bundles — Ollagraph">
+  <Fragment slot="head" set:html={headExtras} />
+  <Fragment set:html={rendered} />
+</BaseLayout>

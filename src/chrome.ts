@@ -6,6 +6,7 @@
 
 const NAV_LINKS: { label: string; href: string; key: string }[] = [
   { label: "Capabilities",  href: "/capabilities",  key: "capabilities" },
+  { label: "Bundles",       href: "/bundles",       key: "bundles" },
   { label: "Observability", href: "/observability", key: "observability" },
   { label: "MCP",           href: "/mcp",           key: "mcp" },
   { label: "AEO",           href: "/aeo",           key: "aeo" },
@@ -61,6 +62,7 @@ export function footerHtml(): string {
       h: "Product",
       items: [
         { label: "Capabilities",   href: "/capabilities" },
+        { label: "Bundles",        href: "/bundles" },
         { label: "Observability",  href: "/observability" },
         { label: "MCP server",     href: "/mcp" },
         { label: "AEO",            href: "/aeo" },
