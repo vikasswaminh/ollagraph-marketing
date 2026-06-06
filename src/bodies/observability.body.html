@@ -174,6 +174,80 @@ POST /v1/aeo/page-audit                              <span class="what-num">4,21
     </div>
   </section>
 
+  <!-- Standards on every response -->
+  <section class="section">
+    <div class="container">
+      <div style="max-width:720px; margin:0 auto 28px; text-align:center;">
+        <div class="h-eyebrow" style="margin-bottom:12px;">EVERY RESPONSE</div>
+        <h2 class="h-display h-2" style="margin:0 0 12px;">Standards on every response. No SDK required.</h2>
+        <p style="color:var(--text-muted); font-size:15px; line-height:1.6; margin:0;">
+          Forward the spans to your stack if you want full traces. Or just read
+          the response headers &mdash; nine standards-based signals shipped on every
+          request, zero setup.
+        </p>
+      </div>
+
+      <div style="max-width:880px; margin:0 auto;">
+        <pre class="what-pre"><code><span class="what-comment"># Response headers from a real /v1/scrape call</span>
+HTTP/1.1 <span class="what-num">200</span> OK
+content-type:            application/json
+x-request-id:            <span class="what-str">678185b6b19243bbb5bc49b55971b9ea</span>
+traceparent:             <span class="what-str">00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01</span>
+server-timing:           total;dur=<span class="what-num">1247</span>
+x-credits-cost:          <span class="what-num">1</span>
+x-credits-charged:       <span class="what-num">1</span>
+x-credits-balance:       <span class="what-num">9824</span>
+x-tier-used:             <span class="what-str">cloudflare</span>
+x-cascade-path:          <span class="what-str">qbrowser,cloudflare</span>
+x-ratelimit-limit:       <span class="what-num">60</span>
+x-ratelimit-remaining:   <span class="what-num">59</span>
+x-ratelimit-reset:       <span class="what-num">1717610412</span>
+RateLimit-Limit:         <span class="what-num">60</span>            <span class="what-comment"># IETF alias</span>
+RateLimit-Remaining:     <span class="what-num">59</span>
+RateLimit-Reset:         <span class="what-num">1717610412</span>
+Cache-Control:           <span class="what-str">no-store</span>     <span class="what-comment"># auto on authed responses</span></code></pre>
+      </div>
+
+      <div class="vendor-grid" style="margin-top:32px;">
+        <div class="vendor-card">
+          <h3><code class="text-mono">traceparent</code></h3>
+          <div class="tier">W3C Trace Context</div>
+          <p>Our server-side OTel trace+span ID, echoed on every response. If your agent sends an inbound <code>traceparent</code>, our spans nest under your trace. If it doesn&rsquo;t, paste the value from this header into your APM&rsquo;s trace search and pull up the full picture.</p>
+        </div>
+
+        <div class="vendor-card">
+          <h3><code class="text-mono">server-timing</code></h3>
+          <div class="tier">W3C Server-Timing</div>
+          <p>Wall-clock breakdown for the request. Chrome DevTools &rarr; Network &rarr; Timing renders it natively, no code. Customers grep <code>server-timing</code> in their CDN logs to spot regressions before they trip a synthetic check.</p>
+        </div>
+
+        <div class="vendor-card">
+          <h3><code class="text-mono">x-credits-*</code></h3>
+          <div class="tier">Ollagraph-specific</div>
+          <p>Three numbers per response: <code>cost</code> (sticker), <code>charged</code> (what we actually deducted &mdash; failures refund), <code>balance</code> (left after this call). Tail these on a noisy crawl instead of polling <code>/v1/me/credits</code>.</p>
+        </div>
+
+        <div class="vendor-card">
+          <h3><code class="text-mono">x-tier-used</code> &middot; <code class="text-mono">x-cascade-path</code></h3>
+          <div class="tier">Ollagraph-specific</div>
+          <p>Which fetch tier served the call &mdash; <code>qbrowser</code>, <code>cloudflare</code>, <code>hyperbrowser</code>, <code>spider</code>, <code>brightdata</code>, <code>direct</code> &mdash; plus the full ordered cascade we tried. Grep your logs by tier to see exactly which path your traffic takes.</p>
+        </div>
+
+        <div class="vendor-card">
+          <h3><code class="text-mono">RateLimit-*</code></h3>
+          <div class="tier">IETF draft-ietf-httpapi-ratelimit-headers</div>
+          <p>Token-bucket state in the IETF spelling that generic HTTP clients (k6, Bruno, Hey) auto-honour for backoff. We emit both the legacy <code>x-ratelimit-*</code> form and the IETF form on every response.</p>
+        </div>
+
+        <div class="vendor-card">
+          <h3><code class="text-mono">Deprecation</code> &middot; <code class="text-mono">Sunset</code></h3>
+          <div class="tier">RFC 8594 + IETF deprecation draft</div>
+          <p>When we schedule a route for removal you&rsquo;ll see machine-readable <code>Deprecation</code>, <code>Sunset</code> (an HTTP-date), and <code>Link</code> (pointing at the successor) on every response from that route &mdash; long before we ever ship the removal.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- CTA -->
   <section class="section" style="padding-bottom:80px;">
     <div class="container">
