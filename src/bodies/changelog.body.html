@@ -21,6 +21,28 @@
     <div class="container" style="max-width: 760px;">
 
       <article class="cl-entry">
+        <div class="cl-date">2026-06-08</div>
+        <h2 class="cl-title">Two new Intelligence endpoints: WhoAmI + HTTP Versions.</h2>
+        <div class="cl-tags">
+          <span class="cl-tag new">NEW</span>
+        </div>
+        <div class="cl-body">
+          <p>Two single-call diagnostics that replace 5+ separate lookups.</p>
+          <ul>
+            <li>
+              <strong>New: <code>GET /v1/intel/whoami</code></strong>. What the public internet sees about your caller in one billed call: public IP (cf-connecting-ip / x-forwarded-for aware), IP family, geoIP, ASN + ISP, datacenter/Tor/cloud-range reputation, parsed User-Agent, and a curated echo of the request headers we observed at the edge. Aggregates <code>/v1/intel/geoip</code> + <code>/v1/intel/asn</code> + <code>/v1/intel/ip-reputation</code> + <code>/v1/parse/useragent</code>. <code>Authorization</code> and <code>Cookie</code> are explicitly never echoed. 1 credit.
+            </li>
+            <li>
+              <strong>New: <code>POST /v1/intel/http-versions</code></strong>. Detect which HTTP versions a URL serves &mdash; HTTP/1.1 (HEAD), HTTP/2 (negotiated via TLS ALPN), and HTTP/3 (advertised via the Alt-Svc header). Returns the negotiated ALPN protocol, TLS version, cipher, and full HSTS posture (max-age, includeSubDomains, preload). Useful for origin audits and CDN readiness checks. 1 credit, refund on error.
+            </li>
+            <li>
+              The endpoint catalog is now <strong>94 operations</strong> across 8 capability families.
+            </li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="cl-entry">
         <div class="cl-date">2026-05-27</div>
         <h2 class="cl-title">Sprint 2: llm-ready SPA fix, 3 new endpoints, marketing site cleanup.</h2>
         <div class="cl-tags">
@@ -130,7 +152,7 @@
             <li>Your credit balance, plan, webhook secret, and usage history are unchanged.</li>
           </ul>
           <p>
-            Eight capability families, 92 endpoints, one MCP server. See the new
+            Eight capability families, 94 endpoints, one MCP server. See the new
             <a href="/capabilities" style="color: var(--accent);">capabilities page</a>
             for the full layout.
           </p>
