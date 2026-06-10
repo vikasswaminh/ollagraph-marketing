@@ -1,12 +1,12 @@
 # Ollagraph
 
-> Web infrastructure for AI agents. One API, one MCP server, one bill for 94 endpoints across fetch, extract, search, audit, intelligence, verify, and agent-native tooling.
+> Web infrastructure for AI agents. One API, one MCP server, one bill for 105 endpoints across fetch, extract, search, audit, intelligence, verify, and agent-native tooling.
 
 Ollagraph is a unified API platform that lets AI agents read, audit, and reason about the live web. Built for AI agent developers, RAG builders, SEO/AEO consultants, and security teams who need reliable, structured access to web data without integrating six different vendors.
 
 ## Capabilities
 
-- [Capabilities overview](https://ollagraph.com/capabilities): All 8 capability families and 94 endpoints, organized by what an AI agent actually does
+- [Capabilities overview](https://ollagraph.com/capabilities): All 8 capability families and 105 endpoints, organized by what an AI agent actually does
 - [MCP server](https://ollagraph.com/mcp): Drop-in MCP integration for Claude Desktop, Cursor, Cline. Every Ollagraph endpoint becomes an MCP tool.
 - [AEO audit](https://ollagraph.com/aeo): Answer-engine optimization toolkit — 10+ endpoints for AI-citation readiness, llms.txt audits, AI crawler intelligence
 - [Docs](https://ollagraph.com/docs): Full API reference with code samples in TypeScript, Python, curl
@@ -21,7 +21,7 @@ Ollagraph is a unified API platform that lets AI agents read, audit, and reason 
 
 ## Key facts
 
-- 94 endpoints across 8 capability families
+- 105 endpoints across 8 capability families
 - One Bearer token authenticates everything
 - MCP server included — works with Claude Desktop, Cursor, Cline out of the box
 - Failed calls auto-refund credits
@@ -87,23 +87,34 @@ Base URL: `https://api.ollagraph.com`. All endpoints require `Authorization: Bea
 
 - POST https://api.ollagraph.com/v1/dns/intelligence — DNS Intel
 - POST https://api.ollagraph.com/v1/dns/lookup — DNS Lookup
+- POST https://api.ollagraph.com/v1/dns/over-https — DNS over HTTPS (forward DNS query through Cloudflare 1.1.1.1 or Google 8.8.8.8)
 - POST https://api.ollagraph.com/v1/intel/asn — Intel ASN
 - POST https://api.ollagraph.com/v1/intel/blacklist — Intel Blacklist
+- POST https://api.ollagraph.com/v1/intel/caa — Intel CAA (which CAs may issue certs for the domain)
 - POST https://api.ollagraph.com/v1/intel/cert-transparency-history — Intel Cert Transparency
+- POST https://api.ollagraph.com/v1/intel/cookies — Intel Cookies (Set-Cookie response headers parsed per RFC 6265)
 - POST https://api.ollagraph.com/v1/intel/dns-propagation — Intel DNS Propagation
+- POST https://api.ollagraph.com/v1/intel/dnssec — Intel DNSSEC (DNSKEY + DS + AD-flag posture)
 - POST https://api.ollagraph.com/v1/intel/email-auth — Intel Email Auth
 - POST https://api.ollagraph.com/v1/intel/geoip — Intel GeoIP
 - POST https://api.ollagraph.com/v1/intel/geoip/bulk — Intel GeoIP Bulk
 - POST https://api.ollagraph.com/v1/intel/headers — Intel Headers
 - POST https://api.ollagraph.com/v1/intel/http-versions — Intel HTTP Versions (HTTP/1.1, HTTP/2 via ALPN, HTTP/3 via Alt-Svc, plus TLS version, cipher, HSTS)
 - POST https://api.ollagraph.com/v1/intel/ip-reputation — Intel IP Reputation
+- POST https://api.ollagraph.com/v1/intel/nameservers — Intel Nameservers (authoritative NS + IPs + /16 diversification flag)
 - POST https://api.ollagraph.com/v1/intel/page — Intel Page
 - POST https://api.ollagraph.com/v1/intel/redirects — Intel Redirects
+- POST https://api.ollagraph.com/v1/intel/reverse-dns — Intel Reverse DNS (PTR lookup)
 - POST https://api.ollagraph.com/v1/intel/robots — Intel Robots
+- POST https://api.ollagraph.com/v1/intel/security-txt — Intel security.txt (RFC 9116 disclosure-policy fetch + parse)
 - POST https://api.ollagraph.com/v1/intel/sitemap — Intel Sitemap
+- POST https://api.ollagraph.com/v1/intel/social-tags — Intel Social Tags (OG + Twitter + canonical + icons + lang)
+- POST https://api.ollagraph.com/v1/intel/sri-audit — Intel SRI Audit (external scripts + Subresource Integrity coverage)
 - POST https://api.ollagraph.com/v1/intel/ssl — Intel SSL
 - POST https://api.ollagraph.com/v1/intel/subdomain-enumerate — Intel Subdomain Enumerate
 - POST https://api.ollagraph.com/v1/intel/uptime — Intel Uptime
+- POST https://api.ollagraph.com/v1/intel/waf — Intel WAF/CDN detection (Cloudflare, Akamai, Fastly, AWS WAF, Imperva, Sucuri, etc.)
+- POST https://api.ollagraph.com/v1/intel/wayback — Intel Wayback (first + most-recent Internet Archive snapshots)
 - GET  https://api.ollagraph.com/v1/intel/whoami — Intel WhoAmI (caller IP, geoIP, ASN, reputation, parsed UA, curated header echo)
 - POST https://api.ollagraph.com/v1/intel/whois — Intel Whois
 - POST https://api.ollagraph.com/v1/verify/email — Email Verify

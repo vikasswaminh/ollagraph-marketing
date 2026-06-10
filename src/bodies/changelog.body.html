@@ -21,6 +21,39 @@
     <div class="container" style="max-width: 760px;">
 
       <article class="cl-entry">
+        <div class="cl-date">2026-06-10</div>
+        <h2 class="cl-title">Web-intelligence push: 11 new Intel endpoints (DNS forensics + HTTP intel).</h2>
+        <div class="cl-tags">
+          <span class="cl-tag new">NEW</span>
+        </div>
+        <div class="cl-body">
+          <p>
+            Two bundled PRs that triple-down on our Intelligence surface &mdash;
+            now the deepest single category at 25 endpoints.
+            All 11 are 1 credit, all free-data-only, no paid feeds in the path.
+          </p>
+          <p><strong>DNS forensics (5 endpoints, all pure <code>dnspython</code>):</strong></p>
+          <ul>
+            <li><code>POST /v1/intel/dnssec</code> &mdash; DNSKEY + DS + AD-flag posture. Reports the three discrete observations rather than a single 'valid/not' bit, because chain validation has too many edge cases (NSEC3, sig expiry, CDS) to compress honestly.</li>
+            <li><code>POST /v1/intel/nameservers</code> &mdash; Authoritative NS + each resolved to A/AAAA, with a <code>diversified</code> flag (false &rarr; all NS sit in one /16, single point of failure).</li>
+            <li><code>POST /v1/intel/caa</code> &mdash; Which CAs may issue certs for the domain. Parses <code>issue</code> / <code>issuewild</code> / <code>iodef</code> + detects the <code>issue ';'</code> deny-all token.</li>
+            <li><code>POST /v1/intel/reverse-dns</code> &mdash; PTR lookup via <code>dns.reversename</code>. Log enrichment, abuse handling.</li>
+            <li><code>POST /v1/dns/over-https</code> &mdash; Forward query through Cloudflare 1.1.1.1 or Google 8.8.8.8 (RFC 8484 JSON). Resolver is a whitelist, no SSRF via the parameter.</li>
+          </ul>
+          <p><strong>HTTP intel (6 endpoints):</strong></p>
+          <ul>
+            <li><code>POST /v1/intel/security-txt</code> &mdash; Fetches RFC 9116 <code>/.well-known/security.txt</code> (or legacy <code>/security.txt</code>), parses fields, flags <code>rfc9116_minimum_compliant</code> (Contact + Expires).</li>
+            <li><code>POST /v1/intel/social-tags</code> &mdash; Open Graph + Twitter Card + canonical + title + description + icons + lang + theme color, in one fetch.</li>
+            <li><code>POST /v1/intel/cookies</code> &mdash; Set-Cookie response headers parsed per RFC 6265. Header-only by design; JS-set cookies need a browser and we document the limit.</li>
+            <li><code>POST /v1/intel/waf</code> &mdash; Detects Cloudflare, Akamai, Fastly, AWS WAF, Imperva, Sucuri, F5, ModSecurity, BunnyCDN, StackPath, DDoS-Guard, Wallarm, Varnish, Barracuda from response headers and (on 403/429/503) body fingerprints.</li>
+            <li><code>POST /v1/intel/sri-audit</code> &mdash; Lists every external <code>&lt;script src&gt;</code> and <code>&lt;link rel=stylesheet|preload&gt;</code> and reports Subresource Integrity coverage. Supply-chain hygiene check.</li>
+            <li><code>POST /v1/intel/wayback</code> &mdash; First and most-recent Wayback Machine snapshots via the Availability API. Surfaces <code>rate_limited</code> cleanly when Wayback throttles.</li>
+          </ul>
+          <p>Catalog is now <strong>105 endpoints</strong> across 8 families. Built from a deep-dive of the open-source MyIP and web-check projects, filtered to free data sources only.</p>
+        </div>
+      </article>
+
+      <article class="cl-entry">
         <div class="cl-date">2026-06-08</div>
         <h2 class="cl-title">Two new Intelligence endpoints: WhoAmI + HTTP Versions.</h2>
         <div class="cl-tags">
@@ -36,7 +69,7 @@
               <strong>New: <code>POST /v1/intel/http-versions</code></strong>. Detect which HTTP versions a URL serves &mdash; HTTP/1.1 (HEAD), HTTP/2 (negotiated via TLS ALPN), and HTTP/3 (advertised via the Alt-Svc header). Returns the negotiated ALPN protocol, TLS version, cipher, and full HSTS posture (max-age, includeSubDomains, preload). Useful for origin audits and CDN readiness checks. 1 credit, refund on error.
             </li>
             <li>
-              The endpoint catalog is now <strong>94 operations</strong> across 8 capability families.
+              The endpoint catalog is now <strong>94 operations</strong> across 8 capability families. (As of 2026-06-10 this is up to 105 — see the newer entry.)
             </li>
           </ul>
         </div>
@@ -152,7 +185,7 @@
             <li>Your credit balance, plan, webhook secret, and usage history are unchanged.</li>
           </ul>
           <p>
-            Eight capability families, 94 endpoints, one MCP server. See the new
+            Eight capability families, 105 endpoints, one MCP server. See the new
             <a href="/capabilities" style="color: var(--accent);">capabilities page</a>
             for the full layout.
           </p>
