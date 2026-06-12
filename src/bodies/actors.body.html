@@ -33,8 +33,8 @@
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">25/75 hybrid tiering</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            ~25% of traffic uses our Camoufox+Chromium pool with residential proxy.
-            ~75% falls through to vetted vendor APIs (Scrapingdog, Apify, Outscraper, ScrapingBee).
+            ~25% of traffic uses our managed browser pool with residential proxy.
+            ~75% routes through vetted partner data APIs.
             One <span class="text-mono">tier</span> field tells you who served the request.
           </p>
         </div>
@@ -79,8 +79,8 @@
             (US, UK, DE, FR, IN, JP, CA, AU) via the <span class="text-mono">marketplace</span> param.
           </p>
           <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Camoufox+BD</span>
-            <span class="tier-pill">Tier 2: Scrapingdog</span>
+            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Render + residential</span>
+            <span class="tier-pill">Tier 2: Specialist provider</span>
           </div>
           <div class="endpoints">
             POST /v1/actors/amazon/search<br>
@@ -102,8 +102,8 @@
             Useful for lead-gen and local SEO audits.
           </p>
           <div class="tier-row">
-            <span class="tier-pill">Tier 1: Camoufox+BD</span>
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 2: Apify yin/yelp-scraper</span>
+            <span class="tier-pill">Tier 1: Render + residential</span>
+            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 2: Specialist provider</span>
           </div>
           <div class="endpoints">
             POST /v1/actors/yelp/search<br>
@@ -121,12 +121,11 @@
           </div>
           <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
             Places search, place detail by URL or CID, reviews up to 50 pages.
-            Google fights tier-1 hard; production calls go to Outscraper's
-            <span class="text-mono">maps/search-v3</span> + <span class="text-mono">reviews-v3</span>.
+            Google fights tier-1 hard; production calls route to a specialist maps provider.
           </p>
           <div class="tier-row">
-            <span class="tier-pill">Tier 1: Camoufox+BD</span>
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 2: Outscraper</span>
+            <span class="tier-pill">Tier 1: Render + residential</span>
+            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 2: Specialist provider</span>
           </div>
           <div class="endpoints">
             POST /v1/actors/gmaps/search<br>
@@ -148,7 +147,7 @@
             experience, skills; company industry, size, employees, followers.
           </p>
           <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Camoufox + li_at pool</span>
+            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Authenticated render</span>
           </div>
           <div class="endpoints">
             POST /v1/actors/linkedin/profile<br>
@@ -191,7 +190,7 @@
             — no proxy needed for most calls.
           </p>
           <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Camoufox direct</span>
+            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Render</span>
           </div>
           <div class="endpoints">
             POST /v1/actors/producthunt/daily &nbsp;<span class="c">{ date?, limit? }</span><br>
@@ -283,7 +282,7 @@
     <span class="k">"image"</span>: <span class="s">"https://m.media-amazon.com/…"</span>
   }],
   <span class="k">"egress_ip"</span>: <span class="s">"176.98.89.244"</span>,
-  <span class="k">"tier"</span>: <span class="s">"qbrowser"</span>
+  <span class="k">"tier"</span>: <span class="s">"render"</span>
 }</pre>
         </div>
       </div>
@@ -293,12 +292,12 @@
   <!-- Why bother -->
   <section class="section" style="padding-top: 24px;">
     <div class="container" style="max-width: 920px;">
-      <h2 class="h-display h-2" style="margin: 0 0 24px; text-align: center;">Why not just use the vendors directly?</h2>
+      <h2 class="h-display h-2" style="margin: 0 0 24px; text-align: center;">Why not wire up the providers yourself?</h2>
       <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">One bill, one auth</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            Scrapingdog + Apify + Outscraper + ScrapingBee + LinkedIn cookies all behind one
+            Every specialist data provider and auth path behind one
             <span class="text-mono">osk_…</span> token. One usage report. One support thread.
           </p>
         </div>
@@ -312,9 +311,9 @@
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">Normalized output</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            Each vendor returns its own quirky JSON. We map them into one schema per actor so
-            your agent code stays clean — Scrapingdog's <span class="text-mono">customer_reviews</span>
-            and Apify's <span class="text-mono">reviewCount</span> both come out as <span class="text-mono">reviews_count</span>.
+            Each provider returns its own quirky JSON. We map them into one schema per actor so
+            your agent code stays clean — one provider's <span class="text-mono">customer_reviews</span>
+            and another's <span class="text-mono">reviewCount</span> both come out as <span class="text-mono">reviews_count</span>.
           </p>
         </div>
         <div class="pcard" style="padding: 18px;">

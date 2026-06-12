@@ -151,11 +151,11 @@ POST /v1/aeo/page-audit                              <span class="what-num">4,21
   ollagraph.request_id=<span class="what-str">"678185b6b19243bbb5bc49b55971b9ea"</span>
   ollagraph.user_id=<span class="what-num">42</span>
 
-  <span class="what-comment"># Auth + credit ledger (asyncpg auto-instrumented)</span>
-  &nbsp;&nbsp;asyncpg.query SELECT users / api_keys                <span class="what-num">3ms</span>
-  &nbsp;&nbsp;asyncpg.query INSERT credit_events                   <span class="what-num">2ms</span>
+  <span class="what-comment"># Auth + credit ledger (database auto-instrumented)</span>
+  &nbsp;&nbsp;db.query  auth + API-key lookup                      <span class="what-num">3ms</span>
+  &nbsp;&nbsp;db.query  credit ledger write                        <span class="what-num">2ms</span>
 
-  <span class="what-comment"># Nine parallel components (manual spans in app/aeo_audit.py)</span>
+  <span class="what-comment"># Nine parallel components (manual spans)</span>
   &nbsp;&nbsp;aeo.component.meta_audit                            <span class="what-num">1,840ms</span>
   &nbsp;&nbsp;aeo.component.schema_coverage                       <span class="what-num">2,103ms</span>
   &nbsp;&nbsp;aeo.component.citation_readiness                    <span class="what-num">1,650ms</span>
@@ -197,8 +197,8 @@ server-timing:           total;dur=<span class="what-num">1247</span>
 x-credits-cost:          <span class="what-num">1</span>
 x-credits-charged:       <span class="what-num">1</span>
 x-credits-balance:       <span class="what-num">9824</span>
-x-tier-used:             <span class="what-str">cloudflare</span>
-x-cascade-path:          <span class="what-str">qbrowser,cloudflare</span>
+x-tier-used:             <span class="what-str">render</span>
+x-cascade-path:          <span class="what-str">direct,render</span>
 x-ratelimit-limit:       <span class="what-num">60</span>
 x-ratelimit-remaining:   <span class="what-num">59</span>
 x-ratelimit-reset:       <span class="what-num">1717610412</span>
@@ -230,7 +230,7 @@ Cache-Control:           <span class="what-str">no-store</span>     <span class=
         <div class="vendor-card">
           <h3><code class="text-mono">x-tier-used</code> &middot; <code class="text-mono">x-cascade-path</code></h3>
           <div class="tier">Ollagraph-specific</div>
-          <p>Which fetch tier served the call &mdash; <code>qbrowser</code>, <code>cloudflare</code>, <code>hyperbrowser</code>, <code>spider</code>, <code>brightdata</code>, <code>direct</code> &mdash; plus the full ordered cascade we tried. Grep your logs by tier to see exactly which path your traffic takes.</p>
+          <p>Which fetch tier served the call &mdash; <code>direct</code>, <code>render</code>, or <code>residential</code> &mdash; plus the full ordered cascade we tried. Grep your logs by tier to see exactly which path your traffic takes.</p>
         </div>
 
         <div class="vendor-card">

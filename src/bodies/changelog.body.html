@@ -90,7 +90,7 @@
               Anthropic, Linear, Vercel, Shopify and other modern marketing sites server-render minimal HTML and hydrate everything client-side. The endpoint was returning one chunk of 9–65 tokens of &ldquo;Loading&hellip;&rdquo; shell text on these pages. It now detects under-rendering, retries through a JS-capable residential pool, and falls back to plain-text extraction when Readability can&rsquo;t find an article block. Same sites now return 3–5 chunks and 1,200&ndash;2,700 tokens. The response carries <code>rendered_with_js</code> and <code>rendered_via</code> for diagnostics.
             </li>
             <li>
-              <strong>New: <code>/v1/convert/ocr</code></strong>. Send a base64 image (PNG / JPEG / WebP / BMP / TIFF), get back text. Optionally bounding boxes and per-region scores. Proxies to a dedicated RapidOCR backend &mdash; CPU-only, no GPU on your side. 1 credit per call.
+              <strong>New: <code>/v1/convert/ocr</code></strong>. Send a base64 image (PNG / JPEG / WebP / BMP / TIFF), get back text. Optionally bounding boxes and per-region scores. Proxies to a dedicated OCR backend &mdash; CPU-only, no GPU on your side. 1 credit per call.
             </li>
             <li>
               <strong>New: <code>/v1/intel/subdomain-enumerate</code></strong>. Certificate-transparency-log enumeration via crt.sh. Returns the deduplicated SAN list for a domain. Passive recon &mdash; no DNS brute force, no paid feeds.
@@ -107,7 +107,7 @@
 
       <article class="cl-entry">
         <div class="cl-date">2026-05-27</div>
-        <h2 class="cl-title">Sprint 1: Bright Data backbone, PDF reader done right, 11 new endpoints.</h2>
+        <h2 class="cl-title">Sprint 1: Residential proxy backbone, PDF reader done right, 11 new endpoints.</h2>
         <div class="cl-tags">
           <span class="cl-tag new">NEW</span>
           <span class="cl-tag changed">UPGRADED</span>
@@ -119,15 +119,15 @@
           </p>
           <ul>
             <li>
-              <strong>Bright Data residential proxy</strong> is now the default outbound for every URL-fetching
+              <strong>Residential proxy</strong> is now the default outbound for every URL-fetching
               endpoint. Targets that were 403-ing us (FT, NYT, Bloomberg-class) now succeed transparently —
-              <code>proxy_used</code> in the response carries the diagnostic. Spider stays as a permanent fallback.
+              <code>proxy_used</code> in the response carries the diagnostic. A second proxy network stays as a permanent fallback.
             </li>
             <li>
               <strong>PDF reader, properly fixed.</strong> <code>/v1/convert/pdf-to-markdown</code> now routes
-              to a Docling-backed convert backend by default. IRS forms that pdfplumber rendered backwards
+              to a layout-aware convert backend by default. IRS forms that the legacy extractor rendered backwards
               (literally — "<code>.epyt ro tnirP</code>" instead of "<code>Print or type</code>") read
-              forwards now. Layout-aware extraction, table detection, OCR fallback for scans. Old pdfplumber
+              forwards now. Layout-aware extraction, table detection, OCR fallback for scans. The legacy
               path still runs as a fallback when the backend's down.
             </li>
             <li>
@@ -150,7 +150,7 @@
             </li>
             <li>
               <strong>Removed <code>/v1/pdf</code></strong> (URL-to-PDF rendering). It hadn't worked since
-              wkhtmltopdf was dropped from Ubuntu 24.04, and the marketing site never advertised it. Different
+              a legacy rendering library was dropped, and the marketing site never advertised it. Different
               product from PDF reading (<code>/v1/convert/pdf-to-markdown</code>) which is live and now better
               than ever.
             </li>
@@ -207,7 +207,7 @@
           <p>
             What does change: success rates go up on hard-to-fetch sites. The
             <code>proxy_used</code> field in responses now reports
-            <code>render_backend</code>, <code>isp</code>, or <code>residential</code>
+            <code>direct</code>, <code>render</code>, or <code>residential</code>
             so you can see which path served your request.
           </p>
         </div>
@@ -243,13 +243,12 @@
         <div class="cl-body">
           <p>
             Five new endpoints under <code>/v1/convert/</code>: PDF, DOCX, XLSX, PPTX,
-            CSV → Markdown. All MIT-licensed open source under the hood (pdfplumber,
-            python-docx, openpyxl, python-pptx). 1 credit per call. 1 MB body cap.
+            CSV → Markdown. All built on MIT-licensed open-source converters. 1 credit per call. 1 MB body cap.
           </p>
           <p>
             Image-only PDFs are flagged in the response (<code>likely_scanned_pdf: true</code>)
-            so your agent knows to use a different path. Layout-aware extraction via
-            Docling now handles forms, multi-column papers, and scanned docs — and
+            so your agent knows to use a different path. Layout-aware extraction
+            now handles forms, multi-column papers, and scanned docs — and
             <code>/v1/convert/ocr</code> covers plain images.
           </p>
         </div>

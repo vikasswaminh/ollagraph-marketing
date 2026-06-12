@@ -232,7 +232,7 @@
       "node": "const res = await fetch(\"https://api.ollagraph.com/v1/scrape/smart\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ url: \"https://example.com/article\", render_js: true }),\n});\nconsole.log(await res.json());"
     },
     "faq": [
-      { "q": "What's the difference between /scrape and /scrape/smart?", "a": "/scrape is a direct fetch. /scrape/smart auto-escalates: direct first, then internal render backend, then Spider.cloud ISP proxy on 401/403/429. Same response shape from all tiers." },
+      { "q": "What's the difference between /scrape and /scrape/smart?", "a": "/scrape is a direct fetch. /scrape/smart auto-escalates: direct first, then internal render backend, then a residential proxy on 401/403/429. Same response shape from all tiers." },
       { "q": "How do I get residential proxy?", "a": "Pass `use_residential_proxy: true` on /scrape or /scrape/smart. It adds a +3 credit surcharge on top of the base 1 credit per call." },
       { "q": "Do you store the HTML I scrape?", "a": "No. We never persist scraped content — only the URL, status, and credit-event metadata for your usage log." }
     ]
@@ -268,7 +268,7 @@
     "faq": [
       { "q": "Can I send the file body inline or only a URL?", "a": "Both. Pass `url` for us to fetch, or `file_b64` for an inline base64 body. Inline is capped at 25 MB; URL fetches at 100 MB." },
       { "q": "Does pdf-to-markdown preserve tables?", "a": "Yes, as markdown table syntax when the layout is recoverable. Complex multi-column layouts with merged cells degrade to plain text rows." },
-      { "q": "What OCR engine backs /convert/ocr?", "a": "Tesseract 5 in our standard tier. Layout-aware OCR (Docling) is in pilot on a separate worker — contact us for access." }
+      { "q": "What OCR engine backs /convert/ocr?", "a": "Built-in OCR in our standard tier. Layout-aware OCR is in pilot on a separate worker — contact us for access." }
     ]
   },
   {

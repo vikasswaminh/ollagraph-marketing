@@ -115,7 +115,7 @@ curl https://api.ollagraph.com/v1/scrape/llm-ready \
   <span style="color:#8aa9ff;">"url"</span>: <span style="color:#c7f751;">"https://en.wikipedia.org/wiki/Web_scraping"</span>,
   <span style="color:#8aa9ff;">"title"</span>: <span style="color:#c7f751;">"Web scraping - Wikipedia"</span>,
   <span style="color:#8aa9ff;">"rendered_with_js"</span>: <span style="color:#ffc879;">false</span>,
-  <span style="color:#8aa9ff;">"rendered_via"</span>:    <span style="color:#c7f751;">"brightdata"</span>,
+  <span style="color:#8aa9ff;">"rendered_via"</span>:    <span style="color:#c7f751;">"direct"</span>,
   <span style="color:#8aa9ff;">"chunks"</span>: [
     {
       <span style="color:#8aa9ff;">"text"</span>:        <span style="color:#c7f751;">"Web scraping is the process of automatically extracting data from websites…"</span>,
@@ -149,21 +149,6 @@ curl https://api.ollagraph.com/v1/scrape/llm-ready \
         </div>
       </div>
 
-      <!-- ─── Stack-honesty row ─── -->
-      <div style="margin-top:48px; max-width: 820px; margin-left: auto; margin-right: auto; text-align:center;">
-        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.18em; color:var(--text-dim); margin-bottom:14px;">UNDER THE HOOD</div>
-        <div style="display:flex; gap:28px; justify-content:center; flex-wrap:wrap; font-size:13px; color:var(--text-muted);">
-          <span>Bright Data residential fallback</span>
-          <span style="color:var(--text-faint);">&middot;</span>
-          <span>Docling layout-aware PDF</span>
-          <span style="color:var(--text-faint);">&middot;</span>
-          <span>RapidOCR for images</span>
-          <span style="color:var(--text-faint);">&middot;</span>
-          <span>FastAPI + Postgres</span>
-          <span style="color:var(--text-faint);">&middot;</span>
-          <span>FastMCP from_openapi</span>
-        </div>
-      </div>
     </div>
   </section>
 
@@ -378,50 +363,6 @@ job = og.crawl.<span class="tok-fn">start</span>(
 </code></pre>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────  COMPARISON  ───────────────────────── -->
-  <section class="section">
-    <div class="container">
-      <div style="text-align:center; max-width:720px; margin:0 auto 56px;">
-        <div class="h-eyebrow" style="margin-bottom:14px;">VS. THE LEGACY STACK</div>
-        <h2 class="h-display h-2" style="margin:0 0 16px;">Most teams cobble together five vendors.<br>You don't have to.</h2>
-        <p style="color:var(--text-muted); font-size:17px; line-height:1.55; margin:0;">
-          The legacy scraping market was built for SEO teams in 2014.
-          Ollagraph is built for agents, observability, and AI infrastructure in 2026.
-        </p>
-      </div>
-
-      <div class="surface" style="overflow:hidden;">
-        <table class="compare-table">
-          <thead>
-            <tr>
-              <th style="text-align:left;">Capability</th>
-              <th><span class="og-col">Ollagraph</span></th>
-              <th>Firecrawl</th>
-              <th>ScrapingBee</th>
-              <th>Bright Data</th>
-              <th>Roll your own</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td>Render-aware crawl</td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="cx">manual</span></td></tr>
-            <tr><td>Structured extraction with JSON schemas</td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">DIY</span></td></tr>
-            <tr><td>Agent traces &amp; replay</td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">DIY</span></td></tr>
-            <tr><td>MCP server visibility</td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td></tr>
-            <tr><td>DNS / SSL / redirect graph</td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cp">partial</span></td><td><span class="cx">DIY</span></td></tr>
-            <tr><td>AEO &amp; AI-crawler audit</td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td></tr>
-            <tr><td>Browser automation pools</td><td><span class="ck"></span></td><td><span class="cp">limited</span></td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="cx">DIY</span></td></tr>
-            <tr><td>Unified billing + auth</td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="ck"></span></td><td><span class="cx">N&nbsp;vendors</span></td></tr>
-            <tr><td>Self-hostable</td><td><span class="ck"></span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="cx">—</span></td><td><span class="ck"></span></td></tr>
-            <tr><td><strong>Effective $/1K pages</strong></td><td><span class="og-col text-mono">$0.48</span></td><td class="text-mono">$1.10</td><td class="text-mono">$0.95</td><td class="text-mono">$1.45</td><td class="text-mono">$2.80*</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p style="text-align:center; font-size:12px; color:var(--text-dim); margin-top:16px;">
-        * Rough estimate including infra, on-call, headless browser ops, and proxy spend for a 100M-page-per-month workload. Compare in detail on the <a href="/pricing" style="color:var(--text-muted); border-bottom:1px solid var(--border-2);">pricing page</a>.
-      </p>
     </div>
   </section>
 
