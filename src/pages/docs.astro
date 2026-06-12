@@ -29,67 +29,138 @@ const TAG_BLURBS: Record<string, string> = {
   Jobs:         'Poll long-running scrape/crawl jobs by id.',
   Account:      'Your user record, usage, current credit balance.',
   Keys:         'API key CRUD. Create, list, revoke from the dashboard or the API.',
-  Billing:      'Stripe checkout sessions, customer portal links, plan info.',
+  Billing:      'Dodo checkout sessions, customer portal links, plan info.',
   Auth:         'Email/password signup + login, password reset, email verification.',
   Verify:       'Email mailbox verifier (MX + SMTP-level checks).',
   Health:       'Liveness probe. Free, unauthenticated.',
   Admin:        'Internal-only admin endpoints. Not part of the public surface.',
 };
 
-type EP = { method: string; path: string; summary: string; href: string };
-const groupsRaw: Record<string, EP[]> = {};
+const schemas = (openapi.components && (openapi.components as any).schemas) || {};
+
+function esc(s: string): string {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Resolve a JSON-schema fragment to a short human type string.
+function typeOf(sch: any): string {
+  if (!sch) return 'any';
+  if (sch.$ref) return String(sch.$ref).split('/').pop() as string;
+  if (sch.anyOf) {
+    const nn = sch.anyOf.filter((x: any) => x && x.type !== 'null');
+    return nn.length ? nn.map(typeOf).join(' | ') : 'any';
+  }
+  if (sch.allOf) return sch.allOf.map(typeOf).join(' & ');
+  if (sch.enum) return sch.enum.map((e: any) => JSON.stringify(e)).join(' | ');
+  if (sch.type === 'array') return typeOf(sch.items) + '[]';
+  if (sch.type) return sch.format ? `${sch.type} (${sch.format})` : sch.type;
+  return 'object';
+}
+
+type Prop = { name: string; type: string; required: boolean; desc: string; def: any };
+function bodyProps(op: any): Prop[] {
+  const ref = op?.requestBody?.content?.['application/json']?.schema?.$ref;
+  if (!ref) return [];
+  const sc = schemas[String(ref).split('/').pop() as string];
+  if (!sc || !sc.properties) return [];
+  const req = new Set<string>(sc.required || []);
+  return Object.entries(sc.properties).map(([name, ps]: [string, any]) => ({
+    name, type: typeOf(ps), required: req.has(name), desc: ps.description || '', def: ps.default,
+  }));
+}
+
+function synthValue(name: string, p: Prop): any {
+  const t = p.type;
+  if (p.def !== undefined && p.def !== null) return p.def;
+  if (/url$/i.test(name) || name === 'url') return 'https://example.com';
+  if (/email/i.test(name)) return 'name@example.com';
+  if (/domain/i.test(name)) return 'example.com';
+  if (t.endsWith('[]')) return [];
+  if (/^(integer|number)/.test(t)) return 0;
+  if (/^boolean/.test(t)) return false;
+  if (t.includes('string')) return 'string';
+  return 'value';
+}
+function synthBody(props: Prop[]): Record<string, any> {
+  const o: Record<string, any> = {};
+  const reqd = props.filter((p) => p.required);
+  (reqd.length ? reqd : props.slice(0, 1)).forEach((p) => { o[p.name] = synthValue(p.name, p); });
+  return o;
+}
+function curlSample(method: string, path: string, body: Record<string, any>): string {
+  const url = 'https://api.ollagraph.com' + path;
+  const lines: string[] = [];
+  const hasBody = method !== 'GET' && Object.keys(body).length > 0;
+  lines.push('curl' + (method === 'GET' ? '' : ' -X ' + method) + ' ' + url + (hasBody || method !== 'GET' ? ' \\' : ''));
+  lines.push('  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"' + (hasBody ? ' \\' : ''));
+  if (hasBody) {
+    lines.push('  -H "Content-Type: application/json" \\');
+    lines.push("  -d '" + JSON.stringify(body) + "'");
+  }
+  return lines.join('\n');
+}
+
+type EP = { method: string; path: string; opId: string; summary: string; desc: string; props: Prop[] };
+const groups: Record<string, EP[]> = {};
 for (const [path, ops] of Object.entries(openapi.paths as Record<string, any>)) {
   for (const [method, op] of Object.entries(ops as Record<string, any>)) {
     const M = method.toUpperCase();
     if (!HTTP_METHODS.includes(M)) continue;
     const tag = (op.tags && op.tags[0]) || 'Other';
-    const summary = String(op.summary || op.operationId || '')
-      .replace(/\s*Endpoint\s*$/i, '')
-      .trim();
-    // FastAPI's Swagger UI anchors use operationId, falling back to the
-    // auto-generated method+path slug when the route doesn't set one.
-    const operationId = op.operationId || (method.toLowerCase() + '_' + path.replace(/[^a-zA-Z0-9]/g, '_'));
-    const href = 'https://api.ollagraph.com/docs#/' + tag + '/' + operationId;
-    (groupsRaw[tag] = groupsRaw[tag] || []).push({ method: M, path, summary, href });
+    const summary = String(op.summary || op.operationId || '').replace(/\s*Endpoint\s*$/i, '').trim();
+    const opId = op.operationId || (method.toLowerCase() + '_' + path.replace(/[^a-zA-Z0-9]/g, '_'));
+    (groups[tag] = groups[tag] || []).push({ method: M, path, opId, summary, desc: op.description || '', props: bodyProps(op) });
   }
 }
-for (const tag of Object.keys(groupsRaw)) {
-  groupsRaw[tag].sort((a, b) => a.path.localeCompare(b.path));
-}
-const tagsOrdered = [
-  ...TAG_ORDER.filter((t) => groupsRaw[t]),
-  ...Object.keys(groupsRaw).filter((t) => !TAG_ORDER.includes(t)),
-];
-const totalOps = Object.values(groupsRaw).reduce((s, eps) => s + eps.length, 0);
+for (const t of Object.keys(groups)) groups[t].sort((a, b) => a.path.localeCompare(b.path));
+const tags = [...TAG_ORDER.filter((t) => groups[t]), ...Object.keys(groups).filter((t) => !TAG_ORDER.includes(t))];
+const totalOps = Object.values(groups).reduce((s, e) => s + e.length, 0);
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-const cardsHtml = tagsOrdered.map((tag) => {
-  const blurb = TAG_BLURBS[tag] || '';
-  const rows = groupsRaw[tag].map((ep) => {
-    const mClass = 'ep-method m-' + ep.method.toLowerCase();
-    return '<a href="' + escapeHtml(ep.href) + '" style="display:block; text-decoration:none;">'
-      + '<div class="ep-row">'
-      + '<span class="' + mClass + '">' + ep.method + '</span>'
-      + '<span class="ep-path">' + escapeHtml(ep.path) + '</span>'
-      + '<span class="ep-sum">' + escapeHtml(ep.summary) + '</span>'
-      + '</div></a>';
+// --- Sidebar ---
+const sidebarHtml = tags.map((tag) => {
+  const links = groups[tag].map((ep) => {
+    const search = `${ep.method} ${ep.path} ${ep.summary}`.toLowerCase();
+    return `<a class="ds-link" href="#${esc(ep.opId)}" data-s="${esc(search)}">`
+      + `<span class="ds-m m-${ep.method.toLowerCase()}">${ep.method}</span>`
+      + `<span class="ds-p">${esc(ep.path)}</span></a>`;
   }).join('');
-  return '<div class="cat-card"><h3>' + escapeHtml(tag) + '</h3>'
-    + (blurb ? '<p class="cat-sub">' + escapeHtml(blurb) + '</p>' : '')
-    + rows
-    + '</div>';
-}).join('\n');
+  return `<div class="ds-group" data-tag="${esc(tag)}"><a class="ds-group-h" href="#tag-${esc(tag.toLowerCase())}">${esc(tag)}</a>${links}</div>`;
+}).join('');
+
+// --- Main content ---
+const contentHtml = tags.map((tag) => {
+  const blurb = TAG_BLURBS[tag] || '';
+  const eps = groups[tag].map((ep) => {
+    const paramRows = ep.props.length
+      ? `<div class="ep-block"><h4>Body parameters</h4><table class="ep-params"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>`
+        + ep.props.map((p) =>
+            `<tr><td><code>${esc(p.name)}</code></td><td class="t-type">${esc(p.type)}</td>`
+            + `<td>${p.required ? '<span class="req">required</span>' : '<span class="opt">optional</span>'}</td>`
+            + `<td>${esc(p.desc)}</td></tr>`).join('')
+        + `</tbody></table></div>`
+      : '';
+    const curl = curlSample(ep.method, ep.path, synthBody(ep.props));
+    return `<article class="ep-detail" id="${esc(ep.opId)}">`
+      + `<div class="ep-h"><span class="ep-method m-${ep.method.toLowerCase()}">${ep.method}</span><code class="ep-fullpath">${esc(ep.path)}</code></div>`
+      + (ep.summary ? `<p class="ep-summary">${esc(ep.summary)}</p>` : '')
+      + (ep.desc ? `<p class="ep-desc">${esc(ep.desc)}</p>` : '')
+      + paramRows
+      + `<div class="ep-block"><h4>Example request</h4><pre class="ep-code"><code>${esc(curl)}</code></pre></div>`
+      + `</article>`;
+  }).join('');
+  return `<section class="ds-section" id="tag-${esc(tag.toLowerCase())}"><div class="ds-section-h"><h2>${esc(tag)}</h2>`
+    + (blurb ? `<p>${esc(blurb)}</p>` : '') + `</div>${eps}</section>`;
+}).join('');
 
 const rendered = bodyHtml
   .replace('<div id="nav-root"></div>', navHtml('docs'))
   .replace('<div id="footer-root"></div>', footerHtml())
   .replace(/__TOTAL_OPS__/g, String(totalOps))
-  .replace('__CATEGORY_CARDS__', cardsHtml);
+  .replace('__SIDEBAR__', sidebarHtml)
+  .replace('__CONTENT__', contentHtml);
 ---
-<BaseLayout title="Docs — Ollagraph" description="Full API reference for Ollagraph. Endpoints across scraping, extraction, conversion, AEO, SEO, and intelligence — one Bearer token, one Postman collection, one MCP server.">
+<BaseLayout title="API Docs — Ollagraph" description="Full API reference for Ollagraph — every endpoint with parameters and examples. One Bearer token, one OpenAPI spec, one MCP server.">
   <Fragment slot="head" set:html={headExtras} />
   <Fragment set:html={rendered} />
+  <script is:inline src="/scripts/docs.js"></script>
 </BaseLayout>

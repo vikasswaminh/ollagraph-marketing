@@ -1,69 +1,59 @@
 
-  <div class="bg-grid"></div>
-  <div class="bg-noise"></div>
   <div id="nav-root"></div>
 
-  <!-- Hero -->
-  <section class="docs-hero">
-    <div class="hero-glow"></div>
-    <div class="container">
-      <div style="max-width: 760px; margin: 0 auto; text-align: center;">
-        <a class="pill" style="margin-bottom: 24px;"><span class="pill-dot"></span>__TOTAL_OPS__ endpoints &middot; auto-generated from the live spec</a>
-        <h1 class="h-display h-1" style="margin: 0 0 18px;">Docs.</h1>
-        <p style="font-size: 17px; color: var(--text-muted); line-height: 1.55; margin: 0;">
-          Every endpoint, grouped by category. Click through to the interactive
-          Swagger UI to try a call, or pull the OpenAPI spec / Postman collection.
-        </p>
-        <div class="docs-toolrow">
-          <a class="primary" href="https://api.ollagraph.com/docs">Open Swagger UI &rarr;</a>
-          <a href="https://api.ollagraph.com/openapi.json">OpenAPI spec (JSON)</a>
-          <a href="/ollagraph.postman_collection.json">Postman collection</a>
-          <a href="/mcp">MCP server</a>
-        </div>
-      </div>
-    </div>
-  </section>
+  <button class="ds-mobile-toggle" id="ds-mobile-toggle" aria-label="Toggle docs navigation">☰ Endpoints</button>
 
-  <!-- Quickstart -->
-  <section class="section">
-    <div class="container">
-      <div style="max-width: 760px; margin: 0 auto;">
-        <div class="h-eyebrow" style="margin-bottom: 12px;">QUICKSTART</div>
-        <h2 class="h-display h-2" style="margin: 0 0 14px;">First call in 30 seconds.</h2>
-        <p style="color: var(--text-muted); font-size: 14.5px; line-height: 1.6; margin: 0 0 18px;">
-          Sign up to get a key (1,000 free credits, no card), then:
-        </p>
-<pre class="quickstart-pre"><code><span class="qs-comment"># 1. Set your key</span>
-<span class="qs-cmd">export</span> OLLAGRAPH_API_KEY=<span style="color:#c7f751">"osk_..."</span>
+  <div class="docs-layout">
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <div class="ds-search-wrap">
+        <input class="ds-search" id="ds-search" type="search" placeholder="Search endpoints…" autocomplete="off" spellcheck="false" />
+      </div>
+      <nav class="ds-nav" id="ds-nav">
+        <a class="ds-top" href="#overview">Overview</a>
+        <a class="ds-top" href="#quickstart">Quickstart</a>
+        <a class="ds-top" href="#auth">Authentication</a>
+        <div class="ds-divider"></div>
+__SIDEBAR__
+      </nav>
+    </aside>
+
+    <main class="docs-main">
+      <section class="ds-section" id="overview">
+        <div class="ds-section-h">
+          <span class="pill" style="margin-bottom: 16px;"><span class="pill-dot"></span>__TOTAL_OPS__ endpoints &middot; generated from the live OpenAPI spec</span>
+          <h1 class="h-display h-2" style="margin: 0 0 12px;">API reference</h1>
+          <p>Base URL <code>https://api.ollagraph.com</code>. Every endpoint takes a Bearer API key and returns JSON. Failed calls are refunded automatically &mdash; you only pay for successful responses, and the exact cost comes back in the response headers.</p>
+          <div class="docs-toolrow" style="justify-content: flex-start; margin-top: 22px;">
+            <a class="primary" href="https://api.ollagraph.com/docs">Swagger &ldquo;try it&rdquo; &rarr;</a>
+            <a href="https://api.ollagraph.com/openapi.json">OpenAPI spec</a>
+            <a href="/ollagraph.postman_collection.json">Postman collection</a>
+            <a href="/mcp">MCP server</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="ds-section" id="quickstart">
+        <div class="ds-section-h"><h2>Quickstart</h2><p>Sign up for a key (1,000 free credits, no card), then make your first call:</p></div>
+        <pre class="ep-code"><code><span class="qs-comment"># 1. Set your key</span>
+<span class="qs-cmd">export</span> OLLAGRAPH_API_KEY=<span class="qs-str">"osk_..."</span>
 
 <span class="qs-comment"># 2. Scrape a page</span>
 <span class="qs-cmd">curl</span> https://api.ollagraph.com/v1/scrape \
-  -H <span style="color:#c7f751">"Authorization: Bearer $OLLAGRAPH_API_KEY"</span> \
-  -H <span style="color:#c7f751">"Content-Type: application/json"</span> \
-  -d <span style="color:#c7f751">'{"url": "https://example.com"}'</span>
+  -H <span class="qs-str">"Authorization: Bearer $OLLAGRAPH_API_KEY"</span> \
+  -H <span class="qs-str">"Content-Type: application/json"</span> \
+  -d <span class="qs-str">'{"url": "https://example.com"}'</span>
 
 <span class="qs-comment"># 3. Or use the MCP server in Claude Desktop / Cursor</span>
 <span class="qs-cmd">pipx run</span> ollagraph-mcp</code></pre>
-      </div>
-    </div>
-  </section>
+      </section>
 
-  <!-- Endpoint catalog -->
-  <section class="section" style="padding-bottom: 80px;">
-    <div class="container">
-      <div style="max-width: 760px; margin: 0 auto 32px;">
-        <div class="h-eyebrow" style="margin-bottom: 12px;">REFERENCE</div>
-        <h2 class="h-display h-2" style="margin: 0 0 12px;">All __TOTAL_OPS__ endpoints.</h2>
-        <p style="color: var(--text-muted); font-size: 14.5px; line-height: 1.6; margin: 0;">
-          Click any endpoint to open it in the live Swagger UI where you can paste
-          your key and try the call inline.
-        </p>
-      </div>
+      <section class="ds-section" id="auth">
+        <div class="ds-section-h"><h2>Authentication</h2></div>
+        <p style="color: var(--text-muted); font-size: 14.5px; line-height: 1.7;">All requests authenticate with a Bearer token: <code>Authorization: Bearer osk_…</code>. Create and revoke keys from your <a href="https://app.ollagraph.com" style="color: var(--accent);">dashboard</a>. The <code>/health</code> endpoint is the only unauthenticated route. Each response carries <code>x-credits-cost</code>, <code>x-credits-charged</code>, and <code>x-credits-balance</code> so you always know what a call cost.</p>
+      </section>
 
-      <div class="docs-grid">
-__CATEGORY_CARDS__
-      </div>
-    </div>
-  </section>
+__CONTENT__
+    </main>
+  </div>
 
   <div id="footer-root"></div>
