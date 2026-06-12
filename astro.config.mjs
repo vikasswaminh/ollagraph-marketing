@@ -8,4 +8,11 @@ export default defineConfig({
   site: "https://ollagraph.com",
   output: "static",
   compressHTML: false,
+  // Prefetch internal links on hover so in-site navigation feels instant.
+  // Works with our hand-written <a> tags (prefetchAll scans all internal links);
+  // cross-origin links (app./api.ollagraph.com) are ignored automatically.
+  prefetch: {
+    prefetchAll: true,
+    defaultStrategy: "hover",
+  },
 });
