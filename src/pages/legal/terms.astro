@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import bodyHtml from '../../bodies/legal-terms.body.html?raw';
+import { navHtml, footerHtml } from '../../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml(""))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="Terms of Service — Ollagraph" description="The terms that govern use of the Ollagraph API.">
+  <Fragment set:html={rendered} />
+</BaseLayout>

@@ -98,6 +98,14 @@ export function footerHtml(): string {
         { label: "Contact",         href: "mailto:hello@ollagraph.com" },
       ],
     },
+    {
+      h: "Legal",
+      items: [
+        { label: "Privacy",         href: "/legal/privacy" },
+        { label: "Terms",           href: "/legal/terms" },
+        { label: "Subprocessors",   href: "/legal/subprocessors" },
+      ],
+    },
   ];
   const colsHTML = cols.map((c) => `
         <div class="footer-col">

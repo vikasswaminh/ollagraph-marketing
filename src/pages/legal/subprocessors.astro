@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import bodyHtml from '../../bodies/legal-subprocessors.body.html?raw';
+import { navHtml, footerHtml } from '../../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml(""))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="Subprocessor list — Ollagraph" description="Every third party that may process Ollagraph customer data, what they handle, and the legal basis.">
+  <Fragment set:html={rendered} />
+</BaseLayout>
