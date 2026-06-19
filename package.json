@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "astro build",
+    "build": "astro build && node scripts/gen-sitemap.mjs",
     "preview": "astro preview",
-    "deploy": "astro build && wrangler pages deploy dist --project-name=ollagraph-marketing --branch=main && node scripts/purge-cache.mjs",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=ollagraph-marketing --branch=main && node scripts/purge-cache.mjs",
     "prebuild": "node scripts/check-bundles.mjs"
   },
   "dependencies": {

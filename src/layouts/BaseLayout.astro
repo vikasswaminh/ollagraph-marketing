@@ -1,8 +1,27 @@
 ---
-interface Props { title: string; description?: string; canonical?: string }
-const { title, description = "Web infrastructure for AI agents. 105 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical } = Astro.props;
+interface Props { title: string; description?: string; canonical?: string; jsonLd?: object[] }
+const { title, description = "Web infrastructure for AI agents. 209 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical, jsonLd = [] } = Astro.props;
 const ogImage = new URL("/og-image.svg", Astro.site || "https://ollagraph.com").toString();
 const canonicalUrl = canonical || Astro.url.href;
+
+// Sitewide structured data (every page). Page-specific schema (SoftwareApplication,
+// FAQPage, Article, HowTo, BreadcrumbList) is passed in via the `jsonLd` prop.
+const orgLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Ollagraph",
+  url: "https://ollagraph.com",
+  logo: "https://ollagraph.com/favicon.svg",
+  description: "Web infrastructure for AI agents — fetch, extract, audit, and reason about the live web through one API.",
+  email: "hello@ollagraph.com",
+};
+const websiteLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Ollagraph",
+  url: "https://ollagraph.com",
+};
+const allJsonLd = [orgLd, websiteLd, ...jsonLd];
 ---
 <!doctype html>
 <html lang="en">
@@ -38,6 +57,11 @@ const canonicalUrl = canonical || Astro.url.href;
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-tight-latin.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin.woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
+
+    <!-- Structured data (JSON-LD): Organization + WebSite sitewide, plus any page-specific schema -->
+    {allJsonLd.map((obj) => (
+      <script type="application/ld+json" set:html={JSON.stringify(obj)} />
+    ))}
     <slot name="head" />
   </head>
   <body>
