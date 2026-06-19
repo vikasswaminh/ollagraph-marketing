@@ -1,0 +1,212 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+const openExample = `# Open a persistent, LLM-driven browser session.
+# Free to open — you only pay per action (goto/act/observe/extract).
+curl -X POST https://api.ollagraph.com/v1/stagehand \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{}'
+# -> { "stagehand_session_id": "sh_...", "llm_provider": "...",
+#      "model_name": "...", "expires_at": "..." }
+# Bring your own model instead (held in memory for the session only):
+#   {"llm_provider": "openai", "model_name": "...", "llm_api_key": "sk-..."}`;
+
+const actExample = `# Drive the session in plain English — no selectors to maintain.
+SID=sh_...
+# 1) Navigate
+curl -X POST https://api.ollagraph.com/v1/stagehand/$SID/goto \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"url": "https://example.com/search"}'
+
+# 2) Act — the model resolves the instruction to a real element + action
+curl -X POST https://api.ollagraph.com/v1/stagehand/$SID/act \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"instruction": "type the phrase wireless headphones into the search box and press Enter"}'
+# -> { "ok": true, "success": true, "message": "<selector used>", "url_after": "..." }`;
+
+const extractExample = `# Observe what is actionable, then extract structured data.
+SID=sh_...
+# List candidate actions on the current page (optionally focus with an instruction)
+curl -X POST https://api.ollagraph.com/v1/stagehand/$SID/observe \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"instruction": "find the add-to-cart buttons"}'
+# -> { "ok": true, "candidates": [{"description": "...", "method": "click", "selector": "..."}] }
+
+# Pull structured data, coerced to your JSON Schema
+curl -X POST https://api.ollagraph.com/v1/stagehand/$SID/extract \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{
+    "instruction": "extract the product name and price",
+    "schema": {"type": "object", "properties": {
+      "name": {"type": "string"}, "price": {"type": "number"}}}
+  }'`;
+
+const macroExample = `# Prefer deterministic JSON macros? Drive a multi-step flow in one shot.
+curl -X POST https://api.ollagraph.com/v1/scrape \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{
+    "url": "https://example.com/login",
+    "stealth": true,
+    "format": "markdown",
+    "actions": [
+      {"type": "type", "selector": "#email", "text": "you@example.com"},
+      {"type": "type", "selector": "#password", "text": "..."},
+      {"type": "click", "selector": "button[type=submit]"},
+      {"type": "wait", "ms": 2500},
+      {"type": "click", "selector": ".load-more"},
+      {"type": "wait", "ms": 1500}
+    ]
+  }'`;
+
+const sessionExample = `# Raw persistent session: render + run a script across calls, keeping cookies.
+SID=$(curl -s -X POST https://api.ollagraph.com/v1/session \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" | jq -r .session_id)
+
+curl -X POST https://api.ollagraph.com/v1/session/$SID/render \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"url": "https://example.com/dashboard"}'
+
+# Reuse the same authenticated context as many times as you need, then close it.
+curl -X DELETE https://api.ollagraph.com/v1/session/$SID \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"`;
+
+const pillars = [
+  { title: "Natural-language actions", body: "Tell the session what to do in plain English — goto, act, observe, extract. The model resolves each instruction to a concrete element and action (click, type, select, scroll), so a copy change on the target site does not break your script. No selectors to babysit." },
+  { title: "Persistent agent sessions", body: "Open a session once and drive it across many calls. Cookies, storage, and the logged-in context stay alive between steps, so multi-page journeys — log in, navigate, act, extract — run as one coherent flow instead of disconnected requests." },
+  { title: "JSON action macros too", body: "When you already know the page, skip the model and send a deterministic JSON array of click / type / wait / scroll steps to the scraping endpoint. Same hosted browser, fully reproducible, zero per-step model latency. Mix and match per task." },
+  { title: "No Playwright fleet to run", body: "You write instructions, not browser code. There is no headless Chrome to deploy, no Puppeteer or Playwright scripts to maintain, no stealth tuning — the hosted browser handles fingerprinting and rendering. Bring a managed model (no key required), or bring your own." },
+];
+
+const flows = [
+  { title: "Search, then extract results", steps: "goto the search page, act to type a query and submit, observe the result cards, then extract a structured list — name, price, URL — coerced to your JSON Schema. One session, four readable calls." },
+  { title: "Multi-step authenticated journey", steps: "Open a session, act through the login form, navigate to the protected page, and extract — all on one persistent context. The cookies set during login carry forward to every later step." },
+  { title: "Deterministic macro for known pages", steps: "When the DOM is stable, send a JSON action macro to the scraping endpoint: type credentials, click submit, wait, click load-more, return markdown. No model in the loop, fully reproducible." },
+  { title: "Walk an infinite-scroll feed", steps: "Loop act instructions like “scroll down and load more results” until the feed stops growing, then extract everything rendered so far. The session keeps the full page state between scrolls." },
+  { title: "Discover before you act", steps: "Not sure what is on the page? Call observe to list every actionable element with a description, method, and selector — then decide which act instructions to issue next. Great for building resilient agent loops." },
+  { title: "Raw persistent browser control", steps: "Need lower-level control? Open a session, render URLs and run scripts inside it across calls while cookies persist, then delete it when done. See the browser API for the full session surface." },
+];
+
+const faqs = [
+  { q: "What is the difference between this, the scraping API, and the browser API?", a: "This automation page is about multi-step, agent-style flows: a persistent session you drive with natural-language instructions (goto, act, observe, extract) or deterministic JSON action macros. The scraping API is single-shot — send a URL, optionally a JSON action macro, get clean data back in one call. The browser API exposes the raw persistent-session surface: open a session, render and run scripts inside it across calls, then close it. Use automation when the task is a journey across several pages; use scraping when it is one page; use the browser API when you want low-level session control." },
+  { q: "Do I need to write CSS selectors?", a: "No. With act and extract you describe what you want in plain English and the model resolves it to a precise element and action under the hood. The response from act even returns the selector it used, so you can inspect or pin it later. If you prefer to be explicit, the JSON action macro on the scraping endpoint takes selectors directly." },
+  { q: "Which model powers the natural-language actions?", a: "By default a managed model handles act, observe, and extract with no key required from you. If you would rather use your own provider, pass your provider, model name, and key when you open the session, or point at any OpenAI-compatible base URL. Bring-your-own keys are held in memory for the life of the session only and are never logged or persisted." },
+  { q: "Are sessions persistent across calls?", a: "Yes. Opening a session is free; you are billed per action (goto, act, observe, extract, screenshot). The session keeps cookies, storage, and the logged-in context alive between calls, so a login on step one carries through to an extract on step five. Each session has an idle timeout that you can set when you open it, and a keepalive call resets the timer." },
+  { q: "How do I keep a session from being reaped?", a: "Set an idle timeout when you open the session, and send a keepalive call to reset the idle timer during long pauses. When you are finished, delete the session to free its browser context immediately rather than waiting for the timeout." },
+  { q: "Can I get reproducible, model-free automation?", a: "Yes. Send a JSON action macro to the scraping endpoint: an ordered array of click, type, wait, and scroll steps that runs exactly the same way every time, with no model in the loop and no per-step inference latency. Use natural-language actions when the page changes often; use macros when the DOM is stable and you want determinism." },
+  { q: "What does observe return, and when should I use it?", a: "Observe lists the actionable elements on the current page — each with a human-readable description, the method (such as click or type), and a selector. It is the discovery step in an agent loop: observe first to see what is possible, then issue the act instructions that make sense. You can pass an optional instruction to focus the search, or omit it to list everything." },
+  { q: "Can I extract data against a fixed shape?", a: "Yes. Extract takes a plain-English instruction and an optional JSON Schema. When you pass a schema, the result is coerced and validated against it, so you get typed fields like name and price instead of free-form text. Omit the schema for quick free-form extraction." },
+  { q: "How is this billed?", a: "Opening a session is free. Each goto, act, observe, extract, and screenshot counts as a single metered action; keepalive and closing the session are free. JSON action macros on the scraping endpoint are billed as the scrape call that carries them. Failed calls are auto-refunded, so a timeout or a missed element never costs you. See pricing for the current credit packs and the free monthly grant." },
+];
+
+const url = "https://ollagraph.com/automation/";
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebPage", name: "Browser automation API — Ollagraph", url, description: "Drive a real browser through multi-step, agent-style flows. Natural-language actions, persistent sessions, and deterministic JSON action macros — no Playwright fleet to run." },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Browser automation API", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout
+  title="Browser automation API — natural-language actions, persistent sessions — Ollagraph"
+  description="Drive a real browser through multi-step, agent-style flows. Natural-language goto/act/observe/extract, persistent sessions, and deterministic JSON action macros — no Playwright fleet to run."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('automation')} />
+
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:760px;">
+      <span class="badge badge-mute" style="margin-bottom:16px;">AUTOMATION</span>
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Drive a browser like an agent.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        Open a persistent session and steer it in plain English — navigate, act, observe, extract — or send a deterministic JSON action macro when you already know the page. Multi-step journeys across login walls and dynamic apps, without a single line of Playwright.
+      </p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:24px;">
+        <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
+        For single-page extraction see <a href="/scrape" style="color:var(--accent);">the scraping API</a>; for raw headless-session control see <a href="/browser" style="color:var(--accent);">the browser API</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {pillars.map((p) => (
+          <div class="pcard">
+            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{p.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Drive it four ways.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Open a session, act in plain English, observe, extract — or fall back to deterministic macros and raw session control.</p>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Open a session</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/stagehand</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{openExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Navigate &amp; act</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/stagehand/{'{session_id}'}/act</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{actExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Observe &amp; extract</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/stagehand/{'{session_id}'}/extract</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{extractExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Deterministic JSON macro</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{macroExample}</code></pre></div>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>Raw persistent session</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/session/{'{session_id}'}/render</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{sessionExample}</code></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Flows that ship today.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Patterns customers run in production — each is a handful of readable calls.</p>
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {flows.map((f) => (
+          <div class="pcard">
+            <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 8px;">{f.title}</h3>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{f.steps}</p>
+          </div>
+        ))}
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; text-align:center; margin-top:20px;">
+        Working through a login wall? See the <a href="/recipes/scrape-pages-behind-login" style="color:var(--accent);">behind-a-login recipe</a>, browse all <a href="/recipes" style="color:var(--accent);">recipes</a>, or wire results to your stack with <a href="/webhooks" style="color:var(--accent);">webhooks</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Automation questions</h2>
+    {faqs.map((f) => (
+      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+    ))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Skip the headless-browser fleet.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">1,000 free credits, one bearer token, failed calls auto-refund. Sessions are free to open — you only pay per action.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/capabilities">See all 209 endpoints</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

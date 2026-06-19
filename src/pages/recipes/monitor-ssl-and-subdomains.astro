@@ -1,0 +1,161 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Is monitoring SSL certificates and subdomains legal?", a: "Reading public Certificate Transparency logs, querying public DNS, and checking the TLS handshake of a domain are all passive, public-data operations — no different from what any browser or CA does. The defensive posture this recipe describes is monitoring domains you own or are explicitly authorized to assess. Ollagraph is built for that use: keep your scope to assets under your control or your written authorization, and you stay firmly on the right side of the line." },
+  { q: "What is certificate-transparency monitoring?", a: "Certificate Transparency (CT) is a public, append-only log of nearly every TLS certificate issued by a participating CA. Monitoring CT means watching those logs for certificates issued under your domain. Because a certificate's subject-alternative-name list often reveals hostnames before they go live, CT is one of the fastest ways to catch both a forgotten subdomain and a certificate you didn't authorize." },
+  { q: "How do I discover all the subdomains of a domain I own?", a: "The passive, no-DNS-brute-force way is to read Certificate Transparency logs for every certificate ever issued under the apex and deduplicate the SAN entries. Ollagraph's POST /v1/intel/subdomain-enumerate does exactly this — it returns the deduplicated hostname list pulled from CT. Because CT is historical, some entries may be stale; pair the list with a resolver if you only want hosts that currently answer." },
+  { q: "How much advance warning do I get before a certificate expires?", a: "That depends on your own cadence, not on us. POST /v1/intel/ssl returns the live certificate's validity window, so if you poll daily you can alert at any threshold you choose — 30, 14, and 7 days out are common. The point of automating it is that nobody has to remember the renewal date; your pipeline raises the alarm on a fixed schedule." },
+  { q: "What does a CAA record actually protect against?", a: "A CAA record names which certificate authorities are allowed to issue certificates for your domain. With CAA in place, a CA that isn't on your list is supposed to refuse issuance — which shrinks the set of parties who can mint a valid certificate for you. POST /v1/intel/caa shows your current CAA posture, including the absence case, where any CA may issue by default." },
+  { q: "Does Ollagraph use any paid threat-intelligence feeds for this?", a: "No. Every endpoint in this recipe runs on free, public data — Certificate Transparency logs, public DNS resolvers, the live TLS handshake, and DNSSEC records published in the zone. There is no paid breach database, no port scanning, and no third-party threat-intel subscription behind any of it. You are observing public infrastructure facts about domains you are authorized to assess." },
+  { q: "How much does domain monitoring cost on Ollagraph?", a: "Each intelligence call costs one credit, and failed calls are auto-refunded so you never pay for an error. A daily sweep across SSL, CT history, subdomain enumeration, DNS propagation, CAA, DNSSEC, and nameservers for a single domain is a handful of credits a day. Exact pack pricing and the free grant live on the pricing page." },
+  { q: "Can I tell if my DNSSEC or nameserver setup is fragile?", a: "Yes. POST /v1/intel/dnssec surfaces the three discrete DNSSEC observations — whether you publish DNSKEY records, whether the parent has delegated a DS record, and whether a fresh resolver set the AD bit — rather than collapsing them into one misleading verdict. POST /v1/intel/nameservers returns your authoritative nameservers plus a diversified flag that goes false when every nameserver sits in the same network block, a single point of failure worth knowing about." },
+];
+---
+<Article
+  title="How to monitor SSL certificates and discover subdomains in 2026"
+  description="Track certificate expiry, certificate-transparency history, and the live subdomain attack surface for any domain via API."
+  date="2026-06-18"
+  readingTime={11}
+  tags={["security", "SSL", "attack surface"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What defensive domain monitoring means in 2026</h2>
+  <p>Monitoring SSL certificates and subdomains means continuously watching the public facts about a domain you own — its live TLS certificate, every certificate ever issued for it, the subdomains those certificates reveal, and the DNS posture underneath — so you find a forgotten host, an expiring certificate, or an unauthorized issuance before an attacker or an outage does. In 2026, the practical way to do this is a handful of API calls on a daily schedule against the public record.</p>
+
+  <p>That paragraph is the short answer. The rest of this page is for the security and platform engineers who have to actually run the monitoring. The framing throughout is defensive: you are watching domains you own or are explicitly authorized to assess, using only public data. No breach databases, no port scanning, no offensive tooling — just the certificate logs, DNS, and TLS handshakes that the whole internet can already read.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>Most organizations do not have a clean inventory of their own external attack surface. Domains accrete over years. A marketing team spins up <code>promo.example.com</code> for a campaign, requests a certificate, ships it, and forgets it. A staging host gets a real certificate and never gets torn down. An acquired company's subdomains quietly fold into yours. Each of those is a live certificate and a live hostname that nobody is watching.</p>
+
+  <p>The reader of this page usually wants three concrete outcomes. First, never be surprised by an expiring certificate — the kind of outage that takes down a checkout page at 2am and burns an on-call engineer's weekend. Second, know every subdomain that exists under your apex, including the ones no spreadsheet remembers. Third, get an early signal when a certificate is issued for your domain that you did not request, which is one of the clearest fingerprints of a misconfiguration or an impersonation attempt.</p>
+
+  <p>The good news is that all three signals are public. Certificate Transparency makes nearly every issued certificate observable. DNS is public by design. The TLS handshake is public to anyone who connects. The job is not to obtain secret data — it is to watch the public record consistently, on a schedule, so the signal reaches a human while it still matters.</p>
+
+  <h2>Why Certificate Transparency is the backbone</h2>
+  <p>Certificate Transparency is an append-only public log system that participating certificate authorities write to when they issue a certificate. It was built so that mis-issuance becomes detectable: if a CA issues a certificate for your domain, that fact lands in a public log whether or not you asked for it. For a defender, CT is a gift. It turns the question "what certificates exist for my domain?" from an unknowable into a query.</p>
+
+  <p>Two of the endpoints in this recipe lean on CT. <code>/v1/intel/cert-transparency-history</code> returns the deduplicated set of certificates ever issued for your domain or any subdomain, sorted newest-first. <code>/v1/intel/subdomain-enumerate</code> takes the same CT data and distills it into a clean list of hostnames by deduplicating the subject-alternative-name entries across every certificate. Both are passive: no DNS brute-forcing, no guessing, no paid feed — just reading the public log.</p>
+
+  <p>There is one honest caveat with CT-based enumeration. Because the log is historical, a hostname that appears in an old certificate may no longer resolve. CT tells you what was certified, not what is live right now. If you need a live-only view, pair the enumerated list with a resolver and drop the hosts that no longer answer. For attack-surface awareness, though, the historical list is often exactly what you want — a decommissioned host with a dangling DNS record is its own category of risk.</p>
+
+  <h2>Where Ollagraph fits</h2>
+  <p>You can build all of this yourself. CT logs are public, DNS is queryable, and openssl will hand you a certificate. The reason teams reach for an API is the same reason they reach for one anywhere else: they want the answer, not the plumbing. Ollagraph packages each of these checks behind a single bearer token and a one-line request body, returns canonical JSON, and bills one credit per call with auto-refund on failure.</p>
+
+  <p>The seven endpoints below are the defensive intelligence surface for a domain. They all take a single <code>domain</code> field (two accept an optional second parameter), they all run on free public data, and they all return structured JSON you can diff against yesterday's snapshot. Strung together on a daily schedule, they are a complete external-posture monitor for the assets you own. For the broader picture of what the intelligence surface covers, see the <a href="/intelligence">intelligence overview</a> and the <a href="/for-intel">security and intel use cases</a>.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Seven calls, real curl, real request shapes. Every body is a single JSON object with a <code>domain</code> key. Run them against a domain you own and you have a posture snapshot in under five minutes.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab a key from the dashboard, and export it for the session. Every call authenticates with the same bearer token.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Check the live certificate</h3>
+  <p>Start with the certificate the domain is serving right now. <code>/v1/intel/ssl</code> performs the TLS handshake and returns the live certificate details — the validity window, the issuer, the subject, and the chain. This is the call you poll daily so an expiry never surprises you.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/ssl \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <p>Wire the validity window into a threshold check on your side — alert at 30 days, escalate at 7 — and the renewal calendar takes care of itself. The exact response fields are documented in the live spec; treat the validity dates and issuer as the load-bearing ones for monitoring.</p>
+
+  <h3>Step 3. Pull the certificate-transparency history</h3>
+  <p>Now widen the lens from the live certificate to every certificate ever issued. <code>/v1/intel/cert-transparency-history</code> reads the public CT logs and returns a deduplicated, newest-first list of certificates for your domain and its subdomains. A certificate you don't recognize at the top of the list is the signal you came for.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/cert-transparency-history \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <p>Each certificate entry carries the hostnames it covers in its <code>dns_names</code> list, which is what makes CT history doubly useful — it is both your issuance record and your first draft of a subdomain inventory. Snapshot the result daily and diff it; a new entry that appeared overnight is worth a human glance.</p>
+
+  <h3>Step 4. Enumerate the subdomains</h3>
+  <p>When you want the hostname inventory specifically, rather than the raw certificate list, use <code>/v1/intel/subdomain-enumerate</code>. It pulls the same CT data and returns the deduplicated SAN list as a clean set of hostnames — your attack surface, as recorded by the certificate logs.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/subdomain-enumerate \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com",
+    "max_results": 500
+  &#125;'</code></pre>
+
+  <p>The optional <code>max_results</code> field caps the return; most organizations fit comfortably under the default of 500, and very large estates can raise it. Remember the historical caveat from earlier: this is what was certified, not what currently resolves. Feed the list into a resolver if you need a live-only view, or keep the full list if dangling records are part of what you are hunting.</p>
+
+  <h3>Step 5. Confirm DNS is consistent everywhere</h3>
+  <p>A certificate is only as good as the DNS pointing at it. <code>/v1/intel/dns-propagation</code> queries the same record across multiple public resolvers and shows whether they agree — which catches a half-finished migration, a stale record on one resolver, or a propagation lag before your users hit it.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/dns-propagation \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com",
+    "record_type": "A"
+  &#125;'</code></pre>
+
+  <p>The optional <code>record_type</code> field defaults to <code>A</code> and also accepts <code>AAAA</code>, <code>MX</code>, <code>TXT</code>, <code>NS</code>, <code>CNAME</code>, and <code>SOA</code>. Run it for the record types that matter to your service and alert when the resolvers disagree.</p>
+
+  <h3>Step 6. Audit who is allowed to issue certificates</h3>
+  <p>CAA records are your standing instruction to the certificate authorities of the world about who may issue for you. <code>/v1/intel/caa</code> returns your current CAA posture: which CAs may issue, which may issue wildcards, and where incidents should be reported.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/caa \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <p>The absence of any CAA record is itself a finding: it means the open default applies and any CA may issue for your domain. Pairing a tight CAA policy with the CT monitoring from Step 3 gives you both a fence and a tripwire — CAA narrows who can issue, and CT tells you if someone did anyway.</p>
+
+  <h3>Step 7. Check DNSSEC and nameserver resilience</h3>
+  <p>Two final posture checks round out the sweep. <code>/v1/intel/dnssec</code> reports the three discrete DNSSEC observations — whether you publish <code>DNSKEY</code> records, whether the parent zone has delegated a <code>DS</code> record, and whether a fresh resolver set the authenticated-data bit — rather than collapsing a genuinely multi-dimensional state into one misleading pass/fail.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/dnssec \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <p>Then <code>/v1/intel/nameservers</code> returns your authoritative nameservers and the IPv4/IPv6 each one resolves to, plus a <code>diversified</code> boolean. When that flag is false, every nameserver sits in the same network block — a single-provider configuration that becomes a single point of failure the day that provider has a bad afternoon.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/nameservers \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <h2>Stitching it into a daily monitor</h2>
+  <p>The seven calls above are the raw material. The product is what you build on top of them: a scheduled job that runs the sweep once a day, stores each response with a timestamp, and diffs against the previous run. The diff is where the value lives. A new certificate in the CT history, a subdomain that wasn't in yesterday's enumeration, an SSL validity window that crossed your 30-day threshold, a resolver that fell out of agreement — each of those is an event your job can turn into an alert.</p>
+
+  <p>Keep the architecture boring. Land each raw JSON response in a column rather than over-normalizing on the first pass, so you can re-derive new alerts later without re-querying. Key your storage on <code>(domain, endpoint, captured_at)</code> and you have a clean history table you can chart and audit. Because every call is one credit with auto-refund on failure, the whole daily sweep for a single domain costs a handful of credits — cheap enough to run across every domain in your estate without a budget conversation.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a platform-security engineer at a company with roughly forty external domains accumulated across a decade and two acquisitions. There is no authoritative inventory; the closest thing is a spreadsheet last updated eighteen months ago. The CISO wants a monthly attack-surface report and an alert the moment a certificate is issued that nobody requested.</p>
+
+  <p>The engineer wires the seven-call sweep into a nightly job, one pass per apex domain. On the first run, the subdomain enumeration surfaces nineteen hostnames that weren't on the spreadsheet — three of them staging environments with live certificates and no owner. The CT history flags a certificate issued the prior week for a marketing subdomain the security team had never heard of, which turns out to be a legitimate-but-unannounced campaign launch. The nameserver check returns <code>diversified: false</code> for two of the acquired domains, both still on a single provider. None of this required a single packet of offensive traffic — it all came out of the public record, read consistently for the first time.</p>
+
+  <p>Within a week the engineer has a diff-based alerting pipeline and a living inventory. The monthly report writes itself from the stored snapshots, and the unauthorized-issuance tripwire the CISO asked for is just the CT-history diff with a notification on the end.</p>
+
+  <h2>Staying defensive and in scope</h2>
+  <p>One principle keeps this work clean: only monitor domains you own or are explicitly authorized to assess. Everything in this recipe reads public data, but the intent matters. Running a daily posture sweep on your own estate, or on a client's estate under a written engagement, is textbook defensive security. Pointing the same tools at infrastructure you have no relationship with is a different activity with a different risk profile, and it is not what this surface is for.</p>
+
+  <p>Ollagraph's intelligence endpoints are deliberately built around this boundary. There is no port scanning, no breach-database lookup, no paid threat-intel feed, and no mass-enumeration tooling anywhere in the surface — only observations of the public infrastructure record. That constraint is a feature: it keeps the product on the defensive side of the line and keeps your usage easy to justify to a security review.</p>
+
+  <h2>Pairing it with the rest of the stack</h2>
+  <p>Domain monitoring rarely lives alone. Teams routinely pair this sweep with <a href="/recipes/enrich-leads-from-domain">domain enrichment</a> when they want context on an unfamiliar host that turned up in the CT logs, and they lean on the wider <a href="/capabilities">capabilities</a> surface when an investigation needs page-level fetches alongside the infrastructure facts. Browse the full <a href="/recipes">recipe library</a> for adjacent playbooks, and read the <a href="/blog">blog</a> for deeper write-ups on web-data and security workflows.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, pick one domain you own, and run the Step 2 SSL call to confirm the pipeline works end to end. Then wrap the seven calls in a nightly job, store each response, and add a diff. Most teams have a working internal monitor inside a day and a production attack-surface dashboard inside a week.</p>
+
+  <p>Read the <a href="/docs">docs</a> for the full response shapes, confirm the request fields against the live spec, and ship the sweep.</p>
+</Article>

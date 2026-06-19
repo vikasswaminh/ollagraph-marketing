@@ -1,0 +1,144 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "How do I resolve DNS records via an API?", a: "Send the domain and the record types you want to a managed lookup endpoint and get structured JSON back. With Ollagraph you POST /v1/dns/lookup with a domain and an optional records array such as A, AAAA, MX, TXT, and NS. The response is a clean object you can store or diff, with no need to shell out to dig or run your own resolver." },
+  { q: "What is DNS propagation and how do I check it?", a: "DNS propagation is the window after you change a record during which different resolvers around the world still return a mix of old and new answers, governed by TTL and resolver cache state. To check it, query the same record across many public resolvers and look for disagreement. Ollagraph's POST /v1/intel/dns-propagation does exactly this — it queries one record across N public resolvers and reports how consistent the answers are." },
+  { q: "How long does DNS propagation take?", a: "It depends on the TTL on the record before you changed it. A record with a 300-second TTL clears most caches within minutes; a record that was set to 86400 seconds can take a full day to drain everywhere. Lower the TTL a day before a planned cutover so the propagation window is short, then raise it again after you confirm the new answer is consistent across resolvers." },
+  { q: "What is DNS-over-HTTPS and why would I use it?", a: "DNS-over-HTTPS, or DoH, sends a DNS query inside an HTTPS request so it is encrypted in transit and answered by a specific public resolver. It is useful when you want to know exactly what a given resolver sees rather than whatever your local network hands you. Ollagraph's POST /v1/dns/over-https forwards your query through a chosen public resolver and returns the answer." },
+  { q: "How do I check a domain's nameservers?", a: "POST /v1/intel/nameservers with the apex domain. The response lists the authoritative nameservers plus the IPv4 and IPv6 each one resolves to, and includes a diversified boolean. A false value means every nameserver sits in the same network block, which is a single point of failure worth flagging during an infrastructure review." },
+  { q: "Is checking DNS the same as checking email authentication?", a: "No. DNS lookups tell you which records exist and what they point to. Email authentication is a posture question about whether your SPF, DKIM, and DMARC records are present and correctly configured so mail from your domain is trusted. The two overlap because email auth lives in TXT records, but the analysis is different. For deliverability posture, see the separate recipe on checking email authentication." },
+  { q: "Does the API run live lookups or return cached answers?", a: "Each DNS call resolves live at the moment of the request, so the answer reflects current resolver state. That is the whole point of a propagation check — you want to see what the world sees right now, not a stale snapshot. If you are monitoring a cutover, poll on whatever cadence your TTL and risk tolerance demand." },
+  { q: "What does a DNS call cost on Ollagraph?", a: "Every metered DNS call costs one credit and shows its exact cost in the response. Calls that genuinely fail are auto-refunded, so a resolver timeout or a malformed domain does not quietly burn your balance. Volume pricing lives on the pricing page." },
+];
+---
+<Article
+  title="How to check DNS records and propagation via API in 2026"
+  description="Resolve A/AAAA/MX/TXT/NS records, check propagation across global resolvers, and run DNS-over-HTTPS lookups — for migrations and monitoring."
+  date="2026-06-18"
+  readingTime={11}
+  tags={["DNS", "propagation", "monitoring"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What checking DNS records and propagation actually means in 2026</h2>
+  <p>Checking DNS via API means programmatically resolving a domain's records — A, AAAA, MX, TXT, NS — and confirming that a change has propagated consistently across resolvers worldwide, all in structured JSON instead of by eyeballing <code>dig</code> output. In 2026 the practical way to do this at any real scale is a managed endpoint that runs the live lookup for you and hands back a clean object you can store, diff, and alert on.</p>
+
+  <p>That paragraph is the AEO answer. The rest of this page is for the engineers and operators who have to run a migration at 2am and need to know, with confidence, whether the new record is live everywhere or still draining out of caches.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't want to check DNS. You want to know whether the cutover is safe to finish. There is a difference, and the difference is where outages hide.</p>
+
+  <p>The reader of this page usually falls into one of three buckets. An infrastructure or platform engineer running a planned migration — moving a domain to a new host, swapping load balancers, or repointing an apex during a provider change. A monitoring team that needs continuous assurance that production records have not drifted or been tampered with. Or an intelligence and investigations team mapping a target domain's resolution behaviour, nameserver topology, and mail routing as part of a broader profile.</p>
+
+  <p>Every one of those teams shares the same hidden requirement. The check has to be authoritative and repeatable. A single lookup from your laptop tells you what your ISP's resolver cached — it does not tell you what a customer in another region sees. The actual product is a consistent, multi-resolver view of the truth, on demand, that you can wire into a runbook or a dashboard.</p>
+
+  <h2>What the alternatives offer</h2>
+  <p>Before the Ollagraph recipe, let's be fair to the tools you already use. They solve real pieces of this, and you should keep the ones that fit.</p>
+
+  <h3>dig and the command line</h3>
+  <p><code>dig</code> is the canonical DNS Swiss Army knife and it is not going anywhere. For a one-off question on your own machine it is unbeatable. Where it stops is repeatability across resolvers and machines — wiring <code>dig +short</code> into a monitoring system means parsing text, normalising output across versions, and standing up egress from many vantage points yourself. It is a primitive, not a pipeline.</p>
+
+  <h3>Public propagation checkers</h3>
+  <p>The web is full of "is it propagated yet" sites that query a handful of resolvers and draw a world map. They are genuinely useful for a quick visual gut-check during a manual cutover. What they don't give you is an API contract, a stored history, or an alerting hook — you cannot put a screenshot into a runbook and expect it to page someone at 3am.</p>
+
+  <h3>Build it yourself</h3>
+  <p>The do-it-yourself path means running resolvers in several regions, writing the query and parse logic for every record type, and keeping the whole thing healthy. It is the most flexible option and the most expensive once you count the egress, the regional footprint, and the engineering attention it quietly consumes. Most teams don't need a global resolver fleet — they need the answer.</p>
+
+  <h2>Where Ollagraph goes further</h2>
+  <p>Ollagraph packages the DNS questions that actually come up during operations behind a small set of endpoints that each return the same canonical JSON shape. You get the answer, not the plumbing.</p>
+
+  <p>Three outcomes matter. First, time-to-first-answer: from an API key to a resolved record on a real domain is one curl command. Second, the multi-resolver view that a single <code>dig</code> can't give you — a propagation check queries one record across many public resolvers in a single billed call and tells you how much they agree. Third, predictable per-call economics: one credit per call, the exact cost shown in every response, and failed calls auto-refunded, so a flaky resolver never quietly burns your balance.</p>
+
+  <p>Where a command-line tool gives you text to parse, Ollagraph gives you a verb that returns structured fields. The DNS endpoints live alongside the broader <a href="/intelligence">intelligence suite</a>, so the same key that resolves a record also profiles nameservers, traces redirects, and classifies IPs — handy when DNS is one input into a larger picture. If your work is investigative rather than operational, the <a href="/for-intel">intelligence playbook</a> walks through how teams compose these endpoints into a domain profile.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Five steps, real curl commands, real request shapes. Drop these into a shell and you have the building blocks of a migration runbook or a monitoring job.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab an API key from the dashboard, and export it for the rest of this session. The key authenticates every call.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Resolve the records you care about</h3>
+  <p>Start with a plain lookup to confirm the records that exist today. The lookup endpoint takes a <code>domain</code> and an optional <code>records</code> array; omit the array and it defaults to A, MX, and TXT. Ask for exactly the types your change touches.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/dns/lookup \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com",
+    "records": ["A", "AAAA", "MX", "TXT", "NS"]
+  &#125;'</code></pre>
+
+  <p>This is the snapshot you take <em>before</em> you change anything. Store it. When the cutover is done, run the same call and diff the two — the difference is your change, and anything you didn't expect to move is a flag. Keeping the pre-change record set in your warehouse turns "did we break the MX?" from a guess into a query.</p>
+
+  <h3>Step 3. Watch propagation across resolvers</h3>
+  <p>After you push the change, the question is no longer "what is the record" but "does the whole world agree on it yet." The propagation endpoint queries the same record across many public resolvers and reports the consistency. Pass a <code>domain</code> and an optional <code>record_type</code> — it defaults to A.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/dns-propagation \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com",
+    "record_type": "A"
+  &#125;'</code></pre>
+
+  <p>Poll this on a loop during the cutover window. While resolvers disagree, propagation is still in flight and you should not tear down the old endpoint. Once every resolver returns the new answer, the change is live everywhere and you can finish the migration. The cadence is yours to set — if you dropped the TTL ahead of time, the window is short and a poll every minute or two is plenty.</p>
+
+  <h3>Step 4. Ask a specific resolver directly with DoH</h3>
+  <p>Sometimes you need to know what one named resolver sees, not an aggregate. The DNS-over-HTTPS endpoint forwards a single query through a chosen public resolver and returns its answer. Pass a <code>domain</code>, an optional <code>record_type</code> (defaults to A), and an optional <code>resolver</code> (defaults to cloudflare; google is the other option).</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/dns/over-https \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com",
+    "record_type": "MX",
+    "resolver": "google"
+  &#125;'</code></pre>
+
+  <p>This is the call you reach for when two resolvers disagree and you need to attribute the disagreement. Running the same query through both providers — once with <code>"resolver": "cloudflare"</code> and once with <code>"resolver": "google"</code> — tells you whether a stale answer is sitting in one provider's cache or whether the authoritative side is genuinely inconsistent.</p>
+
+  <h3>Step 5. Check the nameservers underneath it all</h3>
+  <p>Records are only as reliable as the nameservers serving them. The nameservers endpoint takes an apex <code>domain</code> and returns the authoritative nameservers plus the IPv4 and IPv6 each one resolves to. It also reports a <code>diversified</code> boolean.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/nameservers \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <p>A <code>diversified</code> value of false means every nameserver sits in the same network block — a single-provider, single-point-of-failure setup that an outage at one provider can take down entirely. During an infrastructure review this is exactly the kind of finding worth surfacing before it becomes an incident.</p>
+
+  <h2>A realistic scenario: a zero-downtime apex cutover</h2>
+  <p>Consider a platform team moving a production apex from an old load balancer to a new one during a provider migration. They cannot afford an outage, and the apex has a TTL that was set long ago and never tuned.</p>
+
+  <p>The day before the change, they lower the TTL so the propagation window will be short, and they capture a baseline with <code>/v1/dns/lookup</code> across A, AAAA, MX, TXT, and NS. At the cutover, they push the new A and AAAA records, then poll <code>/v1/intel/dns-propagation</code> on a one-minute loop. While resolvers disagree, the old load balancer stays up and serving. When propagation reads consistent across every resolver, they confirm with a direct <code>/v1/dns/over-https</code> query against both Cloudflare and Google to rule out a single stale cache, then drain and decommission the old endpoint. The whole sequence is a runbook, not a judgment call, because every step returns a machine-readable answer.</p>
+
+  <h2>Wiring it into monitoring</h2>
+  <p>The endpoints that power a cutover also power steady-state monitoring. A scheduled job that runs <code>/v1/dns/lookup</code> on your production domains and diffs the result against a stored baseline catches unauthorised or accidental record changes the moment they appear. Pair it with a periodic <code>/v1/intel/nameservers</code> check to catch nameserver drift or a loss of diversification when someone reconfigures the zone. Because every call returns structured JSON, the alerting logic is a simple comparison — no text parsing, no resolver fleet to babysit.</p>
+
+  <p>The boring part is the part that pays off: land each result with a timestamp and the domain, keep the raw response in a JSON column, and you accumulate a history you can replay. When something does drift, you can answer "when did this record last look right" without re-running anything.</p>
+
+  <h2>DNS records versus email authentication posture</h2>
+  <p>It is worth being precise about a common confusion. Resolving a domain's TXT records tells you which records exist and what they contain. It does not tell you whether your email authentication is correctly configured. SPF, DKIM, and DMARC all live in DNS — typically as TXT records — but evaluating whether mail from your domain will be trusted is a posture question that goes beyond "does the record resolve."</p>
+
+  <p>If your goal is deliverability and anti-spoofing, the DNS lookup here is the raw input, but the analysis you actually want lives in the dedicated recipe on <a href="/recipes/check-email-authentication">checking email authentication</a>. Use the DNS endpoints on this page to confirm the records propagate and resolve consistently; use that recipe to judge whether the SPF, DKIM, and DMARC posture they encode is correct.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>A few failure modes are worth planning for. The first is TTL surprise: if you forget to lower the TTL before a cutover, propagation can drag on for as long as the old TTL, and no amount of polling speeds it up. Lower the TTL a day ahead and the window shrinks to minutes.</p>
+
+  <p>The second is mistaking your local resolver for the truth. A lookup from one machine reflects one cache. The propagation endpoint exists precisely so you don't draw conclusions from a single vantage point — when it shows disagreement, that disagreement is real and you should wait it out.</p>
+
+  <p>The third is treating a transient resolver timeout as a record change. Resolvers occasionally fail to answer. Because failed calls are auto-refunded, a timeout costs you nothing, but your monitoring logic should distinguish "no answer" from "different answer" so a blip doesn't page someone at 3am. If you need the canonical reference for record types and DoH encoding, the IETF documents DoH in <a href="https://www.rfc-editor.org/rfc/rfc8484">RFC 8484</a>.</p>
+
+  <h2>Pairing DNS with the rest of the stack</h2>
+  <p>DNS is rarely the whole picture. Teams routinely pair these endpoints with <a href="/recipes/monitor-ssl-and-subdomains">SSL and subdomain monitoring</a> so a certificate review and a DNS review run on the same schedule, and with <a href="/recipes/ip-geolocation-and-asn-lookup">IP geolocation and ASN lookups</a> to turn the addresses a record resolves to into infrastructure context. For investigative work, the broader <a href="/intelligence">intelligence suite</a> lets the same key that resolves a record also classify the hosts behind it.</p>
+
+  <h2>What to do next</h2>
+  <p>Grab a key, paste the lookup command from Step 2, and confirm you can resolve a real domain in the next two minutes. Then pick one workflow — a migration runbook or a steady-state monitoring job — and wire the propagation endpoint into it. Most teams have a working internal check inside an afternoon.</p>
+
+  <p>Read the <a href="/docs">docs</a>, browse the <a href="/intelligence">intelligence endpoints</a>, and ship something.</p>
+</Article>

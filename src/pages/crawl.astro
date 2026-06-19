@@ -1,0 +1,146 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+const crawlExample = `export OLLAGRAPH_API_KEY="osk_..."
+
+curl -X POST https://api.ollagraph.com/v1/crawl \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://docs.example.com",
+    "max_pages": 500,
+    "depth": 3,
+    "concurrency": 10,
+    "respect_robots": true,
+    "webhook_url": "https://yourapp.com/ollagraph-callback"
+  }'
+
+# Returns: { "status": "queued", "job_id": "..." }`;
+
+const pollExample = `export OLLAGRAPH_API_KEY="osk_..."
+
+# No webhook? Poll the job by id until it is done.
+curl https://api.ollagraph.com/v1/jobs/{job_id} \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"
+
+# Response when ready:
+# { "job_id": "...", "status": "completed",
+#   "result": { "pages_crawled": 487, "urls": [...] } }`;
+
+const seedExample = `export OLLAGRAPH_API_KEY="osk_..."
+
+# Read the sitemap and robots policy first, then seed the crawl
+# only with the paths you actually want.
+curl -X POST https://api.ollagraph.com/v1/intel/sitemap \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"url": "https://docs.example.com"}'
+
+curl -X POST https://api.ollagraph.com/v1/intel/robots \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"url": "https://docs.example.com"}'`;
+
+const pillars = [
+  { title: "Depth and budget caps", body: "Every crawl carries a max_pages budget (default 500) and a link-depth ceiling (default 3). Raise both for large knowledge bases or lower them for a quick scoped pass. The crawler stops the moment either cap is hit, so a run can never silently balloon past what you asked for." },
+  { title: "Robots-aware by default", body: "respect_robots is true unless you turn it off, and you should only turn it off for sites you own or have permission to crawl. The walker reads the target robots.txt before it starts and stays polite — single-server sites are automatically slowed so a crawl never looks like an attack." },
+  { title: "Sitemap unrolling", body: "Pair the crawl with the sitemap and robots endpoints to discover every declared URL up front. Seed the run from the sitemap instead of blindly following links, so you crawl exactly the pages you mean to and skip the ones the site already told you to leave alone." },
+  { title: "Webhook delivery", body: "Pass a webhook_url and the job runs detached — your process is not holding a socket open for an hour. When the crawl finishes we POST the full result and the job id to your endpoint. Prefer polling? Hit the jobs endpoint with the returned job_id instead." },
+];
+
+const faqs = [
+  { q: "What does /v1/crawl actually do?", a: "It walks the link graph of a site starting from one seed URL, returns clean content for every page it discovers, and respects depth, page-budget, concurrency, and robots controls along the way. It is asynchronous: the call returns a job_id immediately and the result arrives by webhook or by polling the jobs endpoint." },
+  { q: "How big can a crawl be?", a: "The defaults are 500 pages and depth 3. You can raise both — production customers regularly crawl tens of thousands of pages per job. For very large or scheduled crawls, talk to us about enterprise capacity on the enterprise page." },
+  { q: "Does the crawler respect robots.txt?", a: "Yes, by default. Each crawl honors the robots.txt of the target site. You can override that with respect_robots set to false, but only do so where you have explicit permission to crawl, such as your own site or a partner's. Check what a site declares first with the robots endpoint." },
+  { q: "How do I seed a crawl from a sitemap?", a: "Call the sitemap endpoint to pull the site's declared URLs, then start the crawl from the seed URL. Reading the sitemap and robots policy up front lets you scope the run to the paths you actually want rather than discovering them by depth-first link following." },
+  { q: "How does webhook delivery work?", a: "Provide a webhook_url with the request. When the job completes, we send a single POST to your URL with the full result body and the job id. The job runs detached so your application is never holding a long-lived connection open while the crawl runs." },
+  { q: "What if I do not want to set up a webhook?", a: "Skip the webhook_url and poll instead. The crawl call returns a job_id; pass it to GET /v1/jobs/{job_id} and you will get the status, and the full result once the status is completed. This is the simplest pattern for a one-off run from a notebook or a terminal." },
+  { q: "How is a crawl billed?", a: "Crawling is metered per call like the rest of the surface — one credit per call, and failed calls are auto-refunded so a crawl that errors out never costs you a credit. New accounts start with 1,000 free credits to prove the value first." },
+];
+
+const url = "https://ollagraph.com/crawl/";
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebPage", name: "Website crawler API — Ollagraph", url, description: "Crawl whole sites with /v1/crawl. Depth and budget caps, robots.txt obedience, sitemap unrolling, and webhook delivery." },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Website crawler API", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout
+  title="Website crawler API — depth control, robots-aware, webhook delivery — Ollagraph"
+  description="Crawl entire sites with /v1/crawl. Depth and budget caps, robots.txt obedience by default, sitemap unrolling, and webhook delivery for production pipelines."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('crawl')} />
+
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:760px;">
+      <span class="badge badge-mute" style="margin-bottom:16px;">CRAWLING</span>
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Crawl whole sites. In one job.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        The <span class="text-mono">/v1/crawl</span> endpoint walks the link graph of a site, obeys robots.txt by default, unrolls the sitemap, and streams clean results back to your webhook when it is done. Depth, page-budget, and concurrency are all yours to set.
+      </p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:24px;">
+        <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+        <a class="btn btn-secondary btn-lg" href="/recipes/crawl-entire-website">Read the full crawl recipe</a>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
+        One family in the full <a href="/capabilities" style="color:var(--accent);">209-endpoint surface</a> — see the <a href="/bundles/scraping" style="color:var(--accent);">scraping bundle</a> for the endpoints that pair with it, or follow <a href="/recipes/crawl-entire-website" style="color:var(--accent);">the full crawl recipe</a> end to end.
+      </p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {pillars.map((p) => (
+          <div class="pcard">
+            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{p.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Examples that work today.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Start a crawl, then collect the result by webhook or by polling.</p>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Start a crawl</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/crawl</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{crawlExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Poll the job</span><span class="text-mono" style="color:var(--text-dim);">GET /v1/jobs/{'{job_id}'}</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{pollExample}</code></pre></div>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>Seed from sitemap + robots</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/intel/sitemap</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{seedExample}</code></pre></div>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; text-align:center; margin-top:18px;">
+        Watching a crawl as it runs is part of the <a href="/observability" style="color:var(--accent);">per-URL observability</a> surface.
+      </p>
+    </div>
+  </section>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Crawler questions</h2>
+    {faqs.map((f) => (
+      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+    ))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Start your first crawl free.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">1,000 free credits, one bearer token, failed calls auto-refund.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/recipes">Browse recipes</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

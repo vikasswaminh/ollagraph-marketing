@@ -1,0 +1,173 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why convert documents to markdown for RAG instead of feeding raw files to the model?", a: "Embedding models and LLMs work best on clean, semantically structured text. Raw PDF bytes, Word XML, and spreadsheet binaries are full of layout noise — positioning data, style runs, table cell coordinates — that pollutes the embedding and wastes context tokens. Markdown keeps the structure that matters (headings, lists, tables, emphasis) and drops the rest, so retrieval is sharper and answers cite the right section." },
+  { q: "Which document formats can Ollagraph convert to markdown?", a: "PDF, modern Word .docx, Excel .xlsx, PowerPoint .pptx, and CSV each have a dedicated conversion endpoint. There is also a standalone HTML-to-markdown converter for teams that already hold the HTML, and an OCR endpoint for scanned or image-only pages. For live web pages you fetch yourself, use the LLM-ready scrape endpoint instead — it fetches and chunks in one call." },
+  { q: "How does Ollagraph handle scanned PDFs and image-only pages?", a: "A born-digital PDF carries a real text layer, and the PDF converter extracts it directly. A scanned PDF is really a stack of images with no text layer — those pages are flagged so you know they need OCR. Render the page to an image and send it to the OCR endpoint, which returns the recognized text and can optionally include per-region bounding boxes and confidence scores." },
+  { q: "Do I upload a file, or send a URL?", a: "The document converters take the file content inline as base64 (PDF, docx, xlsx, pptx) or as raw text (CSV, HTML). You read the bytes on your side, base64-encode them, and POST them. There is no file-storage step and nothing is persisted — the bytes are converted and the markdown is returned. The exact field names and size caps for each format are documented in the live API spec." },
+  { q: "What do I get back from a conversion call?", a: "You get clean markdown plus basic metadata about the conversion — at a high level, the converted text and signals like which pages or sheets were processed and whether any pages were flagged for OCR. Treat the markdown as the payload to chunk and embed, and the metadata as provenance to store alongside each chunk. The exact response shape is documented in the live spec." },
+  { q: "How big a document can I convert in one call?", a: "Each format has its own caps — for example the PDF converter processes up to a few hundred pages per call and spreadsheets cap rows per sheet so the markdown table stays useful. Very large corpora are handled by batching: split the work into one file per call and fan the calls out from a worker pool. The current limits live in the API spec." },
+  { q: "How much does document conversion cost?", a: "Conversion is metered like the rest of the platform: one credit per call, and failed calls are auto-refunded so a corrupt upload or an unsupported file never costs you. There are no per-page or per-megabyte surcharges on the converters. See the pricing page for the current credit packs and the free monthly grant." },
+  { q: "How is this different from building a RAG knowledge base from web pages?", a: "The web-page recipe fetches live URLs, renders any JavaScript, and chunks the result for ingestion. This recipe starts from files you already hold — contracts, manuals, decks, financial models — that never had a URL. The two pipelines converge at the same place: clean markdown landing in a vector store with provenance metadata. Most teams run both, pointing one at their site and the other at their document store." },
+];
+---
+<Article
+  title="How to convert PDFs and documents to clean markdown for RAG in 2026"
+  description="Turn PDFs, Word docs, spreadsheets, and slide decks into LLM-ready markdown with one API call — OCR for scanned pages included."
+  date="2026-06-18"
+  readingTime={11}
+  tags={["RAG", "documents", "markdown"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What converting documents to markdown means in 2026</h2>
+  <p>Converting documents to markdown means turning the files your business already holds — PDFs, Word documents, spreadsheets, slide decks, CSV exports — into clean, structured text that an embedding model and an LLM can actually use. In 2026 the practical way to do this at scale is a managed API that accepts the file and returns clean markdown plus basic metadata in a single call.</p>
+
+  <p>That sentence is the short answer. The rest of this page is for the engineer who has been handed a folder of a few thousand PDFs and a sentence that begins "we want the assistant to be able to answer questions about these." We will walk the problem honestly, name the formats, deal with the scanned-document trap, and lay out a working recipe end to end.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't want to convert documents. You want a retrieval corpus that gives an LLM accurate, citable answers. The conversion is the unglamorous middle step that decides whether the whole pipeline works, and it is the step most teams underestimate.</p>
+
+  <p>The reader of this page usually has a document store, not a website. A legal team with a decade of contracts and amendments. A support org with product manuals shipped as PDFs. A finance team whose source of truth is a wall of Excel models. A sales team sitting on a library of pitch decks. None of these have a URL. They are files on a share drive, and the moment you try to feed them to an embedding model raw, you discover that a PDF is not text — it is a description of where glyphs sit on a page.</p>
+
+  <p>This is the line that separates this recipe from <a href="/recipes/build-rag-knowledge-base">building a RAG knowledge base from web pages</a>. That recipe fetches live URLs, renders any JavaScript, and chunks the result. This one starts from binary files that never had a URL. Both pipelines end in the same place — clean markdown in a vector store with provenance — but they begin in completely different worlds.</p>
+
+  <h2>Why markdown is the right target for LLMs</h2>
+  <p>Markdown has quietly become the consensus interchange format for LLM pipelines, and the reasons are practical rather than aesthetic.</p>
+
+  <p><strong>It preserves the structure that carries meaning.</strong> Headings tell the model where a section starts and ends. Lists signal enumeration. Tables keep rows and columns aligned. Emphasis survives. That structure is exactly what a good chunker uses to split on natural boundaries, and exactly what the LLM leans on when it has to find the relevant passage among a dozen retrieved chunks.</p>
+
+  <p><strong>It drops the structure that is pure noise.</strong> A raw .docx is a zip of XML describing style runs, revision marks, and comment threads. A raw .pdf encodes glyph positions and font dictionaries. None of that helps an embedding model — it dilutes the vector and burns context tokens. Markdown throws it away.</p>
+
+  <p><strong>It is cheap in tokens and stable across models.</strong> Markdown is close to plain text, so a chunk of markdown costs roughly what the underlying prose costs, with a small overhead for the syntax. And because every major model has seen mountains of markdown in training, the format is a lingua franca — you are not betting your pipeline on a proprietary representation.</p>
+
+  <h2>The formats, and the endpoint for each</h2>
+  <p>Ollagraph exposes a dedicated converter per format rather than one magic endpoint that guesses. That is deliberate: a Word document and a spreadsheet have nothing in common structurally, and a converter that knows it is looking at slides can pull speaker notes that a generic parser would never find.</p>
+
+  <h3>PDF</h3>
+  <p><code>POST /v1/convert/pdf-to-markdown</code> takes the PDF bytes (base64-encoded) and returns page-per-section markdown. Born-digital PDFs — anything exported from a word processor or design tool — carry a real text layer that the converter reads directly. You can cap how many pages to process for very long files. Scanned PDFs are the exception, and they get their own section below.</p>
+
+  <h3>Word (.docx)</h3>
+  <p><code>POST /v1/convert/docx-to-markdown</code> takes a modern Word <code>.docx</code> (base64) and preserves heading levels, paragraphs, list bullets, and table structure. It is the cleanest of the converters because <code>.docx</code> is already a structured format — the heading hierarchy you set in Word becomes the heading hierarchy in markdown, which means your chunker gets natural boundaries for free.</p>
+
+  <h3>Excel (.xlsx)</h3>
+  <p><code>POST /v1/convert/xlsx-to-markdown</code> renders each sheet of a workbook as a markdown table, one section per sheet. There is a per-sheet row cap, because past a certain size a markdown table stops being useful to a model and you are better off treating the data as a table to query rather than text to embed. For wide exports, consider whether the spreadsheet is really RAG material or whether it belongs in a database.</p>
+
+  <h3>PowerPoint (.pptx)</h3>
+  <p><code>POST /v1/convert/pptx-to-markdown</code> turns a deck into markdown, one section per slide, and crucially extracts speaker notes alongside the visible bullets — often the richest text in the whole file. Image-only slides (a full-bleed diagram with no text) are flagged so you know which slides will need OCR if the content matters.</p>
+
+  <h3>CSV</h3>
+  <p><code>POST /v1/convert/csv-to-markdown</code> takes raw CSV text and produces a markdown table, auto-detecting the delimiter (comma, tab, semicolon, or pipe) unless you override it. Like the spreadsheet converter it caps rows, for the same reason.</p>
+
+  <h3>HTML you already hold</h3>
+  <p>If you already have the HTML — say you exported it from a CMS or captured it earlier in a pipeline — <code>POST /v1/convert/html-to-markdown</code> converts it directly with no fetch. You can choose the heading style and strip extra tags. This is the same converter that powers the markdown output of the scrape endpoints, exposed standalone for pipelines that already hold raw HTML.</p>
+
+  <p>The exact request field for each converter (and its size caps) is documented in the live spec at <a href="/docs">the docs</a>. The shape is consistent across the binary formats: read the file, base64-encode it, send it in the documented field.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Real curl commands, real endpoints. Drop these into a shell to verify the pipeline, then move the same calls into your ingestion worker.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab a key from the dashboard, and export it for the rest of this session. Keys start with the prefix <code>osk_</code> and authenticate every call.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Convert one PDF and read the markdown</h3>
+  <p>Always start with a single file to prove the pipeline end to end before you batch anything. Base64-encode the file on your side and send the bytes. Here we encode inline with <code>base64</code> and splice it into the request.</p>
+
+<pre><code>PDF_B64=$(base64 -w0 ./handbook.pdf)
+
+curl -X POST https://api.ollagraph.com/v1/convert/pdf-to-markdown \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "pdf_base64": "'"$PDF_B64"'"
+  &#125;'</code></pre>
+
+  <p>You get back clean markdown plus basic metadata about the conversion — page-per-section text, and signals like which pages were processed and whether any were flagged for OCR. Read the markdown, confirm headings and tables survived the way you expect, and you have validated the format before you spend a worker pool on it.</p>
+
+  <h3>Step 3. Cover the other formats in the same loop</h3>
+  <p>A real document store is mixed. Route each file to its converter by extension. The Word and slide converters take the bytes the same way the PDF one does.</p>
+
+<pre><code>DOCX_B64=$(base64 -w0 ./contract.docx)
+
+curl -X POST https://api.ollagraph.com/v1/convert/docx-to-markdown \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "docx_base64": "'"$DOCX_B64"'"
+  &#125;'</code></pre>
+
+  <p>Spreadsheets and decks follow the same pattern against <code>/v1/convert/xlsx-to-markdown</code> and <code>/v1/convert/pptx-to-markdown</code>. CSV is even simpler — send the text directly, no base64.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/convert/csv-to-markdown \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "csv_text": "name,role,region\nAlice,VP Sales,EMEA\nBob,RevOps,AMER"
+  &#125;'</code></pre>
+
+  <h3>Step 4. Handle the scanned documents</h3>
+  <p>This is where most document pipelines quietly break. A scanned contract or a photographed receipt is not a PDF with text — it is a stack of images. The PDF converter flags those pages rather than silently returning blank markdown, which is exactly the behavior you want: a flag is actionable, an empty section is a bug you find in production.</p>
+
+  <p>When a page is flagged, render it to an image on your side and send it to the OCR endpoint. It accepts base64 image bytes and can optionally return per-region bounding boxes and confidence scores if you need to reason about layout or filter low-confidence text.</p>
+
+<pre><code>IMG_B64=$(base64 -w0 ./scanned-page-3.png)
+
+curl -X POST https://api.ollagraph.com/v1/convert/ocr \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "image_b64": "'"$IMG_B64"'",
+    "return_boxes": false
+  &#125;'</code></pre>
+
+  <p>Stitch the OCR text back into the markdown at the position of the flagged page and the document is whole again. For a large archive of scans, the OCR step dominates the cost and latency, so treat it as its own stage of the pipeline rather than something you do inline.</p>
+
+  <h3>Step 5. Batch the archive</h3>
+  <p>One file at a time is the test. A real archive is thousands of files. The converters are single-file calls by design, which makes batching trivial: enumerate the document store, route each file to its converter by extension, and fan the calls out from a worker pool. One credit per call, failed calls auto-refunded, so a corrupt or unsupported file in the pile never costs you and never poisons the run.</p>
+
+  <p>A practical worker loop converts the file, captures the returned markdown and metadata, and writes both to a staging table keyed on the source path and a <code>converted_at</code> timestamp. Keep the raw markdown in a text column so you can re-chunk later without re-converting. Size caps are per format and live in the spec; for anything that exceeds a cap, split the source before converting rather than after.</p>
+
+  <h3>Step 6. Chunk and land it in your vector store</h3>
+  <p>The markdown is the input to the same chunk-embed-store flow any RAG pipeline uses. Chunk on heading boundaries first — the converters preserve heading levels, so the structure is already there — and fall back to a token-count split for long sections. A 512-to-1024-token chunk with a small overlap suits most embedding models.</p>
+
+  <p>Attach provenance to every chunk at write time: source file path, document title, the page or slide or sheet it came from, and the conversion timestamp. That metadata is what lets the LLM cite "page 14 of the 2025 employee handbook" instead of a naked passage, and it is the difference between a demo and something a compliance team will sign off on. Carry an OCR-confidence flag through too, so a downstream answer drawn from low-confidence recognized text can be treated with appropriate caution.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a support team at a B2B software company. Their product documentation ships as a set of PDF manuals — one per major release, each a few hundred pages — plus a library of solution-engineering decks and a couple of spreadsheets of configuration reference data. The mandate is a support assistant that answers from the current docs and cites the page.</p>
+
+  <p>The pipeline is three converters and one OCR fallback. The manuals go through the PDF converter; a handful of older manuals are scans, so those pages route to OCR. The decks go through the slide converter, and the speaker notes turn out to carry the implementation detail the visible bullets omit. The reference spreadsheets go through the Excel converter, capped to the rows that matter. Everything lands as markdown in a staging table, gets chunked on headings, and is embedded into the vector store with the source file and page attached to each chunk.</p>
+
+  <p>The whole archive is a few thousand files. Converting it is a one-evening batch job from a modest worker pool, and refreshing it when a new release ships is the same job pointed at the changed files. Nothing about the conversion step is the bottleneck — the engineering attention goes where it should, into retrieval quality and the assistant's prompts.</p>
+
+  <h2>Where this fits with the rest of the stack</h2>
+  <p>The document converters are one half of a complete ingestion story. The other half is the web. When the corpus needs to include live pages — a changelog, a status page, third-party documentation — reach for the LLM-ready scrape endpoint, which fetches a URL and returns it already chunked for ingestion.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/llm-ready \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/docs",
+    "max_tokens": 512
+  &#125;'</code></pre>
+
+  <p>Run the document converters over the file store and the LLM-ready scrape over the URLs, and both streams land in the same vector store in the same shape. For teams that want the conversion exposed as a callable verb in a larger automation, the <a href="/actors/markdown">markdown actor</a> wraps the same converter surface, and the full <a href="/recipes/build-rag-knowledge-base">RAG knowledge base recipe</a> covers the crawl-driven half of the pipeline in depth. The broader <a href="/capabilities">capability surface</a> and the <a href="/actors">actor catalog</a> show what else can feed the same store.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>A few failure modes are worth planning for before they show up in production.</p>
+
+  <p><strong>Silent scans.</strong> The classic trap is a PDF that looks like text in a viewer but is really a scan. The converter flags these rather than returning empty sections — wire that flag into your pipeline so flagged pages route to OCR automatically instead of landing as blank chunks.</p>
+
+  <p><strong>Spreadsheets that are not documents.</strong> A 40,000-row export is data, not prose. Forcing it into a markdown table makes a poor chunk and a worse retrieval. Use the row cap as a signal: if a sheet is hitting the cap, ask whether it belongs in a database your assistant queries rather than in the embedding store.</p>
+
+  <p><strong>Legacy formats.</strong> The Word converter handles modern <code>.docx</code>; the old binary <code>.doc</code> is a different format entirely. Convert legacy files to <code>.docx</code> in your own tooling before they reach the converter, and you avoid a class of confusing failures.</p>
+
+  <p><strong>Tables inside PDFs.</strong> Tabular data laid out in a PDF is the hardest case for any converter, because the PDF only knows where the cells were drawn, not that they form a table. Spot-check converted tables from PDFs, and where the source is available as a real spreadsheet, prefer the Excel converter — structure you never lost is always better than structure you tried to reconstruct.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, take one PDF off your share drive, and run the Step 2 command in the next five minutes. Read the markdown it returns and decide whether the structure survived the way your retrieval needs. Then pick one document type — your manuals, your contracts, your decks — wire its converter into a worker loop, and land the markdown in your vector store with provenance attached.</p>
+
+  <p>Read the <a href="/docs">docs</a> for the exact request fields and caps, browse the <a href="/actors">actor catalog</a>, and ship the ingestion pipeline you were actually asked for.</p>
+</Article>

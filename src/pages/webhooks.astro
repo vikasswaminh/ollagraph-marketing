@@ -1,0 +1,227 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+const queueExample = `# Queue an async batch and walk away. No held connection.
+curl -X POST https://api.ollagraph.com/v1/scrape/batch/async \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "urls": ["https://a.example.com", "https://b.example.com"],
+    "format": "markdown",
+    "webhook_url": "https://yourapp.com/hooks/ollagraph"
+  }'
+
+# Response: { "status": "queued", "job_id": "..." }
+# We POST the finished result to your webhook_url when the work completes.`;
+
+const payloadExample = `// What lands on your endpoint when the job finishes.
+// Method: POST   Content-Type: application/json
+// Header:  X-Ollagraph-Signature: t=<unix_ts>,v1=<hex_hmac_sha256>
+
+{
+  "job_id": "job_3f9a...",
+  "status": "completed",
+  "result": {
+    // The same block you would get from the sync endpoint:
+    // markdown / html / text / links, plus per-URL status.
+  }
+}
+
+// The result block mirrors the corresponding sync response, so your
+// handler parses it exactly like a direct /v1/scrape/batch call.`;
+
+const verifyNodeExample = `import crypto from 'crypto';
+import express from 'express';
+
+const app = express();
+app.use(express.raw({ type: 'application/json' })); // raw bytes for HMAC
+
+app.post('/hooks/ollagraph', (req, res) => {
+  const header = req.headers['x-ollagraph-signature'] || '';
+  // Header format: "t=<unix_ts>,v1=<hex_hmac_sha256>"
+  const parts = Object.fromEntries(header.split(',').map(p => p.split('=')));
+  const ts = parts.t, sig = parts.v1;
+
+  // Reject anything older than five minutes (defeats replay).
+  if (!ts || Math.abs(Date.now() / 1000 - Number(ts)) > 300) {
+    return res.status(401).send('stale or missing timestamp');
+  }
+
+  // Signed body is: <ts>.<exact_json_bytes>
+  const expected = crypto
+    .createHmac('sha256', process.env.OLLAGRAPH_WEBHOOK_SECRET)
+    .update(\`\${ts}.\`)
+    .update(req.body) // raw bytes, not re-serialized JSON
+    .digest('hex');
+
+  if (!sig || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    return res.status(401).send('invalid signature');
+  }
+
+  // Acknowledge fast, then process out of band — see the idempotency note.
+  const { job_id, result } = JSON.parse(req.body);
+  res.sendStatus(200);
+});`;
+
+const verifyPythonExample = `import hmac, hashlib, os, time
+from flask import Flask, request, abort
+
+app = Flask(__name__)
+SECRET = os.environ["OLLAGRAPH_WEBHOOK_SECRET"].encode()
+
+@app.post("/hooks/ollagraph")
+def callback():
+    header = request.headers.get("x-ollagraph-signature", "")
+    # Header format: "t=<unix_ts>,v1=<hex_hmac_sha256>"
+    parts = dict(p.split("=", 1) for p in header.split(",") if "=" in p)
+    ts, sig = parts.get("t"), parts.get("v1")
+    if not ts or abs(time.time() - int(ts)) > 300:
+        abort(401)
+    body = request.get_data()  # raw bytes
+    # Signed body is: <ts>.<exact_json_bytes>
+    expected = hmac.new(SECRET, f"{ts}.".encode() + body, hashlib.sha256).hexdigest()
+    if not sig or not hmac.compare_digest(sig, expected):
+        abort(401)
+    payload = request.get_json()
+    # process payload["result"] ... then return fast
+    return "", 200`;
+
+const crawlExample = `# Crawl an entire site, get a single signed POST when the crawl finishes.
+curl -X POST https://api.ollagraph.com/v1/crawl \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{
+    "url": "https://docs.example.com",
+    "max_pages": 500,
+    "webhook_url": "https://yourapp.com/hooks/ollagraph"
+  }'
+
+# Prefer to poll instead? Omit webhook_url and read GET /v1/jobs/{job_id}.`;
+
+const pillars = [
+  { title: "Fire-and-forget at any size", body: "Queue a job of any size — a handful of URLs or a hundred thousand — and walk away. Your server gets a single clean POST when the work is done. No long-held connections, no polling loops, no retry plumbing on your side." },
+  { title: "Every callback is signed", body: "We sign every delivery with an HMAC-SHA256 over the raw body, keyed by your account's webhook secret. Your endpoint verifies the signature before trusting the payload. Forgery becomes infeasible and replay attacks become detectable through the timestamp." },
+  { title: "Idempotent payloads", body: "Each delivery carries the job_id. Treat it as an idempotency key: record it before processing and ignore a repeat. Because a retried delivery is byte-identical to the first, your handler can dedupe safely without losing data." },
+  { title: "Verify before you go live", body: "Send a single signed test payload to your endpoint with the test-webhook call. It uses the exact production signing scheme and retry policy, so you confirm your receiver works before any real job depends on it." },
+];
+
+const faqs = [
+  { q: "Which endpoints deliver results via webhook?", a: "Three async endpoints accept a webhook_url: /v1/scrape/async for a single page, /v1/scrape/batch/async for a list of URLs, and /v1/crawl for a full site. Each returns a job_id immediately and POSTs the finished result to your webhook_url when the work completes." },
+  { q: "What does the callback payload look like?", a: "A POST with a JSON body containing the job_id and a result block. The result mirrors what you would get from the corresponding synchronous endpoint, so your handler parses the markdown, html, text, or links exactly as it would a direct call. The request also carries the signature header used for verification." },
+  { q: "How are webhooks signed?", a: "Each request carries an X-Ollagraph-Signature header in the form t=<unix_ts>,v1=<hex>. The v1 value is an HMAC-SHA256 of the bytes <ts>.<raw_body> keyed by your account's webhook secret. The verification samples above show the full algorithm. Compare in constant time and reject timestamps older than five minutes to defeat replay attacks." },
+  { q: "Where do I get my webhook secret?", a: "Call GET /v1/me with your API key and read the webhook_secret field. Rotate it at any time via POST /v1/me/webhook-secret/rotate. The previous secret stops working immediately, so drain in-flight jobs before rotating or their deliveries will fail verification." },
+  { q: "How do I test my endpoint before going live?", a: "Call POST /v1/me/webhooks/test with your webhook_url. We send a single signed payload using the exact production signing scheme, retry behavior, and timeout, so the result reflects what a real delivery looks like. Use it to confirm your receiver verifies the signature correctly before you queue real jobs." },
+  { q: "What is the retry policy, and how do I stay idempotent?", a: "If your endpoint returns a non-2xx response or the connection errors, we retry with backoff. Because a retried delivery is byte-identical to the original, the job_id is your idempotency key: record it on first receipt and skip duplicates. Acknowledge quickly with a 200 and do heavy processing out of band so a slow handler does not trigger an unnecessary retry." },
+  { q: "Can I use webhooks without HTTPS?", a: "No. Webhook URLs must be HTTPS. Plain HTTP endpoints are rejected at job-creation time. This protects the payload and the signature in transit." },
+  { q: "What if a webhook is impractical for my environment?", a: "Omit webhook_url and poll instead. Every async job is readable at GET /v1/jobs/{job_id}, which returns the current status and, once finished, the same result block a webhook would deliver. Webhooks are recommended for production because they remove the constant polling overhead, but polling is always available as a fallback." },
+];
+
+const url = "https://ollagraph.com/webhooks/";
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebPage", name: "Async jobs and signed webhooks — Ollagraph", url, description: "Queue async scrape and crawl jobs, get a single signed POST when each finishes. HMAC-SHA256 verification, idempotent payloads, retries, and a polling fallback." },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Webhooks", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout
+  title="Async jobs + signed webhooks — fire-and-forget result delivery — Ollagraph"
+  description="Queue async scrape and crawl jobs and get a single signed POST when each finishes. HMAC-SHA256 verification, idempotent payloads, automatic retries, and a polling fallback."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('webhooks')} />
+
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:760px;">
+      <span class="badge badge-mute" style="margin-bottom:16px;">WEBHOOKS</span>
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Fire jobs. Get a clean callback.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        Queue a handful of URLs or a hundred thousand. Walk away. Your endpoint receives a single signed POST when the work completes — no polling, no held connections, no retry plumbing on your side.
+      </p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:24px;">
+        <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
+        Webhooks deliver the results of async jobs from <a href="/scrape" style="color:var(--accent);">the scraping API</a>. Full reference lives in <a href="/docs" style="color:var(--accent);">the API docs</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {pillars.map((p) => (
+          <div class="pcard">
+            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{p.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Queue a job. Receive the result.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Pass a webhook_url to any async endpoint and we POST the finished result back to you.</p>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Queue an async batch</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape/batch/async</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{queueExample}</code></pre></div>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>The callback payload</span><span class="text-mono" style="color:var(--text-dim);">POST to your webhook_url</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{payloadExample}</code></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Verify the signature.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Recompute the HMAC over the raw bytes and compare in constant time. Never trust an unverified body.</p>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Verify (Node)</span><span class="text-mono" style="color:var(--text-dim);">crypto.createHmac</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{verifyNodeExample}</code></pre></div>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>Verify (Python)</span><span class="text-mono" style="color:var(--text-dim);">hmac.compare_digest</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{verifyPythonExample}</code></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Crawl, or poll if you prefer.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Full-site crawls deliver one webhook when done. Or skip webhooks entirely and read the job directly.</p>
+      <div class="code-block">
+        <div class="code-head"><span>Crawl with a webhook (or poll)</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/crawl</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{crawlExample}</code></pre></div>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; text-align:center; margin-top:16px;">
+        See the broader async surface on <a href="/scrape" style="color:var(--accent);">the scraping API</a> and <a href="/crawl" style="color:var(--accent);">the crawl API</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Webhook questions</h2>
+    {faqs.map((f) => (
+      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+    ))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Ship production-grade async today.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">1,000 free credits, one bearer token, signed webhooks on every plan including the free tier.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

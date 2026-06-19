@@ -1,0 +1,237 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "How long does it take to crawl 100,000 pages?",
+    a: "On a polite default cadence with same-origin enforcement and robots.txt obedience, 100,000 pages typically finishes in two to six hours on Ollagraph. Sites with aggressive rate limiting or heavy JavaScript rendering land at the longer end. Webhook delivery means you don't sit watching a terminal.",
+  },
+  {
+    q: "Does Ollagraph respect robots.txt by default?",
+    a: "Yes. The /v1/crawl endpoint sets respect_robots to true unless you explicitly disable it for a domain you own. We also expose /v1/intel/robots so you can audit allowance for any path and user-agent before you queue a job. Compliance is the default, not an upsell.",
+  },
+  {
+    q: "What's the difference between crawling and scraping?",
+    a: "Scraping pulls structured data from a single known URL. Crawling discovers URLs by following links or sitemaps, then scrapes each one. A scrape is a single shot; a crawl is a traversal. Ollagraph handles both through one API surface and one billing model.",
+  },
+  {
+    q: "Can I crawl a site that requires login?",
+    a: "Yes, with stored session credentials passed at job creation. We cover the auth flow in our pages-behind-login recipe. Combine authenticated sessions with sensible depth and budget caps so a crawler doesn't wander into account-deletion endpoints.",
+  },
+  {
+    q: "Should I crawl by sitemap or by link discovery?",
+    a: "Sitemap first, link discovery second. /v1/intel/sitemap unrolls nested index sitemaps in seconds and surfaces every canonical URL the site owner wants indexed. Link discovery then catches anything the sitemap missed — orphan pages, recently published content, deeper category trees.",
+  },
+  {
+    q: "How do webhooks work for long-running crawls?",
+    a: "Submit the job to /v1/scrape/async or /v1/crawl with a webhook_url. Ollagraph POSTs a signed payload to that URL when the job finishes, including the job ID and a download link. No polling, no idle compute, no missed completions.",
+  },
+  {
+    q: "What output formats are supported?",
+    a: "Clean markdown, raw HTML, structured JSON, and screenshot URLs — all selectable per job. Markdown is the right choice for RAG ingestion; JSON works for product catalogs; HTML stays available when you need exact source fidelity for forensic or compliance use cases.",
+  },
+  {
+    q: "How do I prevent a crawl from blowing through my budget?",
+    a: "Set max_pages and max_depth on every job. Both are hard caps enforced server-side. A crawl that hits either limit stops cleanly, returns everything it gathered, and bills only for pages actually fetched. Conservative caps are cheap insurance.",
+  },
+];
+---
+<Article
+  title="How to crawl an entire website in 2026"
+  description="The full-site crawler playbook — depth controls, budget caps, robots.txt obedience, sitemap unrolling, and webhook-based delivery for crawls that finish hours later."
+  date="2026-05-16"
+  readingTime={13}
+  tags={["Crawling", "Web scraping", "Site audits", "SEO infrastructure", "API"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>The short answer to crawling an entire website in 2026</h2>
+  <p>Send a single POST to <code>/v1/crawl</code> with the root URL, a depth limit, a page budget, and a webhook URL. Ollagraph discovers every reachable page within your constraints, respects robots.txt by default, paces requests politely, and delivers clean markdown or structured JSON to your callback when the job completes — usually within hours.</p>
+
+  <p>That's the production answer. The interesting question is the operational one: how do you actually pick depth limits, decide between sitemap-driven and link-discovery crawling, handle the webhook on the receiving end, and keep your engineering team focused on the data instead of the infrastructure underneath it. This recipe walks the full playbook.</p>
+
+  <h2>The problem with rolling your own crawler</h2>
+  <p>Every team eventually needs a full-site crawl. SEO audits, competitive content indexing, RAG ingestion, compliance archives, brand monitoring across a corporate domain — the use cases multiply once the first one lands. The instinct is to grab an open-source crawler, wire it up, and let it run.</p>
+
+  <p>Then reality arrives. The crawler hits a rate limit and gets banned. Robots.txt parsing has an edge case nobody documented. The site uses client-side rendering and half the links never get discovered. A sitemap turns out to be a sitemap index pointing at twelve more sitemaps, each with its own gzip layer. Your laptop fans spin up. The dev who owns the crawler quits.</p>
+
+  <p>None of these problems are unsolvable. They're just expensive to solve repeatedly, in every company, for every project. A modern crawler API exists so your team can stay on the work that actually differentiates the product.</p>
+
+  <h2>What the top alternatives offer</h2>
+  <p><strong>Screaming Frog</strong> is the desktop standard for SEO audits and has been for over a decade. The interface is dense in the best way — every report a technical SEO needs is two clicks away, and the team has earned the loyalty of an entire industry by shipping reliable software year after year. For a one-off audit on a laptop, it's a fantastic tool.</p>
+
+  <p><strong>Sitebulb</strong> brought a visual sensibility to crawl analytics that the category badly needed. The hint system that surfaces issues in plain language has trained a generation of SEO consultants, and the audit reports are presentation-ready for client work. It's the kind of product where you can tell the team uses what they build.</p>
+
+  <p><strong>Firecrawl</strong>, <strong>Common Crawl</strong>, and <strong>Diffbot</strong> each own a meaningful slice of the modern crawler-API market. Firecrawl's markdown output set the bar for AI-friendly extraction. Common Crawl's open data corpus has powered an entire generation of language models. Diffbot's knowledge-graph layer turns crawl output into structured entity data that few competitors can match. Each is excellent at what it focuses on.</p>
+
+  <h2>Where Ollagraph goes further</h2>
+  <p>Ollagraph treats crawling as an outcome — finished pages, on time, in the format you asked for — and engineers the entire surface area to deliver that outcome with minimal operator burden. The depth cap, the page budget, the polite cadence, the robots.txt check, and the webhook delivery are all defaults rather than configuration puzzles.</p>
+
+  <p>The sitemap intelligence endpoint is the practical edge most teams notice first. Unrolling a nested sitemap index used to mean writing recursive XML parsers; with <code>/v1/intel/sitemap</code> it's a single call that returns every canonical URL the site owner has chosen to publish, including the recursive index hops handled internally. That alone saves hours of crawl budget on large catalogs because you start from the curated list instead of guessing through links.</p>
+
+  <p>Where Ollagraph goes further is in the operational ergonomics: webhook callbacks for long jobs, signed payloads, idempotent retries, hard server-side enforcement of caps, and a single billing line that covers crawling, scraping, and the underlying network rotation. You stop juggling tools and start measuring outcomes.</p>
+
+  <h2>The step-by-step</h2>
+
+  <h3>Step 1 — Unroll the sitemap first</h3>
+  <p>Before kicking off a link-discovery crawl, ask the site what it wants you to find. A well-maintained sitemap is the cheapest, fastest way to surface every canonical URL on a domain.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/intel/sitemap \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/sitemap.xml",
+    "follow_index": true
+  &#125;'</code></pre>
+
+  <p>You'll get back a flat list of URLs with last-modified timestamps:</p>
+
+  <pre><code>&#123;
+  "sitemap_count": 14,
+  "url_count": 41827,
+  "urls": [
+    &#123; "loc": "https://example.com/products/abc", "lastmod": "2026-05-12" &#125;,
+    &#123; "loc": "https://example.com/products/xyz", "lastmod": "2026-05-14" &#125;
+  ],
+  "fetched_at": "2026-05-16T09:14:22Z"
+&#125;</code></pre>
+
+  <p>For most production crawls this is the right place to start. You now know the size of the job and can budget accordingly. Pages that exist but aren't in the sitemap get caught in step three.</p>
+
+  <h3>Step 2 — Confirm robots.txt allows what you're about to do</h3>
+  <p>Even when you respect robots.txt at crawl time, it's good practice to audit allowance up front. The <code>/v1/intel/robots</code> endpoint checks any path against the site's robots.txt for a specified user-agent.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/intel/robots \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/products/",
+    "user_agent": "OllagraphBot"
+  &#125;'</code></pre>
+
+  <pre><code>&#123;
+  "allowed": true,
+  "matched_rule": "Allow: /products/",
+  "crawl_delay": 1,
+  "sitemap_urls": ["https://example.com/sitemap.xml"]
+&#125;</code></pre>
+
+  <p>This is also how you discover sitemap URLs you didn't know existed — many sites declare them in robots.txt, and the response surfaces them automatically. The <a href="https://datatracker.ietf.org/doc/html/rfc9309">IETF formalized the robots exclusion protocol in RFC 9309</a>, and Ollagraph's parser tracks that spec.</p>
+
+  <h3>Step 3 — Submit the crawl with sensible caps</h3>
+  <p>Now the main event. Configure depth, page budget, same-origin enforcement, and robots compliance. Submit a webhook URL so you don't have to babysit the job.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/crawl \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com",
+    "max_depth": 4,
+    "max_pages": 50000,
+    "same_origin": true,
+    "respect_robots": true,
+    "format": "markdown",
+    "webhook_url": "https://yourapp.com/hooks/ollagraph"
+  &#125;'</code></pre>
+
+  <p>The immediate response is a job acknowledgment:</p>
+
+  <pre><code>&#123;
+  "job_id": "job_4f7a9c1b2e8d",
+  "status": "queued",
+  "estimated_pages": 41827,
+  "estimated_completion": "2026-05-16T13:42:00Z",
+  "created_at": "2026-05-16T09:18:11Z"
+&#125;</code></pre>
+
+  <p>A few notes on the parameters. <code>max_depth</code> of 4 means the crawler follows links four hops from the root. <code>same_origin</code> at true keeps the crawler on <code>example.com</code> and prevents it from wandering across the open web. <code>max_pages</code> at 50,000 is a hard ceiling — the crawl stops cleanly if it reaches that count, and you only pay for fetched pages.</p>
+
+  <h3>Step 4 — Let Ollagraph handle the cadence</h3>
+  <p>You don't need to set a polite delay manually. The crawler adapts pacing per host based on response codes, declared crawl-delay directives, and observed server latency. Sites that respond quickly get crawled faster; sites that throttle get backed off automatically.</p>
+
+  <p>If you do want to enforce a stricter ceiling — for instance, a partner site where you've negotiated a specific request rate — pass a <code>request_rate</code> override in requests per second. Most teams never touch it.</p>
+
+  <h3>Step 5 — Receive the webhook and ingest the results</h3>
+  <p>When the crawl finishes, Ollagraph POSTs a signed payload to the webhook URL. Verify the signature using your webhook secret, then pull the data.</p>
+
+  <pre><code>&#123;
+  "event": "crawl.completed",
+  "job_id": "job_4f7a9c1b2e8d",
+  "status": "succeeded",
+  "pages_crawled": 41504,
+  "pages_failed": 323,
+  "duration_seconds": 14982,
+  "result_url": "https://api.ollagraph.com/v1/jobs/job_4f7a9c1b2e8d",
+  "expires_at": "2026-05-23T09:18:11Z"
+&#125;</code></pre>
+
+  <p>The results download is a streamed JSON Lines file with one page per line — URL, status code, final URL after redirects, extracted markdown or structured fields, and per-page timestamps. For a 41,000-page crawl that's a single file you can stream into your data warehouse or vector database without loading the whole thing into memory.</p>
+
+  <p>See <a href="/docs">the docs</a> for signature verification and retry semantics.</p>
+
+  <h3>Step 6 — Handle partial completions and retries</h3>
+  <p>Not every crawl finishes cleanly. Some pages 404. Some redirect into loops. Some return server errors that resolve on retry. Ollagraph's default behavior is to retry transient failures up to three times, then record the page as failed in the results manifest.</p>
+
+  <p>For incremental crawls — re-scanning the same site weekly to catch new content — pair the crawler with the sitemap intelligence endpoint and filter by <code>lastmod</code>. You only fetch pages that have changed since the last run, which cuts cost by an order of magnitude on stable catalogs.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Ada runs the data platform at a mid-market e-commerce intelligence company. Her team monitors roughly 800 retailer websites for catalog changes — new SKUs, dropped products, pricing shifts, and category restructures. The old pipeline was a Frankenstack of cron jobs, headless browser pools, and a brittle parser that broke every time a retailer pushed a redesign.</p>
+
+  <p>Ada migrated to Ollagraph over a single sprint. The sitemap intelligence endpoint replaced an internal recursive XML parser she'd inherited from a former engineer. The crawl endpoint, with same-origin enforcement and per-host pacing, replaced the headless browser fleet. Webhook delivery into her ingestion service replaced the polling loop that had quietly been costing her team a noticeable share of compute every month.</p>
+
+  <p>The numbers landed where she'd modeled them. Weekly full crawls across all 800 domains complete inside a Sunday-night window. Engineering time on crawler maintenance dropped to effectively zero. Ada's team now spends its cycles on the analysis layer her customers actually pay for, which is exactly where a data platform team should be spending them.</p>
+
+  <h2>Pricing math</h2>
+  <p>Crawl pricing on a managed API is straightforward: you pay per fetched page, and the per-page cost trends down with volume. For a typical full-site crawl in the low tens of thousands of pages, most teams budget a small, predictable line item per crawl. A weekly cadence across a small portfolio of sites lands inside a normal SaaS spend.</p>
+
+  <p>The larger savings show up when you account for what you no longer pay for: proxy bandwidth, headless browser compute, the engineer-weeks of crawler maintenance, and the opportunity cost of having a senior data engineer fight blocked requests instead of shipping analytics. <a href="/pricing">See the full pricing breakdown</a> for the live tiers.</p>
+
+  <h2>When to use crawl versus a single scrape</h2>
+  <p>Use <code>/v1/scrape</code> when you have a known URL and want its content. Use <code>/v1/crawl</code> when you want to discover URLs by following links from a root. Use <code>/v1/intel/sitemap</code> when the site has a sitemap and you want its full URL list without paying to discover URLs through link traversal.</p>
+
+  <p>For most production work the pattern is a combination: sitemap unroll first, then crawl any new sections, then scrape individual pages on a watch cadence. Each endpoint composes with the others through the same job model. See <a href="/capabilities">the capabilities overview</a> for the full surface area.</p>
+
+  <h2>Same-origin, cross-origin, and the boundary problem</h2>
+  <p>Same-origin enforcement is on by default for a reason. A crawler that follows every outbound link will, given enough time, attempt to crawl the entire internet. That's not a feature — it's a bug with a billing line. Keeping the crawler on a single registered domain is what most teams actually want.</p>
+
+  <p>For multi-domain crawls, run separate jobs per domain and join the output downstream. This keeps cost predictable, lets you tune depth and budget per site, and prevents one slow domain from holding up the others. The job model is built around this pattern.</p>
+
+  <h2>Working with JavaScript-heavy sites</h2>
+  <p>Modern sites render meaningful content client-side, and a crawler that only reads the initial HTML will miss most of the product catalog. Ollagraph renders JavaScript by default for paths where it detects client-side rendering, and falls back to static HTML where rendering isn't needed. You don't toggle this manually for most use cases.</p>
+
+  <p>For sites where you want explicit control — say, when you're benchmarking server-rendered output against the hydrated version — pass <code>render: false</code> to force static fetching. The trade-off is speed for completeness; static fetches are faster, rendered fetches see more of the page.</p>
+
+  <h2>Compliance and the ethical floor</h2>
+  <p>Robots.txt isn't a legal document, and yet treating it as one is the right baseline. Sites that publish a robots.txt are telling the world how they want to be crawled, and a vendor that ignores those signals creates real risk for its customers. Ollagraph respects robots.txt by default and exposes the audit endpoint so you can verify allowance before you queue a job.</p>
+
+  <p>Beyond robots, the broader ethical floor includes honoring rate signals, identifying your crawler honestly via user-agent, and not bypassing access controls. <a href="https://en.wikipedia.org/wiki/Web_crawler">Wikipedia's overview of web crawlers</a> is a solid backgrounder for stakeholders who need the historical context. Where you're doing audits across sensitive industries or competitor research, loop in counsel before you scale a crawler against domains you don't own.</p>
+
+  <h2>Sitemap-driven versus link-discovery crawling</h2>
+  <p>The two crawl strategies serve different goals and the right answer is usually both. Sitemap-driven crawling is fast, predictable, and respects the site owner's curated index. Link-discovery crawling is exhaustive — it finds the orphan pages, the deep category trees, the recently published content that hasn't propagated to the sitemap yet, and the staging URLs that shouldn't have been linked from production in the first place.</p>
+
+  <p>The pragmatic pattern for production work is to run sitemap unroll first, then run a shallow link-discovery crawl with a low depth cap to catch what the sitemap missed. The sitemap gives you 90% of the URLs at a tiny fraction of the budget. The follow-up crawl finds the last 10%. Combining both delivers completeness without wasting budget on rediscovering what the site has already cataloged.</p>
+
+  <p>For sites without a sitemap — small business websites, internal portals, niche communities — link-discovery is the only option. Set a slightly higher depth cap and lean on the same-origin enforcement to keep the traversal bounded. Most sites without sitemaps are also small enough that a depth of 5 or 6 covers everything reachable.</p>
+
+  <h2>Monitoring a long crawl without polling</h2>
+  <p>For crawls that take hours, webhook delivery is the right pattern. For teams that want intermediate visibility, the <code>GET /v1/jobs/&#123;job_id&#125;</code> endpoint returns current status, pages fetched so far, and an estimated completion time without forcing you to wait for the final callback.</p>
+
+  <pre><code>curl https://api.ollagraph.com/v1/jobs/job_4f7a9c1b2e8d \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"</code></pre>
+
+  <pre><code>&#123;
+  "job_id": "job_4f7a9c1b2e8d",
+  "status": "running",
+  "pages_crawled": 18402,
+  "pages_remaining": 23425,
+  "started_at": "2026-05-16T09:18:30Z",
+  "estimated_completion": "2026-05-16T13:45:00Z"
+&#125;</code></pre>
+
+  <p>Most teams skip polling entirely and rely on the webhook. The status endpoint exists for the rare cases where you want a progress bar in an internal dashboard or a debugging surface during initial integration.</p>
+
+  <h2>Closing the loop</h2>
+  <p>A full-site crawl in 2026 is no longer a project — it's an API call with sensible defaults and a webhook callback. The hard parts are real, and they're worth respecting: rate adaptation, robots compliance, sitemap unrolling, depth and budget enforcement, and reliable delivery for jobs that finish hours after you start them. Ollagraph handles those defaults so your team can spend its time on the analysis layer.</p>
+
+  <p>If you're auditing a competitor catalog, archiving a corporate domain for compliance, or feeding a RAG pipeline with fresh public content, the recipe above is the production pattern. Start with the sitemap, set conservative caps, point a webhook at your ingestion service, and let the crawler do the boring work. <a href="/docs">The docs</a> have the full parameter surface, and our <a href="/recipes/build-rag-knowledge-base">RAG knowledge base recipe</a> walks the downstream ingestion side. We'd love to see what you build.</p>
+</Article>

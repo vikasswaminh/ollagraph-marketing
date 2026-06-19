@@ -1,0 +1,205 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "Is it legal to scrape pages behind a login?",
+    a: "It depends on the site, your relationship to it, and your jurisdiction. The safest defaults are scraping your own accounts, sites you operate, or systems where you hold explicit written permission. Anything else is a counsel conversation. Document your basis before you ship.",
+  },
+  {
+    q: "How do sessions work in authenticated scraping?",
+    a: "A session is the state a site remembers about you between requests, usually a cookie or a token. For one-shot work, log in and extract in the same call. For multi-page workflows, hold the session in a remote browser so each subsequent call reuses the same cookies and storage.",
+  },
+  {
+    q: "Can I scrape my own SaaS dashboard for backups?",
+    a: "Yes, and this is one of the most common authenticated-scraping use cases. Teams pull invoices, analytics exports, and configuration snapshots from vendors that don't offer a clean API. You own the account, so you control the access. Check your vendor's terms first.",
+  },
+  {
+    q: "Does Ollagraph respect robots.txt?",
+    a: "Ollagraph reads robots.txt for unauthenticated public crawls and surfaces the directives to you. For authenticated flows, robots.txt is rarely the controlling document because logged-in pages are not part of the public crawl surface. The controlling document is the site's terms of service and your agreement with them.",
+  },
+  {
+    q: "What's the difference between per-request login and persistent session?",
+    a: "Per-request login runs the form fill, submit, and extraction inside a single API call. Persistent session keeps a browser warm across many calls so cookies, local storage, and CSRF tokens survive. Pick per-request for stateless jobs and persistent for multi-page workflows.",
+  },
+  {
+    q: "How do I handle two-factor authentication?",
+    a: "For accounts you own, use an app password or a long-lived session token captured once and reused. For TOTP, generate the code inside your pipeline and pass it as a typed action. SMS-based 2FA is not a good fit for automation and usually signals you should rethink the approach.",
+  },
+  {
+    q: "What happens when the login form changes?",
+    a: "Ollagraph's smart scrape mode uses semantic selectors that survive most redesigns. When a site ships a structural change, your job returns a clear error pointing at the missing element so you can update the recipe in one place. We monitor common targets and ship updates for our managed actors.",
+  },
+  {
+    q: "Can I use Ollagraph to bypass paywalls?",
+    a: "No. Ollagraph is built for legitimate access patterns: your own accounts, partner data, internal tools, and pages where you have authorization. Paywall circumvention isn't supported and isn't a use case we're interested in. There's plenty of honest work in this space.",
+  },
+  {
+    q: "How do I store credentials safely?",
+    a: "Use your own secret manager and pass credentials per request, not in the URL. Ollagraph accepts credentials in the request body over TLS and does not log them. For long-running sessions, store the session cookie in your vault and inject it into the remote browser at startup.",
+  },
+];
+---
+<Article
+  title="How to scrape pages behind a login in 2026"
+  description="A practical guide to authenticated scraping in 2026 — form-based logins, session-persistent flows, and the legal and operational guardrails every team needs."
+  date="2026-05-16"
+  readingTime={14}
+  tags={["recipes", "authenticated-scraping", "sessions", "browser-automation"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>The short answer: scrape behind a login by automating the form once, then carrying the session forward</h2>
+  <p>Authenticated scraping in 2026 is a two-shape problem. Either you log in and extract in the same call, or you hold a warm browser session and run many calls against it. Ollagraph covers both shapes with the <code>actions</code> array on <code>/v1/scrape</code> and a persistent browser session you can drive over the wire.</p>
+  <p>The work is mostly about choosing the right shape for the job, not fighting the login form. Once you pick correctly, the rest is plumbing.</p>
+
+  <h2>The problem</h2>
+  <p>Most useful data lives behind a credential. Your billing portal, your ad platform, your CRM, your fulfillment partner, your bank, your analytics vendor. None of them want to write a clean export API for the specific report you need every Monday morning.</p>
+  <p>So engineering teams end up writing brittle scripts that log in with Puppeteer, click around, copy a CSV out of a modal, and email it to themselves. Those scripts break every time the vendor moves a button. They run on someone's laptop. They fail silently the week the project lead is on vacation.</p>
+  <p>The modern answer is to treat authenticated extraction the same way you treat any other API call. You describe the steps. The platform runs them in a hardened browser. You get structured data back. When the form changes, you change one line.</p>
+
+  <h2>A legal note up front, then we'll get to the code</h2>
+  <p>Authenticated scraping is a sensitive area legally. Before deploying anything that scrapes a site you don't own or operate behind a credentialed flow, talk to your counsel. The reasonable default looks like this: only scrape your own accounts, sites where you have explicit permission, or partner systems with a contract that covers automated access.</p>
+  <p>Respect the site's terms of service. Document your basis. Keep an audit trail of what you accessed and why. None of this is legal advice and your situation is your own, and a five-minute call with your lawyer before you commit a credential to a pipeline is cheaper than the alternative.</p>
+  <p>With that on the record, the engineering part is fun.</p>
+
+  <h2>What the top alternatives offer</h2>
+  <p><strong>Browserless</strong> has been the developer's favorite hosted Chrome for years, and the team has done excellent work on the WebSocket-driven CDP model. If you already write Puppeteer or Playwright code and want to keep that shape, Browserless gives you a clean remote endpoint that feels almost local. Their documentation on session reuse and queue management is some of the best in the category.</p>
+  <p><strong>ScrapingBee</strong> takes the simple-by-default approach with a single endpoint that accepts a JavaScript scenario for clicks and waits. It's a great fit for small teams who want one HTTP call and a clean JSON response, and their pricing is friendly to startups. The team is responsive and the docs are tight.</p>
+  <p><strong>ZenRows</strong> is also doing strong work on the protected-content side, with enterprise tooling around authenticated flows that is comprehensive. We respect what these teams ship.</p>
+
+  <h2>Where Ollagraph goes further</h2>
+  <p>Ollagraph is built for engineering teams that want one platform across both shapes of authenticated scraping. The <code>actions</code> array on <code>/v1/scrape</code> handles per-request logins with a typed schema. The persistent session endpoints at <code>/v1/session</code> handle multi-page flows that need cookies and storage to survive across calls. Same auth, same billing, same audit log.</p>
+  <p>The platform returns clean structured output by default. You ask for <code>format: "markdown"</code> and you get reading-ready text. You ask for <code>format: "links"</code> and you get a deduplicated array. The same call that logs in is the call that gives you the data, and the data is shaped for downstream use without a post-processing layer.</p>
+  <p>And because the engine is the same one powering Ollagraph's broader <a href="/capabilities">capabilities</a>, you can graduate from a one-off recipe to a scheduled job without rewriting anything. The recipe is the workflow.</p>
+
+  <h2>The step-by-step</h2>
+
+  <h3>Step 1 — Decide which shape you need</h3>
+  <p>Two questions. Does the job finish in one logical sequence (log in, grab data, done)? Or does it span many requests over minutes or hours, with cookies that have to survive between them? The first is per-request. The second is persistent session.</p>
+  <p>Most reporting and backup jobs are per-request. Anything that involves pagination through hundreds of pages, file uploads, or multi-step form wizards is a persistent session.</p>
+
+  <h3>Step 2 — Per-request login with the actions array</h3>
+  <p>The <code>actions</code> array on <code>/v1/scrape</code> accepts three primitives: <code>click</code>, <code>type</code>, and <code>wait</code>. That's enough to drive any normal login form. Here's a complete call against a hypothetical vendor portal.</p>
+  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/scrape \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '&#123;
+    "url": "https://portal.example-vendor.com/login",
+    "actions": [
+      &#123; "type": "type", "selector": "input[name=email]", "text": "ops@yourcompany.com" &#125;,
+      &#123; "type": "type", "selector": "input[name=password]", "text": "&#123;&#123;VENDOR_PASSWORD&#125;&#125;" &#125;,
+      &#123; "type": "click", "selector": "button[type=submit]" &#125;,
+      &#123; "type": "wait", "ms": 2500 &#125;,
+      &#123; "type": "click", "selector": "a[href=\\"/reports/monthly\\"]" &#125;,
+      &#123; "type": "wait", "selector": "table.report-rows" &#125;
+    ],
+    "format": "markdown"
+  &#125;'`&#125;</code></pre>
+  <p>The response is a clean JSON envelope with the rendered markdown of the report page, the final URL, the response status, and timing data. Credentials never leave the request body and Ollagraph does not log them.</p>
+  <pre><code>&#123;`&#123;
+  "ok": true,
+  "url": "https://portal.example-vendor.com/reports/monthly",
+  "format": "markdown",
+  "content": "# Monthly Report — April 2026\\n\\n| Account | Spend | Conv |\\n|---|---|---|\\n| Acme Co | $4,210 | 38 |\\n...",
+  "status": 200,
+  "took_ms": 4180
+&#125;`&#125;</code></pre>
+
+  <h3>Step 3 — Persistent session with a warm browser</h3>
+  <p>When you need cookies to survive across many calls, open a persistent session. <code>POST /v1/session</code> spins up a warm browser context and is free — billing happens on the render and script calls you run inside it. The session keeps cookies, local storage, and IndexedDB alive for its lifetime.</p>
+  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/session \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json"`&#125;</code></pre>
+  <p>The response gives you a session identifier and its expiry. From there you drive the warm browser by posting to <code>/v1/session/&#123;session_id&#125;/render</code> to render a URL inside the session, or <code>/v1/session/&#123;session_id&#125;/script</code> to run a multi-step click/wait/extract script. Each render or script call reuses the same cookies and storage, so the login you performed on the first call carries forward to every subsequent one. Close the session with <code>DELETE /v1/session/&#123;session_id&#125;</code> when you're done.</p>
+  <pre><code>&#123;`&#123;
+  "session_id": "ses_01HXR3...",
+  "engine": "chromium",
+  "expires_at": "2026-05-16T18:42:00Z"
+&#125;`&#125;</code></pre>
+
+  <h3>Step 4 — Reuse a warm session instead of replaying the login</h3>
+  <p>If logging in costs a 2FA prompt or triggers a security email, do the login once at the start of a session and then carry that session forward across every call. You log in by hand or with an <code>actions</code> array on the first render, and the session keeps the resulting cookies alive — so the login form never runs again for the lifetime of that session.</p>
+  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/session/ses_01HXR3.../render \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '&#123;
+    "url": "https://portal.example-vendor.com/reports/monthly",
+    "format": "markdown"
+  &#125;'`&#125;</code></pre>
+  <p>This is the operational sweet spot for SaaS dashboard backups. You authenticate once at the start of a session, then run the report renders unattended against the warm browser until the session expires.</p>
+
+  <h3>Step 5 — Run many logins in parallel</h3>
+  <p>For pipelines that hit dozens of vendor portals on a schedule, use <code>/v1/scrape/batch</code>. Pass an array of URLs with a shared <code>actions</code> sequence and a concurrency setting, and Ollagraph fans them out in parallel on our side.</p>
+  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/scrape/batch \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '&#123;
+    "urls": [
+      "https://portal-a.example.com/login",
+      "https://portal-b.example.com/login",
+      "https://portal-c.example.com/login"
+    ],
+    "actions": [...],
+    "format": "markdown",
+    "concurrency": 10
+  &#125;'`&#125;</code></pre>
+  <p>When you'd rather push results to your own service instead of waiting on the response, submit one URL per job to <code>/v1/scrape/async</code> with a <code>webhook_url</code>. You get a job ID back immediately and Ollagraph posts results to your webhook as each job finishes. Poll <code>GET /v1/jobs/&#123;job_id&#125;</code> if you prefer pull.</p>
+
+  <h3>Step 6 — Wire it into a scheduled workflow</h3>
+  <p>Once the recipe works, move it to a scheduled job where you can schedule it, attach alerts, and version the action steps. Same JSON, now running on cron, with the output landing in your warehouse or your inbox.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Take a mid-sized ecommerce operator. Call her Maya. She runs growth at a Series B brand that sells across nine ad platforms, three marketplaces, and two fulfillment partners. Every Monday morning she pulls a unified spend-and-conv report. Half the sources have decent APIs. The other half make her log into a dashboard and click "Export CSV."</p>
+  <p>Maya's old setup was a folder of Puppeteer scripts that ran on a teammate's laptop. They broke roughly once a month. She moved the whole thing to Ollagraph over a weekend. Each portal got a recipe: a small JSON file with an <code>actions</code> array and a warm session for the multi-page exports. The recipes run on schedule, write their output to S3, and post to Slack when one fails. Total platform spend, a fraction of the previous loaded engineering cost.</p>
+  <p>The interesting thing isn't the cost saving. It's that Maya's team stopped thinking about scraping at all. The pipeline is a configuration artifact, not a codebase. When a vendor redesigns their dashboard, one engineer updates one selector in one file.</p>
+
+  <h2>Pricing math</h2>
+  <p>Per-request logins run in the same price bucket as a normal rendered scrape. Persistent sessions are free to open — billing happens on the render and script calls you run inside them. Current rates for both modes live on the pricing page.</p>
+  <p>A team pulling 30 reports a day across 10 vendors lands in the low double-digit dollars per month. A team running thousands of authenticated extractions per day is talking to us about volume pricing. The <a href="/pricing">pricing page</a> has the current tiers.</p>
+  <p>The pricing across serious vendors in this space is similar because the underlying cost structure is similar. Pick on developer experience and reliability rather than headline rates.</p>
+
+  <h2>Operational hygiene for authenticated scraping</h2>
+  <p>Three habits separate teams that run this well from teams that don't. First, treat credentials like production secrets. Vault them, rotate them, and pass them to the scraper at request time, not in source control. Second, monitor for selector drift. When a job starts returning empty results or hitting timeouts on a step that used to work, alert immediately and pause the schedule until a human looks at it.</p>
+  <p>Third, log what you accessed, when, and why. This is the audit trail your future self and your future counsel will thank you for. Ollagraph provides per-request logs out of the box, and you should mirror them into your own observability stack.</p>
+  <p>None of this is heroic engineering. It's the same hygiene you already apply to your production database access. Authenticated scraping deserves the same respect.</p>
+
+  <h2>When to use a managed actor instead</h2>
+  <p>For common targets, the recipe is already written. Ollagraph's actor catalog includes maintained extractors for several portals where login flow and selector maintenance are handled for you. If your job maps to one of them, use it. You get a stable JSON contract and we eat the maintenance.</p>
+  <p>If your target is bespoke or internal, write the recipe yourself with the <code>actions</code> array. The cost of the recipe is a few hours of engineering. The cost of maintaining it once it's running is almost nothing because the API surface is small.</p>
+  <p>Either way, the data lands in the same shape, and you can move from one model to the other without rewriting your consumers.</p>
+
+  <h2>Cross-references and further reading</h2>
+  <p>For the persistent-session and multi-page workflows, browse the <a href="/actors">actor catalog</a>. For the underlying scrape API, see the <a href="/capabilities">capabilities</a> page and the <a href="/docs">full docs</a>. The pricing tiers and overage policy are on the <a href="/pricing">pricing page</a>.</p>
+  <p>External primer reading: the <a href="https://en.wikipedia.org/wiki/Web_scraping" rel="noopener" target="_blank">Wikipedia overview of web scraping</a> covers the history and the major legal cases, and the <a href="https://datatracker.ietf.org/doc/html/rfc6265" rel="noopener" target="_blank">HTTP cookie specification (RFC 6265)</a> is the canonical reference for how sessions actually work over the wire. Both are worth a read if you're building a serious authenticated pipeline.</p>
+  <p>For a related recipe, see <a href="/recipes/extract-structured-data-from-articles">extracting structured data from articles</a>, which uses the same scrape primitives against unauthenticated pages.</p>
+
+  <h2>Failure modes and how to design around them</h2>
+  <p>Three failure modes show up over and over again in authenticated pipelines, and each one has a predictable answer. Selector drift is the first. A vendor updates their dashboard and the button that used to live at <code>button.export</code> now lives at <code>button[data-testid="export-csv"]</code>. Your job starts returning empty bodies. The fix is to write recipes with multiple fallback selectors and to alert on empty extractions, not just on HTTP errors.</p>
+  <p>Session expiration is the second. A cookie that worked yesterday returns a redirect to <code>/login</code> today. The fix is to detect the redirect and either re-run the login action or open a fresh session. Ollagraph's response includes the final URL after redirects, so a single string-match on the response handles this cleanly.</p>
+  <p>Vendor-side rate limiting is the third. The portal you're scraping decides you're moving too quickly and starts returning 429s or showing interstitial pages. The fix is to space your calls, run them off-peak relative to the vendor's customer base, and respect any <code>Retry-After</code> headers the vendor sends. The platform does the right thing by default and surfaces the signal so you can tune your schedule.</p>
+  <p>None of these are dramatic. They're the same operational hygiene you'd apply to any third-party API integration, with the only difference being that the contract is implicit instead of documented. Treat the authenticated site as a partner who hasn't published a spec, not as an adversary.</p>
+
+  <h2>Designing recipes for change</h2>
+  <p>The best authenticated-scraping pipelines we see treat each recipe as a small, versioned artifact. The recipe lives in source control. It carries a description, an owner, an alert recipient, and a list of test cases. When it changes, the change is reviewed.</p>
+  <p>This sounds heavyweight and it isn't. A recipe is maybe twenty lines of JSON. Putting it in source control adds five minutes the first time and pays off the third time it breaks at midnight and the on-call engineer needs to know what the recipe was supposed to do.</p>
+  <p>Keeping recipes in your repository means the file you commit is the recipe that runs. There's no separate UI state to keep in sync with what's in git, and onboarding a new engineer to the pipeline is a single repo clone.</p>
+
+  <h2>How Ollagraph's approach compares operationally</h2>
+  <p>Compared with running your own Puppeteer fleet, the platform absorbs the boring parts: keeping browsers warm, handling crashes, rotating egress, capturing screenshots on failure, and surfacing structured logs. The interesting parts, which are the recipe logic and the downstream pipeline, stay in your codebase where they belong.</p>
+  <p>Compared with vendor-specific actor marketplaces, the platform stays generic. You can write a recipe for a portal nobody else has heard of, and you can write it as fast as you can describe the click path. When the portal is common enough that a managed actor exists, you switch to the actor without rewriting your consumers.</p>
+  <p>Compared with no-code scraping tools, the platform stays code-first. The recipe is JSON, the call is HTTP, the response is JSON, and every piece of it can be templated, parameterized, and tested. Engineering teams who've outgrown the point-and-click era find this shape familiar and comfortable.</p>
+
+  <h2>What an authenticated workflow looks like end to end</h2>
+  <p>A complete pipeline has four pieces. Credential management at the top, recipes in the middle, scheduling and observability around them, and a downstream sink at the bottom. Ollagraph handles the middle two and integrates cleanly with whatever you choose for the other two.</p>
+  <p>For credential management, most teams use the secret manager they already have: AWS Secrets Manager, Vault, Doppler, or 1Password Connect. Credentials are fetched at recipe-execution time and never persisted in the platform. For sinks, most teams write to their warehouse or to S3, with a transformation layer like dbt or a custom worker turning the markdown body into structured rows.</p>
+  <p>The result is a pipeline that looks indistinguishable from any other ETL job in your stack. Scraping isn't a special discipline anymore. It's an input, like any other vendor integration, with its own quirks and its own ops story.</p>
+
+  <h2>A note on observability</h2>
+  <p>Every authenticated call Ollagraph runs produces a structured log entry with the recipe ID, the source URL, the final URL, the status code, the timing breakdown, and a content hash. These logs are available in your dashboard and via the API, and they ship cleanly into a SIEM if your security team needs a copy.</p>
+  <p>The reason this matters is that authenticated scraping has compliance implications that unauthenticated scraping doesn't. Knowing exactly which accounts you accessed, when, and what they returned, is part of the audit trail that lets you answer questions from your legal and security teams quickly. Build the observability in early. Retrofitting it later is more painful than it sounds.</p>
+
+  <h2>Closing</h2>
+  <p>Authenticated scraping used to be a craft problem. In 2026 it's a configuration problem, and the right platform makes it look small. Pick the shape that fits your job, write the recipe once, schedule it, and move on with the work your team is actually paid to do.</p>
+  <p>If you want to try Ollagraph against a portal you already have credentials for, <a href="/pricing">grab a key</a> and run the per-request example at the top of this page against your own account. The first thousand calls are on us, and the docs walk through the rest of the surface in detail.</p>
+</Article>

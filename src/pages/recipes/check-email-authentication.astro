@@ -1,0 +1,127 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is the difference between SPF, DKIM, and DMARC?", a: "SPF declares which servers are allowed to send mail for your domain, published as a DNS TXT record. DKIM cryptographically signs each message so the receiver can verify it was not altered in transit and really came from your domain. DMARC ties the two together: it tells receivers what to do when SPF or DKIM fails, and where to send aggregate reports. You need all three working in alignment for strong deliverability and spoofing protection. Ollagraph's email-auth check inspects all three in one call." },
+  { q: "Does this verify individual email addresses?", a: "No. This recipe audits a domain's published email-authentication records — the SPF, DKIM, and DMARC posture for the whole domain. If you instead want to confirm that specific mailboxes exist and are deliverable, that is a separate workflow covered in our recipe on verifying email addresses at scale. Auditing records and verifying mailboxes answer different questions; most teams end up doing both." },
+  { q: "Why does my legitimate email land in spam even with SPF set?", a: "SPF alone is rarely enough in 2026. Major mailbox providers increasingly expect DKIM signing and an enforcing DMARC policy before they trust a sender. A domain can have a perfectly valid SPF record and still see poor inbox placement because DKIM is missing or DMARC sits at p=none. Auditing all three records together is the fastest way to find the gap that is hurting placement." },
+  { q: "What does a DMARC policy of p=none actually mean?", a: "It means DMARC is in monitor-only mode. Receivers will evaluate alignment and send you aggregate reports, but they will not quarantine or reject mail that fails. p=none is the correct first step when you are gathering data, but leaving a domain there indefinitely gives you visibility without protection. The enforcement path is p=none, then p=quarantine, then p=reject as you gain confidence." },
+  { q: "Can I check a domain I do not own?", a: "Yes. Email-authentication records are published in public DNS, so the audit is fully passive — it reads what any mail receiver would read. That makes it useful for vendor due diligence, partner onboarding, and assessing the spoofability of a domain in an investigation. The check never sends mail and never touches the target's servers directly." },
+  { q: "How fresh are the results?", a: "Every call resolves the domain's DNS records live at the moment of the request, so the answer reflects the current published state. DNS changes propagate on their own TTL schedule, so if you just updated a record, allow time for caches to expire before expecting the new value everywhere. For change tracking, poll on a cadence and store each result with a timestamp." },
+  { q: "What does it cost to audit email authentication?", a: "Each metered call costs one credit, and the exact cost is shown in every response. Failed calls are automatically refunded, so a transient DNS hiccup never costs you. Pricing details and free-tier limits live on the pricing page." },
+  { q: "Is BIMI part of this check?", a: "BIMI builds on top of an enforcing DMARC policy, so the email-auth audit surfaces the underlying DMARC posture that BIMI depends on. If your goal is to display a brand logo in the inbox, the first prerequisite is a DMARC policy at quarantine or reject — which is exactly what this audit tells you whether you have." },
+];
+---
+<Article
+  title="How to check SPF, DKIM, and DMARC records in 2026"
+  description="Validate a domain's email-authentication posture — SPF, DKIM, DMARC — to protect deliverability and catch spoofing risk before it bites."
+  date="2026-06-18"
+  readingTime={11}
+  tags={["email", "SPF DKIM DMARC", "deliverability"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What checking email authentication actually means in 2026</h2>
+  <p>Checking a domain's email authentication means reading the SPF, DKIM, and DMARC records published in its DNS and confirming they are present, valid, and aligned — so your legitimate mail reaches the inbox and nobody can spoof your domain. In 2026 the practical way to do this is a single API call that resolves all three records and reports their posture, rather than three separate <code>dig</code> commands and a spreadsheet.</p>
+
+  <p>That sentence is the answer most people came for. The rest of this page is for the deliverability, RevOps, and security leaders who have to act on it — who need to know not just what these records are, but how to audit a domain quickly, what good and bad look like, and how to wire the check into an ongoing monitor.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't care about DNS records. You care about two outcomes: your real email lands in the inbox, and nobody can send mail that looks like it came from you. Email authentication is the mechanism that delivers both, and a misconfiguration silently undermines either one.</p>
+
+  <p>The reader of this page usually falls into one of three buckets. A deliverability or marketing-ops team chasing down why a campaign tanked in placement. A security or IT team hardening a domain against spoofing and business-email-compromise. Or an analyst doing vendor and partner due diligence, where a partner domain that anyone can spoof is a supply-chain risk worth flagging before contracts are signed.</p>
+
+  <p>All three need the same thing first: an honest, current read of what a domain actually publishes. Not what someone set up two years ago and assumed still works — what is live in DNS right now.</p>
+
+  <h2>This is not the same as verifying email addresses</h2>
+  <p>It is worth drawing a hard line here, because the two tasks get conflated constantly. <strong>Verifying an email address</strong> asks whether <code>jane@example.com</code> is a real, deliverable mailbox. <strong>Auditing email authentication</strong> asks whether <code>example.com</code> as a domain has correctly published SPF, DKIM, and DMARC so its mail is trusted and its identity is protected.</p>
+
+  <p>One operates on individual mailboxes; the other operates on a domain's published policy. If you are cleaning a list before a send, you want our recipe on <a href="/recipes/verify-email-addresses-at-scale">verifying email addresses at scale</a>. If you are diagnosing deliverability or assessing spoofability, you are in the right place. Mature teams run both: verify the recipients, audit the sending domain.</p>
+
+  <h2>The three records, briefly</h2>
+  <p>Before the recipe, a short refresher so the output makes sense.</p>
+
+  <h3>SPF</h3>
+  <p>Sender Policy Framework is a DNS TXT record listing the servers authorized to send mail for your domain. When a receiver gets a message claiming to be from you, it checks whether the connecting server is on the list. SPF breaks in predictable ways: too many DNS lookups (the spec caps you at ten), multiple SPF records on one domain, or a <code>~all</code> soft-fail where you meant a hard <code>-all</code>.</p>
+
+  <h3>DKIM</h3>
+  <p>DomainKeys Identified Mail attaches a cryptographic signature to each message, published as a public key in DNS under a selector. The receiver fetches the key and verifies the signature, proving the message was not tampered with and genuinely originated from a server holding your private key. The common failure is simply not having DKIM at all, or having it configured for one sending platform but not another.</p>
+
+  <h3>DMARC</h3>
+  <p>DMARC ties SPF and DKIM together with an alignment requirement and a policy. It tells receivers what to do when a message fails — do nothing (<code>p=none</code>), quarantine it, or reject it outright — and where to send reports. DMARC is where most domains under-invest: they publish a record at <code>p=none</code> and never advance to enforcement, leaving the domain fully spoofable.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Real curl commands, real request shapes. Each metered call costs one credit, the cost is shown in the response, and failed calls auto-refund.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab an API key from the dashboard, and export it for the rest of this session. Keys authenticate every call.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Run the full email-auth audit</h3>
+  <p>The fastest path is the dedicated email-authentication endpoint. It takes a single <code>domain</code> and reports the SPF, DKIM, and DMARC posture in one call — entirely from public DNS, with no mail ever sent.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/email-auth \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <p>The response describes the domain's email-authentication posture at a high level — the presence and validity of each of SPF, DKIM, and DMARC, and the DMARC enforcement policy in effect. That is enough to answer the two questions you came with: is legitimate mail set up to be trusted, and is the domain protected against spoofing. Read each field and treat anything absent or in monitor-only mode as a finding to act on.</p>
+
+  <p>Because the check is all-DNS and passive, you can run it against any domain — your own, a vendor's, or a partner's during due diligence — without permission or risk to the target.</p>
+
+  <h3>Step 3. Drill into the raw records when you need detail</h3>
+  <p>The audit tells you the posture; sometimes you need the exact published strings to fix a record or to show a colleague the literal value. SPF and DMARC both live in DNS TXT records, so the DNS lookup endpoint pulls them directly. It takes a <code>domain</code> and a <code>records</code> list.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/dns/lookup \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com",
+    "records": ["TXT", "MX"]
+  &#125;'</code></pre>
+
+  <p>The TXT records returned include the SPF policy and, at the <code>_dmarc</code> subdomain, the DMARC policy string. Pulling MX alongside is useful context: it tells you which providers actually handle the domain's mail, which should reconcile with what the SPF record authorizes. A mismatch — MX pointing at a provider that SPF does not include — is a classic deliverability bug.</p>
+
+  <h3>Step 4. Add the broader DNS picture</h3>
+  <p>For a fuller view of a domain's DNS posture in one shot — useful when email-auth findings hint at a deeper misconfiguration — the DNS intelligence endpoint takes a single <code>domain</code> and returns a consolidated read.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/dns/intelligence \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <p>This is the endpoint to reach for when an email-auth audit raises more questions than it answers — when SPF looks fine but mail still bounces, and you suspect the nameserver or wider DNS setup is the real culprit. For the canonical, always-current field list on every endpoint here, see the <a href="/docs">live spec</a>.</p>
+
+  <h3>Step 5. Land the results and act on them</h3>
+  <p>The last step is the one that turns an audit into a fix. Store each result with a <code>checked_at</code> timestamp and the domain in your warehouse so you have a history. Then triage: a missing or soft-fail SPF, an absent DKIM, or a DMARC record stuck at <code>p=none</code> are the three findings that account for the overwhelming majority of deliverability and spoofing problems. Fix them in that order, re-run Step 2, and confirm the posture improved.</p>
+
+  <h2>What good and bad look like</h2>
+  <p>You don't need to memorize the spec to read an audit. A healthy domain has a single valid SPF record that ends in a hard fail and stays under the lookup limit, DKIM signing active for every platform that sends on the domain's behalf, and a DMARC policy at <code>quarantine</code> or <code>reject</code> with alignment passing. That combination means legitimate mail is trusted and impersonation is blocked.</p>
+
+  <p>An at-risk domain shows up as some mix of: no SPF or a permissive <code>~all</code>, DKIM missing entirely or only covering one of several senders, and DMARC either absent or parked at <code>p=none</code>. Any one of those is a finding. All three together describe a domain that is both hard to deliver from and trivial to spoof.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a B2B SaaS company whose monthly product newsletter quietly slid from a 30% open rate to single digits over two quarters. Marketing blamed content; the real cause was authentication. The company had migrated its transactional mail to a new provider, added that provider to nothing, and never advanced DMARC past the <code>p=none</code> it set up on day one.</p>
+
+  <p>One email-auth call against the sending domain told the whole story: SPF authorized the old provider only, DKIM was signing for the marketing platform but not the new transactional one, and DMARC was monitor-only — so receivers had no instruction to trust the misaligned mail, and increasingly filtered it. The fix was a corrected SPF record, DKIM enabled on the second provider, and a staged move to <code>p=quarantine</code>. Placement recovered within two send cycles, and the team now runs the audit on a schedule rather than after a fire.</p>
+
+  <h2>Wiring it into an ongoing monitor</h2>
+  <p>A one-time audit fixes today's problem. The records drift — someone adds a new sending tool, a vendor rotates a DKIM key, an intern edits a TXT record. The teams who stay out of trouble poll the email-auth endpoint on a cadence (daily for high-stakes domains, weekly for the long tail), diff each result against the last stored one, and alert on any regression: SPF newly over the lookup limit, DKIM dropped for a selector, DMARC downgraded from enforcement back to <code>p=none</code>.</p>
+
+  <p>Because the check is one credit per call and fully passive, monitoring a portfolio of domains is inexpensive and carries no risk to the domains themselves. This same passive-DNS pattern underpins much of our broader <a href="/intelligence">domain intelligence</a> tooling, and it is exactly the kind of always-on, low-noise signal that <a href="/for-intel">intelligence and investigations teams</a> build into their workflows.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>A few failure modes are worth planning for. Newly changed records may not appear immediately because DNS caches honor their own TTLs — if you just edited a record and the audit still shows the old value, wait for the TTL to expire rather than assuming the change failed. Some domains legitimately have no email authentication because they never send mail; an absent SPF on a parked or web-only domain is not necessarily a defect, though it does leave the domain easier to spoof.</p>
+
+  <p>Subdomain policy is a common blind spot: DMARC can set a separate policy for subdomains via its subdomain-policy tag, so a strong policy on the root domain does not automatically protect <code>mail.example.com</code> or a marketing subdomain. When you audit, check the specific sending hostname, not just the registered domain. And remember that this audit reads published records — it confirms the policy a receiver would see, which is the right altitude for deliverability and anti-spoofing work, but it is not a substitute for reading your DMARC aggregate reports over time.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, paste the curl command from Step 2, and run it against your own primary sending domain in the next five minutes. Read the three findings, fix the most severe one first, and re-run to confirm. Then point the same call at a couple of vendor domains and see how your partners measure up — the results are often more revealing than you expect.</p>
+
+  <p>When you're ready to go beyond a single domain, pair this audit with <a href="/recipes/verify-email-addresses-at-scale">mailbox verification</a> for full pre-send hygiene, explore the wider <a href="/intelligence">domain intelligence</a> surface, and read the <a href="/docs">docs</a> for the complete endpoint reference.</p>
+</Article>

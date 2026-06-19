@@ -1,0 +1,188 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is Answer Engine Optimization (AEO)?", a: "AEO is the practice of making your pages easy for AI answer engines — ChatGPT, Perplexity, Google AI Overviews, and Claude — to crawl, fetch, parse, and cite. It overlaps with classic SEO but adds new requirements: a fetch that works without a JavaScript renderer, schema that machines can read, headings phrased as the questions users ask, and explicit permission for AI crawlers in robots.txt. The Ollagraph AEO toolkit measures each of those signals." },
+  { q: "How is AEO different from SEO?", a: "SEO optimizes for a ranked list of blue links a human clicks; AEO optimizes for a synthesized answer a model writes, with your page cited as a source. The mechanics diverge in three places: AI crawlers often do not run JavaScript, so client-rendered content can be invisible to them; answer engines reward extractable structure — clean headings, lists, tables, and schema — over keyword density; and being cited depends on EEAT-style trust signals like named entities, specific numbers, and a visible last-updated date. See our writeup on the difference for the longer argument." },
+  { q: "Can I audit a page for AI search without writing code?", a: "Yes. Every endpoint in the Ollagraph AEO suite takes a single URL or domain and a bearer token. You can run the full page audit with one curl command and get a scored report back. The individual probes — schema coverage, heading hierarchy, crawler simulation, and the rest — are each a one-line call if you want to drill into a specific dimension." },
+  { q: "Do AI crawlers run JavaScript?", a: "Most do not, or do so inconsistently. Several named AI crawlers fetch raw HTML and never execute the page's scripts, which means content hydrated client-side on a single-page-app framework can be completely invisible to them even though it renders fine in a browser. The fetch simulator endpoint shows you exactly what each crawler received, so you can catch JS-only content before it costs you a citation." },
+  { q: "Should I block or allow AI crawlers in robots.txt?", a: "That is a business decision, not a technical default. If you want to appear in AI answers, you generally want to allow the major answer-engine crawlers. If you are protecting proprietary content, you may choose to block some while allowing others. The point is to make the choice deliberately — the AI bot allowlist endpoint reports, per named crawler, whether your current robots.txt allows or blocks it, so there are no accidental blocks." },
+  { q: "What is an llms.txt file and do I need one?", a: "llms.txt is an emerging convention: a plain-text file at the root of your domain that points AI systems to your most important, most citable pages, similar in spirit to a sitemap but written for language models. It is not yet a hard ranking factor, but it is cheap to maintain and signals intent. The llms.txt audit endpoint validates the file's structure, scores its section coverage, and checks its links for rot." },
+  { q: "How much does an AEO audit cost on Ollagraph?", a: "Single-signal probes — schema coverage, heading hierarchy, freshness, snippet format, and the rest — are inexpensive per call. The full page audit and the competitor diff are premium orchestrators that fan out many probes in parallel, so they cost a few credits each. Every metered call returns its exact credit cost, and any call that fails is automatically refunded, so a failed fetch never costs you anything." },
+  { q: "How often should I re-run an AEO audit?", a: "Treat it like any other monitoring signal. Run the full page audit whenever you ship a significant template or content change, and schedule a recurring sweep of your top pages — monthly is a sensible default, weekly if you publish frequently. Because the freshness-signal probe reads your last-updated dates, a regular cadence also helps you catch pages that have quietly gone stale in the eyes of an answer engine." },
+];
+---
+<Article
+  title="How to audit your site for AI answer engines (AEO) in 2026"
+  description="Measure whether ChatGPT, Perplexity, and Google's AI answers can find, fetch, and cite your pages — and fix what's blocking them."
+  date="2026-06-18"
+  readingTime={12}
+  tags={["AEO", "AI search", "SEO"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What auditing a site for AI search actually means in 2026</h2>
+  <p>Auditing your site for AI search means checking whether answer engines — ChatGPT, Perplexity, Google AI Overviews, and Claude — can complete four steps on each of your pages: crawl it without being blocked, fetch the real content without a browser, parse the structure cleanly, and trust the page enough to cite it. If any of those four steps breaks, your page can rank fine in classic search and still be invisible in AI answers.</p>
+
+  <p>That sentence is the AEO answer. The rest of this page is the working recipe: a pipeline that walks all four steps end to end, with real curl commands against the Ollagraph <a href="/aeo">AEO toolkit</a>, so you can see exactly what is blocking AI crawlers and fix it in priority order.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't want an AEO score. You want to be the page the model quotes. There is a difference, and the difference is a chain of small failures that classic SEO tools were never built to catch.</p>
+
+  <p>The reader of this page usually falls into one of three buckets. A content or SEO lead watching organic clicks erode as AI Overviews answer the query in-page. A founder or marketer who keeps seeing a competitor cited in ChatGPT and wants to know why it isn't them. Or an <a href="/for-aeo-agencies">agency</a> running AEO as a service across a roster of client sites and needing a repeatable, defensible audit rather than a vibe check.</p>
+
+  <p>All three have the same hidden requirement: the audit has to be mechanical and reproducible. "Make it more AI-friendly" is not a deliverable. A ranked list of concrete blockers — this crawler is blocked in robots.txt, this content is JavaScript-only, this page has no last-updated date, these headings skip a level — is a deliverable. That list is what this recipe produces.</p>
+
+  <h2>The four-stage AEO pipeline</h2>
+  <p>An answer engine has to succeed at four sequential stages before it can cite you. We'll audit them in order, because a failure at an early stage makes the later ones moot. No point scoring your schema if the crawler is blocked at the door.</p>
+
+  <h3>Stage 1 — Crawl: is the bot even allowed in?</h3>
+  <p>The cheapest reason to be absent from AI answers is the most common: your robots.txt blocks the crawler, often by accident, often inherited from a template someone copied years ago. Start the audit here.</p>
+
+  <p>The AI bot allowlist endpoint checks, for each of the major named AI crawlers — GPTBot, ClaudeBot, PerplexityBot, Google-Extended, and others — whether your robots.txt currently allows or blocks it. It takes a bare domain.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"
+
+curl -X POST https://api.ollagraph.com/v1/aeo/ai-bot-allowlist \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "ollagraph.com"
+  &#125;'</code></pre>
+
+  <p>The response is a per-crawler verdict: which named AI bots your site lets in and which it turns away. Blocking a crawler is a legitimate choice — protecting proprietary content is a real reason — but it should be a deliberate one. The audit's job is to make sure no crawler you want is blocked by accident.</p>
+
+  <p>While you're inspecting crawl-time signals, audit your llms.txt. This is the emerging convention of a plain-text file at your domain root that points AI systems to your most citable pages — a sitemap written for language models. The llms-txt audit endpoint fetches the file, validates its structure, scores its section coverage, and checks its links for rot.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/llms-txt-audit \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "ollagraph.com"
+  &#125;'</code></pre>
+
+  <p>If the file doesn't exist yet, the audit tells you so. It isn't a hard ranking factor today, but it is cheap to maintain and signals intent — worth having once the rest of the pipeline is clean.</p>
+
+  <h3>Stage 2 — Fetch: does the bot get your real content?</h3>
+  <p>This is where most modern sites silently lose. A page built on a client-rendered framework looks perfect in a browser — but many AI crawlers fetch raw HTML and never run your JavaScript. What renders for a human can be an empty shell to a bot, and you'd never know from looking at the page.</p>
+
+  <p>The LLM fetch simulator fetches one URL as each of eleven named AI crawlers, plus a browser baseline, and reports what each one actually received — status code, content length, a preview of the visible text — and flags two failure modes that matter enormously for AEO: cloaking (serving bots something different from humans) and JS-only content (where the bot's payload is empty because the real content never executed).</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/"
+  &#125;'</code></pre>
+
+  <p>Read the result by comparing each crawler's content length against the browser baseline. If the browser sees ten thousand characters of text and a given AI crawler sees two hundred, you have found your problem: that crawler is getting an unhydrated shell, and any content you care about needs to be present in the server-rendered HTML. This single probe is often the difference between a site that AI can cite and one it can't.</p>
+
+  <h3>Stage 3 — Parse: can the bot understand the structure?</h3>
+  <p>Once a crawler has your real content, it has to make sense of it. Answer engines reward extractable structure — machine-readable schema, a clean heading outline, and content shaped the way snippets are shaped. Three probes cover this stage.</p>
+
+  <p>First, schema coverage. This endpoint parses every JSON-LD block, plus Microdata and OpenGraph, on a page and scores it against the schema.org types that matter most for AEO. If your content is hydrated client-side, pass <code>use_residential_proxy</code> so the fetch renders JavaScript and sees schema that only appears after hydration.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/schema-coverage \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/architecture/"
+  &#125;'</code></pre>
+
+  <p>Second, heading hierarchy. AI Overviews and featured snippets lean heavily on a page's heading outline, and they especially favor question-style headings that mirror how people phrase queries. This probe audits your H1–H6 structure, surfacing a missing H1, multiple H1s, hierarchy skips like an H2 jumping straight to an H4, and a count of question-style headings.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/heading-hierarchy-score \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/capabilities"
+  &#125;'</code></pre>
+
+  <p>Third, snippet-format detection. Google pulls featured snippets in four shapes — paragraph, list, table, and definition — and a page that offers content in the right shape for its query is far likelier to be lifted. This endpoint classifies your content into those four shapes, counts each, gives example snippets, and predicts the best-fit format.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/snippet-format-detect \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/docs"
+  &#125;'</code></pre>
+
+  <p>If you're auditing a page you're still drafting and don't want to deploy it first, both the heading and snippet probes also accept raw HTML in place of a URL — handy for wiring an AEO check into a CI step before a page ever goes live.</p>
+
+  <h3>Stage 4 — Cite: does the bot trust the page enough to quote it?</h3>
+  <p>The final stage is the hardest to fake and the most durable to earn. Answer engines preferentially cite pages that carry EEAT-style trust signals: specific numbers rather than vague claims, named entities, authoritative outbound links, a visible author byline, a last-updated date, and enough depth to be substantive. Two probes cover this.</p>
+
+  <p>Citation readiness scores a page mechanically — no model call, so it's fast and deterministic — against exactly those post-ChatGPT trust signals.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/citation-readiness \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/architecture/"
+  &#125;'</code></pre>
+
+  <p>Freshness signal is the trust dimension teams most often neglect. Answer engines weight recency, and a page that looks abandoned gets passed over. This probe reads every dated signal on the page — schema.org dateModified, the OpenGraph modified-time tag, the HTTP Last-Modified header, any visible "Updated" text, and the copyright year — scores the page's overall freshness, names the most recent dated signal, and flags inconsistencies between them. A page claiming a 2026 update in its byline while its schema says 2023 sends a confused signal, and this catches it.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/freshness-signal \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/blog/"
+  &#125;'</code></pre>
+
+  <h2>The one-call shortcut: full page audit</h2>
+  <p>Running eight probes by hand is the right way to understand the pipeline, but in production you'll reach for the orchestrator. The page-audit endpoint runs the component probes in parallel against a single URL and returns one consolidated report: a headline score, category breakdowns, the top issues it found, and a ranked list of recommendations.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/page-audit \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/architecture/"
+  &#125;'</code></pre>
+
+  <p>This is a premium orchestrator — it fans out many probes at once — so it costs a few credits per call rather than the inexpensive single-signal rate. If the fetch fails for any reason, the call is automatically refunded, so a flaky target page never costs you anything. The output is the deliverable: a scored report of what's blocking AI from crawling, fetching, parsing, and citing the page, ordered so you fix the highest-impact problems first. Use the individual probes from the four stages above when you want to drill into one dimension; use page-audit when you want the whole picture in one call.</p>
+
+  <h2>Benchmarking against the pages that beat you</h2>
+  <p>An absolute score is useful; a relative one is persuasive. The most common question in an AEO engagement isn't "how good is my page" but "why does that competitor keep getting cited instead of me." The competitor-diff endpoint answers it directly.</p>
+
+  <p>It accepts two to five URLs. The first is treated as your page; the rest are competitors. It runs a full audit on each in parallel and returns head-to-head rankings plus exactly where your page wins and loses against the set.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/competitor-diff \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "urls": [
+      "https://ollagraph.com/docs/intel-geoip/",
+      "https://competitor-one.example.com/feature",
+      "https://competitor-two.example.com/feature"
+    ]
+  &#125;'</code></pre>
+
+  <p>Like page-audit, this is a premium orchestrator billed at a few credits regardless of how many URLs you compare, with the same automatic refund on failure. The output reframes the audit as a gap analysis: not "your schema score is 60" but "the page outranking you has FAQ schema and a visible last-updated date that you're missing." That is the slide that gets a content sprint approved.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a B2B SaaS company whose documentation used to win the long-tail "how do I do X with Y" queries and is now watching those answers get synthesized into AI Overviews — with a competitor cited as the source. Organic clicks to the docs are down, and nobody can say precisely why.</p>
+
+  <p>The team runs page-audit on their ten most important doc pages and the fetch simulator on the docs homepage. The simulator is the smoking gun: their docs are built on a client-rendered framework, and three of the named AI crawlers receive a near-empty shell because the content never hydrates without JavaScript. The browser baseline sees the full article; the bots see almost nothing.</p>
+
+  <p>They ship server-side rendering for the doc routes, add Article and FAQ schema flagged by the schema-coverage probe, and rewrite a dozen section headings into the question form the heading-hierarchy probe rewards. Two weeks later, competitor-diff against the pages that had been beating them shows the gap closed on every signal except domain authority. The audit didn't just produce a number — it produced an ordered punch list, and the punch list produced citations.</p>
+
+  <h2>Wiring the audit into your workflow</h2>
+  <p>A one-time audit is a snapshot; AEO is a moving target. Three patterns turn this recipe into an ongoing practice.</p>
+
+  <p>First, audit in CI. Because the heading and snippet probes accept raw HTML, you can run an AEO check on a page's built output before it ever deploys, failing the build if a page drops below a heading-hierarchy threshold. Catching a skipped H-level in a pull request is cheaper than catching it in a quarterly review.</p>
+
+  <p>Second, schedule a recurring sweep. Run page-audit across your top pages on a cadence — monthly as a default, weekly if you publish often — and trip an alert when a score regresses. The freshness probe makes this especially valuable: it surfaces pages that have quietly gone stale and need a refresh to stay citable. You can fan these scheduled jobs out through <a href="/webhooks">webhooks</a> so results land in your own systems.</p>
+
+  <p>Third, pair AEO with classic technical SEO. The two disciplines overlap but don't replace each other — render budget, canonical tags, and internal linking still matter for the blue links even as AEO governs the answers. Run both audits on the same pages and reconcile the findings. Our writeup on <a href="/blog">AEO versus SEO</a> lays out where the two diverge and where they reinforce each other.</p>
+
+  <h2>Why run this on Ollagraph</h2>
+  <p>The signals in this recipe aren't secret — a determined engineer could script most of them. The reason teams reach for the <a href="/aeo">AEO toolkit</a> instead is the same reason they reach for any managed API: every probe is a single call behind one bearer token, the crawler-simulation and rendering tiers are handled server-side so you don't stand up a browser farm to see what GPTBot sees, and the pricing is transparent with failed calls auto-refunded. Where a generic crawler hands you HTML and asks you to judge it, these endpoints hand you a verdict.</p>
+
+  <p>For agencies, that packaging is the product. A reproducible, per-signal audit you can run across a client roster — and re-run to prove the lift after a content sprint — is what turns AEO from a buzzword into a billable, defensible service. That workflow is the focus of the <a href="/for-aeo-agencies">AEO agencies</a> guide.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, paste the page-audit command above against one of your real URLs, and read the ranked recommendations it returns. Then walk the four stages in order on your single most important page — crawl, fetch, parse, cite — and fix the earliest failure first. Most teams find their biggest blocker in the fetch simulator within the first ten minutes.</p>
+
+  <p>Read the <a href="/docs">docs</a>, explore the full <a href="/aeo">AEO toolkit</a>, and browse the other <a href="/recipes">recipes</a> when you're ready to ship.</p>
+</Article>

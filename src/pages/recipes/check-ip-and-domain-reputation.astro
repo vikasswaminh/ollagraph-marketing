@@ -1,0 +1,128 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is a DNSBL?", a: "A DNSBL — DNS-based blocklist, sometimes written DNSBL or RBL — is a list of IP addresses or domains that a community operator has flagged for sending spam, hosting abuse, or other unwanted behavior. The clever part is the delivery mechanism: the list is published over ordinary DNS, so checking whether an address is listed is a single, fast DNS query against the blocklist's zone. Mail servers have used DNSBLs for two decades to decide whether to accept inbound mail." },
+  { q: "Does Ollagraph use paid threat-intelligence feeds?", a: "No. The reputation and blocklist endpoints described here run entirely against public DNS-based blocklists and local classification databases. There are no paid threat feeds behind them — no commercial breach data, no commercial malware-scanner verdicts, no third-party risk-scoring subscription. You are seeing the same public DNSBL signal a mail administrator sees, returned as clean JSON." },
+  { q: "What does the IP reputation endpoint actually tell me?", a: "It classifies an IP against local databases: whether the address belongs to a datacenter or cloud provider range, whether it is a known Tor exit node, and similar network-level attributes. It does not assert that an address is 'malicious' — it gives you the structural facts you need to make that judgment yourself in context." },
+  { q: "Can I check a domain as well as an IP?", a: "Yes. The blocklist endpoint accepts either an IPv4 address or a domain in its target field and checks it against major DNSBLs in parallel. The IP reputation endpoint takes an IP specifically. Together they cover the two questions defenders ask most: is this address listed anywhere, and what kind of network does it sit on." },
+  { q: "Why would I check my own infrastructure?", a: "Because the first time most teams learn their sending IP is on a blocklist is when deliverability quietly collapses. Monitoring your own mail-sending IPs and your domain against DNSBLs on a schedule turns a silent outage into an alert you can act on within minutes. It is purely defensive hygiene for infrastructure you already own." },
+  { q: "Is being on a DNSBL proof that an IP is bad?", a: "No, and treating it that way will burn you. Blocklists have different inclusion criteria, different freshness, and different false-positive rates. A listing on one aggressive list means something very different from a listing on a conservative, well-curated one. Use the count and the identity of the lists as a weighted signal, not a binary verdict, and always combine it with context like the IP's network classification." },
+  { q: "How fresh is the blocklist data?", a: "Each call performs live DNS queries against the blocklists at the moment of the request, so the answer reflects current listing state rather than a cached snapshot. DNSBLs themselves add and remove entries on their own cadences, so re-checking on a schedule is the right pattern for monitoring rather than assuming a one-time result stays valid." },
+  { q: "What does a call cost and what happens if it fails?", a: "Each metered call costs one credit and the exact cost is shown in the response. If a call fails on our side, it is automatically refunded — you are never charged for a lookup we could not complete. New accounts start with 1,000 free credits, which is enough to wire up and test a full monitoring loop before you spend anything." },
+];
+---
+<Article
+  title="How to check IP and domain reputation with DNSBL in 2026"
+  description="Look up IP reputation and DNS blocklist status to defend your own infrastructure and vet inbound traffic — free data, no paid threat feeds."
+  date="2026-06-18"
+  readingTime={10}
+  tags={["security", "reputation", "DNSBL"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What checking IP and domain reputation means in 2026</h2>
+  <p>Checking IP and domain reputation means querying public DNS-based blocklists (DNSBLs) and network-classification databases to learn whether an address has been flagged for abuse and what kind of network it sits on — so you can defend your own infrastructure and vet the traffic and senders reaching you. In 2026, the practical way to do this is a single API call that returns clean JSON instead of you running raw DNS lookups by hand.</p>
+
+  <p>That sentence is the short answer. The rest of this page is for the security and infrastructure engineers who have to operationalize it. We will be precise about what this data is, what it is not, and exactly how to wire it into a defensive workflow you can run on a schedule.</p>
+
+  <h2>The defensive framing, stated up front</h2>
+  <p>This recipe is about defense. Every workflow below is something you do to protect infrastructure you own or to make a judgment about traffic that is already arriving at your door. Monitoring whether your own mail-sending IPs have landed on a blocklist. Vetting the reputation of an IP that just hit your signup form. Checking a domain before you trust a link in an inbound message. These are hygiene and triage tasks, not reconnaissance.</p>
+
+  <p>We are deliberate about this because reputation data can be framed two ways, and only one of them is the job here. We are not in the business of helping anyone hunt for weak targets. The endpoints exist so defenders can answer "is this thing reaching me trustworthy, and is my own infrastructure clean?" — and that is the only lens this page takes.</p>
+
+  <h2>What the data actually is — and what it is not</h2>
+  <p>Precision matters here, because reputation tooling is a field crowded with overclaims. Here is exactly what sits behind the two endpoints in this recipe.</p>
+
+  <p>The reputation signal is <strong>free, public, DNS-based data plus local classification databases</strong>. DNSBLs are community-operated lists published over DNS. IP classification — datacenter, cloud range, Tor exit — comes from local databases that ship with the service. No outbound call to a commercial vendor happens on your behalf.</p>
+
+  <p>What it is <em>not</em>: there are no paid threat-intelligence feeds in this pipeline. No commercial breach corpus. No commercial malware-scanner verdicts. No subscription risk score from a third party. If you have read other vendors' reputation pages, you may expect those things — Ollagraph deliberately does not include them, both because that is our product policy and because public DNSBL signal is the honest, auditable layer most defensive workflows actually need. You see what a mail administrator sees, returned as structured JSON.</p>
+
+  <h2>The two endpoints you will use</h2>
+  <p>This recipe uses exactly two operations, both part of the broader <a href="/intelligence">intelligence API</a>.</p>
+
+  <h3>IP reputation</h3>
+  <p><code>POST /v1/intel/ip-reputation</code> classifies a single IP against local databases — whether it belongs to a datacenter or cloud provider range, whether it is a known Tor exit node, and similar network-level attributes. It takes one field, <code>ip</code>, which accepts an IPv4 or IPv6 address. The lookup is against local data, so it is fast and does no outbound network calls.</p>
+
+  <h3>DNS blocklist (DNSBL)</h3>
+  <p><code>POST /v1/intel/blacklist</code> checks an IPv4 address or a domain against major DNSBLs in parallel. It takes one field, <code>target</code>, which accepts either an IPv4 address or a domain. This is the operation that answers "is this listed anywhere right now?"</p>
+
+  <p>The exact request and response shapes are always authoritative in the <a href="/docs">live spec</a> — when in doubt, the OpenAPI document is the source of truth. Below we use the documented fields directly.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Five steps, real curl commands. Drop them into a shell and you have a working reputation check; wrap them in a scheduler and you have a monitor.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up, grab a key from the dashboard, and export it for the rest of this session. One bearer token authenticates every call, and new accounts start with 1,000 free credits — enough to build and test the full loop below before you spend a cent.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Classify an IP</h3>
+  <p>Start by classifying a single IP. This tells you what kind of network the address sits on — the structural context you need before you weigh any blocklist result.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/ip-reputation \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "ip": "8.8.8.8"
+  &#125;'</code></pre>
+
+  <p>The response classifies the address against local databases. Datacenter and cloud-range flags matter because traffic from a residential ISP and traffic from a bulk cloud range carry different default expectations — a login attempt from a datacenter IP is not proof of anything, but it is a signal worth weighting in a fraud or abuse model. Treat the classification as context, never as a verdict on its own.</p>
+
+  <h3>Step 3. Check an IP against blocklists</h3>
+  <p>Now ask whether that same address is listed on any major DNSBL. The blocklist endpoint queries the lists in parallel and returns the result of each.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/blacklist \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "target": "8.8.8.8"
+  &#125;'</code></pre>
+
+  <p>Interpret the result as a weighted signal, not a binary. A listing on a single, aggressive, fast-to-list blocklist is a much weaker signal than a listing on several conservative, well-curated lists at once. The useful summary your code should derive is two-part: how many lists flagged the address, and which ones. Store both and you can tune your thresholds later without re-querying.</p>
+
+  <h3>Step 4. Check a domain</h3>
+  <p>The same blocklist endpoint accepts a domain in the <code>target</code> field. This is how you vet a domain before trusting a link or a sender associated with it.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/blacklist \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "target": "example.com"
+  &#125;'</code></pre>
+
+  <p>Domain reputation pairs naturally with email-authentication checks. If you are vetting an inbound sender, a clean blocklist result plus a passing SPF, DKIM, and DMARC posture is far stronger evidence than either signal alone — see the companion recipe on <a href="/recipes/check-email-authentication">checking SPF, DKIM, and DMARC records</a> for how to wire that half of the workflow.</p>
+
+  <h3>Step 5. Turn the two calls into one monitor</h3>
+  <p>The payoff is combining the two endpoints into a scheduled check over the addresses you care about. For each IP, call <code>ip-reputation</code> for classification and <code>blacklist</code> for listing state, merge the two into a single record, land it in your warehouse with a <code>checked_at</code> timestamp, and alert when a previously-clean address picks up a listing. Run it every few minutes for your own mail-sending IPs; run it on demand for inbound addresses you are triaging.</p>
+
+  <p>Keep the raw response per call in a JSON column rather than over-normalizing on the first pass. Blocklist membership changes over time, and a history table lets you answer "when did we get listed, and when did the listing clear?" without re-querying after the fact.</p>
+
+  <h2>A realistic defensive scenario</h2>
+  <p>Consider a small platform team running transactional email for a SaaS product. Password resets, receipts, and notifications all flow through a handful of sending IPs. One quiet Tuesday, deliverability to a major mailbox provider starts degrading. Support tickets trickle in — "I never got the reset email" — but nothing in the application logs looks wrong, because nothing in the application is wrong. One of the sending IPs has been listed on a DNSBL after a misconfigured retry loop briefly looked like a spam burst.</p>
+
+  <p>Before any monitoring, that team finds out days later, after the deliverability damage is done and the reputation repair is slow. After wiring a scheduled blocklist check across their sending IPs, the listing fires an alert within minutes of appearing. They pause the offending job, request delisting, and contain the blast radius before most customers ever notice. The entire monitor is two endpoints and a cron entry. That is the whole value proposition: turning a silent infrastructure failure into an actionable alert.</p>
+
+  <p>The same team uses the inbound side for abuse triage. When a wave of suspicious signups hits, they run each source IP through classification and blocklist checks and weight the results into their existing abuse score — datacenter origin plus a multi-list listing bumps an account into manual review rather than auto-approval. No paid feed, no new vendor contract; just public signal turned into a clean JSON field they can reason about.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>A few realities are worth designing around so your monitor stays honest.</p>
+
+  <p><strong>False positives are real.</strong> Aggressive blocklists list addresses that turn out to be fine, and shared cloud ranges sometimes inherit a neighbor's reputation. This is exactly why you should weight by which lists flagged an address, not just whether any did. A single listing on a known-noisy list should not page anyone at 3am.</p>
+
+  <p><strong>A listing is a moment in time.</strong> Lists add and remove entries continuously. A result is accurate at the moment of the call and may change an hour later, in either direction. Re-check on a schedule for anything you monitor, and never cache a listing result as permanent truth.</p>
+
+  <p><strong>Classification is context, not conviction.</strong> A datacenter or Tor-exit classification describes the network, not the intent of whoever is using it. Plenty of legitimate traffic originates from cloud ranges and, occasionally, from Tor. Feed the classification into a scoring model alongside your other signals rather than blocking on it outright.</p>
+
+  <p><strong>Failed calls are refunded.</strong> If a lookup cannot complete on our side, the call is auto-refunded, so a transient failure never costs you a credit and never silently writes a half-result into your pipeline. Treat an error response as "unknown, retry," not as "clean."</p>
+
+  <h2>Where this fits in a defensive stack</h2>
+  <p>Reputation and blocklist checks are one layer of a fuller picture for teams that need to vet infrastructure and traffic. They pair naturally with the <a href="/recipes/check-email-authentication">email-authentication recipe</a> for sender vetting, and the broader set of DNS, certificate, and network-intelligence operations sits behind the same single bearer token. If your team's whole job is making trust decisions about domains, IPs, and inbound traffic, the <a href="/for-intel">intelligence use-case overview</a> walks through how these endpoints compose into a workflow.</p>
+
+  <p>The unifying principle is that all of it is free, public, observable signal returned cleanly. No paid threat feeds, no offensive tooling — just the data a careful defender would gather by hand, delivered as JSON so you can put it to work in minutes instead of weeks.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, paste the curl command from Step 2, and confirm you can classify a real IP in the next five minutes. Then pick one defensive use case — monitoring your own sending IPs, or scoring inbound signups — and wire the two endpoints into it on a schedule. Most teams have a working internal monitor inside an afternoon.</p>
+
+  <p>Read the <a href="/docs">docs</a>, explore the full <a href="/intelligence">intelligence API</a>, and ship something defensive.</p>
+</Article>

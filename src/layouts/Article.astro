@@ -1,0 +1,81 @@
+---
+// Shared layout for long-form content (recipes + blog). Wraps BaseLayout with
+// the site nav/footer, an article header, the prose body (<slot/>), an optional
+// FAQ section, and a CTA. Emits TechArticle/BlogPosting + BreadcrumbList +
+// FAQPage JSON-LD via BaseLayout's jsonLd prop.
+import BaseLayout from './BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+interface FAQItem { q: string; a: string }
+interface Props {
+  title: string;
+  description: string;
+  date: string;
+  readingTime: number;
+  tags: string[];
+  kind?: 'recipe' | 'blog';
+  faqs?: FAQItem[];
+}
+const { title, description, date, readingTime, tags, kind = 'recipe', faqs = [] } = Astro.props;
+
+const isRecipe = kind === 'recipe';
+const section = isRecipe ? { label: 'Recipes', path: '/recipes/' } : { label: 'Blog', path: '/blog/' };
+const url = Astro.url.href;
+
+const articleLd = {
+  "@context": "https://schema.org",
+  "@type": isRecipe ? "TechArticle" : "BlogPosting",
+  headline: title,
+  description,
+  datePublished: date,
+  dateModified: date,
+  keywords: tags.join(", "),
+  author: { "@type": "Organization", name: "Ollagraph" },
+  publisher: { "@type": "Organization", name: "Ollagraph", logo: { "@type": "ImageObject", url: "https://ollagraph.com/favicon.svg" } },
+  mainEntityOfPage: { "@type": "WebPage", "@id": url },
+};
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: section.label, item: `https://ollagraph.com${section.path}` },
+    { "@type": "ListItem", position: 3, name: title, item: url },
+  ],
+};
+const faqLd = faqs.length
+  ? { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) }
+  : null;
+const jsonLd = faqLd ? [articleLd, breadcrumbLd, faqLd] : [articleLd, breadcrumbLd];
+
+const nav = navHtml(isRecipe ? 'recipes' : 'blog');
+const footer = footerHtml();
+---
+<BaseLayout title={`${title} — Ollagraph`} description={description} jsonLd={jsonLd}>
+  <Fragment set:html={nav} />
+  <main class="article">
+    <a class="article-back" href={section.path}>← All {section.label.toLowerCase()}</a>
+    <div class="article-meta"><span>{date}</span><span>·</span><span>{readingTime} min read</span></div>
+    <h1 class="h-display h-1">{title}</h1>
+    <p class="article-lede">{description}</p>
+    <div class="article-tags">{tags.map((t) => <span class="badge badge-mute">{t}</span>)}</div>
+    <article class="prose"><slot /></article>
+  </main>
+  {faqs.length > 0 && (
+    <section class="article-faq">
+      <h2 class="h-display h-2">Common questions</h2>
+      {faqs.map((f) => (
+        <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+      ))}
+    </section>
+  )}
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Start with 1,000 free credits.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">Every endpoint, one bearer token, no card. Build the pipeline above in an afternoon.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+    </div>
+  </section>
+  <Fragment set:html={footer} />
+</BaseLayout>

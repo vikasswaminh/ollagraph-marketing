@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+---
+<BaseLayout title="Security — Ollagraph" description="How Ollagraph protects customer data and accepts vulnerability reports.">
+  <Fragment set:html={navHtml('')} />
+  <main class="article">
+    <h1 class="h-display h-1">Security</h1>
+    <article class="prose">
+      <p>Ollagraph is built for production use by teams that take security seriously. We treat customer data, API keys, and request logs as sensitive and apply standard industry controls to protect them.</p>
+
+      <h2>Encryption</h2>
+      <p>All traffic between your client and the API is encrypted in transit over TLS 1.3. Data at rest is encrypted using AES-256 on the underlying storage layer.</p>
+
+      <h2>Authentication</h2>
+      <p>API keys are 192-bit random tokens hashed with SHA-256 for storage — the raw key is never persisted on our side. Account passwords are hashed using argon2id with per-credential random salts.</p>
+
+      <h2>Webhook signatures</h2>
+      <p>Every webhook we deliver includes an HMAC signature header so your server can verify the request came from Ollagraph. Webhook verification helpers ship in our SDKs.</p>
+
+      <h2>Compliance</h2>
+      <p>SOC2 Type II is on the roadmap; documentation is available under NDA on request. GDPR and CCPA: we minimize the personal data we collect and offer customer data export and deletion on request.</p>
+
+      <h2>Responsible disclosure</h2>
+      <p>We welcome security reports. Please email <a href="mailto:security@ollagraph.com">security@ollagraph.com</a> with details. We acknowledge reports within one business day and aim to resolve confirmed issues within 30 days.</p>
+      <p>The full <a href="/security-policy">vulnerability disclosure policy</a> covers what is in scope, our safe-harbour commitment, and the response timeline you can expect.</p>
+
+      <h2>Subprocessors</h2>
+      <p>Ollagraph uses a short list of vetted third parties to deliver the platform. The complete list, with the data each one handles and the legal transfer basis, is on the <a href="/legal/subprocessors">subprocessor page</a>. Customers with executed DPAs are notified 30 days before any new subprocessor begins processing their data.</p>
+
+      <h2>How the platform is built</h2>
+      <p>The subsystems, design principles, and operational guarantees behind every Ollagraph endpoint are described on the <a href="/architecture">architecture</a> page.</p>
+    </article>
+  </main>
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

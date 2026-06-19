@@ -1,0 +1,133 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+const curlExample = `curl -X POST https://api.ollagraph.com/v1/scrape \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://example.com",
+    "format": "markdown",
+    "stealth": true,
+    "actions": [
+      {"type": "click", "selector": ".load-more"},
+      {"type": "wait", "ms": 2000}
+    ]
+  }'`;
+
+const smartExample = `# Auto-detect: static page = fast HTTP path; dynamic = full browser.
+curl -X POST https://api.ollagraph.com/v1/scrape/smart \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"url": "https://example.com"}'
+# Response includes render_mode: "http_only" | "headless" | "headless_fallback"`;
+
+const batchExample = `# Up to 100 URLs in parallel, one response.
+curl -X POST https://api.ollagraph.com/v1/scrape/batch \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{
+    "urls": ["https://a.com", "https://b.com", "https://c.com"],
+    "concurrency": 10,
+    "format": "markdown"
+  }'`;
+
+const pillars = [
+  { title: "Five output formats", body: "Markdown for LLMs, HTML for fidelity, plain text for indexing, link arrays for crawling, original-source for diagnostics. Choose per request — no transcoding pipeline needed." },
+  { title: "Smart routing", body: "The smart-scrape endpoint detects whether a page needs JavaScript and routes accordingly. Static pages skip the browser and return in milliseconds; dynamic pages get the full stealth browser automatically." },
+  { title: "Action macros", body: "Drive clicks, typing, waits, scrolls, and form submissions from a JSON array. No Puppeteer or Playwright code — the same description works for every site." },
+  { title: "Async with webhooks", body: "Fire large batches, walk away, get a clean POST to your endpoint when each job completes. Built for production pipelines that should not hold connections open." },
+];
+
+const faqs = [
+  { q: "What formats does /v1/scrape return?", a: "Five: markdown for LLM-friendly text, html for raw page source, text for stripped plain text, links for the URL graph extracted from the page, and original for the raw response without transformation. Specify the format in the request body." },
+  { q: "When should I use /v1/scrape vs /v1/scrape/smart?", a: "Use smart when you do not know whether the target page needs JavaScript — it is faster on static pages and falls back to the full browser when needed. Use scrape directly when you already know the page is dynamic, or when you need to pass a custom action macro." },
+  { q: "How big can a batch be?", a: "Up to 100 URLs per synchronous batch call. For larger jobs use the async batch endpoint, which queues the work and posts to a webhook when each chunk completes — no upper bound beyond your monthly quota." },
+  { q: "Does Ollagraph handle JavaScript-rendered single page apps?", a: "Yes. The default browser engine waits for network idle and DOM stability before extracting. You can also use action macros for click-and-wait patterns common to SPAs." },
+  { q: "What about pages that require login?", a: "Use the action macro to drive the login form, then continue with subsequent steps in the same session. For pages that need a persistent authenticated session across many requests, our session endpoints keep state across calls. See the behind-a-login recipe." },
+  { q: "How do I scrape paginated content?", a: "Two patterns. For numbered pagination, send the page-2, page-3, page-N URLs as a batch. For infinite-scroll pagination, use the action macro to scroll-and-wait until the load button stops appearing." },
+  { q: "Is there a request timeout limit?", a: "Each request has a per-call timeout parameter. Failed calls are auto-refunded, so a timeout never costs you a credit." },
+];
+
+const url = "https://ollagraph.com/scrape/";
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebPage", name: "Web scraping API — Ollagraph", url, description: "Send a URL, get clean structured data. Five output formats, smart routing, native action macros, async webhooks." },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Web scraping API", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout
+  title="Web scraping API — five formats, smart routing, action macros — Ollagraph"
+  description="Send a URL, get clean structured data. Markdown for LLMs, HTML for fidelity, plain text for indexing. Smart routing, native action macros, async webhooks."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('scrape')} />
+
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:760px;">
+      <span class="badge badge-mute" style="margin-bottom:16px;">SCRAPING</span>
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Scrape any page. Get clean data.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        Five output formats, smart routing, native action macros, and an async pattern that handles batches of any size. One endpoint family for everything from a single URL to a hundred million.
+      </p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:24px;">
+        <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
+        Part of the full <a href="/capabilities" style="color:var(--accent);">209-endpoint surface</a> — see the <a href="/bundles/scraping" style="color:var(--accent);">scraping bundle</a> for the related endpoints.
+      </p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {pillars.map((p) => (
+          <div class="pcard">
+            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{p.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Examples that work today.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Drop any of these into a terminal or notebook.</p>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Scrape with actions</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{curlExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Smart routing</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape/smart</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{smartExample}</code></pre></div>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>Batch</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape/batch</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{batchExample}</code></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Scraping questions</h2>
+    {faqs.map((f) => (
+      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+    ))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Start scraping in five minutes.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">1,000 free credits, one bearer token, failed calls auto-refund.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/recipes">Browse recipes</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

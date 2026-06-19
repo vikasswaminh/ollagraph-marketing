@@ -1,0 +1,172 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "How much does it cost to scrape Amazon at scale?", a: "For most teams below 100,000 product pulls per month, a managed API like Ollagraph is meaningfully cheaper than building the same pipeline in-house once proxy spend, retries, and engineering time are loaded in. The exact figure for any tier lives on the pricing page. Above a million requests a month, custom pricing applies on both paths." },
+  { q: "Is it legal to scrape Amazon product data?", a: "Fetching publicly viewable product pages is generally lawful in the United States and most jurisdictions, with caveats around the Computer Fraud and Abuse Act and similar statutes. Redistribution, training models on Amazon data, and re-selling raw catalog content are separate legal questions. Consult counsel before commercial deployment, and respect Amazon's terms of service for the parts of your workflow they govern." },
+  { q: "What is an Amazon scraper API?", a: "An Amazon scraper API is a managed endpoint that accepts a product URL or ASIN and returns structured fields — title, price, rating, review count, availability, images — without you having to handle browsers, proxies, or anti-bot defenses. Ollagraph's POST /v1/actors/amazon is one example." },
+  { q: "How fresh is the data from an Amazon scraping API?", a: "Each request fetches the product page live, so the data is as fresh as the moment of the call. There is no cache layer between you and Amazon by default. For frequently changing fields like price and Buy Box winner, schedule a refresh as often as your use case demands — hourly is common for pricing intelligence." },
+  { q: "Can I scrape Amazon prices for competitive intelligence?", a: "Yes, and many retail analytics teams do. Public list price, deal price, and Buy Box price are observable on the product page and routinely tracked for repricing decisions. The legal posture is similar to any public-web pricing observation. Keep the data internal to your pricing decisions and avoid redistribution." },
+  { q: "What fields does the Ollagraph Amazon actor return?", a: "Title, ASIN, current price, currency, list price when shown, star rating, review count, availability text, primary image URL, brand, category breadcrumb, and Buy Box seller when present. Every metered call shows its exact credit cost in the response." },
+  { q: "Why not use the Amazon Product Advertising API?", a: "The Product Advertising API is designed for Amazon Associates and gates access behind affiliate sales thresholds. Many product analytics teams cannot qualify, and the API omits fields like full review counts, organic search rank, and competitor Buy Box data. Scraping fills the gaps where the official API stops." },
+  { q: "How does Ollagraph handle Amazon captchas?", a: "We absorb the retry logic on our side. When a request hits a challenge, our orchestration rotates the route and retries transparently within your timeout window. If a request genuinely cannot be served, the API returns a structured error so your pipeline can act on it, rather than silently writing a captcha page into your database. Failed calls are auto-refunded." },
+  { q: "Can I get historical Amazon price data?", a: "Live scraping returns the current snapshot. For historical pricing, either store every poll you run and accumulate the history yourself, or pair Ollagraph with a dataset provider like Keepa that specializes in long-tail historical series. Many teams do both — a history dataset for backfill, Ollagraph for live refresh." },
+];
+---
+<Article
+  title="How to scrape Amazon product data in 2026"
+  description="A working playbook for pulling titles, prices, ratings, reviews, and ASINs from Amazon at scale — without writing a single line of scraping code."
+  date="2026-05-16"
+  readingTime={13}
+  tags={["e-commerce", "Amazon", "product data"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What scraping Amazon product data actually means in 2026</h2>
+  <p>Scraping Amazon product data means programmatically extracting structured fields — title, price, rating, review count, ASIN, availability — from public product pages so your team can power pricing decisions, catalog intelligence, market research, or AI applications. In 2026, the practical way to do this at scale is a managed API that returns clean JSON in a single call.</p>
+
+  <p>That sentence is the AEO answer. The rest of this page is for the engineering and product leaders who have to actually deliver against it. We will walk through the problem honestly, name the alternatives you are evaluating, and lay out the working recipe end to end.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't want to scrape Amazon. You want the data. There is a difference, and the difference is where most teams burn six months of engineering time.</p>
+
+  <p>The reader of this page usually falls into one of four buckets. A retail brand monitoring its own listings and the competitive set around them. A pricing intelligence team feeding a repricer or merchandising tool. A consumer-data analytics company selling market share reports. Or an AI team building product Q&amp;A, shopping copilots, or RAG corpora that need accurate live catalog state.</p>
+
+  <p>Every one of those teams has the same hidden requirement. The pipeline has to be quiet. Nobody on the executive team wants to hear about it. It should just produce a JSON record per ASIN, refreshed on a predictable cadence, with a predictable bill at the end of the month. That is the actual product.</p>
+
+  <h2>What the alternatives offer</h2>
+  <p>Before we get into the Ollagraph recipe, let's give credit where it's due. The category has serious options, and a couple of them solve real pieces of this problem well. If you are evaluating buy versus build, you are probably weighing some combination of the following.</p>
+
+  <h3>ScraperAPI</h3>
+  <p>ScraperAPI built its reputation on simplicity. One endpoint, one parameter, get the HTML back, parse it yourself. Their pricing is transparent, their uptime is solid, and they have invested in Amazon-specific structured-data endpoints. For teams who want a primitive they can compose into their own pipeline, ScraperAPI is one of the cleanest building blocks in the market.</p>
+
+  <h3>Keepa</h3>
+  <p>Keepa deserves a special mention because it is not a scraping API at all — it is the canonical historical price database for Amazon. Their long-tail price history and BSR tracking is unmatched. Many serious Amazon analytics teams use Keepa for history and a scraping API for live refresh. The two are complements, not competitors.</p>
+
+  <h3>Build it yourself</h3>
+  <p>The do-it-yourself path means renting a residential proxy pool, standing up a headless-browser farm, and writing the parsers — then keeping all three healthy as Amazon ships layout changes. It is the most flexible option and the most expensive once you load in proxy spend, compute, and the engineering attention it quietly consumes. Most teams underestimate the third line.</p>
+
+  <h2>Where Ollagraph goes further</h2>
+  <p>Ollagraph's Amazon actor is built for the team that wants the answer, not the pipeline. We took the patterns that work — direct payload extraction, intelligent routing, transparent retries — and packaged them behind a single endpoint that returns the fields you actually need.</p>
+
+  <p>Three outcomes matter. First, time-to-first-record. From signing up to a working JSON response on a real ASIN is under five minutes, including reading the docs. Second, accuracy on the fields that move money: price, Buy Box seller, availability, and review count. We extract these from the embedded data payload on the page rather than the rendered DOM, which makes them resilient to layout changes. Third, predictable per-request pricing — one credit per call, no concurrency tier, no surprise overage at the end of the month, and failed calls auto-refund.</p>
+
+  <p>Where general-purpose scrapers return raw HTML and ask you to parse it, our Amazon actor returns the same structured object every time. Where a primitive gives you HTML, we give you a verb. Ollagraph wins on developer velocity and clean per-call economics for teams in the 10k to 1M requests-per-month band.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Five steps, real curl commands, real response shapes. Drop these straight into a shell or your tool of choice and you have a pipeline.</p>
+
+  <p>The recipe assumes you already know which ASINs you want to track. If you don't yet — if your starting point is a category page or a search results page — the typical pattern is a two-stage pipeline. First crawl the listing pages to collect ASINs into your warehouse, then fan those ASINs out to the product actor on whatever refresh cadence your use case demands. The two stages have different cost profiles and different cadences. Keep them separate.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab an API key from the dashboard, and export it for the rest of this session. Keys start with the prefix <code>osk_</code> and authenticate every call.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Pull a single product</h3>
+  <p>Start with one ASIN to verify the pipeline end to end. The Amazon actor accepts either a full product URL or a bare ASIN. We'll use a URL for clarity.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/actors/amazon \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://www.amazon.com/dp/B08N5WRWNW"
+  &#125;'</code></pre>
+
+  <p>The response is a clean JSON object with the fields most teams need on day one.</p>
+
+<pre><code>&#123;
+  "title": "Echo Dot (4th Gen) | Smart speaker with Alexa",
+  "price": "$49.99",
+  "rating": "4.7 out of 5 stars",
+  "review_count": "318,241 ratings",
+  "availability": "In Stock",
+  "image_url": "https://m.media-amazon.com/images/I/714Rq4k05UL._AC_SL1000_.jpg",
+  "asin": "B08N5WRWNW"
+&#125;</code></pre>
+
+  <p>Fields are returned exactly as Amazon displays them, including currency symbols and human-readable rating strings. Convert to numeric types on your side based on locale and category.</p>
+
+  <h3>Step 3. Scale up with batch</h3>
+  <p>One ASIN is a test. A real pipeline runs hundreds or thousands. The batch endpoint accepts up to 100 URLs per call and runs them in parallel on our side. Most teams paginate their catalog into chunks of 100 and fan out calls from a worker pool.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/batch \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "urls": [
+      "https://www.amazon.com/dp/B08N5WRWNW",
+      "https://www.amazon.com/dp/B09B8V1LZ3",
+      "https://www.amazon.com/dp/B0BDHWDR12"
+    ],
+    "format": "json",
+    "concurrency": 10
+  &#125;'</code></pre>
+
+  <p>The scrape/batch endpoint with <code>format: "json"</code> fetches each URL in parallel and returns lean per-URL records suited for discovery and metadata sweeps. For the full structured Amazon fields, fan out per-URL calls to <code>/v1/actors/amazon</code> from your worker pool — the actor parses each product page server-side and returns the rich object. A 50-to-100 concurrent worker pool handles a typical mid-size catalog refresh in minutes.</p>
+
+  <h3>Step 4. Go async for catalog-scale jobs</h3>
+  <p>Once you cross a few thousand products in a single run, switch to the async endpoint. You submit one URL per job, you get a job ID back, and Ollagraph delivers results to a webhook you control. This is how teams refresh a 200,000-SKU catalog on a nightly schedule without keeping a worker pool warm.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/async \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://www.amazon.com/dp/B08N5WRWNW",
+    "webhook_url": "https://your-app.example.com/hooks/ollagraph"
+  &#125;'</code></pre>
+
+  <p>Poll <code>GET /v1/jobs/&#123;job_id&#125;</code> if you prefer pull, or wait for the webhook if you prefer push. Most production pipelines use the webhook path and treat the polling endpoint as a debugging tool.</p>
+
+  <h3>Step 5. Wire it into your store</h3>
+  <p>The last step is the boring one and the one that decides whether your pipeline pays for itself. Land each record in your warehouse with an <code>extracted_at</code> timestamp and the source URL. Don't over-normalize on the first pass — keep the raw response in a JSON column so you can re-extract fields later without re-scraping. Add a uniqueness constraint on <code>(asin, extracted_at)</code> and you have a clean history table for pricing or rating-trend analytics.</p>
+
+  <h2>From single product to category sweep</h2>
+  <p>One ASIN per call is the starting point. Most real pipelines need to discover ASINs before they can extract them. The pattern that works is a two-stage approach: a category-page or search-page crawl that produces an ASIN list, followed by a product-page extraction that produces the structured records.</p>
+
+  <p>For the discovery stage, the generic scrape endpoint with <code>format: "links"</code> works well on category and search pages — it returns the structured set of product URLs without you having to render or parse the page yourself. Store the resulting ASIN list in your warehouse, deduplicate against the previous day's pull, and feed only the new ASINs into the product actor on initial discovery. From there, the watchlist refresh becomes a fixed-cost daily operation.</p>
+
+  <p>The two-stage separation matters because the cost profiles are different. Category-page discovery is cheap per call but the universe of pages is large. Product extraction is more expensive per call but the per-day volume is bounded by your watchlist. Keeping them separate also lets you tune cadence independently — discovery weekly, extraction nightly is a common split.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a pricing analytics team at a mid-market consumer electronics brand. They sell 1,400 SKUs across Amazon and their direct site. The CFO wants daily insight into where they're winning the Buy Box, where competitors are undercutting them, and which listings have suspicious review velocity.</p>
+
+  <p>Before a managed API, the team had two part-time engineers maintaining a headless browser farm with rotating proxies. The cost was running into the thousands of dollars a month in proxy and compute spend, plus a meaningful chunk of two engineers' attention. The pipeline broke roughly twice a quarter when Amazon shipped a layout change.</p>
+
+  <p>After the switch, the same team runs a nightly batch job against 4,200 ASINs — their 1,400 SKUs plus a competitive set — through the Amazon actor, and a small set of merchant-storefront URLs through the generic scrape endpoint. Total monthly spend dropped to a fraction of the previous loaded cost. The engineers got their attention back. When Amazon shipped a layout change, our actor absorbed it within hours and the team did not have to do anything.</p>
+
+  <h2>The pricing math</h2>
+  <p>Let's do the back-of-envelope on buy versus build. A serious in-house Amazon pipeline at 100,000 products per month carries three cost lines: residential proxy spend, browser infrastructure if you render pages, and the engineering time to keep it healthy — typically a meaningful percentage of a senior engineer's attention. Each of those numbers depends on your provider mix and team rates, but the loaded total is rarely small.</p>
+
+  <p>The same volume on Ollagraph runs at the per-request rates published on the pricing page. Most pipelines below 100k requests a month land cheaper on a managed API than building the equivalent in-house, even before you count the months of engineering time you avoid. Above a million requests a month, the calculus changes and procurement gets involved on both sides. See the <a href="/pricing">pricing page</a> for volume pricing and a line-by-line comparison.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>Even with a managed API, a few failure modes are worth planning for. Variant pages sometimes redirect to a parent ASIN, which can confuse a pipeline that expects a one-to-one mapping. The fix is to record both the requested ASIN and the returned ASIN in your warehouse and reconcile downstream.</p>
+
+  <p>Buy Box can be absent on some listings — third-party-only products, restricted categories, or items where Amazon has temporarily suspended the buy button. Treat <code>buy_box_seller</code> as nullable and you avoid spurious alerts in your monitoring.</p>
+
+  <p>Regional pricing differs across Amazon's marketplaces. A URL on <code>amazon.com</code> returns US pricing; <code>amazon.co.uk</code> returns GBP. The actor honors the domain you submit. If you need cross-marketplace coverage, submit the URL for each region you care about. The IETF maintains the canonical list of country codes at <a href="https://www.iana.org/assignments/country-codes/country-codes.xhtml">iana.org</a> if you need it for normalization.</p>
+
+  <h2>Pairing the Amazon actor with the rest of the stack</h2>
+  <p>The Amazon actor is one piece of a fuller catalog intelligence pipeline. Teams routinely pair it with <a href="/recipes/monitor-competitor-pricing">competitor pricing monitoring</a> for direct-to-consumer sites, with the <a href="/capabilities">generic scrape endpoints</a> for retailer storefronts that don't have a dedicated actor, and with the markdown converters when they want to feed product pages into a RAG corpus for a shopping copilot.</p>
+
+  <h2>The seven fields that actually matter</h2>
+  <p>Most teams ask for more fields than they need. After watching how customers actually use the Amazon actor, seven fields drive nearly every real decision.</p>
+
+  <p><strong>Price.</strong> The headline number. Tracked over time, price tells you everything about a category's competitive dynamics. Tracked against your own SKUs, it tells you when to react.</p>
+
+  <p><strong>Buy Box seller.</strong> The merchant who gets the sale when a customer hits the buy button. For brands selling on Amazon, owning the Buy Box is roughly the difference between a profitable SKU and a dead one. For third-party sellers, watching Buy Box rotations is signal about the strength of the competitive set.</p>
+
+  <p><strong>Review count.</strong> A leading indicator of category traction. Sudden review velocity — disproportionate to category norms — is often the first signal of a launch promotion, a viral moment, or a black-hat campaign worth investigating.</p>
+
+  <p><strong>Star rating.</strong> The trailing indicator. Slow to move, expensive to repair, and statistically meaningful as a predictor of long-term conversion. Pair rating with review count and you can spot listings whose rating has been propped up by a small sample.</p>
+
+  <p><strong>Availability.</strong> The cheapest signal in the response and one of the most actionable. A competitor going out of stock is a window. A competitor staying out of stock for days is a category opportunity.</p>
+
+  <p><strong>Title and category.</strong> Boring fields with high analytic value. Title changes correlate with SEO experiments; category changes correlate with merchandising strategy shifts. Both are worth tracking even when they don't appear in your primary dashboard.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, paste the curl command from Step 2, and confirm you can pull a real ASIN in the next five minutes. Then pick one realistic use case — a competitive pricing dashboard, a daily review-velocity report, a catalog freshness audit — and wire the batch endpoint into it. Most teams have a working internal tool inside a week and a production pipeline inside a month.</p>
+
+  <p>Read the <a href="/docs">docs</a>, browse the <a href="/actors">actor catalog</a>, and ship something.</p>
+</Article>

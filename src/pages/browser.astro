@@ -1,0 +1,156 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+const openExample = `# Open a persistent stealth browser session. Free — you pay on render/script.
+curl -X POST https://api.ollagraph.com/v1/session \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"stealth": true}'
+# => { "session_id": "sess_8f3a...", "engine": "...", "expires_at": "..." }`;
+
+const renderExample = `# Render a URL inside that session — JavaScript executes, cookies & storage persist.
+curl -X POST https://api.ollagraph.com/v1/session/sess_8f3a.../render \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://example.com/dashboard",
+    "wait_until": "networkidle",
+    "format": "html"
+  }'
+# Returns rendered HTML/text plus tier_used and final_url. State carries to the next call.`;
+
+const scriptExample = `# Run a JSON action script in the same session — click, type, wait, screenshot.
+curl -X POST https://api.ollagraph.com/v1/session/sess_8f3a.../script \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "actions": [
+      {"type": "click", "selector": "#load-report"},
+      {"type": "wait", "ms": 1500},
+      {"type": "screenshot", "full_page": true}
+    ]
+  }'`;
+
+const inspectExample = `# Check a session's state, then close it to free the browser context.
+curl https://api.ollagraph.com/v1/session/sess_8f3a... \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"
+# => { "engine": "...", "age": 42, "idle_seconds": 9, "last_url": "https://..." }
+
+curl -X DELETE https://api.ollagraph.com/v1/session/sess_8f3a... \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"`;
+
+const pillars = [
+  { title: "Sessions that keep state", body: "Open a session once and every render and script call after it reuses the same cookies, localStorage, and authenticated context. Log in on the first call, keep working across the rest — no re-authenticating per request, no juggling cookie jars yourself." },
+  { title: "Managed stealth engine", body: "Every session runs on our managed stealth browser engine — fingerprint-randomized, headless flags stripped, hardened against the JavaScript checks that flag ordinary headless Chrome. The same protections that power our scraping stack apply to your live sessions." },
+  { title: "Render JavaScript, get clean HTML", body: "Point a session at a URL and it executes the page's JavaScript, waits for network idle or DOM stability, and returns rendered HTML or text. The response is canonical across tiers — same fields whether the page was simple or fought back." },
+  { title: "No browser farm to run", body: "No idle Chromium pool, no autoscaling to tune, no out-of-memory crashes at 3 a.m. Open a session, do the work, close it. Opening is free; you are billed per render and per script call like the rest of the API." },
+];
+
+const faqs = [
+  { q: "How is the session surface different from the scraping API?", a: "The scraping API is one-shot: send a URL, get cleaned data back in a single call. The session surface is stateful — you open a browser, then make many render and script calls that share cookies, storage, and the authenticated context. Reach for the scraping API when one request is enough; reach for a session when you need a page to remember what happened on the call before." },
+  { q: "How is the session surface different from browser automation?", a: "Browser automation describes a goal in natural language or a high-level macro and lets an agent decide the steps. The session surface is the lower-level primitive: you open the browser, drive it with explicit render and script calls, and control the lifecycle yourself. Automation is built on top of this rendering and session foundation." },
+  { q: "What endpoints make up the session lifecycle?", a: "Four. POST /v1/session opens a persistent browser session and is free. POST /v1/session/{session_id}/render loads a URL inside it, executing JavaScript and keeping cookies and storage. POST /v1/session/{session_id}/script runs a JSON action script — click, type, wait, scroll, screenshot. DELETE /v1/session/{session_id} closes it and frees the browser context. A GET on the same path inspects engine, age, idle time, and the last URL." },
+  { q: "How is a session billed?", a: "Opening a session is free. Billing happens on the work: each render and each script call is metered like any other endpoint. Failed calls are auto-refunded, so a render that times out never costs you a credit. Pricing follows the standard credit model — see the pricing page for current packs." },
+  { q: "How do sessions stay isolated?", a: "Each session gets its own fresh browser context with no shared state from any other customer or session. Cookies, storage, and cache live only inside that session and are destroyed when you close it or it idles out. Nothing scraped is persisted on our side beyond the response we hand back." },
+  { q: "What can I do in a script call?", a: "Drive the page with a JSON array of actions — click a selector, type into a field, wait a fixed time or for an element, scroll, submit a form, and capture a screenshot. The same action vocabulary works on every site, so there is no per-target Playwright or Puppeteer code to maintain. Generic libraries like Playwright and Puppeteer remain familiar reference points, but you describe the steps as data, not code." },
+  { q: "What about pages behind a login?", a: "This is the headline case for sessions. Use a script call to drive the login form on the first request, then every subsequent render and script call in that session reuses the authenticated cookies and storage. See the scrape-pages-behind-login recipe for an end-to-end walkthrough." },
+  { q: "Do I still need a session for a single JavaScript-heavy page?", a: "Not necessarily. If you only need one rendered page, the scraping API can render JavaScript in a single shot — pass stealth and let it run the page's scripts and action macros. Open a session when you need state to survive across multiple calls: an authenticated flow, a multi-step interaction, or repeated renders against the same site without logging in again." },
+];
+
+const url = "https://ollagraph.com/browser/";
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebPage", name: "Headless browser API — Ollagraph", url, description: "Open a persistent stealth browser session, render JavaScript, run action scripts, and keep cookies and storage across calls. Managed engine, billed per call." },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Headless browser API", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout
+  title="Headless browser API — persistent stealth sessions, JS rendering — Ollagraph"
+  description="Open a persistent stealth browser session, render JavaScript, run JSON action scripts, and keep cookies and storage across calls. Managed engine, no browser farm, billed per call."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('browser')} />
+
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:760px;">
+      <span class="badge badge-mute" style="margin-bottom:16px;">HEADLESS BROWSER</span>
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Open a browser. Keep the session.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        Spin up a persistent stealth browser, render JavaScript, drive it with a JSON action script, and carry cookies and storage across every call. The rendering and session primitive — not a server farm you have to run.
+      </p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:24px;">
+        <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
+        Need an agent that decides its own steps? See <a href="/automation" style="color:var(--accent);">browser automation</a>. Just need one page fetched? Use <a href="/scrape" style="color:var(--accent);">the scraping API</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {pillars.map((p) => (
+          <div class="pcard">
+            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{p.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">The session lifecycle, end to end.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Open, render, script, close — four calls, one bearer token, state preserved throughout.</p>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Open a session</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/session</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{openExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Render JavaScript</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/session/{`{session_id}`}/render</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{renderExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Run an action script</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/session/{`{session_id}`}/script</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{scriptExample}</code></pre></div>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>Inspect & close</span><span class="text-mono" style="color:var(--text-dim);">GET / DELETE /v1/session/{`{session_id}`}</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{inspectExample}</code></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px; text-align:center;">
+      <p style="color:var(--text-dim); font-size:13px; margin:0;">
+        Part of the full <a href="/capabilities" style="color:var(--accent);">209-endpoint surface</a>. For one-shot fetches see <a href="/scrape" style="color:var(--accent);">scraping</a>, for whole-site sweeps see <a href="/crawl" style="color:var(--accent);">crawling</a>, and for agent-driven flows see <a href="/automation" style="color:var(--accent);">automation</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Headless browser questions</h2>
+    {faqs.map((f) => (
+      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+    ))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Open your first session in five minutes.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">1,000 free credits, one bearer token, opening a session is free, failed calls auto-refund.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/recipes">Browse recipes</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

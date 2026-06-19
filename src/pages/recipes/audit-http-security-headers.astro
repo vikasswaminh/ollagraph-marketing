@@ -1,0 +1,142 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What are HTTP security headers?", a: "HTTP security headers are response headers a server sends to instruct the browser how to behave defensively. The most consequential are Content-Security-Policy, which constrains where scripts and other resources may load from; Strict-Transport-Security, which forces HTTPS on every future visit; X-Frame-Options or its CSP equivalent frame-ancestors, which blocks clickjacking; X-Content-Type-Options, which stops MIME sniffing; and Referrer-Policy and Permissions-Policy, which limit data leakage and feature access. Auditing them tells you how much of the browser's built-in defense surface a site has actually switched on." },
+  { q: "How do I audit a site's security headers programmatically?", a: "Fetch the URL and read the response headers, then grade them against a known-good baseline. Ollagraph's POST /v1/intel/headers does exactly this in one call: it fetches the page, returns every response header, and assigns a security-header grade so you do not have to hand-roll the rubric. You can wire the same call into CI to fail a build when the grade regresses." },
+  { q: "What is a good Content-Security-Policy?", a: "A good CSP is restrictive by default and explicit about exceptions. Start from default-src 'self', drop 'unsafe-inline' and 'unsafe-eval', enumerate the exact origins your scripts, styles, fonts, and frames load from, and add a report-uri or report-to endpoint so violations surface before you tighten further. The hardest part is inventorying what your pages actually load — which is why pairing a CSP rollout with a subresource-integrity and mixed-content audit saves time." },
+  { q: "What is HSTS and why does it matter?", a: "Strict-Transport-Security (HSTS) tells the browser to only ever connect to your origin over HTTPS, even if a user types http:// or clicks an old link. It closes the first-visit downgrade window that attackers exploit on public networks. A strong policy sets a long max-age (a year is common), includes subdomains, and — once you are confident — qualifies for the browser preload list so protection applies before the first request." },
+  { q: "What is security.txt?", a: "security.txt is a small text file, defined in RFC 9116, that a site publishes at /.well-known/security.txt to tell security researchers how to report vulnerabilities. At minimum it carries a Contact field and an Expires date. Auditing for its presence is a cheap proxy for whether an organization has a coordinated disclosure process at all. Ollagraph's POST /v1/intel/security-txt probes both the well-known path and the legacy root path and reports whether the file meets the RFC 9116 minimum." },
+  { q: "What is subresource integrity and how do I audit it?", a: "Subresource Integrity (SRI) is an integrity attribute on a <script> or <link> tag that pins a cryptographic hash of the file you expect. If a CDN is compromised and serves tampered JavaScript, the hash will not match and the browser refuses to run it. Auditing SRI means checking how many of your externally hosted scripts and stylesheets are pinned. Ollagraph's POST /v1/intel/sri-audit lists every external script and stylesheet on a page and reports how many carry an integrity attribute." },
+  { q: "What is mixed content?", a: "Mixed content is an HTTP subresource — an image, script, stylesheet, iframe, or media file — loaded by an HTTPS page. It silently downgrades the security of an otherwise encrypted page and browsers increasingly block it outright. POST /v1/seo/mixed-content fetches an HTTPS page and reports every http:// resource it references, so you can fix the references before a browser breaks the page for you." },
+  { q: "How much does a header audit cost on Ollagraph?", a: "Each intelligence call is metered at one credit, and failed calls are auto-refunded so you never pay for a request that could not be served. The exact per-credit rate and the free monthly grant live on the pricing page. A full posture sweep of one site — headers, security.txt, SRI, and mixed content — is four calls, which makes a per-deploy audit in CI effectively free at typical volumes." },
+];
+---
+<Article
+  title="How to audit HTTP security headers (CSP, HSTS) in 2026"
+  description="Programmatically check CSP, HSTS, security.txt, subresource integrity, and mixed content — wire a security-header audit into CI."
+  date="2026-06-18"
+  readingTime={11}
+  tags={["security", "HTTP headers", "CSP"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What auditing HTTP security headers actually means in 2026</h2>
+  <p>Auditing HTTP security headers means programmatically checking which browser-side defenses a web property has switched on — Content-Security-Policy, Strict-Transport-Security, X-Frame-Options, and the rest — and flagging the gaps before an attacker finds them. In 2026 the practical way to do this is a managed API that fetches the page, reads the headers, and grades them, so the check runs the same way on your laptop and inside CI.</p>
+
+  <p>That sentence is the AEO answer. The rest of this page is for the engineers and security leads who have to actually keep a fleet of domains compliant. We will walk through the posture you are trying to verify, name the defenses that matter, and lay out a working recipe that turns a one-off manual review into a check that runs on every deploy.</p>
+
+  <p>One ground rule before we start. This is a defensive recipe. Audit sites you own or are explicitly authorized to assess. Reading response headers and parsing public HTML is a benign, read-only operation, but the point of the exercise is to harden your own surface — not to profile someone else's.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't want a header report. You want confidence that a regression can't ship. There is a difference, and the difference is where most security programs quietly fail.</p>
+
+  <p>The reader of this page usually falls into one of three buckets. A platform or security engineer who owns a CSP and watches it drift every time a marketing tag gets added. A compliance lead who needs evidence that a list of customer-facing domains carries HSTS and a disclosure contact. Or an AppSec team standing up a baseline across dozens of properties acquired through different teams, each with its own idea of what "secure enough" means.</p>
+
+  <p>Every one of those teams has the same hidden requirement. The check has to be boring and repeatable. Nobody wants a quarterly manual scan that everyone dreads and half-skips. They want a single command that returns a grade, fails a pipeline when the grade drops, and produces the same answer whether it runs in a developer's shell or a nightly job. That is the actual product: a header audit you never have to think about until it tells you something changed.</p>
+
+  <h2>The defenses worth auditing</h2>
+  <p>Before the recipe, a quick tour of what you are checking and why each one earns its place. The browser ships a deep, free defense surface; most of these headers exist only to switch it on.</p>
+
+  <h3>Content-Security-Policy</h3>
+  <p>CSP is the heavyweight. It tells the browser exactly which origins may serve scripts, styles, fonts, frames, and connections, and it is the single most effective control against cross-site scripting. It is also the hardest to get right, because a strict policy demands a complete inventory of everything your pages load. The audit answer is binary at first — is there a policy at all — and gets more nuanced as you tighten it toward <code>default-src 'self'</code> without <code>'unsafe-inline'</code>.</p>
+
+  <h3>Strict-Transport-Security</h3>
+  <p>HSTS forces every future connection to your origin over HTTPS, closing the first-visit downgrade window. The audit checks for the header's presence, a long <code>max-age</code>, and whether it covers subdomains. A missing or short-lived HSTS policy is one of the most common findings on otherwise modern sites.</p>
+
+  <h3>The supporting cast</h3>
+  <p>X-Frame-Options (or CSP's <code>frame-ancestors</code>) blocks clickjacking. X-Content-Type-Options stops MIME sniffing. Referrer-Policy limits how much URL data leaks to third parties. Permissions-Policy gates access to camera, microphone, geolocation, and other powerful features. None of these is glamorous; collectively they are the difference between a B and an A on most rubrics.</p>
+
+  <h3>The adjacent checks</h3>
+  <p>Three things live next to the headers and belong in the same audit. A <strong>security.txt</strong> file tells researchers how to reach you when they find something. <strong>Subresource integrity</strong> pins the hash of CDN-hosted scripts so a compromised CDN can't run tampered code in your users' browsers. And <strong>mixed content</strong> — HTTP resources on an HTTPS page — silently undermines the encryption you paid for. A posture audit that stops at response headers misses all three.</p>
+
+  <h2>Where Ollagraph fits</h2>
+  <p>Ollagraph exposes each of these checks as a single metered endpoint that returns clean JSON. You don't stand up a headless browser, manage a header-parsing library, or maintain your own grading rubric. You make a request, you get a structured answer, and you wire it into whatever runs your other checks. The <a href="/intelligence">intelligence endpoints</a> are read-only, free-data probes against public surfaces — exactly the right tool for a defensive audit you run on your own properties.</p>
+
+  <p>Three outcomes matter. First, the same call works everywhere: a developer's shell, a CI step, a scheduled compliance sweep. Second, the headers endpoint returns a security-header grade alongside the raw headers, so you get a single comparable number to assert against instead of re-deriving a rubric in every pipeline. Third, predictable economics — one credit per call, failed calls auto-refunded — so running a four-call posture sweep on every deploy costs effectively nothing at typical volumes. For the broader context of why intelligence-grade observability matters, see <a href="/for-intel">Ollagraph for intelligence teams</a>.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Four checks, real curl commands, real response shapes, then how to fold them into CI. Drop these straight into a shell and you have an audit.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab an API key from the dashboard, and export it for the rest of this session. Keys start with the prefix <code>osk_</code> and authenticate every call.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Grade the response headers</h3>
+  <p>Start with the headline check. The headers endpoint fetches the URL, returns every response header, and assigns a security-header grade so you have a single comparable signal.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/headers \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com"
+  &#125;'</code></pre>
+
+  <p>The response carries the full set of response headers plus the grade. Treat the grade as your top-line assertion in CI, and keep the raw header map for the detail view when something regresses. Field names and the exact shape of the grade are documented in the live spec at <a href="/docs">the docs</a> — read them there rather than hard-coding assumptions, since the structured payload is the source of truth.</p>
+
+  <h3>Step 3. Check for a disclosure contact</h3>
+  <p>Next, confirm the site publishes a security.txt. This endpoint probes <code>/.well-known/security.txt</code> first, then the legacy root path, parses the file, and reports a <code>rfc9116_minimum_compliant</code> flag — true only when the file carries both a Contact and an Expires field, the RFC 9116 minimum.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/security-txt \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com"
+  &#125;'</code></pre>
+
+  <p>Assert on <code>rfc9116_minimum_compliant</code> in CI. A missing or expired security.txt is a low-effort, high-signal finding — it usually means there is no coordinated disclosure process behind the domain at all, which is worth knowing before you ship anything customer-facing.</p>
+
+  <h3>Step 4. Audit subresource integrity</h3>
+  <p>Now look at supply-chain hygiene. The SRI audit lists every external <code>&lt;script&gt;</code> and stylesheet on the page and reports how many are pinned with an <code>integrity</code> attribute. Unpinned CDN-hosted JavaScript is the single largest tampering surface most sites carry.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/sri-audit \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com"
+  &#125;'</code></pre>
+
+  <p>Use the count of unpinned external resources as your threshold. For a hardened property the target is zero — every external script and stylesheet pinned to a known hash. For a site mid-migration, assert that the count does not grow between deploys, which stops new unpinned dependencies from sneaking in while you work through the backlog.</p>
+
+  <h3>Step 5. Find mixed content</h3>
+  <p>Finally, catch HTTP resources on your HTTPS pages. The mixed-content check fetches an HTTPS page and reports every <code>http://</code> subresource it references — images, scripts, stylesheets, iframes, and media.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/mixed-content \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com"
+  &#125;'</code></pre>
+
+  <p>Any mixed content is a hard fail. Browsers increasingly block these resources outright, so a finding here is both a security regression and a functional one — a stylesheet or script that simply won't load. Assert that the list is empty and you have closed the loop on the four most common posture gaps.</p>
+
+  <h2>Wiring it into CI</h2>
+  <p>The four calls above are the whole audit. The value comes from running them automatically. The pattern that works is a single script that hits all four endpoints for each domain you own, parses the JSON, and exits non-zero when any assertion fails. Run it as a step in your deploy pipeline, gated on the domain you just shipped, and a header regression can never reach production silently.</p>
+
+  <p>Keep the thresholds in version control next to the script: the minimum acceptable header grade, <code>rfc9116_minimum_compliant</code> must be true, the maximum number of unpinned subresources, and zero mixed content. When you tighten a policy — say you finally drop <code>'unsafe-inline'</code> from your CSP — you raise the threshold in the same commit, and the audit enforces it from then on. The check ratchets in one direction and never slides back.</p>
+
+  <p>Because each call is one credit and failures auto-refund, the economics of running this on every deploy are trivial. A four-call sweep per domain, even across a few dozen properties on every push, lands well inside a normal monthly grant. There is no concurrency tier to provision and no overage to fear at the end of the month.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a platform team at a mid-market SaaS company with eleven customer-facing domains — the marketing site, the app, a docs portal, a status page, and a handful of regional and legacy properties picked up through acquisitions. The security lead knows the CSP on the main app is solid. She has no idea about the other ten.</p>
+
+  <p>Before the audit, posture was a spreadsheet someone updated once a year after a manual review, and it was stale within a month. The acquired domains were the worst offenders: two had no HSTS, one served a stylesheet over HTTP, and none of the legacy properties published a security.txt. Nobody knew until a researcher emailed the CEO directly because there was nowhere else to send the report.</p>
+
+  <p>After the switch, the team runs the four-call sweep against all eleven domains nightly and on every deploy. The first run produced a punch list; within two sprints every domain carried HSTS, the mixed-content reference was fixed, and a single security.txt template rolled out across the fleet. Now the grade is asserted in CI, so a regression fails the build instead of waiting a year to surface in a spreadsheet. The security lead spends her attention on the hard CSP work, not on rediscovering the same gaps every quarter.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>A few realities are worth planning for. First, a header grade is a starting point, not a verdict. A strong grade means the right headers are present and well-formed; it does not prove your CSP actually constrains the scripts you run. Treat the grade as a regression tripwire and pair it with a real review when you author the policy.</p>
+
+  <p>Second, single-page apps load resources after the initial HTML. An audit that reads the served document sees what the server declared, which is exactly what you want for headers, security.txt, and the statically referenced subresources. If your concern is resources injected by client-side JavaScript at runtime, treat the static audit as the floor and layer a browser-rendered check on top for the dynamic surface.</p>
+
+  <p>Third, scope discipline. Run these checks against domains you own or are authorized to assess. The endpoints are read-only and free-data, but the entire point is hardening your own posture — keep the audit pointed at your fleet.</p>
+
+  <h2>Pairing the header audit with the rest of the stack</h2>
+  <p>The header audit is one piece of a fuller external-posture picture. Transport security lives next door: pair this recipe with <a href="/recipes/monitor-ssl-and-subdomains">monitoring SSL and subdomains</a> to catch expiring certificates and forgotten subdomains before they become the weak link. And because several of these checks overlap with frontend hygiene, teams often fold them into a broader <a href="/recipes/technical-seo-audit">technical SEO audit</a> so the same pipeline that watches crawlability also watches security posture. For the wider toolkit of read-only observability endpoints, browse the <a href="/intelligence">intelligence suite</a>.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, paste the curl command from Step 2, and grade one of your own domains in the next five minutes. Then take the four calls, drop them into a script with thresholds in version control, and add it as a step in your deploy pipeline. Most teams have a working audit running locally inside an afternoon and gating CI inside a week.</p>
+
+  <p>Read the <a href="/docs">docs</a>, browse the <a href="/intelligence">intelligence endpoints</a>, and ship something defensible.</p>
+</Article>

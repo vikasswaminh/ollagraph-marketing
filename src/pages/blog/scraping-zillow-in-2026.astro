@@ -1,0 +1,134 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "Is scraping Zillow legal in 2026?",
+    a: "Fetching publicly accessible pages is generally lawful in most jurisdictions, with the well-known caveats around the Computer Fraud and Abuse Act in the United States and similar statutes elsewhere. Redistribution and commercial use of scraped data have separate legal questions. The reasonable default is to work with counsel before commercial deployment, document your source policy, and respect Zillow's robots.txt and terms of service for the parts of your workflow where they apply.",
+  },
+  {
+    q: "Why do datacenter IPs fail on Zillow?",
+    a: "Enterprise bot defenses maintain reputation lists of known datacenter IP ranges from the major cloud providers. Traffic from these ranges is challenged or blocked aggressively because almost no legitimate human traffic originates there. Residential IPs from real ISPs do not trigger the same rules.",
+  },
+  {
+    q: "How does the embedded-payload approach work?",
+    a: "Zillow's property pages embed the full property data as JSON inside a script tag in the HTML. Parsing this JSON directly is more reliable than scraping the rendered DOM because the payload structure is stable across redesigns. The Ollagraph Zillow actor uses this approach as the primary extraction strategy.",
+  },
+  {
+    q: "What does the bot defense actually check?",
+    a: "Several signals stacked. TLS fingerprint, HTTP header order and content, JavaScript-based browser fingerprinting (canvas, fonts, plugin list, navigator properties), behavioral signals (mouse movement, scrolling, timing), and IP reputation. A single inconsistency triggers escalation; multiple inconsistencies trigger an explicit captcha or block.",
+  },
+  {
+    q: "Why does the Ollagraph Zillow actor return a 'wall detected' message instead of trying to bypass it?",
+    a: "Because honesty is more useful than false confidence at scale. When the bot defense challenges a request, the actor returns a clear error explaining what happened and recommending a residential-proxy retry. That lets your pipeline make an informed retry decision rather than silently writing a captcha page into your database. We solve the wall transparently when we can route the request through a path that gives us a real chance.",
+  },
+  {
+    q: "How many requests per minute can I make to Zillow?",
+    a: "Conservatively, one request every three to eight seconds per IP. Faster than that and you trigger soft challenges that eventually escalate to a full block. Pipelines that rotate aggressively across a large residential pool can run hundreds of concurrent extractions; pipelines on a small proxy pool should run a single concurrent worker and queue the rest.",
+  },
+  {
+    q: "Should I use the Zillow public API instead?",
+    a: "Zillow's public API for property data has been effectively deprecated for new developers since 2021. Some legacy partner integrations remain, but for new use cases the API path is closed. Scraping or licensed dataset products are the only realistic options for property data at scale.",
+  },
+  {
+    q: "What fields does the Ollagraph Zillow actor return?",
+    a: "Address, city, state, zipcode, price, Zestimate, bedrooms, bathrooms, living area in square feet, year built, and a few additional fields when present. Custom fields are available for Business and Enterprise customers on request.",
+  },
+];
+---
+<Article
+  title="Scraping Zillow in 2026: what works, what fails, what to do about it"
+  description="An honest look at the bot defenses, embedded payload extraction, and the three working strategies for getting Zillow data into a production pipeline."
+  date="2026-05-16"
+  readingTime={11}
+  tags={["real estate", "Zillow", "anti-bot"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <h2>Why this is harder than it looks</h2>
+  <p>Zillow tracks over 110 million properties in the United States. For real estate analytics teams, off-market deal-flow tools, proptech startups, and individual investors, that dataset is irreplaceable — and there is no sanctioned API path to it for new developers. Which means everyone who needs the data is scraping it. Which means Zillow has spent the last several years building one of the most aggressive bot defenses on the public web.</p>
+
+  <p>This post is about what realistically works in 2026, where pipelines break, and how to build something that holds up. We will be specific about the trade-offs and honest about what each approach costs in real money and engineering time.</p>
+
+  <h2>The official API path closed</h2>
+  <p>Zillow used to operate a public Property API for licensed Real Estate Professionals and approved partners. Access has been progressively restricted since 2021. For most new use cases — proptech analytics, investor tooling, lead-gen for real estate services — the API path is no longer practical. Some legacy partner integrations remain, but Zillow has signaled clearly that data redistribution at scale is not the future of their partner program.</p>
+
+  <p>The practical result is that everyone serious about property data at scale is now scraping, licensing a third-party dataset, or partnering directly with MLS systems for the segments of the market where that is feasible. Each path has trade-offs we will get into below.</p>
+
+  <h2>What you are up against</h2>
+  <p>Zillow's bot defense is a stack, not a single product. Several things happen on a typical request, and any of them can decide to challenge or block you.</p>
+
+  <p><strong>Behavioral fingerprinting.</strong> The primary defender analyzes browser fingerprints, mouse movements, scroll velocity, and timing patterns. Reputation databases catalog known automation tools and known bad IPs. A single suspicious signal triggers a soft challenge; multiple triggers a block.</p>
+
+  <p><strong>Network-layer checks.</strong> Front-line CDN protection adds TLS fingerprinting, HTTP header order checks, and basic rate-limiting. This alone catches naive scrapers that use default HTTP clients — their TLS fingerprints are very different from real browsers.</p>
+
+  <p><strong>JavaScript fingerprinting.</strong> Once you are past the network layer, the page runs JavaScript that checks for headless-browser indicators: missing plugins, missing fonts, inconsistent timezone or language settings, canvas-rendering inconsistencies. Each check is fast; the combination is hard to fully defeat.</p>
+
+  <p><strong>Client-side rendering requirements.</strong> The full property page is rendered client-side from a JavaScript application. If your scraper does not execute JavaScript, you get a thin shell with no useful content. A full browser is required for traditional DOM scraping — and a full browser is exactly where the fingerprinting has the most signal to work with.</p>
+
+  <p><strong>IP reputation.</strong> Datacenter IP ranges are flagged aggressively. Traffic from major cloud providers is treated as suspect by default and often blocked at the network layer before the higher-level checks even run.</p>
+
+  <p>The cumulative effect is that a naive scraper gets a 403 within seconds. A more sophisticated scraper using a headless browser on a datacenter IP gets a few requests through before triggering captcha challenges. A scraper using a real browser through a residential proxy with reasonable timing gets a much higher success rate but is still occasionally challenged.</p>
+
+  <h2>The three working strategies</h2>
+  <p>Most production teams pick one of three approaches, sometimes in combination.</p>
+
+  <p><strong>Strategy 1: Headless browser plus residential proxy.</strong> Drive a real browser through a residential proxy pool, with realistic mouse-movement simulation and reasonable per-IP rate limits. This is the highest-fidelity approach and the most expensive to operate. The proxy cost dominates — a serious Zillow pipeline can spend a few cents to a couple of dollars per 1,000 successful requests on proxies alone, before any browser infrastructure cost. Success rates with a good setup are typically 90 to 98 percent.</p>
+
+  <p><strong>Strategy 2: Direct payload extraction.</strong> Instead of rendering the page in a browser and scraping the DOM, fetch the HTML and parse the embedded data payload, which contains the full property data as JSON. This is more efficient per request and more stable across UI redesigns. The catch is that you still need to get past the bot defenses to fetch the HTML in the first place. Once you have the HTML, parsing is straightforward.</p>
+
+  <p><strong>Strategy 3: A managed scraping API.</strong> Outsource the anti-bot dance entirely. A managed API handles the browser orchestration, proxy rotation, retry logic, and fingerprinting on its side. Your code becomes a single API call. The cost shifts from infrastructure and engineering time to per-request pricing. For most teams below 100,000 properties per month, this is the cheapest overall path once you account for engineering time.</p>
+
+  <h2>Where Ollagraph fits</h2>
+  <p>The Ollagraph Zillow actor at <code>POST /v1/actors/zillow</code> uses Strategy 2 (payload extraction) as the primary path, with the network-level work needed to reach the HTML in the first place. The actor returns address, city, state, zipcode, price, Zestimate, bedrooms, bathrooms, living area in square feet, and year built in a clean schema. Our managed fetch path handles the routing, with automatic residential-proxy fallback when origin defenses escalate.</p>
+
+  <p>When the bot defense returns its captcha wall, the actor detects the specific signature and returns an explicit error explaining that an anti-bot wall was hit and recommending a residential-proxy retry. This is deliberate. Silently retrying or returning a partial result is worse than telling the caller what happened, because pipelines that get partial silent results end up with corrupted databases.</p>
+
+  <p>The honest trade-off: in our internal benchmarks, the actor extracts cleanly from Zillow URLs at a high success rate when the request is routed through residential IPs. Routed straight through, success rates fall significantly as challenges accumulate. You can opt into residential routing per request with <code>"use_residential_proxy": true</code>, which trades a small surcharge for a materially higher success rate on hardened targets like Zillow. Pairing the actor with that flag is the configuration most production users settle on.</p>
+
+  <h2>How to think about proxy spend</h2>
+  <p>For teams new to scraping at this level, proxy spend is the cost that surprises everyone. Residential routing is metered per gigabyte transferred or per request, and residential traffic is the priciest tier. A single Zillow property page is a few hundred kilobytes of HTML plus assets. Properly configured to fetch only the HTML and not load images or CSS, a property page is roughly 300 KB.</p>
+
+  <p>The math: at a typical residential per-gigabyte rate and 300 KB per page, each Zillow extraction costs a fraction of a cent in proxy traffic. At 100,000 properties per month, that is a modest monthly line item, plus failed-request overhead which can double or triple that depending on configuration. The takeaway: residential proxies are not the dominant cost at low to medium volumes; engineering time is. At high volumes (millions of properties), proxy spend becomes meaningful and warrants negotiation on rates.</p>
+
+  <h2>The map-pagination problem</h2>
+  <p>One Zillow detail that surprises new pipelines: there is no traditional URL-based pagination for search results. Zillow uses a map-based interface where the visible results are bounded by the current map viewport. To enumerate all properties in a city, you have to programmatically pan and zoom the map, capturing the results from each viewport.</p>
+
+  <p>The straightforward workaround is to walk a grid of small map viewports across the geography you care about. For Manhattan, a 200-meter grid produces roughly 60 viewports and covers every property. For a full state, the grid count grows quickly and proxy spend rises accordingly. Some teams instead start from a list of known addresses (from county assessor records, MLS feeds, or public data sources) and look up each property individually, which sidesteps the map-pagination problem entirely. The <a href="/recipes/scrape-zillow-listings">scrape Zillow listings recipe</a> walks through the seed-list-plus-actor pattern step by step.</p>
+
+  <h2>A realistic production pipeline</h2>
+  <p>What the most successful Zillow pipelines look like in 2026:</p>
+
+  <ol>
+    <li><strong>Seed URL list.</strong> Start from a curated list of property URLs, either by walking the map grid or by joining against public address data. Maintain the list in a versioned manifest so reruns are deterministic.</li>
+    <li><strong>Extract via API.</strong> Send each URL to a managed scraping API or actor. Turn on residential routing with <code>"use_residential_proxy": true</code> for the targets that need it.</li>
+    <li><strong>Handle the wall explicitly.</strong> When the response indicates a bot wall, route the URL into a retry queue with backoff. Do not retry immediately on the same IP — that wastes your proxy spend on requests that will fail.</li>
+    <li><strong>Validate the extraction.</strong> Cross-check the returned price and address against expected ranges. Outliers are a common signal that the response was a soft challenge, not a real listing.</li>
+    <li><strong>Refresh on a schedule.</strong> Property data changes — prices, status, agent, photos. Most production users refresh active listings weekly and full inventory monthly.</li>
+    <li><strong>Respect robots.txt.</strong> Zillow's robots.txt evolves over time. Read it at the start of each crawl and avoid paths it disallows.</li>
+  </ol>
+
+  <p>In practice that pipeline is three calls. Authenticate once, then fan URLs through the actor.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"
+
+curl -X POST https://api.ollagraph.com/v1/actors/zillow \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://www.zillow.com/homedetails/example",
+    "use_residential_proxy": true
+  &#125;'</code></pre>
+
+  <p>For a catalog-scale run, submit one URL per job to the async endpoint and collect results from a webhook, polling <code>GET /v1/jobs/&#123;job_id&#125;</code> only when you need to debug a stuck job.</p>
+
+  <h2>What about Redfin, Realtor.com, and Trulia?</h2>
+  <p>The other major listing sites have their own bot defenses. Some are generally somewhat more permissive than Zillow; others ship their own detection stacks. Trulia is owned by Zillow and shares much of the same infrastructure, which means the techniques that work on Zillow tend to work on Trulia and vice versa.</p>
+
+  <p>For comprehensive market data, most production teams scrape multiple sites and reconcile the records. The same property often appears on Zillow, Redfin, and Realtor.com with slightly different metadata; cross-referencing improves data quality significantly.</p>
+
+  <h2>The honest bottom line</h2>
+  <p>Scraping Zillow at production scale is hard, expensive in proxies, and operationally non-trivial. The teams that do it successfully have either invested heavily in their own browser-plus-proxy infrastructure or outsourced the anti-bot problem to a managed API that absorbs the residential routing for them. The teams that fail are the ones that underestimate the difficulty, deploy a naive scraper on a single cloud region, and spend a month watching success rates collapse from 90 percent to 5 percent as their IP range gets reputation-flagged.</p>
+
+  <p>If you are evaluating options, run a real benchmark — 100 randomly chosen property URLs, three different vendors or in-house approaches, measure success rate and data accuracy. Vendors who are confident will let you do this on a free or trial tier. Ollagraph's free grant covers 1,000 credits a month; enough to run a meaningful benchmark on Zillow and a few other actors before committing to anything. Browse the <a href="/actors">actor catalog</a> or read the <a href="/docs">docs</a> to wire it in.</p>
+</Article>

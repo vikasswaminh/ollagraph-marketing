@@ -1,0 +1,81 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+import { comparisons } from '../../data/comparisons';
+
+export function getStaticPaths() {
+  return comparisons.map((c) => ({ params: { slug: c.slug }, props: { c } }));
+}
+const { c } = Astro.props;
+const url = `https://ollagraph.com/vs/${c.slug}/`;
+const bold = (s: string) => s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebPage", name: c.positioning, url, description: c.heroSub },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Compare", item: "https://ollagraph.com/vs/firecrawl/" },
+    { "@type": "ListItem", position: 3, name: c.positioning, item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: c.faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout title={`${c.positioning} — honest comparison`} description={c.heroSub} jsonLd={jsonLd}>
+  <Fragment set:html={navHtml('')} />
+  <main class="article">
+    <span class="badge badge-mute" style="margin-bottom:14px;">COMPARISON</span>
+    <h1 class="h-display h-1">{c.positioning}</h1>
+    <p class="article-lede">{c.heroSub}</p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:18px;">
+      <a class="btn btn-primary" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary" href="/pricing">See pricing</a>
+    </div>
+
+    <article class="prose">
+      <h2>What {c.name} does well</h2>
+      <p>{c.whatTheyDoWell}</p>
+
+      <h2>Where Ollagraph goes further</h2>
+      <ul>
+        {c.whereWeGoFurther.map((b) => (<li set:html={bold(b)} />))}
+      </ul>
+
+      <h2>Side by side</h2>
+      <table style="width:100%; border-collapse:collapse; font-size:14px;">
+        <thead><tr>
+          <th style="text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text-muted);">Feature</th>
+          <th style="text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text-muted);">{c.name}</th>
+          <th style="text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--accent);">Ollagraph</th>
+        </tr></thead>
+        <tbody>
+          {c.matrix.map((row) => (
+            <tr>
+              <td style="padding:8px 10px; border-bottom:1px solid var(--border);">{row.feature}</td>
+              <td style="padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text-muted);">{row.them}</td>
+              <td style="padding:8px 10px; border-bottom:1px solid var(--border);">{row.us}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <h2>Who each is best for</h2>
+      <p><strong>Choose {c.name} if:</strong> {c.bestForThem}</p>
+      <p><strong>Choose Ollagraph if:</strong> {c.bestForUs}</p>
+    </article>
+  </main>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Common questions</h2>
+    {c.faqs.map((f) => (<div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Try Ollagraph free.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">1,000 credits, one bearer token, every endpoint. Decide for yourself.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/capabilities">See capabilities</a>
+    </div>
+  </section>
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

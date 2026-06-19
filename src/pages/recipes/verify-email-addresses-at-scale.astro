@@ -1,0 +1,225 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "How accurate is SMTP email verification?",
+    a: "On addresses that pass syntax, MX, and SMTP checks together, deliverability accuracy lands above 95% for most consumer and business domains. Catch-all servers and aggressive grey-listing cap that ceiling, which is why Ollagraph returns a confidence score per address rather than a simple yes-or-no flag.",
+  },
+  {
+    q: "Can email verification damage sender reputation?",
+    a: "Done politely, no. Ollagraph uses connection pooling, paces handshakes per recipient domain, and never sends actual mail during verification. The risk shows up when teams blast SMTP probes from their primary sending IP. Use a managed verifier so verification traffic stays separated from production sending.",
+  },
+  {
+    q: "Is bulk email verification legal under GDPR?",
+    a: "Verifying addresses you have a lawful basis to contact is generally fine. Verifying purchased lists of EU residents you have no prior relationship with sits in a gray zone and warrants a conversation with counsel. CAN-SPAM in the US is more permissive, and yet sender-reputation hygiene applies everywhere.",
+  },
+  {
+    q: "What's a catch-all server?",
+    a: "A mail server configured to accept any address at a domain, then bounce or filter internally. Catch-alls return positive SMTP signals for addresses that don't actually exist. Ollagraph flags catch-all domains explicitly so you can decide whether to send, quarantine, or pattern-match against known good addresses.",
+  },
+  {
+    q: "How do you detect disposable email addresses?",
+    a: "Ollagraph maintains a continuously updated registry of disposable and temporary-mail providers, cross-checked against DNS patterns and known service signatures. The verify endpoint flags any address resolving to a disposable provider, which lets RevOps teams strip throwaways before they hit the CRM.",
+  },
+  {
+    q: "Should I remove role-based emails from a sales list?",
+    a: "Usually yes, with exceptions. Addresses like info@, sales@, and contact@ rarely belong to a buying decision-maker and tend to have lower engagement rates. Ollagraph flags role-based addresses as a separate signal so you can choose to exclude, deprioritize, or route them differently.",
+  },
+  {
+    q: "How fast can Ollagraph verify large lists?",
+    a: "A list of 100,000 addresses typically completes in 30 to 90 minutes depending on the recipient-domain distribution. Submit through /v1/verify/email and fan out from your own worker pool for long jobs. Verification respects per-domain pacing so a list heavy in a single provider doesn't slow the rest of the batch.",
+  },
+  {
+    q: "What does the score mean?",
+    a: "A 0.0-to-1.0 number combining syntax validity, MX presence, SMTP response, catch-all status, and provider reputation. Above 0.85 is safe to send. Between 0.60 and 0.85 is conditional — fine for nurture, riskier for cold outbound. Below 0.60 means strip from the list.",
+  },
+  {
+    q: "Does verification work for every provider?",
+    a: "Verification is most accurate against providers that respond to SMTP probes honestly. Some providers — notably a handful of large consumer mail services — grey-list probes or accept all addresses for privacy. Ollagraph normalizes confidence scores per provider so the output stays comparable across domains.",
+  },
+];
+---
+<Article
+  title="How to verify email addresses at scale in 2026"
+  description="SMTP-handshake verification, catch-all and disposable detection, MX-record validation — how RevOps teams keep cold-outbound deliverability above 95% in 2026."
+  date="2026-05-16"
+  readingTime={12}
+  tags={["Email verification", "RevOps", "Deliverability", "SMTP", "API"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>The short answer to verifying emails at scale in 2026</h2>
+  <p>Send each address through <code>/v1/verify/email</code> and read the response. Ollagraph checks syntax against RFC 5322, resolves MX records, performs a polite SMTP handshake without sending mail, flags catch-all and disposable providers, and returns a deliverability decision with a confidence score. Fan out parallel calls from your own worker pool and consume the results.</p>
+
+  <p>The deeper question — the one RevOps leaders actually wrestle with — is why deliverability matters this much, where the verification taxonomy gets nuanced, how to handle catch-all domains without throwing away real leads, and how to keep bulk verification on the right side of GDPR. This recipe walks the full picture.</p>
+
+  <h2>The problem with bad addresses in a cold-outbound pipeline</h2>
+  <p>Cold outbound is unforgiving. A single percent of hard bounces tells mailbox providers your list is dirty, your sender reputation degrades, and suddenly the campaign that should have hit 30% open rates lands in the spam folder for everyone — even the clean addresses. The cost of a few bad addresses isn't the bounce itself. It's the downstream damage to every other email you send for the next thirty days.</p>
+
+  <p>Modern RevOps teams treat verification as table stakes. Lists from public sources, scraped contacts, conference attendee exports, even CRM data that hasn't been touched in six months — all of it gets run through a verifier before it hits the sending platform. The teams that skip this step learn the hard way.</p>
+
+  <p>Verification used to mean either a slow manual process or a brittle in-house SMTP script that nobody wanted to own. In 2026 it's an API call with a clear deliverability decision per address, scaled to the rate your campaign actually needs.</p>
+
+  <h2>What the top alternatives offer</h2>
+  <p><strong>ZeroBounce</strong> set the standard for the verification-as-a-service category and continues to invest in the depth of its provider database. The accuracy guarantees and the breadth of supplementary scoring — abuse, complaint, toxic domain — have earned the trust of enterprise email marketing teams worldwide. For teams who want a verification-first product with deep reporting, it's a strong choice.</p>
+
+  <p><strong>NeverBounce</strong>, <strong>Kickbox</strong>, and <strong>Emailable</strong> each bring excellent point solutions to the category. NeverBounce's per-address pricing model is famously transparent. Kickbox's deliverability reports are presentation-ready for the executive team. Emailable's UI is one of the cleanest in any RevOps tool. Teams running verification as a standalone workflow are well served by any of them.</p>
+
+  <p><strong>Hunter.io</strong>, <strong>MillionVerifier</strong>, and <strong>Bouncer</strong> round out the field. Hunter.io's combination of finder and verifier is the natural starting point for many outbound teams, and the API surface area has matured impressively. MillionVerifier's volume pricing is hard to beat for very large lists. Bouncer's GDPR-first European positioning has resonated with EU buyers. The category is healthy, the tooling is good, and the bar keeps rising.</p>
+
+  <h2>Where Ollagraph goes further</h2>
+  <p>Ollagraph treats email verification as one signal in a larger data API rather than a standalone product. The same API key that runs <code>/v1/verify/email</code> also runs <code>/v1/dns/lookup</code>, <code>/v1/dns/intelligence</code>, the company-enrichment endpoints, and the full crawl and scrape surface. For RevOps teams already pulling firmographic data through Ollagraph, verification becomes a column on the same dataset rather than a separate vendor integration.</p>
+
+  <p>Where Ollagraph goes further is in the per-address signal richness. Beyond the headline SMTP verdict, the response carries the SMTP provider name, a catch-all flag, a disposable flag, and a calibrated 0.0–1.0 score that combines all signals. RevOps teams can build their own thresholds — send aggressively above 0.85, nurture between 0.60 and 0.85, drop below 0.60 — without having to glue together signals from multiple vendors.</p>
+
+  <p>The other practical edge is operational. Verification scales cleanly across a worker pool, and per-domain pacing keeps a list heavy in one provider from blocking the rest of the batch. And the same billing meter covers verification, DNS lookups, and downstream enrichment, which makes the procurement story for a head of RevOps notably simpler.</p>
+
+  <h2>The step-by-step</h2>
+
+  <h3>Step 1 — Start with the DNS layer</h3>
+  <p>Before you verify any specific address at a domain, confirm the domain can actually receive mail. A missing MX record is an immediate signal — the address can't be valid because the domain isn't configured for email.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/dns/lookup \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com",
+    "records": ["MX", "TXT"]
+  &#125;'</code></pre>
+
+  <pre><code>&#123;
+  "domain": "example.com",
+  "mx": [
+    &#123; "priority": 10, "host": "mx1.example.com" &#125;,
+    &#123; "priority": 20, "host": "mx2.example.com" &#125;
+  ],
+  "txt": ["v=spf1 include:_spf.google.com ~all"],
+  "resolved_at": "2026-05-16T09:14:22Z"
+&#125;</code></pre>
+
+  <p>This is the cheapest possible filter. Domains without MX records get dropped before any verification cost is incurred. For very large lists with a long tail of domains, MX pre-filtering routinely removes a meaningful share of the input.</p>
+
+  <h3>Step 2 — Add provider intelligence</h3>
+  <p>Knowing which provider hosts a domain's email lets you predict verification behavior. Some providers respond to SMTP probes cleanly; others grey-list. The intelligence endpoint surfaces the provider name and detected technologies so you can tune downstream handling.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/dns/intelligence \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <pre><code>&#123;
+  "domain": "example.com",
+  "email_provider": "Google Workspace",
+  "nameserver_provider": "Cloudflare",
+  "detected_tech": ["Google Workspace", "Cloudflare", "HubSpot"],
+  "confidence": 0.97
+&#125;</code></pre>
+
+  <p>This signal flows back into the verification confidence score automatically. You rarely call this endpoint as a standalone step; it's documented because the data shows up in downstream verification responses and helps explain why two addresses at different domains might get different scores.</p>
+
+  <h3>Step 3 — Verify the address</h3>
+  <p>The main event. Submit an address to <code>/v1/verify/email</code>. The call is synchronous and returns within a second or two.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/verify/email \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "email": "ada.lovelace@example.com"
+  &#125;'</code></pre>
+
+  <pre><code>&#123;
+  "status": "success",
+  "email": "ada.lovelace@example.com",
+  "is_valid_syntax": true,
+  "mx_found": true,
+  "is_disposable": false,
+  "is_catch_all": false,
+  "smtp_check": "deliverable",
+  "smtp_provider": "Google Workspace",
+  "score": 0.92,
+  "time_ms": 612
+&#125;</code></pre>
+
+  <p>Five signals plus a calibrated score and a single-string <code>smtp_check</code> verdict. That's the full picture a sending platform needs to make a routing call. Syntax follows <a href="https://datatracker.ietf.org/doc/html/rfc5322">RFC 5322</a>; the SMTP probe follows the handshake semantics formalized in <a href="https://datatracker.ietf.org/doc/html/rfc5321">RFC 5321</a> without ever issuing a DATA command, so no actual mail leaves the wire.</p>
+
+  <h3>Step 4 — Parallelize for large lists</h3>
+  <p>For lists in the tens of thousands, fan out parallel calls from your own worker pool. A modest concurrency of 20 to 50 in-flight verifications is well within rate limits on the higher plans and clears 100,000 addresses in under an hour for a typical recipient-domain distribution.</p>
+
+  <pre><code>&#123;`# Pseudocode: fan-out from any client language with an async pool
+for email in big_list:
+    pool.submit(verify, email)
+results = pool.collect()`&#125;</code></pre>
+
+  <p>The <a href="/docs">docs</a> show language-specific patterns. For longer-running jobs the <code>/v1/scrape/async</code> primitive is the right shape; poll <code>GET /v1/jobs/&#123;job_id&#125;</code> for status or wire up the callback in your worker.</p>
+
+  <h3>Step 5 — Apply confidence thresholds</h3>
+  <p>The <code>smtp_check</code> verdict and the <code>score</code> together let you build a routing policy that fits your campaign tolerance. A typical setup looks like this:</p>
+
+  <ul>
+    <li><strong>Score above 0.85, smtp_check = "deliverable":</strong> safe to send through your primary outbound channel.</li>
+    <li><strong>Score 0.60–0.85, or smtp_check = "catch_all":</strong> route to a nurture sequence or a warm-up IP. Avoid for cold blasts.</li>
+    <li><strong>Score below 0.60, or smtp_check in &#123;"undeliverable", "no_mx_records", "invalid_syntax"&#125;:</strong> drop from the active sending list. Optionally re-verify in 60 days.</li>
+    <li><strong>is_catch_all = true:</strong> handle by policy. Many teams send to catch-all domains where the recipient was previously engaged, and skip them for true cold outreach.</li>
+    <li><strong>is_disposable = true:</strong> drop unconditionally. Disposable addresses are almost never valid leads.</li>
+    <li><strong>Role-shaped address (info@, sales@, contact@):</strong> classify these on your side with a local-part check before sending. Role inboxes occasionally convert for SMB outreach but warrant different routing.</li>
+  </ul>
+
+  <p>The right thresholds depend on your sending infrastructure and risk tolerance. Conservative teams running on a single primary IP go tighter; teams with a dedicated warm-up pool can afford to send to lower confidence buckets.</p>
+
+  <h3>Step 6 — Re-verify on a cadence</h3>
+  <p>Email validity decays. People change jobs, domains get retired, mailboxes get archived. Best practice is to re-verify any address that hasn't been sent to or engaged with in the last 90 days, and to verify a fresh list within hours of acquisition.</p>
+
+  <p>For high-value lists — paying customers, recent webinar registrants, late-stage sales contacts — re-verify monthly. The cost is small and the deliverability protection is real.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Priya leads RevOps at a Series B B2B SaaS company. Her sales team runs cold outbound to roughly 8,000 new prospects per week across three sales pods, with a target reply rate that the board watches closely. A bad sending month doesn't just miss pipeline targets — it spooks the executive team about the whole motion.</p>
+
+  <p>Priya's team had been running an in-house verification script that one of the early engineers wrote and nobody had touched in a year. The script was slow, the accuracy was uncertain, and every time a campaign underperformed the first question was whether the verifier had silently regressed. She migrated to Ollagraph because she was already using the company-enrichment endpoints for firmographic scoring, and adding verification onto the same API key meant one fewer vendor to procure.</p>
+
+  <p>The shift was small operationally and large strategically. Verification became a column on her existing enrichment pipeline rather than a separate workflow. Hard-bounce rates dropped below 0.5% across all three pods. The board stopped asking about deliverability. Priya's team now spends its time on persona scoring and sequence A/B tests, which is exactly where a RevOps team should be spending its time.</p>
+
+  <h2>Pricing math</h2>
+  <p>Email verification pricing trends down with volume on every major vendor. The Ollagraph per-call rate and volume tiers live on the pricing page. For a typical mid-market RevOps team running 30,000 to 80,000 verifications a month, the line item sits comfortably inside a standard data-infrastructure budget.</p>
+
+  <p>The larger consideration is the cost of not verifying. A single damaged sending IP can take weeks of warm-up to recover. A modest verification spend per month is cheap insurance against the kind of deliverability incident that wrecks a quarter's pipeline targets. <a href="/pricing">See the full pricing breakdown</a> for the live tiers.</p>
+
+  <h2>The verification taxonomy, in detail</h2>
+  <p>Not every "invalid" address is invalid in the same way, and the right action depends on which failure mode you're looking at. Ollagraph surfaces each signal independently so you can build the policy that fits your campaign.</p>
+
+  <p><strong>Syntax-invalid</strong> addresses fail RFC 5322 parsing. Typos, missing TLDs, unescaped special characters. These are almost always genuine errors and should be dropped unless you have a UI flow that can prompt the user to fix the input.</p>
+
+  <p><strong>No MX record</strong> means the domain isn't configured to receive mail. The address can't be valid regardless of how the local part looks. Drop unconditionally.</p>
+
+  <p><strong>SMTP-rejected</strong> addresses pass syntax and MX but get a hard rejection during the recipient handshake. The mailbox doesn't exist, or the server explicitly says it doesn't. High-confidence drops.</p>
+
+  <p><strong>Catch-all domains</strong> accept every address at the domain, which means a positive SMTP signal carries no real information. Ollagraph flags catch-all status explicitly. Many teams treat catch-all addresses as valid only when paired with another confirming signal — a recent engagement, a LinkedIn match, a website form fill.</p>
+
+  <p><strong>Disposable addresses</strong> resolve to known temp-mail providers. Almost always throwaways. Drop unconditionally.</p>
+
+  <p><strong>Role-based addresses</strong> — info@, sales@, contact@, hello@ — are valid but rarely belong to a specific buyer. Treat as a separate routing class.</p>
+
+  <h2>GDPR, CAN-SPAM, and the legal floor</h2>
+  <p>Verification itself doesn't create new legal exposure — you're checking whether an address you already hold is valid, not sending mail to it. The exposure shows up earlier in the pipeline: how you obtained the addresses, whether you have a lawful basis to contact those individuals, and how you handle suppression for opt-outs.</p>
+
+  <p>For lists acquired through legitimate means — webinar signups, content downloads, sales conversations, partner referrals — verification is a deliverability hygiene step that virtually every regulator treats as normal business practice. For purchased lists of EU residents you have no prior relationship with, the calculus is different and a conversation with counsel is the right move before you scale. <a href="https://en.wikipedia.org/wiki/Email_marketing">The Wikipedia overview of email marketing regulations</a> is a reasonable backgrounder, and your legal team will have the local nuance.</p>
+
+  <h2>How verification fits into a larger RevOps stack</h2>
+  <p>Verification rarely lives alone. The teams getting the most out of Ollagraph pair it with company enrichment, contact discovery, and signal-based intent scoring — all on the same API. See the <a href="/recipes/enrich-leads-from-domain">lead enrichment recipe</a> for the upstream pattern that produces clean, verified contacts ready for outbound.</p>
+
+  <p>Downstream, verification results flow into your CRM, your sequencing tool, and your reporting layer. The confidence score is the right pivot for outbound reporting — campaigns segmented by confidence bucket give you a much clearer read on sequence quality than raw reply rates do. <a href="/docs">The docs</a> cover the full integration surface.</p>
+
+  <h2>The cadence question</h2>
+  <p>How often should you re-verify? The honest answer is "it depends on how fast your addresses decay." For B2B contacts in high-churn industries — tech, media, consulting — quarterly re-verification is the floor. For more stable industries, semiannual works. For freshly acquired lists, verify within hours.</p>
+
+  <p>A useful heuristic: any address that hasn't engaged with a sent email in 90 days should be re-verified before the next major campaign. The cost is small; the protection against a bad sending month is real. Teams that internalize this cadence stop having deliverability emergencies.</p>
+
+  <h2>Closing the loop</h2>
+  <p>Email verification in 2026 is no longer a tool you bolt onto a sending platform — it's a signal that flows through your entire RevOps pipeline, calibrated to your campaign tolerance and integrated with the enrichment data that gives every address its context. The hard parts are the taxonomy, the catch-all problem, the legal floor, and the cadence. The easy part is the API call.</p>
+
+  <p>If you're keeping cold-outbound deliverability above 95%, protecting a hard-won sender reputation, or just cleaning a CRM that hasn't been touched in a year, the recipe above is the production pattern. Start with DNS, layer in provider intelligence, verify with confidence thresholds, and re-verify on a sensible cadence. <a href="/docs">The docs</a> have the full parameter surface, and our team is happy to walk through the right thresholds for your specific sending profile. We'd love to see what your reply rates look like a month from now.</p>
+</Article>
+</content>
+</invoke>

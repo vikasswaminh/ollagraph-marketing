@@ -1,0 +1,97 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+---
+<BaseLayout title="Security Policy — Ollagraph" description="How to report a security vulnerability in Ollagraph, what is in scope, our safe-harbour commitment to researchers, and how we respond.">
+  <Fragment set:html={navHtml('')} />
+  <main class="article">
+    <h1 class="h-display h-1">Vulnerability disclosure policy</h1>
+    <article class="prose">
+      <p><strong>Last updated:</strong> 2026-05-24</p>
+
+      <p>Ollagraph welcomes reports from independent security researchers. This page describes what we consider in scope, how to report a vulnerability, what we promise in return, and what we ask researchers not to do.</p>
+
+      <h2>Reporting a vulnerability</h2>
+      <p>Email <a href="mailto:security@ollagraph.com">security@ollagraph.com</a>. Include:</p>
+      <ul>
+        <li>A description of the issue and the affected endpoint or page.</li>
+        <li>Steps to reproduce, including request bodies and any sample accounts you created.</li>
+        <li>The impact you believe the issue has.</li>
+        <li>Your name or handle for credit (optional — we are happy to keep reports anonymous if you prefer).</li>
+      </ul>
+      <p>If you would like to encrypt your report, ask for our PGP key in your first message and we will reply with it.</p>
+
+      <h2>In scope</h2>
+      <ul>
+        <li><code>api.ollagraph.com</code> — the production API.</li>
+        <li><code>ollagraph.com</code> — the marketing site.</li>
+        <li><code>app.ollagraph.com</code> — the customer dashboard.</li>
+        <li>The official Postman collection and OpenAPI specification.</li>
+      </ul>
+      <p>Vulnerability classes we want to hear about, in roughly descending priority:</p>
+      <ul>
+        <li>Authentication and authorization bypass — access to another customer's keys, jobs, usage, or billing.</li>
+        <li>Server-side request forgery on customer-supplied URLs that reaches our internal network.</li>
+        <li>Remote code execution or container escape.</li>
+        <li>SQL injection, command injection, prototype pollution.</li>
+        <li>Sensitive data exposure — API keys, password hashes, raw card data, internal logs.</li>
+        <li>Webhook signature bypass.</li>
+        <li>Billing webhook spoofing, double-spend in the credit ledger.</li>
+        <li>Stored XSS in the dashboard.</li>
+        <li>Account takeover via password-reset, email-verification, or session-fixation flaws.</li>
+      </ul>
+
+      <h2>Out of scope</h2>
+      <p>The following are known limitations or accepted trade-offs and are not eligible for reward or coordinated disclosure unless they enable an in-scope class above:</p>
+      <ul>
+        <li>Self-XSS that requires the victim to paste content into their own console.</li>
+        <li>Missing security headers on static asset domains.</li>
+        <li>Email enumeration on signup (ollagraph.com uses a catch-all mailbox; every address resolves).</li>
+        <li>Reports from automated scanners without a reproducible exploit.</li>
+        <li>Denial of service via raw volume against the public API — rate limits and quotas are the documented control.</li>
+        <li>Issues affecting browsers more than five years out of date.</li>
+        <li>Theoretical attacks without a demonstrable security impact.</li>
+        <li>Reports about our use of subprocessors that are themselves operating within their own published security policy — report those to the subprocessor.</li>
+        <li>Anything that depends on social-engineering Ollagraph staff.</li>
+        <li>Physical attacks against our facilities or staff.</li>
+      </ul>
+
+      <h2>Safe harbour</h2>
+      <p>If you make a good-faith effort to comply with this policy when investigating a vulnerability, Ollagraph will:</p>
+      <ul>
+        <li>Not pursue legal action against you for the research.</li>
+        <li>Not ask law enforcement to investigate you.</li>
+        <li>Treat your research as authorized for the purposes of any applicable computer-misuse statute.</li>
+        <li>Work with you on a coordinated disclosure timeline that respects both customer safety and your research interest.</li>
+      </ul>
+      <p>"Good-faith effort" means: you do not access or modify other customers' data beyond the minimum needed to demonstrate the issue; you do not exfiltrate data; you do not deliberately disrupt the service for other users; you report the issue promptly; and you give us a reasonable window to fix it before public disclosure.</p>
+
+      <h2>What we promise in response</h2>
+      <ul>
+        <li><strong>Acknowledgement within one business day</strong> of your initial email.</li>
+        <li><strong>An initial severity assessment within five business days.</strong></li>
+        <li>Regular updates — at least every two weeks while the issue is open.</li>
+        <li>Public credit in the security acknowledgements once a fix is shipped, unless you ask for anonymity.</li>
+        <li>For confirmed in-scope issues, a thank-you in the form of swag and, for material findings, a discretionary bounty. Ollagraph does not currently run a formal paid bounty programme, and this should not be assumed.</li>
+      </ul>
+      <p>Target time to fix, by severity:</p>
+      <ul>
+        <li><strong>Critical</strong> (active exploitation, data breach): hours to a few days.</li>
+        <li><strong>High</strong> (privilege escalation, auth bypass without active exploitation): under 14 days.</li>
+        <li><strong>Medium</strong> (sensitive data exposure with limited impact): under 30 days.</li>
+        <li><strong>Low</strong> (defensive hardening): scheduled into normal release cycle.</li>
+      </ul>
+
+      <h2>Coordinated disclosure</h2>
+      <p>We ask researchers to keep the details private until either (a) the fix is deployed and verified, or (b) 90 days from initial report — whichever comes first. If the fix is not in production at the 90-day mark we will discuss an extension with you; we will not invoke the 90 days as a reason to stay silent past it.</p>
+
+      <h2>Hall of fame</h2>
+      <p>Researchers who have helped harden Ollagraph will be listed here once we receive our first qualifying report.</p>
+
+      <h2>Contact</h2>
+      <p>Security reports: <a href="mailto:security@ollagraph.com">security@ollagraph.com</a><br />
+      General security questions: see the <a href="/security">security page</a> and the <a href="/architecture">architecture page</a>.</p>
+    </article>
+  </main>
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

@@ -1,0 +1,119 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+const roles = [
+  {
+    title: "Sales Executive",
+    openings: 10,
+    summary: "Own the full cycle — qualify inbound interest, run demos of the Ollagraph API, and close developer and data-team accounts.",
+    responsibilities: [
+      "Respond to inbound leads and convert trials into paid plans",
+      "Run product walkthroughs and answer pricing questions",
+      "Maintain a clean pipeline and hit monthly targets",
+      "Feed customer objections back to product and marketing",
+    ],
+    looking: [
+      "0–3 years in B2B or SaaS sales (freshers with strong communication welcome)",
+      "Clear spoken and written English; Hindi/Kannada a plus",
+      "Comfortable with a quota and a CRM",
+    ],
+  },
+  {
+    title: "Network Support Engineer",
+    openings: 20,
+    summary: "Keep the platform and customer integrations healthy — triage support tickets, debug API and networking issues, and escalate cleanly.",
+    responsibilities: [
+      "Diagnose customer-reported API, DNS, proxy, and connectivity issues",
+      "Reproduce bugs and write clear escalations for engineering",
+      "Monitor dashboards and respond to alerts during your shift",
+      "Document recurring fixes into the support knowledge base",
+    ],
+    looking: [
+      "Networking fundamentals — DNS, HTTP, TLS, proxies, routing",
+      "CCNA-level knowledge or equivalent hands-on experience",
+      "A debugging mindset and calm under pressure",
+      "Diploma/degree in IT, CS, or networking; freshers considered",
+    ],
+  },
+  {
+    title: "HR Executive",
+    openings: 3,
+    summary: "Run hiring and people operations end to end — sourcing, interviews, onboarding, and keeping the campus running well.",
+    responsibilities: [
+      "Source and screen candidates across sales, support, and engineering",
+      "Coordinate interviews and own the candidate experience",
+      "Run onboarding, attendance, and payroll inputs",
+      "Support employee engagement and day-to-day HR queries",
+    ],
+    looking: [
+      "1–3 years in recruitment or HR operations",
+      "Strong organisation and people skills",
+      "Comfortable with HR tools and spreadsheets",
+    ],
+  },
+];
+
+const totalOpenings = roles.reduce((s, r) => s + r.openings, 0);
+
+const jobSchema = roles.map((r) => ({
+  "@type": "JobPosting",
+  title: r.title,
+  description: r.summary,
+  employmentType: "FULL_TIME",
+  hiringOrganization: { "@type": "Organization", name: "Ollagraph", sameAs: "https://ollagraph.com" },
+  jobLocationType: "OnSite",
+  jobLocation: {
+    "@type": "Place",
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: "L-149, Sector 6, HSR Layout",
+      addressLocality: "Bengaluru",
+      postalCode: "560102",
+      addressRegion: "Karnataka",
+      addressCountry: "IN",
+    },
+  },
+  totalJobOpenings: r.openings,
+  datePosted: "2026-05-20",
+}));
+
+const applyHref = (title) => `mailto:careers@ollagraph.com?subject=Application: ${title}`;
+---
+<BaseLayout title="Careers — Ollagraph" description="Join Ollagraph. We're hiring Sales Executives, Network Support Engineers, and HR Executives — full-time, on-campus at HSR Layout, Bengaluru." jsonLd={jobSchema}>
+  <Fragment set:html={navHtml('')} />
+  <main class="article">
+    <h1 class="h-display h-1">Build the data layer for the AI era.</h1>
+    <article class="prose">
+      <p>Ollagraph is growing its team in Bengaluru. We're hiring across sales, network support, and HR — all full-time, on-campus roles at our HSR Layout office. There are currently <strong>{totalOpenings} open roles</strong>.</p>
+
+      <h2>Working here</h2>
+      <ul>
+        <li><strong>Location:</strong> HSR Layout, Bengaluru — Sector 6 campus.</li>
+        <li><strong>Type:</strong> Full-time, in office. On-campus only — no remote.</li>
+        <li><strong>Hours:</strong> Mon – Sat, 10:00 AM – 6:00 PM IST.</li>
+      </ul>
+
+      <h2>Open roles</h2>
+      {roles.map((role) => (
+        <Fragment>
+          <h3>{role.title} — {role.openings} {role.openings === 1 ? 'opening' : 'openings'}</h3>
+          <p>{role.summary}</p>
+          <p><strong>What you'll do</strong></p>
+          <ul>
+            {role.responsibilities.map((r) => (<li>{r}</li>))}
+          </ul>
+          <p><strong>What we're looking for</strong></p>
+          <ul>
+            {role.looking.map((l) => (<li>{l}</li>))}
+          </ul>
+          <p><a href={applyHref(role.title)}>Apply for {role.title}</a> (Bengaluru · Full-time · In office only)</p>
+        </Fragment>
+      ))}
+
+      <h2>How to apply</h2>
+      <p>Email your CV to <a href="mailto:careers@ollagraph.com">careers@ollagraph.com</a> with the role in the subject line. Shortlisted candidates are invited to our HSR Layout campus for interviews. Questions? Call <a href="tel:+919611027980">+91 96110 27980</a>.</p>
+    </article>
+  </main>
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

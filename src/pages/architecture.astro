@@ -1,0 +1,174 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+const envelopeExample = `# Every endpoint answers in the same envelope — scrape, extract, intel, jobs.
+{
+  "ok": true,
+  "status_code": 200,
+  "final_url": "https://example.com/",
+  "text": "# Example Domain\\n\\nThis domain is for use in...",
+  "tier_used": "fast_http",
+  "cascade_path": ["fast_http"],
+  "cascade_failures": [],
+  "credits_charged": 1,
+  "request_id": "req_2c9a1f7e"
+}`;
+
+const cascadeExample = `# A page that fights back escalates automatically — and tells you how it was served.
+{
+  "ok": true,
+  "status_code": 200,
+  "final_url": "https://shop.example.com/p/123",
+  "tier_used": "stealth_browser",
+  "cascade_path": ["fast_http", "stealth_browser"],
+  "cascade_failures": [
+    {"tier": "fast_http", "reason": "bot_blocked"}
+  ],
+  "credits_charged": 3
+}`;
+
+const asyncExample = `# Long jobs return immediately; you poll the job or take the webhook.
+curl -X POST https://api.ollagraph.com/v1/scrape/async \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"url": "https://example.com", "format": "markdown"}'
+# -> {"job_id": "job_8f31...", "status": "queued"}
+
+curl https://api.ollagraph.com/v1/jobs/job_8f31... \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"
+# -> {"status": "completed", "result": { ...same envelope as above... }}`;
+
+const pillars = [
+  { title: "One response envelope, everywhere", body: "Scrape, extract, domain intelligence, crawl, and async jobs all answer in the same shape: ok, status_code, final_url, text, and the diagnostic fields below. Learn the envelope once and every one of the 209 endpoints reads the same. No per-endpoint parsing, no surprises when you add a new call." },
+  { title: "A tiered fetch path with automatic fallback", body: "Most pages return over a fast HTTP path in milliseconds. When a page needs JavaScript or pushes back with a bot wall, the request escalates to our managed stealth browser engine automatically — same request, same response shape. You never pick a tier by hand and you never get a half-rendered page back." },
+  { title: "It tells you which tier served the request", body: "Every response carries tier_used, cascade_path, and cascade_failures. You can see exactly how a page was fetched, what was tried first, and why it escalated — so you can trust the data, debug a flaky source, and right-size your own retries instead of guessing." },
+  { title: "Credit metering with refund-on-error", body: "Credits are reserved atomically in the same transaction as the call decision — two requests with one credit left will see exactly one succeed. A successful call writes one usage-log row and decrements the ledger once. Server-side faults refund automatically, so a timeout or an upstream failure never costs you a credit." },
+  { title: "Async jobs over a durable queue", body: "Async scrapes, batches, and full-site crawls hand off to a queue and return a job_id immediately. A pool of workers does the work, retries transient failures, and ends every job in completed, failed, or expired — never silently dropped. Poll the job endpoint or take a signed webhook on completion." },
+  { title: "Exposed to agents over MCP", body: "The same endpoints are published as Model Context Protocol tools, so an AI agent can scrape, extract, and enrich through one bearer token without bespoke glue code. The MCP surface mirrors the API one-to-one — the envelope an agent sees is the envelope your code sees." },
+];
+
+const faqs = [
+  { q: "What is the response envelope, and is it really the same on every endpoint?", a: "Yes. Every endpoint returns the same canonical shape: ok (did it succeed), status_code (the origin's HTTP status), final_url (after redirects), text or the format you asked for, plus the diagnostic fields tier_used, cascade_path, and cascade_failures. Async endpoints return a job_id immediately and wrap that same envelope inside result when the job completes. You parse one shape across all 209 operations." },
+  { q: "What does tier_used tell me?", a: "It names which part of the fetch path actually served your request — the fast HTTP path for static pages, or our managed stealth browser engine for pages that need JavaScript or push back with anti-bot defenses. cascade_path lists everything that was tried in order, and cascade_failures records why each earlier tier was abandoned. It is the same field that appears in your usage export, so you can audit how every request was fetched after the fact." },
+  { q: "Do I have to choose between the fast path and the browser?", a: "No. The fetch path escalates automatically. A request starts on the fast HTTP path and falls forward to the stealth browser engine only when the page needs it — a JavaScript-rendered app, a bot wall, a captcha, an empty or blocked response. You send one request and get back a fully rendered result with a note in tier_used telling you which path served it." },
+  { q: "When does a request escalate, and when does it not?", a: "It escalates on the signals that mean the page was not really served: blocks, rate-limit responses, server errors, captchas, timeouts, and empty-but-200 bodies. It does not escalate on clean terminal answers — a genuine not-found, a gone page, an unauthorized response, or a name that does not resolve. Those are real answers, so we return them rather than burning time and credits retrying." },
+  { q: "How does credit metering avoid double-charging or undercharging?", a: "Credits are reserved in the same atomic database transaction as the decision to run the call — the reservation either lands or it does not, so concurrent requests can never both spend the last credit. A completed call decrements the ledger exactly once and writes one usage-log row. The ledger is consistent under load by construction, not by reconciliation afterward." },
+  { q: "What happens to credits when a request fails?", a: "Server-side failures refund automatically. If an upstream source times out, a downstream dependency is unavailable, or the request faults on our side, the credit is returned and the response carries a clear error. Customer-side failures — invalid input, a request for a private address — are still requests we processed, so those follow the request's own rules. The default outcome of a fault is that you are not charged." },
+  { q: "How do async jobs and webhooks work?", a: "Long-running work — async scrapes, async batches, full-site crawls — is enqueued and worked by background processes. The API returns a job_id under the wire latency of a normal call. You either poll the job endpoint until status is completed, or register a webhook and receive a signed POST when the job finishes. Workers retry transient failures and durability comes from the queue, so a worker outage delays a job but never loses it." },
+  { q: "Can an AI agent use Ollagraph directly?", a: "Yes. The full endpoint surface is exposed as Model Context Protocol tools, so an agent authenticates with one bearer token and calls scrape, extract, and intelligence tools the same way your code does. The data an agent receives is the same canonical envelope, so behavior is identical whether the caller is a human-written pipeline or an autonomous agent." },
+  { q: "Do you store the pages I fetch?", a: "No. Fetched content is returned to your client and not retained after the response is sent. The usage log records the request URL, status, latency, and credit charge for billing and abuse review — never the response body. URL-level observability is a product feature; storing your scraped content is not something we do." },
+  { q: "How is the platform protected in transit and at rest?", a: "TLS for every API call and encryption at rest on the storage layer. API keys are stored only as hashes — the raw key exists on your side after the one-time display at creation and is never recoverable from us. See the security and privacy pages for the full control list." },
+];
+
+const url = "https://ollagraph.com/architecture/";
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebPage", name: "How Ollagraph works — architecture", url, description: "One canonical response envelope across every endpoint, a tiered fetch path that escalates automatically and reports which tier served the request, credit metering with refund-on-error, durable async jobs, and MCP exposure." },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "How it works", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout
+  title="How Ollagraph works — one envelope, a tiered fetch path, honest metering — Ollagraph"
+  description="The honest tour: one canonical response envelope across every endpoint, a tiered fetch path that escalates automatically and tells you which tier served the request, credit metering with refund-on-error, durable async jobs, and MCP exposure."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('architecture')} />
+
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:760px;">
+      <span class="badge badge-mute" style="margin-bottom:16px;">HOW IT WORKS</span>
+      <h1 class="h-display h-1" style="margin:0 0 18px;">How Ollagraph actually works.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        No magic, no mystery box. One response envelope across every endpoint, a fetch path that escalates on its own and tells you which tier served the request, honest credit metering that refunds on our faults, and durable async jobs. Here is the whole story.
+      </p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:24px;">
+        <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
+        One bearer token spans the full <a href="/capabilities" style="color:var(--accent);">209-endpoint surface</a> — see <a href="/observability" style="color:var(--accent);">observability</a> for what every response tells you.
+      </p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {pillars.map((p) => (
+          <div class="pcard">
+            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{p.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">See it in the response.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">The envelope is the contract. These are real fields you get back today.</p>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>The canonical envelope</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{envelopeExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>Automatic escalation, visible</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{cascadeExample}</code></pre></div>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>Async + job polling</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape/async</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{asyncExample}</code></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">The request lifecycle.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">What happens between the moment you send a request and the moment you get a response.</p>
+      <div style="display:grid; gap:12px;">
+        <div class="pcard">
+          <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px;">1. Authenticate</h3>
+          <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">Your bearer key is checked against its stored hash. Invalid or expired keys are rejected before any real work is scheduled.</p>
+        </div>
+        <div class="pcard">
+          <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px;">2. Rate limit &amp; reserve credits</h3>
+          <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">Per-plan limits are applied, then the credit ledger is decremented in the same atomic transaction as the call decision. Two simultaneous requests with one credit left will see exactly one succeed.</p>
+        </div>
+        <div class="pcard">
+          <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px;">3. Route &amp; fetch</h3>
+          <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">Synchronous endpoints run inline; async endpoints register a job and return a job_id immediately. The fetch path starts fast and escalates to our managed stealth browser engine only when the page demands it.</p>
+        </div>
+        <div class="pcard">
+          <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px;">4. Respond, refund on fault, log</h3>
+          <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">You get the canonical envelope back with tier_used and cascade_path filled in. Server-side faults refund the credit automatically. One usage-log row is written, and your dashboard surfaces it in real time.</p>
+        </div>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; text-align:center; margin-top:18px;">
+        The same lifecycle backs <a href="/scrape" style="color:var(--accent);">scraping</a>, the <a href="/actors" style="color:var(--accent);">vertical actors</a>, and the <a href="/mcp" style="color:var(--accent);">MCP server</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Architecture questions</h2>
+    {faqs.map((f) => (
+      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+    ))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">One envelope. One token. Every endpoint.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">1,000 free credits, refund-on-error built in, and a response that always tells you how it was served.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/capabilities">See all endpoints</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>
