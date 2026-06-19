@@ -7,8 +7,53 @@ import { navHtml, footerHtml } from '../chrome';
 const rendered = bodyHtml
   .replace('<div id="nav-root"></div>', navHtml("pricing"))
   .replace('<div id="footer-root"></div>', footerHtml());
+
+// Build FAQPage schema from the page's own .faq-q / .faq-a blocks so the
+// structured data can never drift from the visible FAQ copy.
+function decodeEntities(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, "")
+    .replace(/&rsquo;/g, "’").replace(/&lsquo;/g, "‘")
+    .replace(/&rdquo;/g, "”").replace(/&ldquo;/g, "“")
+    .replace(/&mdash;/g, "—").replace(/&ndash;/g, "–")
+    .replace(/&amp;/g, "&").replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+const faqRe = /<div class="faq-q"><h4>([\s\S]*?)<\/h4>[\s\S]*?<div class="faq-a">([\s\S]*?)<\/div>/g;
+const faqs = [...bodyHtml.matchAll(faqRe)].map((m) => ({
+  q: decodeEntities(m[1]),
+  a: decodeEntities(m[2]),
+}));
+const faqLd = faqs.length
+  ? {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: faqs.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    }
+  : null;
+const pricingApp = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Ollagraph",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Web, Cloud",
+  url: "https://ollagraph.com/pricing/",
+  description: "Credit-metered web-data API. Pay-as-you-go from $5; 1,000 free credits on signup; failed calls auto-refund.",
+  offers: {
+    "@type": "AggregateOffer",
+    priceCurrency: "USD",
+    lowPrice: "5",
+    highPrice: "59",
+    offerCount: "4",
+  },
+};
+const pricingLd = faqLd ? [pricingApp, faqLd] : [pricingApp];
 ---
-<BaseLayout title="Pricing — Ollagraph">
+<BaseLayout title="Pricing — Ollagraph" jsonLd={pricingLd}>
   <Fragment slot="head" set:html={headExtras} />
   <Fragment set:html={rendered} />
   <script is:inline src="/scripts/pricing.js"></script>

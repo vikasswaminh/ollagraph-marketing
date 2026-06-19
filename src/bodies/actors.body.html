@@ -8,15 +8,17 @@
     <div class="hero-glow"></div>
     <div class="container">
       <div style="max-width: 860px; margin: 0 auto; text-align: center;">
-        <a class="pill" style="margin-bottom: 28px;"><span class="pill-dot"></span>8 vertical actors · 30+ endpoints · normalized JSON</a>
+        <a class="pill" style="margin-bottom: 28px;"><span class="pill-dot"></span>28 actor families · 83 endpoints · normalized JSON</a>
         <h1 class="h-display h-1" style="margin: 0 0 22px;">
           Vertical scrapers your agent<br>
           can actually rely on.
         </h1>
         <p style="font-size: 18px; color: var(--text-muted); line-height: 1.55; max-width: 700px; margin: 0 auto 32px;">
-          Amazon, Yelp, Google Maps, LinkedIn, 7 ATS job boards, Product Hunt, 8 job sites, academic graph.
-          One Bearer token. Normalized JSON. Vendor fallback baked in — so when our scraper trips a CAPTCHA,
-          a paid vendor finishes the call without you ever knowing.
+          Amazon, Zillow, Google Maps, Markdown conversion, ATS career pages, job aggregators, Product Hunt,
+          and an academic graph — plus 17 free public-data actors for GitHub, npm, PyPI, SEC filings, OpenAlex,
+          Hacker News and more, and premium vendor-backed scrapers for Yelp, LinkedIn, and YouTube. One Bearer token.
+          Normalized JSON. Automatic fallback baked in — when one path trips a CAPTCHA, another finishes the call
+          without you ever knowing.
         </p>
         <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
           <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
@@ -26,31 +28,47 @@
     </div>
   </section>
 
+  <!-- Featured actor reference pages -->
+  <section class="section-tight" style="padding-top: 0; text-align: center;">
+    <div class="container" style="max-width: 760px;">
+      <p style="color: var(--text-dim); font-size: 13px; margin: 0 0 10px;">Actor reference pages</p>
+      <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+        <a class="badge badge-mute" href="/actors/amazon">Amazon</a>
+        <a class="badge badge-mute" href="/actors/zillow">Zillow</a>
+        <a class="badge badge-mute" href="/actors/google-maps">Google Maps</a>
+        <a class="badge badge-mute" href="/actors/markdown">Markdown</a>
+        <a class="badge badge-mute" href="/actors/jobs">Jobs</a>
+        <a class="badge badge-mute" href="/actors/ats">ATS</a>
+        <a class="badge badge-mute" href="/actors/producthunt">Product Hunt</a>
+        <a class="badge badge-mute" href="/actors/scholar">Scholar</a>
+      </div>
+    </div>
+  </section>
+
   <!-- Why this exists -->
   <section class="section" style="padding-top: 24px;">
     <div class="container" style="max-width: 920px;">
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
         <div class="pcard" style="padding: 18px;">
-          <h3 style="font-size: 14px; margin: 0 0 6px;">25/75 hybrid tiering</h3>
+          <h3 style="font-size: 14px; margin: 0 0 6px;">Automatic tiering</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            ~25% of traffic uses our managed browser pool with residential proxy.
-            ~75% routes through vetted partner data APIs.
-            One <span class="text-mono">tier</span> field tells you who served the request.
+            Each call routes through our managed browser pool or a fast structured-data path automatically.
+            One <span class="text-mono">tier</span> field tells you which path served the request.
           </p>
         </div>
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">Normalized schema</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            Every actor returns the same shape regardless of who scraped it. ASIN means ASIN,
-            <span class="text-mono">biz_path</span> means Yelp's slug, <span class="text-mono">place_id</span>
-            means Google's. No vendor lock-in surfacing through the response.
+            Every actor returns the same shape no matter which path served it. An <span class="text-mono">asin</span>
+            is an <span class="text-mono">asin</span>, a <span class="text-mono">place_id</span> is a
+            <span class="text-mono">place_id</span> — clean, predictable JSON your agent can depend on.
           </p>
         </div>
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">Honest failure modes</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            When all tiers fail, you get <span class="text-mono">{ok:false, error, tier1_error, tier2_error}</span>
-            — not a 500. Job sites blocked upstream return clean warnings, not TLS errors.
+            When a call can't be served you get <span class="text-mono">{ok:false, error}</span> with a clear reason
+            — not a 500, and never a CAPTCHA page written into your database. Failed calls auto-refund.
           </p>
         </div>
       </div>
@@ -62,7 +80,7 @@
     <div class="container">
       <h2 class="h-display h-2" style="margin: 0 0 8px; text-align: center;">The 8 actor families</h2>
       <p style="color: var(--text-muted); font-size: 15px; text-align: center; max-width: 620px; margin: 0 auto 36px;">
-        Each card lists the live endpoints and which tier serves them today.
+        The 8 core families below total 19 endpoints; 17 free public-data families bring it to 69, and 5 premium vendor-backed families add 14 more — 83 in all on <span class="text-mono">api.ollagraph.com</span>, one Bearer token.
       </p>
 
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
@@ -72,43 +90,30 @@
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
             <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div>
             <h3 style="margin:0;">Amazon</h3>
-            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints</span>
+            <span class="badge badge-mute" style="margin-left:auto;">1 endpoint</span>
           </div>
           <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
-            Search by query, product detail by ASIN, top reviews. Eight marketplaces supported
-            (US, UK, DE, FR, IN, JP, CA, AU) via the <span class="text-mono">marketplace</span> param.
+            Title, price, rating, review count, ASIN, availability, and image from any Amazon product URL —
+            US, UK, DE, JP and most other storefronts. <a href="/recipes/scrape-amazon-product-data" style="color:var(--accent);">Full recipe →</a>
           </p>
-          <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Render + residential</span>
-            <span class="tier-pill">Tier 2: Specialist provider</span>
-          </div>
           <div class="endpoints">
-            POST /v1/actors/amazon/search<br>
-            POST /v1/actors/amazon/product<br>
-            POST /v1/actors/amazon/reviews
+            POST /v1/actors/amazon &nbsp;<span class="c">{ url }</span>
           </div>
         </div>
 
-        <!-- Yelp -->
+        <!-- Zillow -->
         <div class="acard">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
-            <h3 style="margin:0;">Yelp</h3>
-            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints</span>
+            <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+            <h3 style="margin:0;">Zillow</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">1 endpoint</span>
           </div>
           <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
-            Business search by query+location, business detail by Yelp slug
-            (<span class="text-mono">biz_path</span>), reviews with pagination.
-            Useful for lead-gen and local SEO audits.
+            Address, price, Zestimate, beds, baths, square footage, and year built from any Zillow listing —
+            extracted from the embedded payload, not brittle DOM scraping. <a href="/recipes/scrape-zillow-listings" style="color:var(--accent);">Full recipe →</a>
           </p>
-          <div class="tier-row">
-            <span class="tier-pill">Tier 1: Render + residential</span>
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 2: Specialist provider</span>
-          </div>
           <div class="endpoints">
-            POST /v1/actors/yelp/search<br>
-            POST /v1/actors/yelp/business<br>
-            POST /v1/actors/yelp/reviews
+            POST /v1/actors/zillow &nbsp;<span class="c">{ url }</span>
           </div>
         </div>
 
@@ -117,41 +122,30 @@
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
             <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
             <h3 style="margin:0;">Google Maps</h3>
-            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints</span>
+            <span class="badge badge-mute" style="margin-left:auto;">1 endpoint</span>
           </div>
           <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
-            Places search, place detail by URL or CID, reviews up to 50 pages.
-            Google fights tier-1 hard; production calls route to a specialist maps provider.
+            Name, rating, review count, hours, address, coordinates, and category from any Google Maps place URL.
+            <a href="/recipes/scrape-google-maps-businesses" style="color:var(--accent);">Full recipe →</a>
           </p>
-          <div class="tier-row">
-            <span class="tier-pill">Tier 1: Render + residential</span>
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 2: Specialist provider</span>
-          </div>
           <div class="endpoints">
-            POST /v1/actors/gmaps/search<br>
-            POST /v1/actors/gmaps/place<br>
-            POST /v1/actors/gmaps/reviews
+            POST /v1/actors/google-maps &nbsp;<span class="c">{ url }</span>
           </div>
         </div>
 
-        <!-- LinkedIn -->
+        <!-- Markdown -->
         <div class="acard">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg></div>
-            <h3 style="margin:0;">LinkedIn</h3>
-            <span class="badge badge-mute" style="margin-left:auto;"><span class="status-dot status-auth"></span>auth required</span>
+            <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <h3 style="margin:0;">Markdown</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">1 endpoint</span>
           </div>
           <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
-            Person profile + company page. Requires <span class="text-mono">li_at</span> session
-            cookie (yours, or one from the managed pool). Returns name, headline, location,
-            experience, skills; company industry, size, employees, followers.
+            LLM-ready markdown for any page — Readability-style extraction that keeps headings, links, and code
+            while dropping boilerplate. Typically 80–95% smaller than the source HTML. <a href="/actors/markdown" style="color:var(--accent);">Details →</a>
           </p>
-          <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Authenticated render</span>
-          </div>
           <div class="endpoints">
-            POST /v1/actors/linkedin/profile<br>
-            POST /v1/actors/linkedin/company
+            POST /v1/actors/markdown &nbsp;<span class="c">{ url }</span>
           </div>
         </div>
 
@@ -159,21 +153,35 @@
         <div class="acard" style="border-color: rgba(94, 234, 212, 0.32); background: linear-gradient(180deg, rgba(94,234,212,0.04), var(--card));">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
             <div class="ico" style="color: #5eead4;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></div>
-            <h3 style="margin:0;">ATS job boards</h3>
-            <span class="badge" style="margin-left:auto; background: rgba(94,234,212,0.12); color:#5eead4; border-color: rgba(94,234,212,0.3);">7 boards · sub-second</span>
+            <h3 style="margin:0;">ATS career pages</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints</span>
           </div>
           <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
-            Pure public HTTP — no browser, no proxy, no quota. Hits the same JSON endpoint each
-            ATS widget uses. <span class="text-mono">/ats/detect</span> tries all 7 in parallel
-            and returns the live one with most jobs.
+            Open roles straight from a company's applicant-tracking system — Greenhouse, Lever, Ashby, Workable,
+            and more. <span class="text-mono">/detect</span> identifies the ATS behind a careers URL. <a href="/actors/ats" style="color:var(--accent);">Details →</a>
           </p>
-          <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Direct HTTP · no tier-2 needed</span>
-          </div>
           <div class="endpoints">
-            GET&nbsp; /v1/actors/ats/supported<br>
-            POST /v1/actors/ats &nbsp;<span class="c">{ ats: greenhouse|lever|ashby|workable|smartrecruiters|recruitee|teamtailor }</span><br>
-            POST /v1/actors/ats/detect &nbsp;<span class="c">{ company }</span>
+            POST /v1/actors/ats<br>
+            POST /v1/actors/ats/detect<br>
+            GET&nbsp; /v1/actors/ats/supported
+          </div>
+        </div>
+
+        <!-- Jobs -->
+        <div class="acard">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7h-4V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/></svg></div>
+            <h3 style="margin:0;">Jobs</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">7 endpoints</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
+            Search listings across job boards by query, or target a specific aggregator. Results normalize to
+            title, company, location, posted date, and apply URL. <a href="/actors/jobs" style="color:var(--accent);">Details →</a>
+          </p>
+          <div class="endpoints">
+            POST /v1/actors/jobs/scrape<br>
+            GET&nbsp; /v1/actors/jobs/sites &middot; GET /v1/actors/jobs/sources<br>
+            POST /v1/actors/jobs/adzuna &middot; /jobbank &middot; /reed &middot; /usajobs
           </div>
         </div>
 
@@ -185,38 +193,12 @@
             <span class="badge badge-mute" style="margin-left:auto;">2 endpoints</span>
           </div>
           <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
-            Today's leaderboard (or any historical date) + product detail by slug.
-            Returns title, tagline, upvotes, image, topic tags, maker. PH isn't anti-bot heavy
-            — no proxy needed for most calls.
+            The daily leaderboard (or any historical date) plus product detail by slug — title, tagline, votes,
+            topics, makers. <a href="/actors/producthunt" style="color:var(--accent);">Details →</a>
           </p>
-          <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Render</span>
-          </div>
           <div class="endpoints">
-            POST /v1/actors/producthunt/daily &nbsp;<span class="c">{ date?, limit? }</span><br>
-            POST /v1/actors/producthunt/product &nbsp;<span class="c">{ slug | url }</span>
-          </div>
-        </div>
-
-        <!-- Jobs (sidecar) -->
-        <div class="acard">
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7h-4V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/></svg></div>
-            <h3 style="margin:0;">Jobs</h3>
-            <span class="badge badge-mute" style="margin-left:auto;">8 boards</span>
-          </div>
-          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
-            Indeed, Glassdoor, LinkedIn Jobs, Google Jobs, Bayt, Naukri, BDJobs.
-            <span class="text-mono">zip_recruiter</span> short-circuits with a clean warning
-            (Cloudflare WAF, upstream). Pass <span class="text-mono">google_search_term</span>
-            for Google Jobs — the literal string Google's UI generates.
-          </p>
-          <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: JobSpy fork</span>
-          </div>
-          <div class="endpoints">
-            POST /v1/actors/jobs/scrape &nbsp;<span class="c">{ sites:[…], query, location, limit }</span><br>
-            GET&nbsp; /v1/actors/jobs/sites
+            POST /v1/actors/producthunt/daily<br>
+            POST /v1/actors/producthunt/product
           </div>
         </div>
 
@@ -228,14 +210,9 @@
             <span class="badge badge-mute" style="margin-left:auto;">3 endpoints</span>
           </div>
           <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">
-            Paper search, author lookup with h-index + citations + paper list, single
-            publication by title. Tier-1 is Semantic Scholar's free API; falls back to
-            Google Scholar (scholarly lib) for records SS doesn't index.
+            Search academic literature, resolve a publication, and pull an author's record — titles, authors,
+            year, citation counts, DOIs. Backed by an open scholarly graph. <a href="/actors/scholar" style="color:var(--accent);">Details →</a>
           </p>
-          <div class="tier-row">
-            <span class="tier-pill t1"><span class="status-dot status-prod"></span>Tier 1: Semantic Scholar</span>
-            <span class="tier-pill">Tier 2: Google Scholar</span>
-          </div>
           <div class="endpoints">
             POST /v1/actors/scholar/search<br>
             POST /v1/actors/scholar/author<br>
@@ -247,42 +224,151 @@
     </div>
   </section>
 
+  <!-- Free public-data actors -->
+  <section class="section" style="padding-top: 24px;">
+    <div class="container" style="max-width: 920px;">
+      <h2 class="h-display h-2" style="margin: 0 0 8px; text-align: center;">Plus 17 free public-data actors</h2>
+      <p style="color: var(--text-muted); font-size: 15px; text-align: center; max-width: 660px; margin: 0 auto 28px;">
+        Public-API-backed sources — no proxy, no vendor cost, the same normalized envelope. 1 credit per call, failed calls auto-refund. 50 endpoints in all.
+      </p>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+        <div class="pcard" style="padding:18px;">
+          <h3 style="font-size:14px; margin:0 0 6px;">Developer</h3>
+          <p style="color:var(--text-muted); font-size:13px; line-height:1.55; margin:0;">GitHub repos, users, issues, code search. npm packages + download stats. PyPI packages and releases.</p>
+          <div class="text-mono" style="font-size:11px; color:var(--text-dim); margin-top:8px;">/v1/actors/github/* &middot; /npm/* &middot; /pypi/*</div>
+        </div>
+        <div class="pcard" style="padding:18px;">
+          <h3 style="font-size:14px; margin:0 0 6px;">Research &amp; academia</h3>
+          <p style="color:var(--text-muted); font-size:13px; line-height:1.55; margin:0;">arXiv + EuropePMC search, the OpenAlex scholarly graph, DOI resolution, ORCID records, ROR institutions, Zenodo datasets.</p>
+          <div class="text-mono" style="font-size:11px; color:var(--text-dim); margin-top:8px;">/v1/actors/arxiv · /openalex/* · /doi · /orcid/* · /ror/* · /zenodo/* · /europepmc</div>
+        </div>
+        <div class="pcard" style="padding:18px;">
+          <h3 style="font-size:14px; margin:0 0 6px;">Corporate &amp; finance</h3>
+          <p style="color:var(--text-muted); font-size:13px; line-height:1.55; margin:0;">SEC EDGAR ticker lookup, filings, and company facts. GLEIF legal-entity (LEI) search and ownership tree.</p>
+          <div class="text-mono" style="font-size:11px; color:var(--text-dim); margin-top:8px;">/v1/actors/sec/* &middot; /gleif/*</div>
+        </div>
+        <div class="pcard" style="padding:18px;">
+          <h3 style="font-size:14px; margin:0 0 6px;">Security knowledge</h3>
+          <p style="color:var(--text-muted); font-size:13px; line-height:1.55; margin:0;">NVD CVE lookup and search. MITRE ATLAS adversarial-ML tactics, techniques, and case studies.</p>
+          <div class="text-mono" style="font-size:11px; color:var(--text-dim); margin-top:8px;">/v1/actors/nvd/* &middot; /atlas/*</div>
+        </div>
+        <div class="pcard" style="padding:18px;">
+          <h3 style="font-size:14px; margin:0 0 6px;">Community &amp; models</h3>
+          <p style="color:var(--text-muted); font-size:13px; line-height:1.55; margin:0;">Hacker News stories, items, users, search. StackExchange questions and search. HuggingFace models, datasets, spaces.</p>
+          <div class="text-mono" style="font-size:11px; color:var(--text-dim); margin-top:8px;">/v1/actors/hackernews/* &middot; /stackexchange/* &middot; /huggingface/*</div>
+        </div>
+        <div class="pcard" style="padding:18px; display:flex; flex-direction:column; justify-content:center;">
+          <p style="color:var(--text-muted); font-size:13px; line-height:1.55; margin:0;">Every one returns <span class="text-mono">tier: "public_api"</span> — free public data, normalized to the same envelope. Full request shapes in the <a href="/docs" style="color:var(--accent);">API docs</a>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Premium vendor-backed actors -->
+  <section class="section" style="padding-top: 24px;">
+    <div class="container">
+      <h2 class="h-display h-2" style="margin: 0 0 8px; text-align: center;">5 premium vendor-backed actors</h2>
+      <p style="color: var(--text-muted); font-size: 15px; text-align: center; max-width: 660px; margin: 0 auto 36px;">
+        Heavier vertical scrapers for commerce, local, and media. 5-15 credits per call by family (vs 1 for public-data actors), same normalized envelope, failed calls auto-refund. 14 endpoints.
+      </p>
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+        <div class="acard">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <h3 style="margin:0;">Amazon (rich)</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints · 8 credits</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">Search by query, product detail by ASIN, and paginated reviews — beyond the single-URL basic actor above. Eight marketplaces.</p>
+          <div class="endpoints">
+            POST /v1/actors/amazon/search &nbsp;<span class="c">{ query, marketplace }</span><br>
+            POST /v1/actors/amazon/product &nbsp;<span class="c">{ asin }</span><br>
+            POST /v1/actors/amazon/reviews &nbsp;<span class="c">{ asin, max_pages }</span>
+          </div>
+        </div>
+        <div class="acard">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <h3 style="margin:0;">Google Maps (rich)</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints · 8 credits</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">Places search by query+location, place detail by URL or CID, and reviews — beyond the single-place basic actor above.</p>
+          <div class="endpoints">
+            POST /v1/actors/gmaps/search &nbsp;<span class="c">{ query, location }</span><br>
+            POST /v1/actors/gmaps/place &nbsp;<span class="c">{ place_url | cid }</span><br>
+            POST /v1/actors/gmaps/reviews &nbsp;<span class="c">{ place_url | cid }</span>
+          </div>
+        </div>
+        <div class="acard">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <h3 style="margin:0;">Yelp</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints · 8 credits</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">Business search by query+location, business detail, reviews. Lead-gen and local SEO. <strong>Note:</strong> first cold call can take a few minutes (results cache after; cold calls that exceed the timeout return a clean error + refund).</p>
+          <div class="endpoints">
+            POST /v1/actors/yelp/search &nbsp;<span class="c">{ query, location }</span><br>
+            POST /v1/actors/yelp/business &nbsp;<span class="c">{ biz_path | biz_url }</span><br>
+            POST /v1/actors/yelp/reviews
+          </div>
+        </div>
+        <div class="acard">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <h3 style="margin:0;">LinkedIn</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">2 endpoints · 15 credits</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">Public person profile and company page. <strong>Authorized use only</strong> — respect LinkedIn's Terms of Service. Supply your own <span class="text-mono">li_at</span> session cookie where required.</p>
+          <div class="endpoints">
+            POST /v1/actors/linkedin/profile &nbsp;<span class="c">{ public_id | profile_url }</span><br>
+            POST /v1/actors/linkedin/company &nbsp;<span class="c">{ slug | company_url }</span>
+          </div>
+        </div>
+        <div class="acard">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <h3 style="margin:0;">YouTube</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints · 5 credits</span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">Video metadata by URL or ID, channel by handle, and search — title, views, channel, length, publish date.</p>
+          <div class="endpoints">
+            POST /v1/actors/youtube/search &nbsp;<span class="c">{ query }</span><br>
+            POST /v1/actors/youtube/video &nbsp;<span class="c">{ url | id }</span><br>
+            POST /v1/actors/youtube/channel &nbsp;<span class="c">{ handle | url }</span>
+          </div>
+        </div>
+        <div class="acard" style="display:flex; flex-direction:column; justify-content:center;">
+          <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">These are vendor-backed (heavier than the public-data actors), so they're metered at 5-15 credits by family and carry automatic fallback. Full request shapes in the <a href="/docs" style="color:var(--accent);">API docs</a>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Example -->
   <section class="section" style="padding-top: 24px;">
     <div class="container" style="max-width: 920px;">
       <h2 class="h-display h-2" style="margin: 0 0 8px; text-align: center;">One call, normalized JSON</h2>
       <p style="color: var(--text-muted); font-size: 15px; text-align: center; max-width: 580px; margin: 0 auto 28px;">
-        Same auth, same envelope, same tier field across every actor. Here's Amazon search.
+        Same auth, same envelope across every actor. Here's the Amazon product actor.
       </p>
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
         <div>
           <div style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); margin-bottom: 6px;">REQUEST</div>
-<pre class="ex"><span class="c">curl</span> https://api.ollagraph.com/v1/actors/amazon/search \
+<pre class="ex"><span class="c">curl</span> https://api.ollagraph.com/v1/actors/amazon \
   <span class="c">-H</span> <span class="s">"Authorization: Bearer osk_…"</span> \
   <span class="c">-H</span> <span class="s">"Content-Type: application/json"</span> \
   <span class="c">-d</span> <span class="s">'{
-    "query": "macbook air m3",
-    "marketplace": "us",
-    "limit": 5
+    "url": "https://www.amazon.com/dp/B0CX23V2ZK"
   }'</span></pre>
         </div>
         <div>
           <div style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); margin-bottom: 6px;">RESPONSE</div>
 <pre class="ex">{
-  <span class="k">"ok"</span>: <span class="s">true</span>,
-  <span class="k">"marketplace"</span>: <span class="s">"us"</span>,
-  <span class="k">"query"</span>: <span class="s">"macbook air m3"</span>,
-  <span class="k">"count"</span>: <span class="s">5</span>,
-  <span class="k">"results"</span>: [{
-    <span class="k">"asin"</span>: <span class="s">"B0CX23V2ZK"</span>,
-    <span class="k">"title"</span>: <span class="s">"Apple 2024 MacBook Air …"</span>,
+  <span class="k">"status"</span>: <span class="s">"success"</span>,
+  <span class="k">"url"</span>: <span class="s">"https://www.amazon.com/dp/B0CX23V2ZK"</span>,
+  <span class="k">"time_ms"</span>: <span class="s">1240</span>,
+  <span class="k">"data"</span>: {
+    <span class="k">"title"</span>: <span class="s">"Apple 2024 MacBook Air 13-inch …"</span>,
     <span class="k">"price"</span>: <span class="s">"$1,099.00"</span>,
-    <span class="k">"rating"</span>: <span class="s">"4.8 out of 5 stars"</span>,
-    <span class="k">"reviews_count"</span>: <span class="s">"1,084"</span>,
-    <span class="k">"image"</span>: <span class="s">"https://m.media-amazon.com/…"</span>
-  }],
-  <span class="k">"egress_ip"</span>: <span class="s">"176.98.89.244"</span>,
-  <span class="k">"tier"</span>: <span class="s">"render"</span>
+    <span class="k">"rating"</span>: <span class="s">4.8</span>,
+    <span class="k">"review_count"</span>: <span class="s">1084</span>,
+    <span class="k">"asin"</span>: <span class="s">"B0CX23V2ZK"</span>,
+    <span class="k">"availability"</span>: <span class="s">"In Stock"</span>
+  }
 }</pre>
         </div>
       </div>
@@ -292,36 +378,34 @@
   <!-- Why bother -->
   <section class="section" style="padding-top: 24px;">
     <div class="container" style="max-width: 920px;">
-      <h2 class="h-display h-2" style="margin: 0 0 24px; text-align: center;">Why not wire up the providers yourself?</h2>
+      <h2 class="h-display h-2" style="margin: 0 0 24px; text-align: center;">Why not build each scraper yourself?</h2>
       <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">One bill, one auth</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            Every specialist data provider and auth path behind one
-            <span class="text-mono">osk_…</span> token. One usage report. One support thread.
+            Every actor behind one <span class="text-mono">osk_…</span> token. One usage report, one support
+            thread, one credit balance — instead of a pile of per-site scrapers to keep alive.
           </p>
         </div>
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">Automatic fallback</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            When tier-1 trips a CAPTCHA, you don't get a 403 — we route to the vendor and
-            mark <span class="text-mono">tier: "vendor"</span>. Same response shape, no client code change.
+            When one path trips a CAPTCHA, you don't get a 403 — the call automatically retries on another path
+            and the <span class="text-mono">tier</span> field tells you which served it. Same response shape, no client change.
           </p>
         </div>
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">Normalized output</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            Each provider returns its own quirky JSON. We map them into one schema per actor so
-            your agent code stays clean — one provider's <span class="text-mono">customer_reviews</span>
-            and another's <span class="text-mono">reviewCount</span> both come out as <span class="text-mono">reviews_count</span>.
+            Each actor maps its source into one clean schema, so your agent code stays the same when a site
+            ships a layout change. No bespoke parser per site to babysit.
           </p>
         </div>
         <div class="pcard" style="padding: 18px;">
           <h3 style="font-size: 14px; margin: 0 0 6px;">Honest about what's broken</h3>
           <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">
-            Cloudflare WAF blocks ZipRecruiter? You get a clean warning, not a 500.
-            Semantic Scholar rate limit? Clean <span class="text-mono">{tier1_error, tier2_error}</span>.
-            No mystery timeouts.
+            A blocked source returns a clean warning, not a 500 or a mystery timeout — and failed calls
+            auto-refund, so a bad fetch never costs you a credit.
           </p>
         </div>
       </div>
@@ -331,10 +415,9 @@
   <!-- Final CTA -->
   <section style="padding: 80px 0; text-align: center;">
     <div class="container" style="max-width: 720px;">
-      <h2 class="h-display h-2" style="margin: 0 0 16px;">Skip the vendor sprawl.</h2>
+      <h2 class="h-display h-2" style="margin: 0 0 16px;">Skip the per-site scrapers.</h2>
       <p style="color: var(--text-muted); font-size: 16px; max-width: 560px; margin: 0 auto 28px;">
-        1,000 credits on signup. Every actor, day one. No card. Bring your own
-        <span class="text-mono">li_at</span> cookies for LinkedIn, everything else just works.
+        1,000 credits on signup. Every actor, day one. No card. Failed calls auto-refund.
       </p>
       <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
         <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>

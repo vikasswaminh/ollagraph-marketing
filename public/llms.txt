@@ -1,17 +1,17 @@
 # Ollagraph
 
-> Web infrastructure for AI agents. One API, one MCP server, one bill for 105 endpoints across fetch, extract, search, audit, intelligence, verify, and agent-native tooling.
+> Web infrastructure for AI agents. One API, one MCP server, one bill for 209 endpoints across fetch, extract, search, audit, intelligence, verify, and agent-native tooling.
 
 Ollagraph is a unified API platform that lets AI agents read, audit, and reason about the live web. Built for AI agent developers, RAG builders, SEO/AEO consultants, and security teams who need reliable, structured access to web data without integrating six different vendors.
 
 ## Capabilities
 
-- [Capabilities overview](https://ollagraph.com/capabilities): All 8 capability families and 105 endpoints, organized by what an AI agent actually does
+- [Capabilities overview](https://ollagraph.com/capabilities): All 8 capability families and 209 endpoints, organized by what an AI agent actually does
 - [MCP server](https://ollagraph.com/mcp): Drop-in MCP integration for Claude Desktop, Cursor, Cline. Every Ollagraph endpoint becomes an MCP tool.
 - [AEO audit](https://ollagraph.com/aeo): Answer-engine optimization toolkit — 10+ endpoints for AI-citation readiness, llms.txt audits, AI crawler intelligence
 - [Docs](https://ollagraph.com/docs): Full API reference with code samples in TypeScript, Python, curl
-- [Pricing](https://ollagraph.com/pricing): Usage-based credits. Free 1,000 on signup. Plans from $29/mo. Self-hosted on Enterprise.
-- [Enterprise / self-hosted](https://ollagraph.com/enterprise): Run Ollagraph in your own VPC. Helm + Terraform. Customer-managed keys.
+- [Pricing](https://ollagraph.com/pricing): Usage-based credits. Free 1,000 on signup. Pay-as-you-go, no subscription required. Volume pricing and SLA on Enterprise.
+- [Enterprise](https://ollagraph.com/enterprise): Volume pricing, uptime SLA, SSO/SCIM/RBAC, audit-log streaming to your SIEM, and a no-content-retention data guarantee.
 
 ## For specific buyers
 
@@ -21,11 +21,12 @@ Ollagraph is a unified API platform that lets AI agents read, audit, and reason 
 
 ## Key facts
 
-- 105 endpoints across 8 capability families
+- 209 endpoints across 8 capability families
 - One Bearer token authenticates everything
 - MCP server included — works with Claude Desktop, Cursor, Cline out of the box
 - Failed calls auto-refund credits
-- Self-hostable on Enterprise (Helm chart + Terraform)
+- We never persist scraped content — only URL-level usage metadata
+- Enterprise: uptime SLA, SSO/SCIM/RBAC, audit-log streaming to your SIEM
 - Free tier: 1,000 credits on signup, no credit card
 
 ## Endpoints
@@ -34,124 +35,115 @@ Base URL: `https://api.ollagraph.com`. All endpoints require `Authorization: Bea
 
 ### Scraping
 
-- POST https://api.ollagraph.com/v1/scrape — Scrape
-- POST https://api.ollagraph.com/v1/scrape/async — Scrape Async
-- POST https://api.ollagraph.com/v1/scrape/batch — Batch Scrape
-- POST https://api.ollagraph.com/v1/scrape/batch/async — Batch Scrape Async
-- POST https://api.ollagraph.com/v1/scrape/llm-ready — Scrape LLM Ready
-- POST https://api.ollagraph.com/v1/scrape/smart — Smart Scrape
+- POST https://api.ollagraph.com/v1/scrape — Scrape Endpoint
+- POST https://api.ollagraph.com/v1/scrape/async — Scrape Async Endpoint
+- POST https://api.ollagraph.com/v1/scrape/batch — Batch Scrape Endpoint
+- POST https://api.ollagraph.com/v1/scrape/batch/async — Batch Scrape Async Endpoint
+- POST https://api.ollagraph.com/v1/scrape/llm-ready — Scrape Llm Ready Endpoint
+- POST https://api.ollagraph.com/v1/scrape/smart — Smart Scrape Endpoint
 
 ### Extraction
 
-- POST https://api.ollagraph.com/v1/extract/clean — Extract Clean
-- POST https://api.ollagraph.com/v1/extract/contacts — Extract Contacts
-- POST https://api.ollagraph.com/v1/extract/structured — Extract Structured
-- POST https://api.ollagraph.com/v1/extract/tables — Extract Tables
-
-### AEO
-
-- POST https://api.ollagraph.com/v1/aeo/ai-bot-allowlist — AEO Ai Bot Allowlist
-- POST https://api.ollagraph.com/v1/aeo/citation-readiness — AEO Citation Readiness
-- POST https://api.ollagraph.com/v1/aeo/competitor-diff — AEO Competitor Diff
-- POST https://api.ollagraph.com/v1/aeo/freshness-signal — AEO Freshness Signal
-- POST https://api.ollagraph.com/v1/aeo/heading-hierarchy-score — AEO Heading Hierarchy
-- POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator — AEO LLM Fetch Simulator
-- POST https://api.ollagraph.com/v1/aeo/llms-txt-audit — AEO llms.txt Audit
-- POST https://api.ollagraph.com/v1/aeo/page-audit — AEO Page Audit
-- POST https://api.ollagraph.com/v1/aeo/schema-coverage — AEO Schema Coverage
-- POST https://api.ollagraph.com/v1/aeo/snippet-format-detect — AEO Snippet Format Detect
-
-### SEO
-
-- POST https://api.ollagraph.com/v1/seo/anchor-text-audit — SEO Anchor Text Audit
-- POST https://api.ollagraph.com/v1/seo/broken-links-audit — SEO Broken Links
-- POST https://api.ollagraph.com/v1/seo/keyword-extract — SEO Keyword Extract
-- POST https://api.ollagraph.com/v1/seo/meta-audit — SEO Meta Audit
-- POST https://api.ollagraph.com/v1/seo/mixed-content — SEO Mixed Content
-- POST https://api.ollagraph.com/v1/seo/readability — SEO Readability
-- POST https://api.ollagraph.com/v1/seo/redirect-chain-map — SEO Redirect Chain
-- POST https://api.ollagraph.com/v1/seo/schema-validate — SEO Schema Validate
-- POST https://api.ollagraph.com/v1/seo/snippet-candidates — SEO Snippet Candidates
-
-### Conversion
-
-- POST https://api.ollagraph.com/v1/convert/csv-to-markdown — CSV To Markdown
-- POST https://api.ollagraph.com/v1/convert/docx-to-markdown — DOCX To Markdown
-- POST https://api.ollagraph.com/v1/convert/html-to-markdown — HTML To Markdown
-- POST https://api.ollagraph.com/v1/convert/ocr — Convert OCR
-- POST https://api.ollagraph.com/v1/convert/pdf-to-markdown — PDF To Markdown
-- POST https://api.ollagraph.com/v1/convert/pptx-to-markdown — PPTX To Markdown
-- POST https://api.ollagraph.com/v1/convert/xlsx-to-markdown — XLSX To Markdown
+- POST https://api.ollagraph.com/v1/extract/clean — Extract Clean Endpoint
+- POST https://api.ollagraph.com/v1/extract/contacts — Extract Contacts Endpoint
+- POST https://api.ollagraph.com/v1/extract/structured — Extract Structured Endpoint
+- POST https://api.ollagraph.com/v1/extract/tables — Extract Tables Endpoint
 
 ### Intelligence
 
-- POST https://api.ollagraph.com/v1/dns/intelligence — DNS Intel
-- POST https://api.ollagraph.com/v1/dns/lookup — DNS Lookup
-- POST https://api.ollagraph.com/v1/dns/over-https — DNS over HTTPS (forward DNS query through Cloudflare 1.1.1.1 or Google 8.8.8.8)
-- POST https://api.ollagraph.com/v1/intel/asn — Intel ASN
-- POST https://api.ollagraph.com/v1/intel/blacklist — Intel Blacklist
-- POST https://api.ollagraph.com/v1/intel/caa — Intel CAA (which CAs may issue certs for the domain)
-- POST https://api.ollagraph.com/v1/intel/cert-transparency-history — Intel Cert Transparency
-- POST https://api.ollagraph.com/v1/intel/cookies — Intel Cookies (Set-Cookie response headers parsed per RFC 6265)
-- POST https://api.ollagraph.com/v1/intel/dns-propagation — Intel DNS Propagation
-- POST https://api.ollagraph.com/v1/intel/dnssec — Intel DNSSEC (DNSKEY + DS + AD-flag posture)
-- POST https://api.ollagraph.com/v1/intel/email-auth — Intel Email Auth
-- POST https://api.ollagraph.com/v1/intel/geoip — Intel GeoIP
-- POST https://api.ollagraph.com/v1/intel/geoip/bulk — Intel GeoIP Bulk
-- POST https://api.ollagraph.com/v1/intel/headers — Intel Headers
-- POST https://api.ollagraph.com/v1/intel/http-versions — Intel HTTP Versions (HTTP/1.1, HTTP/2 via ALPN, HTTP/3 via Alt-Svc, plus TLS version, cipher, HSTS)
-- POST https://api.ollagraph.com/v1/intel/ip-reputation — Intel IP Reputation
-- POST https://api.ollagraph.com/v1/intel/nameservers — Intel Nameservers (authoritative NS + IPs + /16 diversification flag)
-- POST https://api.ollagraph.com/v1/intel/page — Intel Page
-- POST https://api.ollagraph.com/v1/intel/redirects — Intel Redirects
-- POST https://api.ollagraph.com/v1/intel/reverse-dns — Intel Reverse DNS (PTR lookup)
-- POST https://api.ollagraph.com/v1/intel/robots — Intel Robots
-- POST https://api.ollagraph.com/v1/intel/security-txt — Intel security.txt (RFC 9116 disclosure-policy fetch + parse)
-- POST https://api.ollagraph.com/v1/intel/sitemap — Intel Sitemap
-- POST https://api.ollagraph.com/v1/intel/social-tags — Intel Social Tags (OG + Twitter + canonical + icons + lang)
-- POST https://api.ollagraph.com/v1/intel/sri-audit — Intel SRI Audit (external scripts + Subresource Integrity coverage)
-- POST https://api.ollagraph.com/v1/intel/ssl — Intel SSL
-- POST https://api.ollagraph.com/v1/intel/subdomain-enumerate — Intel Subdomain Enumerate
-- POST https://api.ollagraph.com/v1/intel/uptime — Intel Uptime
-- POST https://api.ollagraph.com/v1/intel/waf — Intel WAF/CDN detection (Cloudflare, Akamai, Fastly, AWS WAF, Imperva, Sucuri, etc.)
-- POST https://api.ollagraph.com/v1/intel/wayback — Intel Wayback (first + most-recent Internet Archive snapshots)
-- GET  https://api.ollagraph.com/v1/intel/whoami — Intel WhoAmI (caller IP, geoIP, ASN, reputation, parsed UA, curated header echo)
-- POST https://api.ollagraph.com/v1/intel/whois — Intel Whois
-- POST https://api.ollagraph.com/v1/verify/email — Email Verify
-
-### Parsing
-
-- POST https://api.ollagraph.com/v1/parse/email — Parse Email
-- POST https://api.ollagraph.com/v1/parse/url — Parse URL
-- POST https://api.ollagraph.com/v1/parse/useragent — Parse User-Agent
-
-### Captcha
-
-- POST https://api.ollagraph.com/v1/captcha/auto — Captcha Auto
-- POST https://api.ollagraph.com/v1/captcha/solve — Captcha Solve
+- POST https://api.ollagraph.com/v1/dns/intelligence — Dns Intel Endpoint
+- POST https://api.ollagraph.com/v1/dns/lookup — Dns Lookup Endpoint
+- POST https://api.ollagraph.com/v1/dns/over-https — Dns Over Https Endpoint
+- POST https://api.ollagraph.com/v1/intel/asn — Intel Asn Endpoint
+- POST https://api.ollagraph.com/v1/intel/blacklist — Intel Blacklist Endpoint
+- POST https://api.ollagraph.com/v1/intel/caa — Intel Caa Endpoint
+- POST https://api.ollagraph.com/v1/intel/cert-transparency-history — Intel Cert Transparency Endpoint
+- POST https://api.ollagraph.com/v1/intel/cookies — Intel Cookies Endpoint
+- POST https://api.ollagraph.com/v1/intel/dns-propagation — Intel Dns Propagation Endpoint
+- POST https://api.ollagraph.com/v1/intel/dnssec — Intel Dnssec Endpoint
+- POST https://api.ollagraph.com/v1/intel/email-auth — Intel Email Auth Endpoint
+- POST https://api.ollagraph.com/v1/intel/geoip — Intel Geoip Endpoint
+- POST https://api.ollagraph.com/v1/intel/geoip/bulk — Intel Geoip Bulk Endpoint
+- POST https://api.ollagraph.com/v1/intel/headers — Intel Headers Endpoint
+- POST https://api.ollagraph.com/v1/intel/http-versions — Intel Http Versions Endpoint
+- POST https://api.ollagraph.com/v1/intel/ip-reputation — Intel Ip Reputation Endpoint
+- POST https://api.ollagraph.com/v1/intel/nameservers — Intel Nameservers Endpoint
+- POST https://api.ollagraph.com/v1/intel/page — Intel Page Endpoint
+- POST https://api.ollagraph.com/v1/intel/redirects — Intel Redirects Endpoint
+- POST https://api.ollagraph.com/v1/intel/reverse-dns — Intel Reverse Dns Endpoint
+- POST https://api.ollagraph.com/v1/intel/robots — Intel Robots Endpoint
+- POST https://api.ollagraph.com/v1/intel/security-txt — Intel Security Txt Endpoint
+- POST https://api.ollagraph.com/v1/intel/sitemap — Intel Sitemap Endpoint
+- POST https://api.ollagraph.com/v1/intel/social-tags — Intel Social Tags Endpoint
+- POST https://api.ollagraph.com/v1/intel/sri-audit — Intel Sri Audit Endpoint
+- POST https://api.ollagraph.com/v1/intel/ssl — Intel Ssl Endpoint
+- POST https://api.ollagraph.com/v1/intel/subdomain-enumerate — Intel Subdomain Enumerate Endpoint
+- POST https://api.ollagraph.com/v1/intel/uptime — Intel Uptime Endpoint
+- POST https://api.ollagraph.com/v1/intel/waf — Intel Waf Endpoint
+- POST https://api.ollagraph.com/v1/intel/wayback — Intel Wayback Endpoint
+- GET https://api.ollagraph.com/v1/intel/whoami — Intel Whoami Endpoint
+- POST https://api.ollagraph.com/v1/intel/whois — Intel Whois Endpoint
+- POST https://api.ollagraph.com/v1/verify/email — Email Verify Endpoint
 
 ### Crawling
 
-- POST https://api.ollagraph.com/v1/crawl — Crawl
+- POST https://api.ollagraph.com/v1/crawl — Crawl Endpoint
 
-### Actors (preview)
+### Captcha
 
-- POST https://api.ollagraph.com/v1/actors/amazon — Actor Amazon
-- POST https://api.ollagraph.com/v1/actors/google-maps — Actor Google Maps
-- POST https://api.ollagraph.com/v1/actors/markdown — Actor Markdown
-- POST https://api.ollagraph.com/v1/actors/zillow — Actor Zillow
+- POST https://api.ollagraph.com/v1/captcha/auto — Captcha Auto Endpoint
+- POST https://api.ollagraph.com/v1/captcha/solve — Captcha Solve Endpoint
 
-### Billing
+### Parsing
 
-- POST https://api.ollagraph.com/v1/billing/checkout — Create Checkout Session
-- POST https://api.ollagraph.com/v1/billing/webhook — Stripe Webhook
+- POST https://api.ollagraph.com/v1/parse/email — Parse Email Endpoint
+- POST https://api.ollagraph.com/v1/parse/url — Parse Url Endpoint
+- POST https://api.ollagraph.com/v1/parse/useragent — Parse Useragent Endpoint
+
+### Conversion
+
+- POST https://api.ollagraph.com/v1/convert/csv-to-markdown — Csv To Markdown Endpoint
+- POST https://api.ollagraph.com/v1/convert/docx-to-markdown — Docx To Markdown Endpoint
+- POST https://api.ollagraph.com/v1/convert/html-to-markdown — Html To Markdown Endpoint
+- POST https://api.ollagraph.com/v1/convert/ocr — Convert Ocr Endpoint
+- POST https://api.ollagraph.com/v1/convert/pdf-to-markdown — Pdf To Markdown Endpoint
+- POST https://api.ollagraph.com/v1/convert/pptx-to-markdown — Pptx To Markdown Endpoint
+- POST https://api.ollagraph.com/v1/convert/xlsx-to-markdown — Xlsx To Markdown Endpoint
+
+### SEO
+
+- POST https://api.ollagraph.com/v1/seo/anchor-text-audit — Seo Anchor Text Audit Endpoint
+- POST https://api.ollagraph.com/v1/seo/broken-links-audit — Seo Broken Links Endpoint
+- POST https://api.ollagraph.com/v1/seo/keyword-extract — Seo Keyword Extract Endpoint
+- POST https://api.ollagraph.com/v1/seo/meta-audit — Seo Meta Audit Endpoint
+- POST https://api.ollagraph.com/v1/seo/mixed-content — Seo Mixed Content Endpoint
+- POST https://api.ollagraph.com/v1/seo/readability — Seo Readability Endpoint
+- POST https://api.ollagraph.com/v1/seo/redirect-chain-map — Seo Redirect Chain Endpoint
+- POST https://api.ollagraph.com/v1/seo/schema-validate — Seo Schema Validate Endpoint
+- POST https://api.ollagraph.com/v1/seo/snippet-candidates — Seo Snippet Candidates Endpoint
+
+### AEO
+
+- POST https://api.ollagraph.com/v1/aeo/ai-bot-allowlist — Aeo Ai Bot Allowlist Endpoint
+- POST https://api.ollagraph.com/v1/aeo/citation-readiness — Aeo Citation Readiness Endpoint
+- POST https://api.ollagraph.com/v1/aeo/competitor-diff — Aeo Competitor Diff Endpoint
+- POST https://api.ollagraph.com/v1/aeo/freshness-signal — Aeo Freshness Signal Endpoint
+- POST https://api.ollagraph.com/v1/aeo/heading-hierarchy-score — Aeo Heading Hierarchy Endpoint
+- POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator — Aeo Llm Fetch Simulator Endpoint
+- POST https://api.ollagraph.com/v1/aeo/llms-txt-audit — Aeo Llms Txt Audit Endpoint
+- POST https://api.ollagraph.com/v1/aeo/page-audit — Aeo Page Audit Endpoint
+- POST https://api.ollagraph.com/v1/aeo/schema-coverage — Aeo Schema Coverage Endpoint
+- POST https://api.ollagraph.com/v1/aeo/snippet-format-detect — Aeo Snippet Format Detect Endpoint
 
 ### Account
 
 - GET https://api.ollagraph.com/v1/keys — List My Keys
 - POST https://api.ollagraph.com/v1/keys — Create My Key
 - DELETE https://api.ollagraph.com/v1/keys/{key_id} — Delete My Key
+- PATCH https://api.ollagraph.com/v1/keys/{key_id} — Update My Key
+- POST https://api.ollagraph.com/v1/keys/{key_id}/rotate — Rotate My Key
 - GET https://api.ollagraph.com/v1/me — Get Me
+- POST https://api.ollagraph.com/v1/me/cost-estimate — Cost Estimate
 - GET https://api.ollagraph.com/v1/me/credits — Get My Credits
 - GET https://api.ollagraph.com/v1/me/forwarders — Get My Forwarders
 - POST https://api.ollagraph.com/v1/me/forwarders — Create My Forwarder
@@ -163,30 +155,144 @@ Base URL: `https://api.ollagraph.com`. All endpoints require `Authorization: Bea
 - GET https://api.ollagraph.com/v1/me/usage — Get My Usage
 - GET https://api.ollagraph.com/v1/me/usage/summary — Get My Usage Summary
 - POST https://api.ollagraph.com/v1/me/webhook-secret/rotate — Rotate My Webhook Secret
-
-### Jobs
-
-- GET https://api.ollagraph.com/v1/jobs/{job_id} — Get Job Status
+- POST https://api.ollagraph.com/v1/me/webhooks/test — Test My Webhook
 
 ### Authentication
 
 - POST https://api.ollagraph.com/v1/auth/keys — Auth Login And Mint Key
 - POST https://api.ollagraph.com/v1/auth/login — Auth Login
 - GET https://api.ollagraph.com/v1/auth/me — Auth Me
+- POST https://api.ollagraph.com/v1/auth/password/forgot — Auth Password Forgot
+- POST https://api.ollagraph.com/v1/auth/password/reset — Auth Password Reset
 - POST https://api.ollagraph.com/v1/auth/signup — Auth Signup
 - GET https://api.ollagraph.com/v1/auth/verify — Auth Verify Email
+- POST https://api.ollagraph.com/v1/auth/verify/resend — Auth Verify Resend
 
-### Health
+### Billing
 
-- GET https://api.ollagraph.com/health — Health
+- POST https://api.ollagraph.com/v1/billing/dodo/checkout — Create Dodo Checkout Session
+- POST https://api.ollagraph.com/v1/billing/dodo/credits/checkout — Create Dodo Credits Checkout
+- GET https://api.ollagraph.com/v1/billing/dodo/credits/packs — List Dodo Credit Packs
+- POST https://api.ollagraph.com/v1/billing/dodo/portal — Open Dodo Customer Portal
+- GET https://api.ollagraph.com/v1/billing/dodo/subscription — Get Dodo Subscription State
+- POST https://api.ollagraph.com/v1/billing/dodo/subscription/cancel — Cancel Dodo Subscription
+- POST https://api.ollagraph.com/v1/billing/dodo/subscription/change-plan — Change Dodo Subscription Plan
 
-### Admin
+### Jobs
 
-- POST https://api.ollagraph.com/admin/users — Admin Create User
+- GET https://api.ollagraph.com/v1/jobs/{job_id} — Get Job Status
 
-### Enrichment
+### Actors
 
-- POST https://api.ollagraph.com/v1/enrich/company — Enrich Company
+- POST https://api.ollagraph.com/v1/actors/ats — Actor Ats Endpoint
+- POST https://api.ollagraph.com/v1/actors/ats/detect — Actor Ats Detect Endpoint
+- GET https://api.ollagraph.com/v1/actors/ats/supported — Actor Ats Supported Endpoint
+- POST https://api.ollagraph.com/v1/actors/jobs/adzuna — Actor Jobs Adzuna Endpoint
+- POST https://api.ollagraph.com/v1/actors/jobs/jobbank — Actor Jobs Jobbank Endpoint
+- POST https://api.ollagraph.com/v1/actors/jobs/reed — Actor Jobs Reed Endpoint
+- POST https://api.ollagraph.com/v1/actors/jobs/scrape — Actor Jobs Scrape Endpoint
+- GET https://api.ollagraph.com/v1/actors/jobs/sites — Actor Jobs Sites Endpoint
+- GET https://api.ollagraph.com/v1/actors/jobs/sources — Actor Jobs Sources Endpoint
+- POST https://api.ollagraph.com/v1/actors/jobs/usajobs — Actor Jobs Usajobs Endpoint
+- POST https://api.ollagraph.com/v1/actors/producthunt/daily — Actor Producthunt Daily Endpoint
+- POST https://api.ollagraph.com/v1/actors/producthunt/product — Actor Producthunt Product Endpoint
+- POST https://api.ollagraph.com/v1/actors/scholar/author — Actor Scholar Author Endpoint
+- POST https://api.ollagraph.com/v1/actors/scholar/publication — Actor Scholar Publication Endpoint
+- POST https://api.ollagraph.com/v1/actors/scholar/search — Actor Scholar Search Endpoint
+- POST https://api.ollagraph.com/v1/render — Render Endpoint
+- POST https://api.ollagraph.com/v1/script — Script Endpoint
+- POST https://api.ollagraph.com/v1/session — Session Create Endpoint
+- DELETE https://api.ollagraph.com/v1/session/{session_id} — Session Delete Endpoint
+- GET https://api.ollagraph.com/v1/session/{session_id} — Session Get Endpoint
+- POST https://api.ollagraph.com/v1/session/{session_id}/render — Session Render Endpoint
+- POST https://api.ollagraph.com/v1/session/{session_id}/script — Session Script Endpoint
+- POST https://api.ollagraph.com/v1/stagehand — Stagehand Create Endpoint
+- DELETE https://api.ollagraph.com/v1/stagehand/{session_id} — Stagehand Delete Endpoint
+- POST https://api.ollagraph.com/v1/stagehand/{session_id}/act — Stagehand Act Endpoint
+- POST https://api.ollagraph.com/v1/stagehand/{session_id}/extract — Stagehand Extract Endpoint
+- POST https://api.ollagraph.com/v1/stagehand/{session_id}/goto — Stagehand Goto Endpoint
+- POST https://api.ollagraph.com/v1/stagehand/{session_id}/keepalive — Stagehand Keepalive Endpoint
+- POST https://api.ollagraph.com/v1/stagehand/{session_id}/observe — Stagehand Observe Endpoint
+- POST https://api.ollagraph.com/v1/stagehand/{session_id}/screenshot — Stagehand Screenshot Endpoint
+
+### Actors (preview)
+
+- POST https://api.ollagraph.com/v1/actors/amazon — Actor Amazon Endpoint
+- POST https://api.ollagraph.com/v1/actors/google-maps — Actor Google Maps Endpoint
+- POST https://api.ollagraph.com/v1/actors/markdown — Actor Markdown Endpoint
+- POST https://api.ollagraph.com/v1/actors/zillow — Actor Zillow Endpoint
+
+### Other
+
+- POST https://api.ollagraph.com/v1/enrich/company — Enrich Company Endpoint
+
+# Public-data actors (free, tier=public_api) — added 2026-06-18
+- POST https://api.ollagraph.com/v1/actors/arxiv/search — arXiv search actor
+- POST https://api.ollagraph.com/v1/actors/atlas/case_studies — MITRE ATLAS case_studies actor
+- POST https://api.ollagraph.com/v1/actors/atlas/get — MITRE ATLAS get actor
+- POST https://api.ollagraph.com/v1/actors/atlas/summary — MITRE ATLAS summary actor
+- POST https://api.ollagraph.com/v1/actors/atlas/tactics — MITRE ATLAS tactics actor
+- POST https://api.ollagraph.com/v1/actors/atlas/techniques — MITRE ATLAS techniques actor
+- POST https://api.ollagraph.com/v1/actors/doi/resolve — DOI resolve actor
+- POST https://api.ollagraph.com/v1/actors/europepmc/search — EuropePMC search actor
+- POST https://api.ollagraph.com/v1/actors/github/issues — GitHub issues actor
+- POST https://api.ollagraph.com/v1/actors/github/repo — GitHub repo actor
+- POST https://api.ollagraph.com/v1/actors/github/search — GitHub search actor
+- POST https://api.ollagraph.com/v1/actors/github/user — GitHub user actor
+- POST https://api.ollagraph.com/v1/actors/gleif/children — GLEIF children actor
+- POST https://api.ollagraph.com/v1/actors/gleif/get — GLEIF get actor
+- POST https://api.ollagraph.com/v1/actors/gleif/parent — GLEIF parent actor
+- POST https://api.ollagraph.com/v1/actors/gleif/search — GLEIF search actor
+- POST https://api.ollagraph.com/v1/actors/hackernews/item — Hacker News item actor
+- POST https://api.ollagraph.com/v1/actors/hackernews/search — Hacker News search actor
+- POST https://api.ollagraph.com/v1/actors/hackernews/top — Hacker News top actor
+- POST https://api.ollagraph.com/v1/actors/hackernews/user — Hacker News user actor
+- POST https://api.ollagraph.com/v1/actors/huggingface/dataset — HuggingFace dataset actor
+- POST https://api.ollagraph.com/v1/actors/huggingface/datasets — HuggingFace datasets actor
+- POST https://api.ollagraph.com/v1/actors/huggingface/model — HuggingFace model actor
+- POST https://api.ollagraph.com/v1/actors/huggingface/models — HuggingFace models actor
+- POST https://api.ollagraph.com/v1/actors/huggingface/space — HuggingFace space actor
+- POST https://api.ollagraph.com/v1/actors/huggingface/spaces — HuggingFace spaces actor
+- POST https://api.ollagraph.com/v1/actors/npm/downloads — npm downloads actor
+- POST https://api.ollagraph.com/v1/actors/npm/package — npm package actor
+- POST https://api.ollagraph.com/v1/actors/npm/search — npm search actor
+- POST https://api.ollagraph.com/v1/actors/nvd/cve — NVD cve actor
+- POST https://api.ollagraph.com/v1/actors/nvd/search — NVD search actor
+- POST https://api.ollagraph.com/v1/actors/openalex/author — OpenAlex author actor
+- POST https://api.ollagraph.com/v1/actors/openalex/authors — OpenAlex authors actor
+- POST https://api.ollagraph.com/v1/actors/openalex/work — OpenAlex work actor
+- POST https://api.ollagraph.com/v1/actors/openalex/works — OpenAlex works actor
+- POST https://api.ollagraph.com/v1/actors/orcid/record — ORCID record actor
+- POST https://api.ollagraph.com/v1/actors/orcid/works — ORCID works actor
+- POST https://api.ollagraph.com/v1/actors/pypi/package — PyPI package actor
+- POST https://api.ollagraph.com/v1/actors/pypi/release — PyPI release actor
+- POST https://api.ollagraph.com/v1/actors/ror/get — ROR get actor
+- POST https://api.ollagraph.com/v1/actors/ror/search — ROR search actor
+- POST https://api.ollagraph.com/v1/actors/sec/facts — SEC facts actor
+- POST https://api.ollagraph.com/v1/actors/sec/filings — SEC filings actor
+- POST https://api.ollagraph.com/v1/actors/sec/lookup_ticker — SEC lookup_ticker actor
+- POST https://api.ollagraph.com/v1/actors/stackexchange/questions — StackExchange questions actor
+- POST https://api.ollagraph.com/v1/actors/stackexchange/search — StackExchange search actor
+- POST https://api.ollagraph.com/v1/actors/stackexchange/sites — StackExchange sites actor
+- POST https://api.ollagraph.com/v1/actors/stackexchange/user — StackExchange user actor
+- POST https://api.ollagraph.com/v1/actors/zenodo/record — Zenodo record actor
+- POST https://api.ollagraph.com/v1/actors/zenodo/search — Zenodo search actor
+
+# Premium vendor-backed actors (5-15 credits/call by family) — added 2026-06-19
+- POST https://api.ollagraph.com/v1/actors/amazon/product — Amazon product actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/amazon/reviews — Amazon reviews actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/amazon/search — Amazon search actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/gmaps/place — Google Maps place actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/gmaps/reviews — Google Maps reviews actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/gmaps/search — Google Maps search actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/linkedin/company — LinkedIn company actor (15 credits)
+- POST https://api.ollagraph.com/v1/actors/linkedin/profile — LinkedIn profile actor (15 credits)
+- POST https://api.ollagraph.com/v1/actors/yelp/business — Yelp business actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/yelp/reviews — Yelp reviews actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/yelp/search — Yelp search actor (8 credits)
+- POST https://api.ollagraph.com/v1/actors/youtube/channel — YouTube channel actor (5 credits)
+- POST https://api.ollagraph.com/v1/actors/youtube/search — YouTube search actor (5 credits)
+- POST https://api.ollagraph.com/v1/actors/youtube/video — YouTube video actor (5 credits)
 
 ## Bundles
 
@@ -200,6 +306,57 @@ Use-case groupings of related endpoints. Each bundle pairs 4-13 endpoints with a
 - Scraping — 13 endpoints — https://ollagraph.com/bundles/scraping
 - Conversion — 7 endpoints — https://ollagraph.com/bundles/conversion
 - Site Audit — 10 endpoints — https://ollagraph.com/bundles/site-audit
+
+## Use cases
+
+Capability landing pages — each covers one endpoint family in depth.
+
+- Web scraping API (formats, smart routing, action macros, async) — https://ollagraph.com/scrape
+- Website crawler API (depth, budget caps, robots, sitemap, webhooks) — https://ollagraph.com/crawl
+- Browser automation (natural-language + macro-driven multi-step flows) — https://ollagraph.com/automation
+- Headless browser API (persistent stealth sessions, render, script) — https://ollagraph.com/browser
+- Domain & network intelligence (WHOIS, DNS, SSL, GeoIP, ASN, enrichment) — https://ollagraph.com/intelligence
+- Webhooks (async job delivery, HMAC signature verification) — https://ollagraph.com/webhooks
+- Architecture (response envelope, tiered fetch, credit metering, MCP) — https://ollagraph.com/architecture
+- For AEO agencies (white-label AI-citation audits at agency scale) — https://ollagraph.com/for-aeo-agencies
+
+## Actor reference pages
+
+Per-actor reference pages with response fields and sample payloads.
+
+- Amazon product actor — https://ollagraph.com/actors/amazon
+- Zillow property actor — https://ollagraph.com/actors/zillow
+- Google Maps place actor — https://ollagraph.com/actors/google-maps
+- Markdown converter actor — https://ollagraph.com/actors/markdown
+- Job listings actor (adzuna/jobbank/reed/usajobs + generic) — https://ollagraph.com/actors/jobs
+- ATS career-page actor (Greenhouse/Lever/Workday) — https://ollagraph.com/actors/ats
+- Product Hunt actor — https://ollagraph.com/actors/producthunt
+- Academic / Scholar actor — https://ollagraph.com/actors/scholar
+
+## Comparisons
+
+- Ollagraph vs Firecrawl — https://ollagraph.com/vs/firecrawl
+- Ollagraph vs ScraperAPI — https://ollagraph.com/vs/scraperapi
+- Ollagraph vs Octoparse — https://ollagraph.com/vs/octoparse
+- Ollagraph vs Diffbot — https://ollagraph.com/vs/diffbot
+- Ollagraph vs Zyte — https://ollagraph.com/vs/zyte
+- Ollagraph vs ScrapingBee — https://ollagraph.com/vs/scrapingbee
+- Ollagraph vs Crawlbase — https://ollagraph.com/vs/crawlbase
+
+## Recipes
+
+Step-by-step production playbooks for common web-data jobs. Each walks the full pipeline with real API calls.
+
+- How to scrape Amazon product data — https://ollagraph.com/recipes/scrape-amazon-product-data
+- How to monitor competitor pricing across e-commerce — https://ollagraph.com/recipes/monitor-competitor-pricing
+- How to scrape Zillow listings at scale — https://ollagraph.com/recipes/scrape-zillow-listings
+- How to scrape Google Maps businesses — https://ollagraph.com/recipes/scrape-google-maps-businesses
+- How to enrich B2B leads from a domain — https://ollagraph.com/recipes/enrich-leads-from-domain
+- How to build a RAG knowledge base from the web — https://ollagraph.com/recipes/build-rag-knowledge-base
+- How to scrape pages behind a login — https://ollagraph.com/recipes/scrape-pages-behind-login
+- How to extract structured data from articles — https://ollagraph.com/recipes/extract-structured-data-from-articles
+- How to crawl an entire website — https://ollagraph.com/recipes/crawl-entire-website
+- How to verify email addresses at scale — https://ollagraph.com/recipes/verify-email-addresses-at-scale
 
 ## How to integrate
 

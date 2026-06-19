@@ -4,6 +4,10 @@ import bodyHtml from '../bodies/docs.body.html?raw';
 import headExtras from '../bodies/docs.head.html?raw';
 import { navHtml, footerHtml } from '../chrome';
 import openapi from '../openapi.json';
+// Real captured responses, keyed by operationId. Regenerate with
+// scripts/capture_response_examples.py. Endpoints without an entry simply omit
+// the "Example response" block.
+import responseExamples from '../response_examples.json';
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
@@ -59,14 +63,29 @@ function typeOf(sch: any): string {
 
 type Prop = { name: string; type: string; required: boolean; desc: string; def: any };
 function bodyProps(op: any): Prop[] {
-  const ref = op?.requestBody?.content?.['application/json']?.schema?.$ref;
-  if (!ref) return [];
-  const sc = schemas[String(ref).split('/').pop() as string];
+  const media = op?.requestBody?.content?.['application/json'];
+  // Pydantic-model routes reference a named component ($ref); pass-through proxy
+  // routes (e.g. Stagehand) carry an inline schema via openapi_extra. Handle both.
+  const ref = media?.schema?.$ref;
+  const sc = ref ? schemas[String(ref).split('/').pop() as string] : media?.schema;
   if (!sc || !sc.properties) return [];
   const req = new Set<string>(sc.required || []);
   return Object.entries(sc.properties).map(([name, ps]: [string, any]) => ({
     name, type: typeOf(ps), required: req.has(name), desc: ps.description || '', def: ps.default,
   }));
+}
+
+// Prefer a real example body from the spec (openapi_extra examples / example) for
+// the curl sample; null falls back to synthBody(props) below.
+function exampleBodyOf(op: any): Record<string, any> | null {
+  const media = op?.requestBody?.content?.['application/json'];
+  if (!media) return null;
+  if (media.examples) {
+    const first: any = Object.values(media.examples)[0];
+    if (first && first.value !== undefined) return first.value;
+  }
+  if (media.example !== undefined) return media.example;
+  return null;
 }
 
 function synthValue(name: string, p: Prop): any {
@@ -100,7 +119,7 @@ function curlSample(method: string, path: string, body: Record<string, any>): st
   return lines.join('\n');
 }
 
-type EP = { method: string; path: string; opId: string; summary: string; desc: string; props: Prop[] };
+type EP = { method: string; path: string; opId: string; summary: string; desc: string; props: Prop[]; exampleBody: Record<string, any> | null };
 const groups: Record<string, EP[]> = {};
 for (const [path, ops] of Object.entries(openapi.paths as Record<string, any>)) {
   for (const [method, op] of Object.entries(ops as Record<string, any>)) {
@@ -109,7 +128,7 @@ for (const [path, ops] of Object.entries(openapi.paths as Record<string, any>)) 
     const tag = (op.tags && op.tags[0]) || 'Other';
     const summary = String(op.summary || op.operationId || '').replace(/\s*Endpoint\s*$/i, '').trim();
     const opId = op.operationId || (method.toLowerCase() + '_' + path.replace(/[^a-zA-Z0-9]/g, '_'));
-    (groups[tag] = groups[tag] || []).push({ method: M, path, opId, summary, desc: op.description || '', props: bodyProps(op) });
+    (groups[tag] = groups[tag] || []).push({ method: M, path, opId, summary, desc: op.description || '', props: bodyProps(op), exampleBody: exampleBodyOf(op) });
   }
 }
 for (const t of Object.keys(groups)) groups[t].sort((a, b) => a.path.localeCompare(b.path));
@@ -139,13 +158,18 @@ const contentHtml = tags.map((tag) => {
             + `<td>${esc(p.desc)}</td></tr>`).join('')
         + `</tbody></table></div>`
       : '';
-    const curl = curlSample(ep.method, ep.path, synthBody(ep.props));
+    const curl = curlSample(ep.method, ep.path, ep.exampleBody ?? synthBody(ep.props));
+    const respExample = (responseExamples as Record<string, any>)[ep.opId];
+    const respBlock = respExample !== undefined
+      ? `<div class="ep-block"><h4>Example response</h4><pre class="ep-code"><code>${esc(JSON.stringify(respExample, null, 2))}</code></pre></div>`
+      : '';
     return `<article class="ep-detail" id="${esc(ep.opId)}">`
       + `<div class="ep-h"><span class="ep-method m-${ep.method.toLowerCase()}">${ep.method}</span><code class="ep-fullpath">${esc(ep.path)}</code></div>`
       + (ep.summary ? `<p class="ep-summary">${esc(ep.summary)}</p>` : '')
       + (ep.desc ? `<p class="ep-desc">${esc(ep.desc)}</p>` : '')
       + paramRows
       + `<div class="ep-block"><h4>Example request</h4><pre class="ep-code"><code>${esc(curl)}</code></pre></div>`
+      + respBlock
       + `</article>`;
   }).join('');
   return `<section class="ds-section" id="tag-${esc(tag.toLowerCase())}"><div class="ds-section-h"><h2>${esc(tag)}</h2>`
