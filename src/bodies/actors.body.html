@@ -301,11 +301,12 @@
             <h3 style="margin:0;">Yelp</h3>
             <span class="badge badge-mute" style="margin-left:auto;">3 endpoints · 8 credits</span>
           </div>
-          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">Business search by query+location, business detail, reviews. Lead-gen and local SEO. <strong>Note:</strong> first cold call can take a few minutes (results cache after; cold calls that exceed the timeout return a clean error + refund).</p>
+          <p style="color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 8px;">Business search by query+location, business detail, reviews. Lead-gen and local SEO. <strong>Yelp's upstream is slow</strong> — a cold query runs for minutes, so each endpoint also has an <strong>async variant</strong>: <code>POST …/async</code> returns a <code>job_id</code> instantly, then deliver the result by signed webhook or poll <code>GET /v1/jobs/{id}</code>. Failed jobs auto-refund. Use async for anything interactive; the synchronous endpoints suit warm/cached queries.</p>
           <div class="endpoints">
             POST /v1/actors/yelp/search &nbsp;<span class="c">{ query, location }</span><br>
             POST /v1/actors/yelp/business &nbsp;<span class="c">{ biz_path | biz_url }</span><br>
-            POST /v1/actors/yelp/reviews
+            POST /v1/actors/yelp/reviews<br>
+            <span class="c">+ /async variant for each — { …, webhook_url? } → { job_id }</span>
           </div>
         </div>
         <div class="acard">
