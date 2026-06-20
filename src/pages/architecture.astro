@@ -39,7 +39,7 @@ curl https://api.ollagraph.com/v1/jobs/job_8f31... \\
 # -> {"status": "completed", "result": { ...same envelope as above... }}`;
 
 const pillars = [
-  { title: "One response envelope, everywhere", body: "Scrape, extract, domain intelligence, crawl, and async jobs all answer in the same shape: ok, status_code, final_url, text, and the diagnostic fields below. Learn the envelope once and every one of the 209 endpoints reads the same. No per-endpoint parsing, no surprises when you add a new call." },
+  { title: "One response envelope, everywhere", body: "Scrape, extract, domain intelligence, crawl, and async jobs all answer in the same shape: ok, status_code, final_url, text, and the diagnostic fields below. Learn the envelope once and every one of the 212 endpoints reads the same. No per-endpoint parsing, no surprises when you add a new call." },
   { title: "A tiered fetch path with automatic fallback", body: "Most pages return over a fast HTTP path in milliseconds. When a page needs JavaScript or pushes back with a bot wall, the request escalates to our managed stealth browser engine automatically — same request, same response shape. You never pick a tier by hand and you never get a half-rendered page back." },
   { title: "It tells you which tier served the request", body: "Every response carries tier_used, cascade_path, and cascade_failures. You can see exactly how a page was fetched, what was tried first, and why it escalated — so you can trust the data, debug a flaky source, and right-size your own retries instead of guessing." },
   { title: "Credit metering with refund-on-error", body: "Credits are reserved atomically in the same transaction as the call decision — two requests with one credit left will see exactly one succeed. A successful call writes one usage-log row and decrements the ledger once. Server-side faults refund automatically, so a timeout or an upstream failure never costs you a credit." },
@@ -48,7 +48,7 @@ const pillars = [
 ];
 
 const faqs = [
-  { q: "What is the response envelope, and is it really the same on every endpoint?", a: "Yes. Every endpoint returns the same canonical shape: ok (did it succeed), status_code (the origin's HTTP status), final_url (after redirects), text or the format you asked for, plus the diagnostic fields tier_used, cascade_path, and cascade_failures. Async endpoints return a job_id immediately and wrap that same envelope inside result when the job completes. You parse one shape across all 209 operations." },
+  { q: "What is the response envelope, and is it really the same on every endpoint?", a: "Yes. Every endpoint returns the same canonical shape: ok (did it succeed), status_code (the origin's HTTP status), final_url (after redirects), text or the format you asked for, plus the diagnostic fields tier_used, cascade_path, and cascade_failures. Async endpoints return a job_id immediately and wrap that same envelope inside result when the job completes. You parse one shape across all 212 operations." },
   { q: "What does tier_used tell me?", a: "It names which part of the fetch path actually served your request — the fast HTTP path for static pages, or our managed stealth browser engine for pages that need JavaScript or push back with anti-bot defenses. cascade_path lists everything that was tried in order, and cascade_failures records why each earlier tier was abandoned. It is the same field that appears in your usage export, so you can audit how every request was fetched after the fact." },
   { q: "Do I have to choose between the fast path and the browser?", a: "No. The fetch path escalates automatically. A request starts on the fast HTTP path and falls forward to the stealth browser engine only when the page needs it — a JavaScript-rendered app, a bot wall, a captcha, an empty or blocked response. You send one request and get back a fully rendered result with a note in tier_used telling you which path served it." },
   { q: "When does a request escalate, and when does it not?", a: "It escalates on the signals that mean the page was not really served: blocks, rate-limit responses, server errors, captchas, timeouts, and empty-but-200 bodies. It does not escalate on clean terminal answers — a genuine not-found, a gone page, an unauthorized response, or a name that does not resolve. Those are real answers, so we return them rather than burning time and credits retrying." },
@@ -89,7 +89,7 @@ const jsonLd = [
         <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
       </div>
       <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
-        One bearer token spans the full <a href="/capabilities" style="color:var(--accent);">209-endpoint surface</a> — see <a href="/observability" style="color:var(--accent);">observability</a> for what every response tells you.
+        One bearer token spans the full <a href="/capabilities" style="color:var(--accent);">212-endpoint surface</a> — see <a href="/observability" style="color:var(--accent);">observability</a> for what every response tells you.
       </p>
     </div>
   </section>

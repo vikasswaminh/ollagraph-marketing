@@ -1,6 +1,6 @@
 ---
 interface Props { title: string; description?: string; canonical?: string; jsonLd?: object[] }
-const { title, description = "Web infrastructure for AI agents. 209 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical, jsonLd = [] } = Astro.props;
+const { title, description = "Web infrastructure for AI agents. 212 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical, jsonLd = [] } = Astro.props;
 const ogImage = new URL("/og-image.svg", Astro.site || "https://ollagraph.com").toString();
 const canonicalUrl = canonical || Astro.url.href;
 
@@ -14,12 +14,17 @@ const orgLd = {
   logo: "https://ollagraph.com/favicon.svg",
   description: "Web infrastructure for AI agents — fetch, extract, audit, and reason about the live web through one API.",
   email: "hello@ollagraph.com",
+  contactPoint: [
+    { "@type": "ContactPoint", contactType: "customer support", email: "support@ollagraph.com", availableLanguage: "en" },
+    { "@type": "ContactPoint", contactType: "security", email: "security@ollagraph.com", availableLanguage: "en" },
+  ],
 };
 const websiteLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   name: "Ollagraph",
   url: "https://ollagraph.com",
+  publisher: { "@type": "Organization", name: "Ollagraph", url: "https://ollagraph.com" },
 };
 const allJsonLd = [orgLd, websiteLd, ...jsonLd];
 ---

@@ -9679,6 +9679,215 @@
         }
       }
     },
+    "/v1/actors/yelp/search/async": {
+      "post": {
+        "tags": [
+          "Actors"
+        ],
+        "summary": "Actor Yelp Search Async",
+        "description": "Async variant — returns a job_id immediately; poll GET /v1/jobs/{id} or supply webhook_url for a signed callback. Use this for slow vendor jobs (Yelp's run takes minutes; the synchronous endpoint times out at the edge).",
+        "operationId": "actor_yelp_search_async_v1_actors_yelp_search_async_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "default": 20
+                  },
+                  "proxy_url": {
+                    "type": "string"
+                  },
+                  "webhook_url": {
+                    "type": "string",
+                    "description": "Optional callback URL; the signed result is POSTed here on completion."
+                  }
+                },
+                "required": [
+                  "query",
+                  "location"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/actors/yelp/business/async": {
+      "post": {
+        "tags": [
+          "Actors"
+        ],
+        "summary": "Actor Yelp Business Async",
+        "description": "Async variant — returns a job_id immediately; poll GET /v1/jobs/{id} or supply webhook_url for a signed callback. Use this for slow vendor jobs (Yelp's run takes minutes; the synchronous endpoint times out at the edge).",
+        "operationId": "actor_yelp_business_async_v1_actors_yelp_business_async_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "biz_path": {
+                    "type": "string",
+                    "description": "Yelp slug, e.g. blue-bottle-coffee-san-francisco-9"
+                  },
+                  "biz_url": {
+                    "type": "string",
+                    "description": "Alternative to biz_path; full Yelp URL"
+                  },
+                  "proxy_url": {
+                    "type": "string"
+                  },
+                  "webhook_url": {
+                    "type": "string",
+                    "description": "Optional callback URL; the signed result is POSTed here on completion."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/actors/yelp/reviews/async": {
+      "post": {
+        "tags": [
+          "Actors"
+        ],
+        "summary": "Actor Yelp Reviews Async",
+        "description": "Async variant — returns a job_id immediately; poll GET /v1/jobs/{id} or supply webhook_url for a signed callback. Use this for slow vendor jobs (Yelp's run takes minutes; the synchronous endpoint times out at the edge).",
+        "operationId": "actor_yelp_reviews_async_v1_actors_yelp_reviews_async_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "biz_path": {
+                    "type": "string"
+                  },
+                  "biz_url": {
+                    "type": "string"
+                  },
+                  "max_pages": {
+                    "type": "integer",
+                    "default": 1
+                  },
+                  "webhook_url": {
+                    "type": "string",
+                    "description": "Optional callback URL; the signed result is POSTed here on completion."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/render": {
       "post": {
         "tags": [
