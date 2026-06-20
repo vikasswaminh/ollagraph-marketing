@@ -1,7 +1,14 @@
 // Per-competitor comparison pages → /vs/<slug>. Brand-voice rule: name what they
 // do well first, never disparage. ACCURACY rules applied here:
-//  - Only arms-length competitors we do NOT use as suppliers (Apify is excluded —
-//    we use it upstream, so positioning against it would be dishonest).
+//  - Apify IS included as of 2026-06-20 (owner decision: cost-leadership vs the
+//    actor-marketplace model is a key marketing goal). GUARDRAILS, because we
+//    STILL resell Apify upstream for some vertical actors:
+//      (a) never disclose the supplier relationship in public copy;
+//      (b) never claim to undercut Apify on the specific datasets we resell from
+//          them — keep the comparison at the model / consolidation / breadth level;
+//      (c) generous tone; soften the cost claim ("a fraction of the cost", "often
+//          well under half", "depends on workload"); never "Apify is expensive".
+//    See memory project_apify_positioning.
 //  - No claims about a public CDP/remote-Chrome endpoint (we don't expose one);
 //    browser automation = our session + natural-language (Stagehand) surface.
 //  - Pricing stated as our real model: credits (1/call, failed calls auto-refund),
@@ -235,6 +242,36 @@ export const comparisons: CompetitorComparison[] = [
       { q: "Does Ollagraph store my scraped data like Crawlbase's storage option?", a: "No, and that's deliberate. We return your results and keep only URL-level metadata for your usage and observability — the scraped content itself is never persisted. If you need the vendor to hold a copy of crawled pages, Crawlbase's storage is the better fit; if you'd rather it never be retained, that's our default." },
       { q: "Can Ollagraph crawl whole sites like Crawlbase?", a: "Yes. The crawl endpoint walks a site within depth and budget limits, obeys robots.txt, and delivers results to a webhook — comparable to a managed crawler, returned to you rather than stored on our side." },
       { q: "How does pricing compare?", a: "Ollagraph prices in credits — 1 per call, refunds on failure — with pay-as-you-go from $5 and 1,000 free credits. Compare against Crawlbase's current plans on their pricing page." },
+    ],
+  },
+  {
+    slug: "apify",
+    name: "Apify",
+    positioning: "Ollagraph vs Apify",
+    heroSub: "Apify pioneered the actor marketplace and runs a deep catalog of community and official scrapers. Ollagraph delivers comparable coverage from one curated, in-house catalog — at a fraction of the cost, behind one predictable bill, with failed calls refunded.",
+    whatTheyDoWell: "Apify built the category-defining actor marketplace. Thousands of community and official actors, a mature and battle-tested platform, flexible compute, and a large ecosystem of integrations make it genuinely hard to match on raw breadth. If you want the widest possible library of ready-made and customizable scrapers — including long-tail and niche targets — Apify is a powerful, proven choice.",
+    whereWeGoFurther: [
+      "**One predictable bill, not a metered stack.** Apify bills across a platform plan, compute units, proxy usage, and often per-result charges. Ollagraph is flat credits — 1 per call, pay-as-you-go from $5, failed calls auto-refunded. For mixed workloads that would otherwise span several actors, the consolidated bill is often well under half the stacked cost.",
+      "**A curated, in-house catalog.** Every Ollagraph actor is maintained by us to one quality and schema bar, so reliability and response shape stay consistent across the catalog rather than varying by community author.",
+      "**A built-in intelligence layer.** DNS, WHOIS, SSL, GeoIP/ASN, tech-stack, contacts, and email verification ship in the same API. Apify centers on scraping and automation, so this is typically a second vendor.",
+      "**One key across everything.** Scrape, crawl, structured extraction, vertical actors, browser automation, intelligence, and an MCP server all draw from the same credits and the same token.",
+    ],
+    matrix: [
+      { feature: "Ready-made actor / extractor library", them: "Marketplace (community + official)", us: "Curated in-house catalog" },
+      { feature: "Clean markdown output for LLMs", them: "Varies by actor", us: "Native" },
+      { feature: "Domain intelligence (DNS / WHOIS / SSL)", them: "Not offered", us: "Included" },
+      { feature: "Browser automation + sessions", them: "Yes", us: "Included" },
+      { feature: "MCP server for AI agents", them: "Yes", us: "Included" },
+      { feature: "Pricing model", them: "Platform + compute + proxy + per-result", us: "Flat credits · 1/call · PAYG from $5 · refund on failure" },
+      { feature: "Free to start", them: "Free tier", us: "1,000 credits" },
+    ],
+    bestForThem: "Teams that want the broadest possible library of ready-made and community-built actors — including long-tail and highly customized targets — and are comfortable managing actor selection and metered platform billing.",
+    bestForUs: "Teams that want a consistently-maintained catalog plus scrape, intelligence, and automation behind one predictable bill — often a fraction of the cost of stitching actors, platform, and proxy together — with failed calls refunded.",
+    faqs: [
+      { q: "Is Ollagraph cheaper than Apify?", a: "It depends on the workload, and we will not claim one number for every case. Ollagraph uses flat credits — 1 per call, failed calls auto-refunded — with pay-as-you-go from $5 and 1,000 free credits. For mixed workloads that would otherwise stack a platform plan, compute, proxy, and per-result charges, the consolidated bill is often well under half. Compare on your own workload." },
+      { q: "Can Ollagraph replace the Apify actors I use?", a: "For common targets — marketplaces, maps, reviews, social, and dozens of public-data sources — Ollagraph's vertical actors return structured JSON directly. For long-tail or highly customized community actors, evaluate per target; Apify's marketplace is wider, and we would rather you check than take our word." },
+      { q: "How is Apify's pricing different from Ollagraph's?", a: "Apify meters several dimensions — a platform plan, compute units, proxy traffic, and often per-result charges — which gives fine-grained control and a bill that takes some modeling. Ollagraph is flat: 1 credit per call, refunds on failure, pay-as-you-go from $5. The trade is granularity for predictability." },
+      { q: "Does Ollagraph have an MCP server like Apify?", a: "Yes. Ollagraph ships a Model Context Protocol server that exposes its full surface — scrape, extract, intelligence, and actors — so an AI agent can call everything through one token without custom glue code." },
     ],
   },
 ];
