@@ -1,0 +1,179 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "What is the Firecrawl MCP server?",
+    a: "It is Firecrawl's Model Context Protocol server — a small program that exposes Firecrawl's scrape, crawl, map, search, and extract endpoints to an AI client like Claude Desktop, Cursor, or Cline as callable tools. You run it locally, point your client's config at it, and the agent can fetch and convert web pages on its own. It is a clean, focused way to give an agent markdown-from-the-web.",
+  },
+  {
+    q: "What is the best Firecrawl MCP alternative in 2026?",
+    a: "For teams that want more than scrape-and-markdown from one MCP server, Ollagraph is the closest full-stack alternative: its MCP server exposes every Ollagraph endpoint — 212 of them — as tools, so an agent can scrape, crawl, extract structured data, run AEO audits, and pull DNS/WHOIS/SSL intelligence and vertical-actor data through one bearer token. Crawl4AI's MCP is the leading option for self-hosting; Apify's MCP exposes its actor marketplace.",
+  },
+  {
+    q: "How many tools does the Ollagraph MCP server expose?",
+    a: "All 212 Ollagraph API operations, auto-generated from the live OpenAPI spec. Because the server reads the spec at startup, the moment we ship a new endpoint it becomes a new tool — you restart the server and your agent has it, with no manual tool definitions to maintain.",
+  },
+  {
+    q: "How do I add the Ollagraph MCP server to Claude Desktop or Cursor?",
+    a: "Install it with pipx run ollagraph-mcp (or pip install ollagraph-mcp), set OLLAGRAPH_API_KEY, and add a small mcpServers block to your client config pointing at the command. Restart the client and the tools appear in the picker. Full instructions, including the Claude Desktop and Cursor config, are on the ollagraph.com/mcp page.",
+  },
+  {
+    q: "Is the Ollagraph MCP server free?",
+    a: "The server itself is open-source and MIT-licensed, free to install and run. Tool calls draw from your Ollagraph credits, and every account starts with 1,000 free credits and no card — enough to wire it into your agent and run a real evaluation before paying anything. Pricing is pay-as-you-go from $5 thereafter, with failed calls auto-refunded.",
+  },
+  {
+    q: "Can I run the Firecrawl and Ollagraph MCP servers at the same time?",
+    a: "Yes. MCP clients support multiple servers, so you can register both and let the agent pick the right tool. A common setup keeps Firecrawl for markdown-first scraping and adds Ollagraph for the intelligence layer, vertical actors, and structured extraction it does not cover. There is no conflict — each server is its own namespace of tools.",
+  },
+  {
+    q: "Does the Ollagraph MCP server work with Cline, Continue, and other clients?",
+    a: "Yes. It speaks standard MCP over stdio, the same transport Claude Desktop, Cursor, Cline, and Continue use, so the same config shape works across all of them. To poke the tools directly without a client, run it through the MCP Inspector.",
+  },
+];
+---
+<Article
+  title="The best Firecrawl MCP alternative in 2026"
+  description="Firecrawl's MCP server gives your AI agent scrape, crawl, and extract. See how the Ollagraph MCP server compares — 212 tools, one key, intelligence and vertical actors included — and how to switch in minutes."
+  date="2026-06-21"
+  readingTime={13}
+  tags={["MCP", "Firecrawl", "AI agents", "web scraping"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <h2>The short version</h2>
+  <ul>
+    <li><strong>The Firecrawl MCP server</strong> is an excellent, focused way to give an AI agent clean markdown from the web — scrape, crawl, map, search, extract, exposed as tools.</li>
+    <li><strong>Teams look for an alternative</strong> when one MCP server should cover more than scraping: structured data, domain intelligence, vertical extractors, and a predictable bill.</li>
+    <li><strong>The Ollagraph MCP server</strong> exposes all <strong>212</strong> Ollagraph endpoints as tools from one bearer token — auto-generated from the live spec, so new endpoints appear the moment we ship them.</li>
+    <li><strong>Both run side by side.</strong> MCP clients support multiple servers; many teams keep Firecrawl for markdown and add Ollagraph for everything around it.</li>
+    <li><strong>Switching is a config block and a key.</strong> <code>pipx run ollagraph-mcp</code>, set <code>OLLAGRAPH_API_KEY</code>, restart your client. 1,000 free credits, no card.</li>
+  </ul>
+
+  <h2>What an MCP server actually does</h2>
+  <p>The Model Context Protocol, introduced by Anthropic in late 2024, is a small open standard for connecting AI assistants to tools and data. An MCP server is a program that advertises a set of tools — each with a name, a description, and a typed input schema — and answers calls to them. An MCP client, like Claude Desktop, Cursor, Cline, or Continue, reads that list and lets the language model decide which tool to call and with what arguments. The model never sees your credentials; the server holds them and makes the actual request.</p>
+
+  <p>For web data, that means the difference between an agent that can only reason about text you paste in and one that can go fetch a page, convert it, and act on what it finds. A scraping MCP server is the bridge: it turns "read this URL" from a capability you have to build into a tool the agent already has. That is why both Firecrawl and Ollagraph ship one, and why "which MCP server should my agent use" has become a real question in 2026.</p>
+
+  <h2>What the Firecrawl MCP server does well</h2>
+  <p>Credit where it is due. The Firecrawl MCP server is one of the cleanest ways to give an agent web access. It exposes Firecrawl's core endpoints — scrape a single URL to clean markdown, crawl a site, map its links, run a search, and extract structured fields — as a tidy set of tools, and it inherits Firecrawl's genuinely good markdown quality. Install is a single command, the tool descriptions are clear enough that models pick the right one without much prompting, and for the common job of "fetch this page as LLM-ready text," it is reliable and pleasant.</p>
+
+  <p>If your agent's entire web need is markdown for retrieval — read a doc, summarize a page, pull text into a RAG step — the Firecrawl MCP server serves that job well, and you can stop reading here. The reasons teams add or switch to a second server are narrow and specific, and they all come down to one thing: wanting more than markdown from the same tool surface.</p>
+
+  <h2>Where the Ollagraph MCP server goes further</h2>
+  <p>The Ollagraph MCP server is built on the same idea but a wider surface. Instead of a hand-picked set of scraping tools, it reads the live Ollagraph OpenAPI spec at startup and turns <strong>every one of the 212 endpoints</strong> into an MCP tool. That has four practical consequences for an agent.</p>
+
+  <ul>
+    <li><strong>A full intelligence layer, not just pages.</strong> Alongside scrape and crawl, the agent gets DNS, WHOIS, SSL, GeoIP and ASN, tech-stack, contacts, and email verification as tools. When an agent reads a company's site, it can enrich the domain in the same breath — no second server, no second key.</li>
+    <li><strong>Vertical actors.</strong> Dedicated extractors for Amazon, Google Maps, Yelp, YouTube, and dozens of public-data sources return structured JSON in fixed schemas, so the agent gets clean product, place, and review data instead of raw HTML to parse.</li>
+    <li><strong>Structured extraction and AEO audits.</strong> JSON-LD, OpenGraph, and microdata extraction, plus answer-engine-optimization scoring, are tools too — useful for agents that analyze or improve pages, not just read them.</li>
+    <li><strong>One key, one bill, refunds on failure.</strong> Every tool draws from the same credit balance through one bearer token. Calls that fail at the origin are auto-refunded, so the agent only spends credits on results.</li>
+  </ul>
+
+  <p>The auto-generated design matters more than it sounds. Because the server builds its tool list from the spec, you never hand-maintain tool definitions, and the catalog never drifts from the API. Ship a new endpoint on Monday, restart the server, and your agent has the new tool on Monday — the same property that makes the surface broad also keeps it current.</p>
+
+  <h2>Firecrawl MCP vs Ollagraph MCP, side by side</h2>
+  <table>
+    <thead>
+      <tr><th>Capability</th><th>Firecrawl MCP</th><th>Ollagraph MCP</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Scrape URL to clean markdown</td><td>Native, excellent</td><td>Native</td></tr>
+      <tr><td>Full-site crawl</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Tools exposed</td><td>Core scraping set</td><td>All 212 endpoints (auto-generated)</td></tr>
+      <tr><td>Structured data (JSON-LD / OpenGraph)</td><td>Extract endpoint</td><td>Native</td></tr>
+      <tr><td>Domain intelligence (DNS / WHOIS / SSL)</td><td>Not offered</td><td>Included</td></tr>
+      <tr><td>Vertical actors (Amazon, Maps, Yelp)</td><td>Generic scrape</td><td>Dedicated extractors</td></tr>
+      <tr><td>AEO / citation-readiness audits</td><td>Not offered</td><td>Included</td></tr>
+      <tr><td>Auto-syncs new endpoints as tools</td><td>Manual updates</td><td>Reads live OpenAPI spec</td></tr>
+      <tr><td>Auth model</td><td>One API key</td><td>One bearer token</td></tr>
+      <tr><td>Pricing</td><td>Credit subscription</td><td>Flat credits · PAYG from $5 · refund on failure</td></tr>
+      <tr><td>Free to start</td><td>Free credits</td><td>1,000 credits</td></tr>
+      <tr><td>License</td><td>Open source</td><td>MIT, open source</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Install the Ollagraph MCP server</h2>
+  <p>The server is published to PyPI and installs in one line. Set your key, run it, and point your client at it.</p>
+
+<pre><code># Get a key at https://ollagraph.com/signup (free, 1,000 credits)
+export OLLAGRAPH_API_KEY="osk_..."
+
+# Ephemeral (no install) — or: pip install ollagraph-mcp
+pipx run ollagraph-mcp</code></pre>
+
+  <p>For Claude Desktop, add this to <code>claude_desktop_config.json</code> (macOS: <code>~/Library/Application Support/Claude/</code>; Windows: <code>%APPDATA%\Claude\</code>) and restart:</p>
+
+<pre><code>&#123;
+  "mcpServers": &#123;
+    "ollagraph": &#123;
+      "command": "pipx",
+      "args": ["run", "ollagraph-mcp"],
+      "env": &#123; "OLLAGRAPH_API_KEY": "osk_..." &#125;
+    &#125;
+  &#125;
+&#125;</code></pre>
+
+  <p>Cursor, Cline, and Continue use the same JSON shape — each has its own config location. To inspect the tools directly without wiring a client, open the official <a href="https://github.com/modelcontextprotocol" target="_blank" rel="noopener">MCP</a> Inspector with <code>npx @modelcontextprotocol/inspector pipx run ollagraph-mcp</code>. The full walkthrough, including how the Bearer auth is injected so the model never sees your key, lives on the <a href="/mcp">Ollagraph MCP page</a>.</p>
+
+  <h2>Running both servers together</h2>
+  <p>This is not an either/or. MCP clients happily register multiple servers, each its own namespace of tools, and the model chooses among them. A pragmatic 2026 setup is to keep the Firecrawl MCP server for the markdown-first scraping it does well and add the Ollagraph MCP server for the layer around it — intelligence, vertical actors, structured extraction, and audits. The agent calls <code>firecrawl_scrape</code> when it wants clean text and an Ollagraph tool when it needs to enrich a domain or pull structured marketplace data. You lose nothing by adding the second server, and you give the model a wider, sharper toolbox.</p>
+
+  <p>If you would rather consolidate to one server and one bill, that is the other reason teams switch outright: a single key, a single credit balance, and one place to reason about cost, instead of two vendors metering separately.</p>
+
+  <h2>When to choose which</h2>
+  <p><strong>Choose the Firecrawl MCP server if</strong> your agent's web need is squarely markdown — read pages, crawl docs, feed a RAG step — and you value a small, focused tool surface you already know.</p>
+
+  <p><strong>Choose the Ollagraph MCP server if</strong> your agent needs more than markdown from one place: structured data, DNS/WHOIS/SSL intelligence, vertical actors, and AEO audits, behind one key and one predictable bill, with the tool list that auto-tracks the API. And if you are not sure, register both — the cost of trying is a config block and a restart.</p>
+
+  <h2>What changes when your agent has the whole toolbox</h2>
+  <p>The abstract case for a broader MCP server is easy to nod along to and easy to forget. It is clearer through the agents people actually build, where the gap between "can fetch a page" and "can finish the job" shows up as extra servers, extra keys, and glue code.</p>
+
+  <p><strong>The research agent.</strong> A research assistant is asked to profile a company. With a scrape-only server it reads the company's site and summarizes the marketing copy. With the full toolbox it reads the site, then in the same turn resolves the domain's DNS and mail records, checks the SSL certificate and its subject alternative names for related subdomains, pulls the WHOIS creation date as a maturity signal, and extracts the contact and social footprint — returning a profile, not a paraphrase. None of that needed a second server or a second key; the model simply called more tools.</p>
+
+  <p><strong>The e-commerce monitoring agent.</strong> A pricing agent needs structured product data from a marketplace on a schedule. A generic scrape hands it raw HTML to parse, and the parser breaks every time the marketplace reshuffles its markup. A vertical actor returns the product, price, and review fields in a fixed schema, so the agent gets clean data and the brittle per-site parser disappears. When the agent later needs to watch a different marketplace, it is another tool call, not another integration project.</p>
+
+  <p><strong>The AEO agent.</strong> A content-operations agent is asked to make a page more likely to be cited by answer engines. With the full surface it audits the page's citation-readiness, simulates how named AI crawlers fetch it, checks the structured-data coverage, and returns a ranked list of fixes — work that has nothing to do with scraping a third-party site and everything to do with the agent having audit tools in the same toolbox. This is the case that a markdown-only server cannot reach at all.</p>
+
+  <p>The pattern across all three is the same: the value is not any single extra tool, it is that the model can <em>compose</em> them in one reasoning loop without you pre-wiring the combinations. A wider, consistent tool surface is what makes an agent feel like it understands the web rather than just reading it.</p>
+
+  <h2>Other Firecrawl MCP alternatives worth knowing</h2>
+  <p>Ollagraph is not the only option, and a fair page names the field. Two others come up most often.</p>
+
+  <p><strong>Crawl4AI's MCP</strong> is the leading choice for teams that want to self-host. Crawl4AI is an open-source Python library built for AI data pipelines, and exposing it over MCP gives you Firecrawl-style markdown from infrastructure you run and control, for the cost of that infrastructure. The trade is the usual self-host trade: you own the proxies, the browser fleet, and the upkeep as target sites change. For teams with the engineering appetite and a control requirement, it is an excellent, free foundation.</p>
+
+  <p><strong>Apify's MCP</strong> exposes its actor marketplace to agents, which means breadth: thousands of community and official actors become callable, including long-tail and highly customized targets. If the defining need is the widest possible library of ready-made scrapers, that reach is hard to match, and the marketplace model is the reason. Where it differs from a curated catalog is consistency and billing shape — actor quality and schema vary by author, and usage is metered across more than one dimension — so it rewards teams comfortable selecting and managing actors. The wider <a href="/vs/apify">Ollagraph vs Apify</a> page covers that trade in detail.</p>
+
+  <p>The honest summary: Crawl4AI's MCP if you want to self-host, Apify's MCP if you want the marketplace's breadth, and the Ollagraph MCP server if you want a curated full-stack surface — scrape, intelligence, actors, and audits — behind one managed key.</p>
+
+  <h2>How the auto-generated tool surface works, and why it stays current</h2>
+  <p>The reason the Ollagraph MCP server exposes 212 tools without 212 hand-written definitions is worth understanding, because it is also why the surface never drifts from the API. At startup the server fetches the live OpenAPI spec from <code>api.ollagraph.com/openapi.json</code> and builds one MCP tool per operation. Each tool inherits its description from the operation's summary and its input schema from the request model, so the text the model reads to choose a tool is the same documentation a human reads — no separate, stale copy to maintain.</p>
+
+  <p>Two design choices make this pleasant in practice. Tool names are cleaned from the spec's operation identifiers into short, readable forms — <code>scrape</code>, <code>extract_clean</code>, <code>aeo_page_audit</code> — rather than the verbose machine identifiers, so the model picks among names that read like intentions. And authentication is handled entirely server-side: you set <code>OLLAGRAPH_API_KEY</code> once, the server injects the Bearer header on every outbound call, and the language model never sees the credential. That last point matters for safety — a tool surface the model can call is not a surface that can leak your key.</p>
+
+  <p>The payoff is that currency is free. When the API ships a new endpoint, you restart the server and the agent has a new tool, with no release on the MCP side and no schema to update by hand. The catalog is broad because it is generated, and it stays correct for the same reason. You can verify any of this before trusting an agent with it by running the server through the official MCP Inspector, which lists every tool and lets you fire test calls and watch the raw protocol traffic.</p>
+
+  <h2>Sources &amp; further reading</h2>
+  <p>The standards and research behind agent tool use and the web data these MCP servers move, for readers who want the primary sources:</p>
+  <ul>
+    <li><a href="https://en.wikipedia.org/wiki/Large_language_model" target="_blank" rel="noopener">Large language models</a> (Wikipedia) — the models an MCP server hands tools to.</li>
+    <li><a href="https://arxiv.org/abs/2302.04761" target="_blank" rel="noopener">Toolformer: Language Models Can Teach Themselves to Use Tools</a> (Schick et al., 2023) — the research line behind models calling APIs, which MCP standardizes.</li>
+    <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the robots.txt standard the scraping tools on both servers should honor.</li>
+    <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format an agent extracts once it has fetched a page.</li>
+  </ul>
+
+  <h2>Migrating from the Firecrawl MCP server: a checklist</h2>
+  <p>If you decide to switch or add Ollagraph, the move is mechanical — configuration, not code. A short checklist:</p>
+  <ul>
+    <li><strong>Get a key.</strong> Sign up for 1,000 free credits at <a href="https://app.ollagraph.com/signup">ollagraph.com/signup</a> — no card.</li>
+    <li><strong>Install the server.</strong> <code>pipx run ollagraph-mcp</code> for an ephemeral run, or <code>pip install ollagraph-mcp</code> for a persistent one.</li>
+    <li><strong>Add the config block.</strong> Drop the <code>mcpServers</code> entry into your client config with <code>OLLAGRAPH_API_KEY</code> in <code>env</code> — and keep your Firecrawl entry if you are running both side by side.</li>
+    <li><strong>Restart the client.</strong> The tools appear in the picker. Verify the raw list first with the MCP Inspector if you want to see exactly what the model will see.</li>
+    <li><strong>Adjust prompts only if needed.</strong> Tool names differ — <code>scrape</code>, <code>extract_clean</code>, <code>aeo_page_audit</code> rather than the <code>firecrawl_</code> set — but because the model reads tool descriptions to choose, most agents adapt with no prompt changes at all.</li>
+    <li><strong>Re-map the economics.</strong> Switch from thinking in per-feature credits to flat one-credit calls with refunds on failure, and size against your real call volume.</li>
+  </ul>
+  <p>Most teams are calling Ollagraph tools from their agent within a few minutes. There is no SDK to adopt and no glue code to write — the MCP layer is the integration.</p>
+
+  <h2>The bottom line</h2>
+  <p>The Firecrawl MCP server is a fine tool and a fair default for markdown-first agents. The reason to reach for an alternative is breadth: when one MCP server should give your agent the whole web-data toolbox — scrape, crawl, structured extraction, intelligence, vertical actors, and audits — behind one key, one bill, and a tool list that stays current automatically, that is what the Ollagraph MCP server was built for. Start with 1,000 free credits and no card: <code>pipx run ollagraph-mcp</code>, or read the setup on the <a href="/mcp">MCP page</a> and compare the full surface on the <a href="/vs/firecrawl">Ollagraph vs Firecrawl</a> page.</p>
+</Article>

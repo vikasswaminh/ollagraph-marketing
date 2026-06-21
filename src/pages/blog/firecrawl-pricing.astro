@@ -1,0 +1,153 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "How much does Firecrawl cost in 2026?",
+    a: "Firecrawl prices on monthly subscription plans measured in credits, scaling from a free tier up through paid tiers as your monthly credit volume grows, with an enterprise option above that. Because the exact numbers change, treat any figure you read — including ours — as indicative and confirm the current plans on Firecrawl's pricing page. The structural facts that matter for budgeting are steadier: it is a monthly subscription, credits are consumed per call, and different features consume credits at different rates.",
+  },
+  {
+    q: "Does Firecrawl have a free plan?",
+    a: "Yes, Firecrawl offers a free tier with a starting allotment of credits and no card required, which is enough to evaluate the core scrape and crawl endpoints. Paid plans add more monthly credits and higher limits. As with most credit systems, the free allotment is sized for evaluation rather than production volume.",
+  },
+  {
+    q: "Does Firecrawl offer pay-as-you-go pricing?",
+    a: "Firecrawl's model is monthly-subscription credit plans rather than true pay-per-use, and its own FAQ has stated it does not offer a pay-per-use plan. If your usage is spiky or seasonal, that matters: you size a monthly plan for your peak and pay for it in quiet months too. Ollagraph, by contrast, offers pay-as-you-go from $5 with no monthly commitment alongside subscription options.",
+  },
+  {
+    q: "What are Firecrawl credits and credit multipliers?",
+    a: "A credit is Firecrawl's unit of usage, and a 'credit' is not always 'one API call.' Core endpoints like scrape, crawl, map, and monitor cost one credit per page, but heavier features cost more — Firecrawl documents higher credit costs for search, browser interaction, stealth-mode requests, and extraction. The effect is that two workloads with the same call count can cost very different amounts depending on which features they use, so model your real feature mix, not just your page count.",
+  },
+  {
+    q: "Is there a cheaper Firecrawl alternative?",
+    a: "It depends on your workload, and the honest answer is to compare on your own. Ollagraph uses flat credits — one per call, failed calls auto-refunded — with pay-as-you-go from $5 and 1,000 free credits to start, and the same credits cover scraping, structured extraction, intelligence, and vertical actors. For mixed or spiky workloads, and for teams that would otherwise pay multipliers on stealth or extraction, the consolidated flat-credit bill often lands lower. Run both on your real URLs before deciding.",
+  },
+  {
+    q: "Do Firecrawl credits roll over between months?",
+    a: "On the subscription plans, monthly credits generally do not roll over — unused credits expire at the end of the billing cycle. That is standard for subscription credit models, and it is the main reason spiky usage is expensive on them: you provision for the peak month and forfeit the slack in quiet ones. Pay-as-you-go avoids that by charging only for what you use.",
+  },
+];
+---
+<Article
+  title="Firecrawl pricing in 2026: plans, credit multipliers, and a cheaper alternative"
+  description="How Firecrawl pricing actually works in 2026 — the credit model, the per-feature multipliers to watch, what is not included, and how a flat pay-as-you-go alternative compares on real workloads."
+  date="2026-06-21"
+  readingTime={12}
+  tags={["Firecrawl", "pricing", "web scraping", "API"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <h2>The short version</h2>
+  <ul>
+    <li><strong>Firecrawl prices on monthly subscription credit plans</strong>, from a free tier upward, and it does not offer true pay-per-use.</li>
+    <li><strong>A credit is not always one call.</strong> Core scrape/crawl/map cost one credit per page, but search, browser interaction, stealth mode, and extraction cost more — so your bill tracks your feature mix, not just your page count.</li>
+    <li><strong>Monthly credits generally do not roll over</strong>, which makes spiky usage expensive: you provision for your peak month and forfeit the rest.</li>
+    <li><strong>The cheaper alternative depends on workload.</strong> Ollagraph uses flat credits — one per call, refunds on failure — with pay-as-you-go from $5 and 1,000 free credits, covering scraping, extraction, intelligence, and actors from one balance.</li>
+    <li><strong>Confirm current numbers on the vendor's page</strong> and, more importantly, compare both on your own URLs.</li>
+  </ul>
+
+  <h2>How Firecrawl pricing works</h2>
+  <p>Firecrawl is a subscription product priced in credits. You pick a monthly plan, the plan grants a pool of credits, and each API call draws from that pool. Plans scale from a free tier — enough to evaluate the core endpoints — up through paid tiers that add more monthly credits and higher concurrency, with an enterprise tier above that. The model is clean and familiar, and for steady, predictable volume it is easy to reason about: estimate your monthly pages, pick the plan that covers them, done.</p>
+
+  <p>Two structural details decide whether that estimate holds. The first is that the credit pool is monthly and generally does not roll over — credits you do not use expire. The second, and the one that surprises teams, is that a credit is a unit of cost, not a unit of work, and different features burn credits at different rates. Both are normal for credit-subscription products. Both also mean the headline plan price is the start of the cost conversation, not the end of it.</p>
+
+  <p>Because Firecrawl's exact prices change over time, we will not pin a number to this page and ask you to trust it. The right source for current plans is <a href="https://www.firecrawl.dev/pricing" target="_blank" rel="noopener">Firecrawl's own pricing page</a>. What follows is the part that does not change month to month: how the credit model behaves, and what to model before you commit.</p>
+
+  <h2>The credit multipliers to model</h2>
+  <p>This is the most important paragraph for your budget. In Firecrawl's credit system, the core endpoints — scrape, crawl, map, monitor — cost roughly one credit per page, but heavier capabilities cost more. Firecrawl documents higher credit costs for running a search, for browser interaction measured per minute, for stealth-mode requests against protected sites, and for extraction. The exact multipliers are on Firecrawl's pricing and docs, and they are worth reading line by line, because they change the math.</p>
+
+  <p>Here is why it matters. Imagine two teams that each make 100,000 calls a month. Team A scrapes plain content pages: roughly 100,000 credits. Team B scrapes the same volume but mostly against bot-protected sites that need stealth mode, and runs an extraction step on each: with per-feature multipliers, that same call count can cost several times more. Same headline workload, very different bill. None of this is hidden — it is documented — but it is easy to miss when you size a plan from page count alone, and it is the single most common reason a Firecrawl bill comes in higher than expected.</p>
+
+  <p>The takeaway is not that multipliers are bad; they give fine-grained control and let light users pay less. The takeaway is to model your real feature mix — how much stealth, how much extraction, how much search — and not just your page count, before you choose a plan.</p>
+
+  <h2>What the plan price does not include</h2>
+  <p>Beyond the per-feature credit costs, a few things are worth accounting for when you compare total cost of ownership rather than sticker price.</p>
+
+  <ul>
+    <li><strong>Failed calls.</strong> Confirm how a vendor treats requests that fail at the origin — a bot wall, a timeout, a 5xx. On a credit model, a failed fetch that still consumes a credit is a real line item at scale. (Ollagraph auto-refunds failed calls, so you only pay for results.)</li>
+    <li><strong>The capabilities you would add a second vendor for.</strong> If your pipeline also needs domain intelligence — DNS, WHOIS, SSL, tech-stack — or dedicated marketplace extractors, a markdown-first scraper does not cover those, and the second vendor's bill belongs in your comparison.</li>
+    <li><strong>The slack in spiky months.</strong> Because monthly credits do not roll over, a workload that spikes in one month and idles the next pays for the peak every month on a subscription. Pay-as-you-go charges only for the spike.</li>
+  </ul>
+
+  <h2>The cheaper alternative depends on your workload — here is the honest comparison</h2>
+  <p>We are Ollagraph, so weigh this section accordingly — and then go test it yourself, which is the only comparison that counts. Ollagraph prices differently in three ways that matter most exactly where Firecrawl's model gets expensive.</p>
+
+  <ul>
+    <li><strong>Flat credits, no multipliers.</strong> One credit per call, across scrape, crawl, structured extraction, intelligence, and vertical actors. There is no separate stealth multiplier or extraction multiplier to model — the escalation to a stealth browser happens inside the managed engine and the call is still one credit.</li>
+    <li><strong>Pay-as-you-go from $5.</strong> No monthly commitment required. Spiky and seasonal workloads pay for the spike and nothing in the quiet months, instead of provisioning for the peak all year. Subscription options exist too if steady volume suits you better.</li>
+    <li><strong>Refund on failure.</strong> If the upstream fetch errors, the credit is refunded automatically before the response returns. You pay for successful results, not attempts.</li>
+  </ul>
+
+  <p>On top of the model, the same credits buy a wider surface: clean markdown and structured JSON-LD, a domain intelligence layer, vertical actors for Amazon, Maps, and Yelp, and an MCP server — so workloads that would otherwise span two or three vendors consolidate to one balance and one bill. Ollagraph's credit packs run from $5 to $59, and every account starts with 1,000 free credits and no card, which is enough to run a real side-by-side before you pay anything.</p>
+
+  <h2>Firecrawl vs Ollagraph: pricing model at a glance</h2>
+  <table>
+    <thead>
+      <tr><th>Dimension</th><th>Firecrawl</th><th>Ollagraph</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Billing model</td><td>Monthly subscription, credits</td><td>Flat credits · subscription or PAYG</td></tr>
+      <tr><td>Pay-as-you-go</td><td>Not offered</td><td>Yes, from $5</td></tr>
+      <tr><td>Credit cost per call</td><td>Varies by feature (multipliers)</td><td>1 per call, flat</td></tr>
+      <tr><td>Stealth / extraction surcharge</td><td>Higher credit cost</td><td>Included in 1 credit</td></tr>
+      <tr><td>Failed calls</td><td>Check current policy</td><td>Auto-refunded</td></tr>
+      <tr><td>Monthly credits roll over</td><td>Generally no</td><td>PAYG has no monthly expiry</td></tr>
+      <tr><td>Intelligence / actors in the same credits</td><td>Not offered</td><td>Included</td></tr>
+      <tr><td>Free to start</td><td>Free tier</td><td>1,000 credits, no card</td></tr>
+    </tbody>
+  </table>
+
+  <h2>How to compare on your own workload</h2>
+  <p>The only number that matters is the one your traffic produces. A clean way to get it: take a representative sample of the URLs you actually scrape — including the hard, bot-protected ones and any that need extraction — and run the same batch through both vendors on their free tiers. Record total credits consumed, how failures were billed, and whether you needed a second vendor for intelligence or structured data. Multiply out to your monthly volume. Three afternoons of testing will tell you more than any pricing table, including this one.</p>
+
+  <h2>Worked examples: three teams, three very different bills</h2>
+  <p>Pricing pages compare badly because the same plan costs wildly different amounts depending on what you actually do. These three sketches are directional, not quotes — the point is the shape of the bill, not a number — and they show why "how much does it cost" has no single answer on a multiplier model.</p>
+
+  <p><strong>Team one: the markdown-first RAG builder.</strong> They scrape a few hundred thousand plain content pages a month — documentation, articles, blog posts — and convert each to markdown for retrieval. No stealth, no extraction step, no protected sites. This is the workload credit subscriptions are designed for: roughly one credit per page, predictable volume, easy to size a plan against. On both Firecrawl and a flat-credit model the bill is close, and either vendor serves them well. If this is your entire shape, pricing is not your deciding factor — output quality and developer experience are.</p>
+
+  <p><strong>Team two: the e-commerce monitor on protected sites.</strong> They scrape the same volume, but against marketplaces and retail sites that fight bots, so most requests need stealth mode, and they run an extraction step on every page to pull price and inventory fields. On a multiplier model, that same page count can cost several times the markdown team's bill, because stealth and extraction each carry a higher credit cost. On a flat-credit model where stealth escalation is included in the single credit and extraction is its own one-credit call, the same workload stays close to one credit per operation. This is the team for whom the pricing model, not the page count, decides the bill.</p>
+
+  <p><strong>Team three: the mixed agent platform.</strong> They scrape, they extract, they enrich domains with DNS and WHOIS, and they pull marketplace data — and their volume spikes hard during their customers' campaigns and idles between them. They feel two costs a single scraper's pricing page does not show: the second vendor they need for the intelligence layer, and the monthly subscription they size for their peak and pay for in the quiet months. A consolidated, pay-as-you-go model collapses both — one balance for every capability, and a bill that follows the spike down as well as up. This is the team that saves the most by switching, and the least likely to see it from a sticker price.</p>
+
+  <h2>How scraping-API pricing models differ across the category</h2>
+  <p>Firecrawl's credit subscription is one of several models in the space, and knowing the shapes helps you read any vendor's page faster. There are roughly four.</p>
+
+  <ul>
+    <li><strong>Subscription credits</strong> (Firecrawl, ScrapingBee, Diffbot). You buy a monthly pool of credits; calls draw it down; unused credits usually expire. Clean for steady volume, expensive for spiky usage, and worth watching for per-feature multipliers.</li>
+    <li><strong>Per-request</strong> (ScraperAPI, Crawlbase in part). You pay per successful request, often with a multiplier for rendering or premium proxies. Simple to reason about; the rendering multiplier is the line to read.</li>
+    <li><strong>Platform plus compute</strong> (Apify). You pay for a platform plan, plus compute units, plus proxy traffic, sometimes plus per-result. It gives fine-grained control and a marketplace's breadth, and the bill takes some modeling because it meters several dimensions at once. Apify's marketplace pioneered this, and it suits teams that want maximum flexibility and are comfortable doing the modeling.</li>
+    <li><strong>Flat credits with pay-as-you-go</strong> (Ollagraph). One credit per call regardless of feature, no monthly commitment required, and failed calls refunded. It trades the fine-grained control of a multiplier model for predictability — easy to forecast, and forgiving of spiky and mixed workloads.</li>
+  </ul>
+
+  <p>None of these is universally cheapest; each is cheapest for a different shape of work. Steady markdown volume is happy on a subscription. Maximum actor breadth lives on the platform-plus-compute model. Spiky, mixed, protected-site workloads tend to favor flat credits with pay-as-you-go. Match the model to your traffic, not the other way around.</p>
+
+  <h2>A framework for reading any scraping API's pricing</h2>
+  <p>Whatever vendor you evaluate — including this one — five questions turn a pricing page into a real estimate. Ask them in order.</p>
+
+  <ul>
+    <li><strong>What is one unit, really?</strong> Is a credit one call, or does it vary by feature? Find the multipliers before anything else; they move the bill more than the plan tier does.</li>
+    <li><strong>How are failures billed?</strong> A request that hits a bot wall or times out — does it consume a unit? At scale on hard targets, failed-call policy is a material cost, and the answer is often buried.</li>
+    <li><strong>Do unused units expire?</strong> Monthly rollover or not decides whether spiky usage pays for its peak every month. If your traffic is uneven, this is the question that matters most.</li>
+    <li><strong>What is not included?</strong> If you also need intelligence, structured extraction, or vertical data, price the second vendor you would add, and put it in the same comparison.</li>
+    <li><strong>Can you test before you commit?</strong> A free tier large enough to run your real URLs is worth more than any published rate. If a vendor will not let you measure, that is itself a signal.</li>
+  </ul>
+
+  <p>Run those five questions against Firecrawl's page, against this one, and against any alternative you are weighing, and the right answer for your workload usually becomes obvious — far more reliably than from comparing headline plan prices.</p>
+
+  <h2>Sources &amp; further reading</h2>
+  <p>The primary sources behind the model and the standards these tools work within:</p>
+  <ul>
+    <li><a href="https://www.firecrawl.dev/pricing" target="_blank" rel="noopener">Firecrawl pricing page</a> — the authoritative source for their current plans and per-feature credit costs.</li>
+    <li><a href="https://en.wikipedia.org/wiki/Web_scraping" target="_blank" rel="noopener">Web scraping</a> (Wikipedia) — the category both tools serve, with its technical and legal background.</li>
+    <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the robots.txt standard a responsible scraper honors, whichever vendor you pick.</li>
+    <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format an extraction step parses.</li>
+  </ul>
+
+  <h2>When Firecrawl's subscription is the right call</h2>
+  <p>Switching is not the answer for everyone, and a fair comparison says so plainly. Firecrawl's credit subscription is genuinely the better fit in a few real cases, and recognizing them saves you a migration you do not need.</p>
+  <p>If your volume is <strong>steady and predictable</strong> — roughly the same number of pages every month, with little seasonality — a subscription's fixed cost is easy to budget and the rollover question never bites you. If your workload is <strong>markdown-only on unprotected pages</strong>, you never touch the stealth or extraction multipliers, so the multiplier model never works against you and you pay close to one credit per page either way. And if you are <strong>already integrated and happy</strong>, the switching cost — small as it is — still has to clear a bar; "our bill is predictable and we like the product" is a perfectly good reason to stay put.</p>
+  <p>The case for an alternative is specific, not universal: spiky or seasonal traffic, heavy stealth or extraction usage, or a need for the intelligence and vertical-actor data a markdown-first scraper does not cover. If none of those describe you, Firecrawl's pricing is doing right by you, and the honest recommendation is to keep what works. The goal of this page is an accurate decision, not a switch for its own sake.</p>
+
+  <h2>The bottom line</h2>
+  <p>Firecrawl's pricing is a clean credit subscription that rewards steady, markdown-first volume, as long as you model two things: the per-feature multipliers, and the monthly credits that do not roll over. Where it gets expensive is exactly where many real workloads live — stealth against protected sites, extraction on every page, and spiky traffic. If that is your shape, a flat-credit, pay-as-you-go model that refunds failures and folds intelligence and actors into the same balance is worth pricing out. Start with 1,000 free credits and no card, compare on your own URLs, and read the full feature comparison on the <a href="/vs/firecrawl">Ollagraph vs Firecrawl</a> page or the wider <a href="/blog/firecrawl-alternatives">Firecrawl alternatives</a> guide.</p>
+</Article>
