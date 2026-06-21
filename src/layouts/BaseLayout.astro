@@ -82,6 +82,31 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
          browser start the GET before it has even parsed styles.css. -->
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-tight-latin.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin.woff2" crossorigin />
+
+    <!-- Critical nav CSS, inlined so the grouped dropdowns collapse and the mobile
+         toggle stays hidden on the very first paint — before styles.css applies.
+         Without this, an uncached first load briefly shows every dropdown item
+         expanded as a flat unstyled list (nav FOUC). styles.css reinforces these.
+         is:inline keeps Astro from scoping/bundling it — it must stay raw in <head>
+         and match the set:html nav markup (which carries no scope attribute). -->
+    <style is:inline>
+      .nav-inner{height:64px;display:flex;align-items:center;gap:32px}
+      .nav-links{display:flex;align-items:center;gap:4px;flex:1}
+      .nav-right{display:flex;align-items:center;gap:8px}
+      .nav-group{position:relative;display:inline-flex}
+      .nav-dropdown{position:absolute;top:calc(100% + 6px);left:0;display:none}
+      .nav-group:hover .nav-dropdown,.nav-group:focus-within .nav-dropdown{display:flex}
+      .nav-toggle,.nav-burger,.nav-mobile-cta{display:none}
+      @media (max-width:920px){
+        .nav-links{display:none;position:absolute;top:64px;left:0;right:0;flex-direction:column;align-items:stretch}
+        .nav-toggle:checked ~ .nav-links{display:flex}
+        .nav-group{display:block}
+        .nav-dropdown{position:static;display:flex}
+        .nav-burger{display:inline-flex}
+        .nav-hide-sm{display:none}
+      }
+    </style>
+
     <link rel="stylesheet" href="/styles.css" />
 
     <!-- Structured data (JSON-LD): Organization + WebSite sitewide, plus any page-specific schema -->
