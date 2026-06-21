@@ -1,0 +1,53 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+
+// Free, public tools powered by the Ollagraph API. Top-of-funnel: each ranks on
+// its own intent, demonstrates a paid endpoint, and converts into a signup that
+// runs the real thing on free credits. Add an entry here only when the page exists.
+const tools = [
+  {
+    href: "/tools/citation-readiness",
+    name: "AI Citation-Readiness Checker",
+    blurb: "Score whether a page is ready to be read, trusted, and cited by AI answer engines like ChatGPT, Perplexity, and Claude — and see what to fix.",
+    tag: "AEO",
+  },
+];
+
+const collectionLd = {
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  name: "Free web tools — Ollagraph",
+  description: "Free tools for AI web data and answer-engine optimization, powered by the Ollagraph API.",
+  url: "https://ollagraph.com/tools/",
+};
+---
+<BaseLayout
+  title="Free tools for AI web data & AEO — Ollagraph"
+  description="Free, no-cost tools powered by the Ollagraph API: check your site's AI citation-readiness and more. Run them on 1,000 free credits."
+  jsonLd={[collectionLd]}
+>
+  <Fragment set:html={navHtml('tools')} />
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:720px;">
+      <span class="badge badge-mute" style="margin-bottom:14px;">FREE TOOLS</span>
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Free web tools.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        Small, focused tools powered by the Ollagraph API. Run them free — no card — and graduate to
+        the full API when you're ready.
+      </p>
+    </div>
+  </section>
+  <section class="section-tight">
+    <div class="container" style="max-width:760px; display:flex; flex-direction:column; gap:16px;">
+      {tools.map((t) => (
+        <a class="recipe-card" href={t.href}>
+          <span class="badge badge-mute" style="margin-bottom:8px;">{t.tag}</span>
+          <h3 style="font-size:19px; margin:0 0 8px;">{t.name}</h3>
+          <p>{t.blurb}</p>
+        </a>
+      ))}
+    </div>
+  </section>
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

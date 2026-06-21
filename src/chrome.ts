@@ -54,6 +54,7 @@ const NAV: (Group | Leaf)[] = [
   },
   {
     label: "Resources", key: "resources", items: [
+      { label: "Free tools", href: "/tools",     key: "tools" },
       { label: "Recipes",   href: "/recipes",   key: "recipes" },
       { label: "Blog",      href: "/blog",      key: "blog" },
       { label: "Changelog", href: "/changelog", key: "changelog" },
@@ -150,6 +151,7 @@ export function footerHtml(): string {
         { label: "Pricing",        href: "/pricing" },
         { label: "Enterprise",     href: "/enterprise" },
         { label: "Compare",        href: "/vs" },
+        { label: "Free tools",     href: "/tools" },
       ],
     },
     {
