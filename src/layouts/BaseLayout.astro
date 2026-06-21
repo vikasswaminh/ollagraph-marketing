@@ -4,6 +4,14 @@ const { title, description = "Web infrastructure for AI agents. 212 endpoints ac
 const ogImage = new URL("/og-image.svg", Astro.site || "https://ollagraph.com").toString();
 const canonicalUrl = canonical || Astro.url.href;
 
+// E-E-A-T / AEO citation signals, sitewide: a named author byline and a
+// last-updated timestamp (the static build time — the page is regenerated on
+// every deploy). Both are read by answer engines and by our own
+// /v1/aeo/citation-readiness audit.
+const siteAuthor = "Amit Sharma";
+const siteLocation = { "@type": "PostalAddress", addressLocality: "New York", addressRegion: "NY", addressCountry: "US" };
+const buildIso = new Date().toISOString();
+
 // Sitewide structured data (every page). Page-specific schema (SoftwareApplication,
 // FAQPage, Article, HowTo, BreadcrumbList) is passed in via the `jsonLd` prop.
 const orgLd = {
@@ -14,6 +22,8 @@ const orgLd = {
   logo: "https://ollagraph.com/favicon.svg",
   description: "Web infrastructure for AI agents — fetch, extract, audit, and reason about the live web through one API.",
   email: "hello@ollagraph.com",
+  address: siteLocation,
+  founder: { "@type": "Person", name: siteAuthor, jobTitle: "Founder", address: siteLocation },
   contactPoint: [
     { "@type": "ContactPoint", contactType: "customer support", email: "support@ollagraph.com", availableLanguage: "en" },
     { "@type": "ContactPoint", contactType: "security", email: "security@ollagraph.com", availableLanguage: "en" },
@@ -35,6 +45,7 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="author" content={siteAuthor} />
     <link rel="canonical" href={canonicalUrl} />
 
     <!-- Favicon -->
@@ -48,6 +59,8 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
     <meta property="og:image" content={ogImage} />
     <meta property="og:site_name" content="Ollagraph" />
     <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:updated_time" content={buildIso} />
+    <meta property="article:author" content={siteAuthor} />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
