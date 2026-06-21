@@ -1,0 +1,181 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+
+const url = "https://ollagraph.com/tools/llms-txt-generator/";
+
+const faqs = [
+  { q: "What is an llms.txt file?", a: "llms.txt is a simple, emerging convention: a Markdown file at the root of your domain (yoursite.com/llms.txt) that points AI tools and answer engines at your most important, canonical content in a clean, link-first format. Think of it as a curated map for machines — a complement to robots.txt and sitemap.xml, optimized for how language models read a site." },
+  { q: "Is this llms.txt generator free?", a: "Yes, completely. It runs entirely in your browser — nothing you type is sent to a server, and there is no signup. Fill in your site details, generate, and copy or download the file." },
+  { q: "Where do I put the llms.txt file?", a: "At the root of your domain, served at https://yoursite.com/llms.txt as plain text or Markdown. Some teams also publish an expanded llms-full.txt with the actual content inlined; this generator produces the standard link-first llms.txt." },
+  { q: "Does llms.txt actually help with AI citations?", a: "It is a convention, not a guaranteed ranking factor — no major engine is known to require it. But it is cheap to publish and easy to maintain, and it makes your canonical content unambiguous to the tools that do read it. Treat it as a low-cost hedge while the convention settles, alongside the structural signals that matter more: crawlability, structured data, and clear answer-first content." },
+  { q: "How is llms.txt different from robots.txt and sitemap.xml?", a: "robots.txt tells crawlers what they may access; sitemap.xml enumerates every URL for discovery; llms.txt curates the handful of pages you most want an AI to read and cite, with human-readable context. They are complementary — publish all three." },
+];
+
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebApplication", name: "llms.txt Generator", applicationCategory: "DeveloperApplication", operatingSystem: "Web", url, description: "Free browser-based generator for a valid llms.txt file — the Markdown convention that points AI tools at your canonical content.", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, provider: { "@type": "Organization", name: "Ollagraph", url: "https://ollagraph.com" } },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Free tools", item: "https://ollagraph.com/tools/" },
+    { "@type": "ListItem", position: 3, name: "llms.txt Generator", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+
+const field = "width:100%; padding:11px 13px; border-radius:10px; border:1px solid var(--border); background:var(--surface, rgba(255,255,255,0.03)); color:inherit; font-size:14.5px;";
+const lbl = "display:block; font-size:13px; color:var(--text-muted); margin:14px 0 6px;";
+---
+<BaseLayout
+  title="Free llms.txt Generator — make an llms.txt for AI crawlers | Ollagraph"
+  description="Free, browser-based llms.txt generator. Create a valid llms.txt file that points ChatGPT, Perplexity, and Claude at your canonical content. No signup, runs locally."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('tools')} />
+
+  <main class="article">
+    <span class="badge badge-mute" style="margin-bottom:14px;">FREE TOOL</span>
+    <h1 class="h-display h-1">llms.txt generator</h1>
+    <p class="article-lede">
+      Build a valid <code class="text-mono">llms.txt</code> — the Markdown convention that hands AI tools
+      and answer engines a clean map of your best content. Fill in the fields, generate, copy. It runs
+      entirely in your browser; nothing is uploaded.
+    </p>
+
+    <div style="max-width:680px; margin-top:20px;">
+      <label style={lbl}>Site name <span style="color:var(--text-dim)">(required)</span></label>
+      <input id="f-name" type="text" placeholder="Acme Docs" style={field} />
+
+      <label style={lbl}>One-line summary</label>
+      <input id="f-summary" type="text" placeholder="Everything developers need to build on the Acme API." style={field} />
+
+      <label style={lbl}>Optional details paragraph</label>
+      <textarea id="f-details" rows="2" placeholder="A sentence or two of context an AI should know before reading the links." style={field}></textarea>
+
+      <label style={lbl}>Section 1 name</label>
+      <input id="s1-name" type="text" value="Docs" style={field} />
+      <label style={lbl}>Section 1 links — one per line: <code class="text-mono">Title | https://url | optional note</code></label>
+      <textarea id="s1-links" rows="4" placeholder={"Quickstart | https://acme.com/docs/quickstart | Start here\nAPI reference | https://acme.com/docs/api"} style={field}></textarea>
+
+      <label style={lbl}>Section 2 name <span style="color:var(--text-dim)">(optional)</span></label>
+      <input id="s2-name" type="text" placeholder="Guides" style={field} />
+      <label style={lbl}>Section 2 links</label>
+      <textarea id="s2-links" rows="3" placeholder="Title | https://url | note" style={field}></textarea>
+
+      <label style={lbl}>Optional section <span style="color:var(--text-dim)">(secondary links, by convention)</span></label>
+      <textarea id="opt-links" rows="2" placeholder="Changelog | https://acme.com/changelog" style={field}></textarea>
+
+      <div style="display:flex; gap:10px; margin-top:18px; flex-wrap:wrap;">
+        <button id="gen" class="btn btn-primary btn-lg" type="button">Generate llms.txt</button>
+        <button id="copy" class="btn btn-secondary" type="button" hidden>Copy</button>
+        <button id="dl" class="btn btn-secondary" type="button" hidden>Download llms.txt</button>
+      </div>
+
+      <pre id="out" style="display:none; margin-top:18px; padding:16px; border:1px solid var(--border); border-radius:12px; background:rgba(0,0,0,0.25); white-space:pre-wrap; word-break:break-word; font-size:13px; line-height:1.6;"></pre>
+    </div>
+
+    <article class="prose">
+      <h2>What llms.txt is, and why publish one</h2>
+      <p>
+        Search is shifting from a list of links to a single synthesized answer, and the engines that
+        write those answers — ChatGPT, Perplexity, Claude, Google's AI overviews — decide what to read
+        and cite from your site. <code class="text-mono">llms.txt</code> is a small, emerging convention
+        that helps: a Markdown file at your domain root that curates your most important, canonical pages
+        in a clean, link-first format a model can parse without wading through navigation and ads.
+      </p>
+      <p>
+        It is not an official standard and no engine is known to require it, so treat it as a cheap hedge,
+        not a silver bullet — publish it alongside the signals that matter more (crawlability for AI bots,
+        structured data, and answer-first content). The format is deliberately simple: an H1 title, an
+        optional summary blockquote, and one or more <code class="text-mono">##</code> sections of
+        Markdown links with short notes. This tool produces exactly that.
+      </p>
+
+      <h2>After you publish it</h2>
+      <ul>
+        <li>Serve the file at <code class="text-mono">https://yoursite.com/llms.txt</code> as plain text.</li>
+        <li>Keep the link list short and canonical — your best pages, not every page (that is what your sitemap is for).</li>
+        <li>Audit it for link rot the same way you audit your sitemap; a stale map is worse than none.</li>
+        <li>Want it scored? Our <a href="/tools/citation-readiness">citation-readiness checker</a> and the <a href="/aeo">AEO audit endpoints</a> validate llms.txt structure and section coverage.</li>
+      </ul>
+
+      <h2>Sources &amp; further reading</h2>
+      <p>The conventions and standards this tool builds on:</p>
+      <ul>
+        <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the companion <code class="text-mono">robots.txt</code> standard that governs AI-crawler access.</li>
+        <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data layer that pairs with llms.txt for machine legibility.</li>
+        <li><a href="https://en.wikipedia.org/wiki/Large_language_model" target="_blank" rel="noopener">Large language models</a> (Wikipedia) — the readers llms.txt is written for.</li>
+      </ul>
+    </article>
+  </main>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Common questions</h2>
+    {faqs.map((f) => (<div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Make your whole site legible to AI.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">llms.txt is step one. Audit citation-readiness, structured data, and crawler access with the Ollagraph API — 1,000 free credits.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/tools/citation-readiness">Citation-readiness checker</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+
+  <script is:inline>
+    (function () {
+      var $ = function (id) { return document.getElementById(id); };
+      var out = $('out'), copyBtn = $('copy'), dlBtn = $('dl');
+      function parseLinks(text) {
+        return (text || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean).map(function (l) {
+          var parts = l.split('|').map(function (p) { return p.trim(); });
+          var title = parts[0] || '', href = parts[1] || '', note = parts[2] || '';
+          if (!href && /^https?:\/\//i.test(title)) { href = title; title = title.replace(/^https?:\/\//, ''); }
+          return { title: title, href: href, note: note };
+        });
+      }
+      function section(name, links) {
+        var rows = parseLinks(links);
+        if (!rows.length) return '';
+        var body = rows.map(function (r) {
+          var line = '- [' + (r.title || r.href) + '](' + r.href + ')';
+          return r.note ? line + ': ' + r.note : line;
+        }).join('\n');
+        return '\n## ' + (name || 'Links') + '\n\n' + body + '\n';
+      }
+      function build() {
+        var name = ($('f-name').value || '').trim();
+        if (!name) { $('f-name').focus(); return null; }
+        var s = '# ' + name + '\n';
+        var summary = ($('f-summary').value || '').trim();
+        if (summary) s += '\n> ' + summary + '\n';
+        var details = ($('f-details').value || '').trim();
+        if (details) s += '\n' + details + '\n';
+        s += section($('s1-name').value, $('s1-links').value);
+        s += section($('s2-name').value, $('s2-links').value);
+        s += section('Optional', $('opt-links').value);
+        return s.replace(/\n{3,}/g, '\n\n').trim() + '\n';
+      }
+      $('gen').addEventListener('click', function () {
+        var txt = build();
+        if (txt == null) return;
+        out.textContent = txt;
+        out.style.display = 'block';
+        copyBtn.hidden = false; dlBtn.hidden = false;
+      });
+      copyBtn.addEventListener('click', function () {
+        navigator.clipboard.writeText(out.textContent).then(function () {
+          copyBtn.textContent = 'Copied'; setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+        });
+      });
+      dlBtn.addEventListener('click', function () {
+        var blob = new Blob([out.textContent], { type: 'text/plain' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = 'llms.txt'; a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    })();
+  </script>
+</BaseLayout>

@@ -1,0 +1,126 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "Is there an Ollagraph node for n8n?",
+    a: "You can use Ollagraph in n8n today through n8n's built-in HTTP Request node — every one of the 212 endpoints is a standard REST call with Bearer auth, so it drops into a workflow with no custom node required. A dedicated community node (n8n-nodes-ollagraph) that exposes scrape, crawl, extract, and intelligence as first-class actions is in the works; until it lands, the HTTP Request node is the supported path and it covers the full API.",
+  },
+  {
+    q: "How do I use Firecrawl or a Firecrawl alternative in n8n?",
+    a: "Both Firecrawl and Ollagraph are plain REST APIs, so the integration pattern in n8n is identical: an HTTP Request node with Bearer authentication, a JSON body containing the URL to fetch, and the response piped to the next node. Switching from one to the other is a base-URL and field-name change, not a workflow rebuild. Ollagraph adds structured extraction, domain intelligence, and vertical actors to the same pattern.",
+  },
+  {
+    q: "How do I handle long crawls in n8n without timing out?",
+    a: "Use the async pattern. Submit the crawl to Ollagraph with a webhook_url pointing at an n8n Webhook trigger node, and return immediately with a job_id. When the crawl finishes, Ollagraph calls your webhook with the results, and a second n8n workflow processes them. This keeps your workflow from holding a connection open for minutes and is the right shape for any site-scale job.",
+  },
+  {
+    q: "Do I need to write code to use Ollagraph in n8n?",
+    a: "No. The HTTP Request node is fully configured through n8n's UI — method, URL, header credential, and a JSON body you can build with expressions from earlier nodes. The only 'code' is the JSON payload, and the docs give you a ready example for every endpoint.",
+  },
+  {
+    q: "What can I build with Ollagraph and n8n?",
+    a: "Common workflows include scraping URLs to clean markdown for a RAG or content pipeline, crawling a site on a schedule and writing results to a database or sheet, enriching inbound leads with DNS/WHOIS/SSL and tech-stack data, monitoring competitor pages for changes, and running AEO audits on your own pages as a recurring report. Each is a few nodes: a trigger, an HTTP Request to Ollagraph, and a destination.",
+  },
+];
+---
+<Article
+  title="Ollagraph for n8n: web scraping, crawling, and enrichment (a Firecrawl alternative)"
+  description="Add web scraping, crawling, structured extraction, and domain intelligence to your n8n workflows with Ollagraph — through the HTTP Request node, no custom code. Includes ready workflows and the async-crawl pattern."
+  date="2026-06-21"
+  readingTime={11}
+  tags={["n8n", "automation", "web scraping", "Firecrawl"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <h2>The short version</h2>
+  <ul>
+    <li><strong>You can use Ollagraph in n8n today</strong> through the built-in HTTP Request node — all 212 endpoints are standard REST calls with Bearer auth, so no custom node is required.</li>
+    <li><strong>The integration pattern is identical to Firecrawl's</strong> in n8n: an HTTP Request node, a Bearer credential, a JSON body. Switching is a base-URL change, not a rebuild.</li>
+    <li><strong>The difference is reach.</strong> The same pattern also gives your workflow structured extraction, DNS/WHOIS/SSL intelligence, and vertical actors — not just markdown.</li>
+    <li><strong>Long crawls use the async pattern</strong> — submit with a webhook, let Ollagraph call you back — so workflows never hang waiting on a site-scale job.</li>
+    <li><strong>1,000 free credits, no card</strong> to build and test the workflows below.</li>
+  </ul>
+
+  <h2>Why web data belongs in n8n</h2>
+  <p>n8n is where a lot of real automation lives in 2026: a visual, self-hostable workflow engine that wires APIs, databases, and AI models together without a backend service to babysit. The one thing it cannot do on its own is reach out and read the live web reliably — fetch a page that fights bots, turn it into clean text, pull structured fields, or enrich a domain. That is the gap a web-data API fills, and because n8n speaks HTTP natively, filling it is a matter of one node, not an integration project.</p>
+
+  <p>Teams reach for Firecrawl here for clean markdown, and it works well. The reason to look at Ollagraph in the same slot is that an automation rarely stops at markdown — it wants the structured data behind the page, the intelligence about the domain, or the marketplace fields a generic scrape leaves you to parse. All of that is the same HTTP Request node with a different path.</p>
+
+  <h2>The fastest path: the HTTP Request node</h2>
+  <p>Every Ollagraph endpoint is a POST with a Bearer token and a JSON body, which maps cleanly onto n8n's HTTP Request node. Set it up once:</p>
+
+  <ul>
+    <li><strong>Method:</strong> <code>POST</code></li>
+    <li><strong>URL:</strong> <code>https://api.ollagraph.com/v1/scrape</code> (or any endpoint)</li>
+    <li><strong>Authentication:</strong> Generic Credential → Header Auth, with name <code>Authorization</code> and value <code>Bearer YOUR_OLLAGRAPH_API_KEY</code>. Store it as an n8n credential so it never sits in the workflow JSON.</li>
+    <li><strong>Body:</strong> JSON, for example <code>&#123; "url": "&#123;&#123; $json.url &#125;&#125;", "format": "markdown" &#125;</code> — the <code>&#123;&#123; &#125;&#125;</code> expression pulls the URL from a previous node.</li>
+  </ul>
+
+  <p>That is the whole integration. The response — clean markdown plus metadata — flows to the next node as JSON. Swap the URL path to <code>/v1/crawl</code>, <code>/v1/extract/structured</code>, or <code>/v1/intel/whois</code> and the same node does a different job. Because it is the generic HTTP node, it also means a Firecrawl workflow and an Ollagraph workflow are the same shape; moving between them is editing a URL and a couple of field names.</p>
+
+  <h2>Four workflows you can build today</h2>
+
+  <p><strong>1. Scrape to a spreadsheet.</strong> Trigger (manual, schedule, or webhook) → HTTP Request to <code>/v1/scrape</code> with <code>format: "markdown"</code> → Google Sheets / Airtable node to append the title and content. A content-monitoring or research pipeline in three nodes.</p>
+
+  <p><strong>2. Crawl a site on a schedule.</strong> Schedule trigger → HTTP Request to <code>/v1/crawl</code> with a <code>webhook_url</code> pointing at an n8n Webhook node → return immediately. A second workflow, triggered by that webhook, receives the crawled pages and writes them to your database. This is the async pattern, and it is the correct way to run anything site-scale in n8n without timeouts.</p>
+
+  <p><strong>3. Enrich inbound leads.</strong> Webhook trigger (your form fills it) → HTTP Request to <code>/v1/enrich/company</code> with the lead's domain → branch on the tech-stack and mail-provider fields → push a scored lead into your CRM. The domain intelligence that a markdown scraper does not offer is what makes this workflow possible from one vendor.</p>
+
+  <p><strong>4. Audit your own pages for AI citations.</strong> Schedule trigger → loop over your key URLs → HTTP Request to <code>/v1/aeo/citation-readiness</code> → write the scores to a sheet and alert on regressions. A recurring AEO report, built entirely in n8n, dogfooding the same audit behind our free <a href="/tools/citation-readiness">citation-readiness checker</a>.</p>
+
+  <h2>Firecrawl in n8n vs Ollagraph in n8n</h2>
+  <p>Both fit the HTTP Request node the same way, so the comparison is about what the workflow can reach, not how hard it is to wire.</p>
+
+  <table>
+    <thead>
+      <tr><th>In an n8n workflow</th><th>Firecrawl</th><th>Ollagraph</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Scrape URL to markdown</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Full-site crawl to webhook</td><td>Yes</td><td>Yes</td></tr>
+      <tr><td>Structured JSON-LD / OpenGraph extraction</td><td>Extract endpoint</td><td>Native</td></tr>
+      <tr><td>Domain intelligence (DNS / WHOIS / SSL)</td><td>Not offered</td><td>Included</td></tr>
+      <tr><td>Vertical actors (Amazon, Maps, Yelp)</td><td>Generic scrape</td><td>Dedicated extractors</td></tr>
+      <tr><td>AEO / citation-readiness audit</td><td>Not offered</td><td>Included</td></tr>
+      <tr><td>Auth in n8n</td><td>Header Auth (Bearer)</td><td>Header Auth (Bearer)</td></tr>
+      <tr><td>Pricing</td><td>Credit subscription</td><td>Flat credits · PAYG from $5 · refund on failure</td></tr>
+    </tbody>
+  </table>
+
+  <h2>A dedicated node is on the way</h2>
+  <p>The HTTP Request node covers the entire API today, and many teams are happy to stay there — it is explicit and it never lags the API. For people who prefer first-class, drag-and-drop actions, a community node (<code>n8n-nodes-ollagraph</code>) that wraps the common operations — scrape, crawl, extract, enrich — is in development. When it ships it will be installable from n8n's community-nodes panel; until then, nothing is blocked, because the generic node already does everything the dedicated one will, with a little more configuration. If a node would unblock your team sooner, tell us on support and it moves up the queue.</p>
+
+  <h2>Tips for production workflows</h2>
+  <ul>
+    <li><strong>Store the key as an n8n credential</strong>, not inline — it keeps the secret out of exported workflow JSON.</li>
+    <li><strong>Use the async + webhook pattern</strong> for crawls and batches; reserve synchronous calls for single-page fetches.</li>
+    <li><strong>Lean on refund-on-failure.</strong> Ollagraph refunds credits when a fetch fails at the origin, so retry loops in n8n do not quietly burn budget on dead targets.</li>
+    <li><strong>Build the JSON body with expressions</strong> from upstream nodes so one HTTP Request node serves a whole batch of URLs via n8n's item-based execution.</li>
+  </ul>
+
+  <h2>Going to production: scheduling, errors, and self-hosting</h2>
+  <p>The four workflows above are the happy path. A few habits make them survive contact with real traffic.</p>
+
+  <p><strong>Schedule with backoff, not brute force.</strong> n8n's Schedule trigger makes it tempting to run a large batch every few minutes. Resist it: stagger work across n8n's item-based execution, and for site-scale crawls use the async webhook pattern so a single workflow run is not holding hundreds of requests open. A crawl that calls you back is cheaper and far more reliable than a loop that waits.</p>
+
+  <p><strong>Handle failures explicitly.</strong> Give the HTTP Request node a sensible timeout, turn on n8n's retry-on-fail for transient errors, and branch on the response so a bot-blocked or 404 result routes to a dead-letter path instead of crashing the workflow. Because Ollagraph refunds credits on origin failures, those retries do not quietly drain your balance — but you still want them bounded so a permanently dead target does not loop forever.</p>
+
+  <p><strong>Keep secrets in credentials, and mind self-hosted exports.</strong> Always store the API key as an n8n credential rather than inline in the node, so it is encrypted and excluded from any workflow you export or share. On self-hosted n8n this matters double: exported workflow JSON is easy to commit to a repo by accident, and an inline key would go with it. Credentials stay out of that JSON.</p>
+
+  <p><strong>Watch your units the way you watch your runs.</strong> Pipe the credit cost of each call — or a simple counter — into the same sheet or dashboard where you track workflow executions. Web-data calls are the line item most likely to surprise you in an otherwise free automation, and a flat one-credit-per-call model with refunds on failure is specifically chosen so that number is easy to predict and easy to watch.</p>
+
+  <p>With those four in place, the same three-node workflow that worked in testing runs unattended overnight, which is the entire point of building it in n8n rather than a script.</p>
+
+  <h2>Sources &amp; further reading</h2>
+  <p>The standards and tools behind these workflows:</p>
+  <ul>
+    <li><a href="https://en.wikipedia.org/wiki/Web_scraping" target="_blank" rel="noopener">Web scraping</a> (Wikipedia) — the capability you are adding to n8n.</li>
+    <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the robots.txt standard your automated crawls should honor.</li>
+    <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format the extraction step returns.</li>
+    <li><a href="https://datatracker.ietf.org/doc/html/rfc8259" target="_blank" rel="noopener">RFC 8259 — JSON</a> (IETF, 2017) — the body format every node passes around.</li>
+  </ul>
+
+  <h2>The bottom line</h2>
+  <p>Adding web data to n8n does not need a special node or a custom service — it needs an HTTP Request node and a key. Firecrawl fits that slot for markdown; Ollagraph fits the same slot and extends it to structured data, domain intelligence, and vertical actors, behind one bearer token and a flat, refundable bill. Start with 1,000 free credits and no card, wire the scrape workflow above in five minutes, and read the request shapes for every endpoint in the <a href="/docs">docs</a> — or compare the full surface on the <a href="/vs/firecrawl">Ollagraph vs Firecrawl</a> page.</p>
+</Article>
