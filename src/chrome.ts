@@ -184,7 +184,9 @@ export function footerHtml(): string {
       h: "Legal",
       items: [
         { label: "Privacy",         href: "/legal/privacy" },
+        { label: "Cookies",         href: "/legal/cookies" },
         { label: "Terms",           href: "/legal/terms" },
+        { label: "Acceptable Use",  href: "/legal/acceptable-use" },
         { label: "Subprocessors",   href: "/legal/subprocessors" },
       ],
     },
