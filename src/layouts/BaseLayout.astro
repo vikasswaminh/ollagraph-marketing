@@ -1,8 +1,45 @@
 ---
-interface Props { title: string; description?: string; canonical?: string }
-const { title, description = "Web infrastructure for AI agents. 105 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical } = Astro.props;
-const ogImage = new URL("/og-image.svg", Astro.site || "https://ollagraph.com").toString();
+interface Props { title: string; description?: string; canonical?: string; jsonLd?: object[] }
+const { title, description = "Web infrastructure for AI agents. 212 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical, jsonLd = [] } = Astro.props;
+// PNG, not SVG — X / LinkedIn / Slack / iMessage don't render SVG og:image.
+// Regenerate from og-image.svg with: node scripts/gen-og-image.mjs
+const ogImage = new URL("/og-image.png", Astro.site || "https://ollagraph.com").toString();
+const ogImageAlt = "Ollagraph — web infrastructure for AI agents. 212 endpoints, one API, one MCP server, one bill.";
 const canonicalUrl = canonical || Astro.url.href;
+
+// E-E-A-T / AEO citation signals, sitewide: a named author byline and a
+// last-updated timestamp (the static build time — the page is regenerated on
+// every deploy). Both are read by answer engines and by our own
+// /v1/aeo/citation-readiness audit.
+const siteAuthor = "Amit Sharma";
+const siteLocation = { "@type": "PostalAddress", addressLocality: "New York", addressRegion: "NY", addressCountry: "US" };
+const buildIso = new Date().toISOString();
+
+// Sitewide structured data (every page). Page-specific schema (SoftwareApplication,
+// FAQPage, Article, HowTo, BreadcrumbList) is passed in via the `jsonLd` prop.
+const orgLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Ollagraph",
+  url: "https://ollagraph.com",
+  logo: "https://ollagraph.com/favicon.svg",
+  description: "Web infrastructure for AI agents — fetch, extract, audit, and reason about the live web through one API.",
+  email: "hello@ollagraph.com",
+  address: siteLocation,
+  founder: { "@type": "Person", name: siteAuthor, jobTitle: "Founder", address: siteLocation },
+  contactPoint: [
+    { "@type": "ContactPoint", contactType: "customer support", email: "support@ollagraph.com", availableLanguage: "en" },
+    { "@type": "ContactPoint", contactType: "security", email: "security@ollagraph.com", availableLanguage: "en" },
+  ],
+};
+const websiteLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Ollagraph",
+  url: "https://ollagraph.com",
+  publisher: { "@type": "Organization", name: "Ollagraph", url: "https://ollagraph.com" },
+};
+const allJsonLd = [orgLd, websiteLd, ...jsonLd];
 ---
 <!doctype html>
 <html lang="en">
@@ -11,6 +48,7 @@ const canonicalUrl = canonical || Astro.url.href;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="author" content={siteAuthor} />
     <link rel="canonical" href={canonicalUrl} />
 
     <!-- Favicon -->
@@ -22,14 +60,21 @@ const canonicalUrl = canonical || Astro.url.href;
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={ogImageAlt} />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:site_name" content="Ollagraph" />
     <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:updated_time" content={buildIso} />
+    <meta property="article:author" content={siteAuthor} />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={ogImageAlt} />
 
     <!-- Self-hosted fonts (see @font-face in /styles.css). The two below
          are the ones the first paint actually needs — Inter Tight for the
@@ -37,11 +82,63 @@ const canonicalUrl = canonical || Astro.url.href;
          browser start the GET before it has even parsed styles.css. -->
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-tight-latin.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin.woff2" crossorigin />
+
+    <!-- Critical nav CSS, inlined so the grouped dropdowns collapse and the mobile
+         toggle stays hidden on the very first paint — before styles.css applies.
+         Without this, an uncached first load briefly shows every dropdown item
+         expanded as a flat unstyled list (nav FOUC). styles.css reinforces these.
+         is:inline keeps Astro from scoping/bundling it — it must stay raw in <head>
+         and match the set:html nav markup (which carries no scope attribute). -->
+    <style is:inline>
+      .nav-inner{height:64px;display:flex;align-items:center;gap:32px}
+      .nav-links{display:flex;align-items:center;gap:4px;flex:1}
+      .nav-right{display:flex;align-items:center;gap:8px}
+      .nav-group{position:relative;display:inline-flex}
+      .nav-dropdown{position:absolute;top:calc(100% + 6px);left:0;display:none}
+      .nav-group:hover .nav-dropdown,.nav-group:focus-within .nav-dropdown{display:flex}
+      .nav-toggle,.nav-burger,.nav-mobile-cta{display:none}
+      @media (max-width:920px){
+        .nav-links{display:none;position:absolute;top:64px;left:0;right:0;flex-direction:column;align-items:stretch}
+        .nav-toggle:checked ~ .nav-links{display:flex}
+        .nav-group{display:block}
+        .nav-dropdown{position:static;display:flex}
+        .nav-burger{display:inline-flex}
+        .nav-hide-sm{display:none}
+      }
+    </style>
+
     <link rel="stylesheet" href="/styles.css" />
+
+    <!-- Structured data (JSON-LD): Organization + WebSite sitewide, plus any page-specific schema -->
+    {allJsonLd.map((obj) => (
+      <script type="application/ld+json" set:html={JSON.stringify(obj)} />
+    ))}
     <slot name="head" />
   </head>
   <body>
     <slot />
+    <!-- Essential-cookies notice. We set only a strictly-necessary session
+         cookie + cookieless analytics, so this is informational (not a consent
+         gate). Dismissal is remembered in localStorage. See /legal/cookies. -->
+    <div id="cookie-note" style="display:none; position:fixed; left:16px; right:16px; bottom:16px; max-width:560px; margin:0 auto; z-index:60; background:var(--surface, #16181d); color:var(--text-muted, #c9ccd3); border:1px solid var(--border, #2a2e37); border-radius:10px; padding:12px 14px; font-size:13px; line-height:1.5; box-shadow:0 6px 24px rgba(0,0,0,.28);">
+      <span>We use only essential cookies and privacy-first, cookieless analytics. <a href="/legal/cookies" style="color:var(--accent, #da291c);">Cookie policy</a>.</span>
+      <button id="cookie-note-x" style="margin-left:10px; background:none; border:0; color:inherit; cursor:pointer; font-weight:600;">Got it</button>
+    </div>
+    <script is:inline>
+      (function () {
+        try {
+          if (localStorage.getItem('og_cookie_note') === '1') return;
+          var el = document.getElementById('cookie-note');
+          if (!el) return;
+          el.style.display = 'block';
+          var x = document.getElementById('cookie-note-x');
+          if (x) x.addEventListener('click', function () {
+            try { localStorage.setItem('og_cookie_note', '1'); } catch (e) {}
+            el.style.display = 'none';
+          });
+        } catch (e) {}
+      })();
+    </script>
     <!-- Cloudflare Web Analytics (privacy-first RUM; token is public by design) -->
     <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "f5bfdc0d8f934e3dba03374321af2436"}'></script>
   </body>

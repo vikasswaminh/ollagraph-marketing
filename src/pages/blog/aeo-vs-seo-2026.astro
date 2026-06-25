@@ -1,0 +1,115 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is the difference between AEO and SEO?", a: "SEO optimizes a page to rank in a list of blue links on a search engine results page. AEO — Answer Engine Optimization — optimizes a page to be retrieved, trusted, and cited inside an AI-generated answer from a tool like ChatGPT, Perplexity, Google AI Overviews, or Claude. SEO is about position; AEO is about citation. They share most of the same technical foundation, but the unit of success is different: a rank versus a mention." },
+  { q: "Does AEO replace SEO?", a: "No. AEO is a layer on top of SEO, not a replacement for it. The crawlability, content quality, structured data, and authority signals that earn rankings are largely the same signals that make a page citable by an answer engine. What AEO adds is a focus on machine-readable access for AI crawlers, snippet-shaped formatting, explicit evidence (numbers, dates, named sources), and emerging conventions like llms.txt. Teams that abandon SEO to chase AEO usually lose both." },
+  { q: "What is llms.txt and do I need one?", a: "llms.txt is an emerging convention: a plain-text file at the root of your domain that points AI tools at your most important, canonical content in a clean, link-first format. It is not an official standard and no engine is known to require it, so treat it as a low-cost bet rather than a guaranteed ranking factor. It is cheap to publish and easy to keep current, which is why many teams add one while the convention settles." },
+  { q: "Can I measure whether AI engines can actually cite my page?", a: "Partly, and the measurable parts are the ones worth fixing first. You cannot reliably see inside a closed model's ranking, but you can measure the mechanical preconditions for citation: whether AI crawlers can fetch your page, whether they receive the same content a browser sees, whether your content carries the evidence signals these systems reward, and whether your structure is snippet-friendly. Those are observable, and they are where most citation failures actually originate." },
+  { q: "Do AI answer engines respect robots.txt?", a: "Behavior varies by crawler and changes over time, so the honest answer is: check, do not assume. Different AI crawlers send different user agents and honor access rules inconsistently. The practical move is to decide deliberately which AI crawlers you want to allow, set your robots and access rules accordingly, and then verify what each crawler actually receives rather than trusting that your intent was respected." },
+  { q: "Is keyword research still relevant for AEO?", a: "Yes, but the framing shifts from keywords to questions. Answer engines are invoked with natural-language prompts, so the winning unit is a clearly answered question, not a keyword stuffed into a heading. The research discipline is the same — understand what your audience asks — but the output is a direct, self-contained answer near the top of the page, followed by the depth that earns trust." },
+];
+---
+<Article
+  title="AEO vs SEO in 2026: optimizing for AI answer engines"
+  description="Answer Engine Optimization is the new layer on top of SEO. What changes, what stays the same, and how to measure whether AI engines can actually cite you."
+  date="2026-06-18"
+  readingTime={10}
+  tags={["AEO", "SEO", "AI search"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <p>For two decades the job was clear: rank on a search engine results page, earn the click, win the visit. In 2026 a growing share of queries never produce that page at all. A person asks ChatGPT, Perplexity, Claude, or Google's AI Overviews a question and gets a synthesized answer — sometimes with citations, sometimes without. The blue links still exist, but they are no longer the only finish line. Increasingly, the finish line is being the source the model decided to trust.</p>
+
+  <p>That shift has a name now: Answer Engine Optimization, or AEO. This piece is a clear-eyed look at what AEO actually is, what genuinely overlaps with the SEO you already do, what is new, and — the part most articles skip — how to measure whether AI engines can even read and cite you in the first place.</p>
+
+  <h2>AEO is a layer, not a replacement</h2>
+  <p>The loudest take on AEO is also the wrong one: that SEO is dead and you should pivot everything to optimizing for chatbots. That framing sells courses and burns budgets. The accurate framing is quieter. AEO is a layer that sits on top of a healthy SEO foundation. Almost everything that makes a page rank also makes it citable, because answer engines are, under the hood, retrieval systems that lean heavily on the same web graph, the same crawl infrastructure, and the same authority signals that search engines spent twenty years refining.</p>
+
+  <p>The difference is the unit of success. SEO optimizes for <em>position</em> — where you land in an ordered list. AEO optimizes for <em>citation</em> — whether a generative system pulls your sentence into its answer and, ideally, attributes it to you. A page can rank fourth and still be the sentence an answer engine quotes, because the model chose the clearest, best-evidenced passage rather than the highest-ranked one. That single distinction reorganizes a lot of priorities.</p>
+
+  <h2>What stays exactly the same</h2>
+  <p>Start with the comforting part, because it is large. If your SEO fundamentals are strong, you are most of the way to AEO already.</p>
+
+  <p><strong>Crawlability and indexability.</strong> A page that a search crawler cannot reach is a page an answer engine cannot cite. Clean information architecture, working internal links, sane canonicalization, and fast, reliable responses matter as much as they ever did — arguably more, because retrieval pipelines are unforgiving of pages that time out or render to an empty shell.</p>
+
+  <p><strong>Content quality and topical depth.</strong> Thin, derivative content did not rank well and does not get cited well. Answer engines are, if anything, more ruthless here, because they are synthesizing across many sources and gravitate toward the one that states the answer most precisely.</p>
+
+  <p><strong>Authority and trust.</strong> The reputation signals that underpin search — credible inbound links, recognizable authorship, a track record on the topic — carry directly into who an answer engine treats as a reliable source. Trust does not reset when the interface changes.</p>
+
+  <p><strong>Structured data.</strong> Schema markup that helped you earn rich results also helps machines parse what your page is about. JSON-LD that describes an article, a product, a FAQ, or an organization is exactly the kind of explicit, machine-readable signal a retrieval system likes to consume.</p>
+
+  <h2>What is genuinely new</h2>
+  <p>Now the part that is not just SEO with a new hat. Four shifts are real enough to plan around.</p>
+
+  <h3>1. Citation readiness, not just relevance</h3>
+  <p>Search rewards relevance. Answer engines reward <em>citability</em> — and citability is a stricter bar. When a model decides which passage to quote, it leans toward content that carries explicit evidence: concrete numbers, named entities, authoritative outbound links, a visible author byline, and a recent last-updated date. These are the post-ChatGPT EEAT signals (experience, expertise, authoritativeness, trustworthiness), and they are increasingly mechanical. A page that says "conversion improved significantly" is weaker, to a retrieval system, than one that says "conversion improved from 2.1% to 3.4% between January and March, per our internal analytics," with the methodology linked. Studies of AI-generated answers suggest that pages dense with specifics and clear attribution are cited disproportionately often — the precise multiplier varies by study and engine, but the direction is consistent.</p>
+
+  <h3>2. Machine-readable access for AI crawlers</h3>
+  <p>SEO worried about one crawler family per engine. AEO has to reckon with a zoo of named AI crawlers, each with its own user agent, its own respect (or disregard) for robots rules, and its own rendering behavior. Some fetch raw HTML and never run JavaScript. Some honor your access rules; some are inconsistent. The consequence is blunt: a single-page app that renders its body client-side may serve a rich page to a human and an empty shell to an AI crawler that does not execute scripts. You can do everything else right and still be invisible to the engine you most wanted to reach.</p>
+
+  <h3>3. Snippet-shaped formatting</h3>
+  <p>Answer engines extract passages, not pages. That rewards a specific shape: lead with a direct, self-contained answer to the implied question, then add depth below it. Clear headings phrased as questions, short answer-first paragraphs, definition sentences, and tidy lists give a retrieval system clean, liftable units. The old advice to "write for the featured snippet" generalizes neatly here — the featured snippet was an early answer engine, and the habits that won it still pay.</p>
+
+  <h3>4. Emerging conventions like llms.txt</h3>
+  <p>A new convention is taking shape: an <code>llms.txt</code> file at your domain root that points AI tools at your most important, canonical content in a clean, link-first format — a kind of curated map for machines. It is not an official standard, and no major engine is known to require it, so calibrate your expectations accordingly. But it is cheap to publish and easy to maintain, which makes it a reasonable low-cost bet while the convention settles. Treat it like an early-mover hedge, not a silver bullet.</p>
+
+  <h2>The overlap, drawn honestly</h2>
+  <p>If you want a one-line mental model: <strong>AEO is SEO plus citation engineering plus machine access.</strong> The Venn diagram is mostly overlap. Crawlability, quality, authority, and structured data sit squarely in the shared middle. AEO adds a rim of new concerns — evidence density, AI-crawler access, snippet shape, and conventions like llms.txt — and reweights a few existing ones, pushing freshness and explicit attribution up the priority list. Nothing here invalidates good SEO. It extends it.</p>
+
+  <p>This is also why the teams who win are usually the ones who already had their technical SEO house in order. AEO is not a fresh discipline you bolt on; it is the next increment of one you have been practicing. If you run a marketing function, the relevant org change is small: the same people doing technical SEO are the right people to own AEO, with a measurement habit added.</p>
+
+  <h2>How to measure AEO — the part everyone skips</h2>
+  <p>Here is the honest constraint. You cannot see inside a closed model's ranking logic, and anyone selling you a precise "AI ranking position" is selling certainty that does not exist. What you <em>can</em> measure are the mechanical preconditions for citation — and that is where the overwhelming majority of failures actually live. Before you worry about whether a model likes your prose, confirm it can read your page at all.</p>
+
+  <p>Four questions are observable, and Ollagraph's AEO endpoints exist to answer them mechanically — no LLM in the loop, no guesswork, just deterministic probes against the live page.</p>
+
+  <p><strong>Can AI crawlers actually fetch this page, and do they see what a browser sees?</strong> This is the first failure mode and the most common. The <a href="/docs">llm-fetch-simulator</a> fetches a URL as each of several named AI crawlers plus a browser baseline, and reports what each one received: status code, content length, a visible-text preview, and crucially, whether the page cloaks content or only renders it via JavaScript. If your AI-crawler row comes back near-empty while the browser row is full, you have found your problem before writing a word of new copy.</p>
+
+  <p><strong>Does the page carry the evidence signals that earn citations?</strong> The citation-readiness probe scores a page against the post-ChatGPT EEAT signals — numerical specifics, named entities, authoritative outbound links, an author byline, a last-updated date, and content length — mechanically, so the score is reproducible. It is the difference between guessing your content "feels authoritative" and seeing which concrete signals are present or missing.</p>
+
+  <p><strong>Is my llms.txt actually well-formed and link-healthy?</strong> The llms-txt-audit fetches the file at your domain and validates its structure, scores section coverage, and checks for link rot. A broken or stale map for machines is worse than no map at all.</p>
+
+  <p><strong>What is my overall AEO posture, and what do I fix first?</strong> The page-audit runs several component probes in parallel and returns a single headline score, category breakdowns, the top issues, and ranked recommendations — the executive summary that turns a pile of signals into a prioritized to-do list.</p>
+
+  <p>The smallest useful first step is a single call against a page you care about:</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/page-audit \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/your-best-page"
+  &#125;'</code></pre>
+
+  <p>You get back a score and a ranked list of what to fix. If the audit flags an access problem, the fetch simulator tells you exactly which crawler is being starved and whether the cause is cloaking or a JavaScript-only render. That sequence — audit for the headline, simulate to localize, then fix the access problem before the prose problem — is the practical AEO loop. For the full hands-on walkthrough, the <a href="/aeo">AEO product page</a> lays out the endpoints and what each one returns.</p>
+
+  <h2>A pragmatic 2026 playbook</h2>
+  <p>If you do nothing else, do these five things, roughly in order.</p>
+
+  <p><strong>One: verify access before optimizing content.</strong> Confirm that the AI crawlers you care about can fetch your priority pages and receive real content, not an empty shell. This is the cheapest, highest-leverage check, and it is invisible to traditional SEO tools.</p>
+
+  <p><strong>Two: rebuild your best pages answer-first.</strong> Lead with a direct, self-contained answer to the question the page targets, then go deep. Phrase headings as questions where it is natural. Make the liftable unit easy to lift.</p>
+
+  <p><strong>Three: add evidence.</strong> Replace vague claims with specifics — numbers, dates, named sources, methodology. Add a visible author byline and a real last-updated date, and keep the date honest by actually updating the page.</p>
+
+  <p><strong>Four: keep your structured data and schema current.</strong> The machine-readable layer you built for rich results is doing double duty now. Maintain it.</p>
+
+  <p><strong>Five: publish and maintain an llms.txt — as a hedge, not a guarantee.</strong> It is cheap insurance while the convention matures. Audit it for link rot the same way you audit your sitemap.</p>
+
+  <h2>Where this leaves SEO teams and agencies</h2>
+  <p>The reassuring conclusion is that AEO does not orphan the expertise you already have. The team that runs <a href="/for-seo">technical SEO</a> is the team that should own AEO, because the foundation is shared and the new work is incremental. For agencies, AEO is a clean expansion of scope rather than a new product line to staff from scratch — a measurable, auditable layer you can add to existing retainers. We wrote more about that motion for the agency side on the <a href="/for-aeo-agencies">AEO for agencies</a> page.</p>
+
+  <p>The strategic point is simple. The web is becoming a substrate that machines read on behalf of people, and the brands that get cited are the ones that are easy for machines to fetch, easy to trust, and easy to quote. That is not a betrayal of SEO. It is its next chapter — and most of the work, satisfyingly, is work you already know how to do.</p>
+
+  <h2>What to do next</h2>
+  <p>Pick your single most important page and run an AEO audit on it today. Read the result, fix the top issue, and re-run it. Then browse the rest of what the platform can see across the <a href="/capabilities">capabilities</a> overview, and when you are ready to wire the checks into a recurring report, the <a href="/docs">docs</a> have the request and response shapes for every AEO endpoint. More writing on adjacent topics lives on the <a href="/blog">blog</a>.</p>
+
+  <h2>Sources &amp; further reading</h2>
+  <p>The standards and research behind answer-engine optimization, for readers who want the primary sources:</p>
+  <ul>
+    <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the robots.txt standard that decides whether an AI crawler may read your page at all.</li>
+    <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format answer engines parse to understand a page.</li>
+    <li><a href="https://en.wikipedia.org/wiki/Search_engine_optimization" target="_blank" rel="noopener">Search engine optimization</a> (Wikipedia) — the discipline AEO extends rather than replaces.</li>
+    <li><a href="https://arxiv.org/abs/2005.11401" target="_blank" rel="noopener">Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks</a> (Lewis et al., 2020) — why models retrieve and quote specific passages.</li>
+  </ul>
+</Article>

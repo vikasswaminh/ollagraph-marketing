@@ -1,0 +1,84 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+
+const deprecationHeaders = `Deprecation: true
+Sunset: Sat, 24 Nov 2027 00:00:00 GMT
+Link: <https://ollagraph.com/legal/api-versioning>; rel="deprecation"`;
+---
+<BaseLayout title="API versioning policy — Ollagraph" description="How Ollagraph versions the API, what counts as a breaking change, and the notice we give before deprecating anything.">
+  <Fragment set:html={navHtml('')} />
+  <main class="article">
+    <h1 class="h-display h-1">API versioning policy</h1>
+    <article class="prose">
+      <p>Last updated: 2026-05-24</p>
+
+      <p>This policy describes the contract between Ollagraph and any application that integrates with the Ollagraph API. The goal is simple: code you write against Ollagraph today should keep working without changes for the lifetime of the major version it targets.</p>
+
+      <h2>Versioning scheme</h2>
+      <p>The API is versioned in the URL path. The current version is <code>v1</code>, served at <code>https://api.ollagraph.com/v1/</code>. There is exactly one supported major version at a time.</p>
+
+      <h2>What does <em>not</em> count as a breaking change</h2>
+      <p>The following are <strong>additive</strong> and can ship in any release without warning. Your code must tolerate them.</p>
+      <ul>
+        <li>New endpoints under the same major version.</li>
+        <li>New optional request parameters with safe defaults.</li>
+        <li>New fields in response objects.</li>
+        <li>New response headers.</li>
+        <li>New enum values for fields documented as extensible.</li>
+        <li>New error codes for failure conditions that previously returned the closest existing 4xx or 5xx code.</li>
+        <li>Performance improvements that change latency characteristics.</li>
+        <li>Bug fixes that bring observed behaviour in line with the documented behaviour.</li>
+      </ul>
+
+      <h2>What counts as a breaking change</h2>
+      <p>Anything in this list is treated as breaking. Breaking changes never ship inside <code>v1</code>. They land in <code>v2</code> with the timeline below.</p>
+      <ul>
+        <li>Removing an endpoint, parameter, response field, or header.</li>
+        <li>Renaming any of the above.</li>
+        <li>Changing the type of a field (string to int, scalar to array, etc.).</li>
+        <li>Making a previously optional parameter required.</li>
+        <li>Changing the meaning of an existing enum value.</li>
+        <li>Changing HTTP status codes for documented success paths.</li>
+        <li>Changing authentication or rate-limit semantics in a way that requires client code to change.</li>
+        <li>Changing webhook payload shape in a way that breaks existing receivers.</li>
+      </ul>
+
+      <h2>Deprecation timeline</h2>
+      <p>When we eventually release <code>v2</code>, the following timeline applies. <code>v1</code> does <strong>not</strong> shut off the day <code>v2</code> ships.</p>
+      <ul>
+        <li><strong>Day 0:</strong> <code>v2</code> ships. <code>v1</code> keeps working with no behaviour change. The changelog and this page list every breaking difference.</li>
+        <li><strong>Months 0–12:</strong> Both versions are fully supported. Every <code>v1</code> response carries a <code>Deprecation: true</code> header and a <code>Sunset</code> header pointing at the planned end-of-life date (per <a href="https://www.rfc-editor.org/rfc/rfc9745" rel="noopener">RFC&nbsp;9745</a>).</li>
+        <li><strong>Months 12–18:</strong> <code>v1</code> remains available. The <code>Sunset</code> date is reaffirmed in every response and the customer dashboard surfaces a migration banner. We email account owners at month 12 and month 15.</li>
+        <li><strong>Month 18:</strong> <code>v1</code> returns <code>410 Gone</code>. Migration window ends.</li>
+      </ul>
+      <p>Minimum total notice from <code>v2</code> ship date to <code>v1</code> shutdown: <strong>18 months</strong>. We will not shorten this for any reason short of a critical security defect that cannot be patched in <code>v1</code>.</p>
+
+      <h2>Individual endpoint deprecation</h2>
+      <p>Occasionally a single endpoint inside the current major version may be deprecated — for example, because a better-shaped successor exists. In that case:</p>
+      <ul>
+        <li>The endpoint continues to function and returns the same shape.</li>
+        <li>Every response from the deprecated endpoint carries <code>Deprecation: true</code> and <code>Sunset: &lt;date&gt;</code> headers.</li>
+        <li>Minimum window from first <code>Deprecation</code> header to removal: <strong>6 months</strong>.</li>
+        <li>The endpoint's docs page links to the recommended replacement.</li>
+      </ul>
+
+      <h2>Security exceptions</h2>
+      <p>If a vulnerability requires changing API behaviour to fix it, we will change the behaviour without the 6 or 18 month notice. We will document the change in the changelog within 24 hours and notify affected customers by email. Defects that affect billing or data confidentiality are treated this way; cosmetic or performance defects are not.</p>
+
+      <h2>SDKs and tooling</h2>
+      <p>Postman collection and OpenAPI specification are regenerated from the same source as the API itself. When new endpoints or fields ship, both update on the next deploy. The collection URL is stable: <a href="/ollagraph.postman_collection.json">/ollagraph.postman_collection.json</a>.</p>
+
+      <h2>Reading deprecation headers</h2>
+      <p>Both deprecation headers follow <a href="https://www.rfc-editor.org/rfc/rfc9745" rel="noopener">RFC&nbsp;9745</a>. In your client, treat them as advisory: log them, surface them to your engineering team, but do not interpret <code>Deprecation: true</code> as a failure signal — the endpoint still works until the <code>Sunset</code> date passes.</p>
+      <pre><code>{deprecationHeaders}</code></pre>
+
+      <h2>Changelog</h2>
+      <p>Every API change — additive or breaking — is recorded in the <a href="/changelog">changelog</a> with date, scope, and migration notes where applicable.</p>
+
+      <h2>Questions</h2>
+      <p>Engineering teams considering Ollagraph for a long-lived integration are welcome to ask for written confirmation of this policy on company letterhead. Email <a href="mailto:legal@ollagraph.com">legal@ollagraph.com</a>.</p>
+    </article>
+  </main>
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

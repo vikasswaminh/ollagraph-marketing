@@ -1,0 +1,135 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is IP geolocation?", a: "IP geolocation is the process of resolving an IP address to a physical location and network identity — country, region, city, approximate coordinates, timezone, and the network operator that owns the address. Ollagraph's POST /v1/intel/geoip takes a single IP and returns this enrichment from a local geolocation database in one call. No page is fetched; the IP is only a key into a database read." },
+  { q: "What is an ASN and why does it matter?", a: "An Autonomous System Number identifies a network operator — an ISP, a cloud provider, a hosting company, or an enterprise that announces its own routes on the public internet. Knowing an IP's ASN tells you who actually owns and operates the address space. For fraud and analytics teams, ASN ownership is often more decisive than city-level geolocation: a residential ISP behaves very differently from a datacenter or hosting ASN." },
+  { q: "How do I look up the network owner of an IP address?", a: "Resolve the IP with POST /v1/intel/geoip, which returns the ASN and the network operator name alongside the location fields. If you already have the ASN number and want the operator name plus every routed CIDR prefix it announces, call POST /v1/intel/asn with the ASN integer. Together they let you go from a raw IP to a complete picture of who owns the network." },
+  { q: "Can I geolocate IP addresses in bulk?", a: "Yes. POST /v1/intel/geoip/bulk accepts a list of up to 100 IPs per call in the `ips` field and returns the same full enrichment for each one. Most teams enriching log files or event streams chunk their IPs into batches of 100 and fan those calls out from a worker pool. Each IP in the batch is billed as one call." },
+  { q: "Is IP geolocation accurate down to the street?", a: "No, and you should not treat it that way. IP geolocation is reliable at the country level, usually good at the region and city level, and approximate at coordinates. It reflects where the network registers the address, not where a specific person is sitting. Use it for country-level fraud signals, analytics geo-enrichment, and routing — not for pinpointing an individual." },
+  { q: "How much does an IP geolocation lookup cost?", a: "Each metered call is one credit, and bulk geolocation bills one credit per IP in the batch. New accounts start with a free grant so you can test the full flow before paying. If a call genuinely cannot be served, it is auto-refunded — you are not charged for failures. Exact figures live on the pricing page." },
+  { q: "Is this paid threat-intelligence data?", a: "No. The geolocation, ASN, and reverse-DNS endpoints run against local, open geolocation and routing databases — there is no paid threat-feed, breach lookup, or commercial threat-intel behind them. They tell you where an address sits and who operates the network, which is exactly the free-data layer most fraud and analytics pipelines need first." },
+  { q: "What is reverse DNS and when should I use it?", a: "Reverse DNS resolves an IP back to its PTR hostname. It is useful for log enrichment and for answering 'is this a cloud datacenter IP or a residential ISP?' at a glance — a hostname like a known cloud provider's PTR record is a strong signal. Call POST /v1/intel/reverse-dns with the IP. Note that not every IP has a PTR record configured, so treat the hostname as nullable." },
+];
+---
+<Article
+  title="How to geolocate IP addresses and look up ASN ownership in 2026"
+  description="Resolve any IP to country, city, coordinates, ASN, and network owner — single or bulk — for fraud checks, analytics, and routing decisions."
+  date="2026-06-18"
+  readingTime={11}
+  tags={["IP geolocation", "ASN", "intelligence"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What IP geolocation and ASN lookup actually mean in 2026</h2>
+  <p>IP geolocation resolves an IP address to a country, region, city, approximate coordinates, and timezone. ASN lookup resolves that same address — or an Autonomous System Number directly — to the network operator that owns it. Together they turn a raw IP into two answers most teams need: where the address sits, and who runs the network behind it. In 2026, the practical way to do this at scale is a managed API that returns clean JSON in a single call, single or bulk.</p>
+
+  <p>That paragraph is the short answer. The rest of this page is for the engineers and product leaders who have to actually wire it into a fraud check, an analytics pipeline, or a routing decision. We will name the use cases honestly, walk the recipe end to end with real commands, and flag where IP data lies to you so your pipeline does not.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>Nobody wants IP geolocation for its own sake. They want a decision. The reader of this page usually falls into one of three buckets, and the shape of the answer is different for each.</p>
+
+  <p>The first is a <strong>fraud and risk team</strong>. A signup, a checkout, or a login arrives with an IP attached, and you need a fast, cheap signal: what country is this, and is the address coming from a residential ISP or a datacenter? A datacenter or hosting ASN behind a consumer-facing signup is a classic risk signal — not a verdict on its own, but a strong input to a score.</p>
+
+  <p>The second is an <strong>analytics team</strong> doing geo-enrichment. You have a firehose of events or log lines, each with a source IP, and you want to roll up traffic by country and region, or attribute usage to a network. This is a bulk problem: thousands of IPs at a time, enriched and dropped into a warehouse.</p>
+
+  <p>The third is an <strong>infrastructure or routing team</strong>. You are deciding which region to serve a request from, which IPs to allow or deny, or auditing a claim that a block of addresses belongs to a particular operator. Here the ASN and its routed prefixes matter more than the city.</p>
+
+  <p>All three share a hidden requirement: the lookup has to be quiet, fast, and predictable. It should return a JSON record per IP, cost a known amount, and never block the request path it sits in. That is the actual product.</p>
+
+  <h2>What this data is — and what it is not</h2>
+  <p>Be honest with yourself about the data before you build on it. Ollagraph's intelligence endpoints run against local, open geolocation and routing databases. There is no outbound network call for these lookups — the IP is a key into a database read, not a page to fetch. That is why they are fast and why they carry no SSRF or abuse surface.</p>
+
+  <p>It also means this is <strong>free-data geolocation, not paid threat-intelligence</strong>. You are getting location and network ownership: where the address registers and who operates it. You are not getting a commercial threat feed, a breach database, or a reputation verdict rented from a third party. For the large majority of fraud and analytics pipelines, the location-and-ownership layer is exactly what you need first, and it is the layer you can run on every request without a per-lookup vendor bill.</p>
+
+  <p>The accuracy ceiling matters too. IP geolocation is dependable at the country level, usually good at region and city, and approximate at coordinates. It tells you where the network registers the address, not where a human is sitting. Treat city and coordinates as hints, treat country and ASN as signals, and you will not build a brittle pipeline on top of a noisy field.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Real curl commands, real request shapes. Drop these into a shell or your tool of choice and you have the building blocks of an enrichment pipeline. Every request example below points at the live API; the exact response fields are documented in the <a href="/docs">docs</a> and the live spec.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab an API key from the dashboard, and export it for the rest of this session. The key authenticates every call.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Geolocate a single IP</h3>
+  <p>Start with one address to verify the flow end to end. The geolocation endpoint takes a single <code>ip</code> field and returns the full enrichment — country, region, city, approximate coordinates, timezone, and the network identity attached to the address.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/geoip \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "ip": "8.8.8.8"
+  &#125;'</code></pre>
+
+  <p>The response is a clean JSON object with the location and network fields for that address. Country and timezone are the reliable fields; treat city and coordinates as approximate. The network identity in the response — operator name and ASN — is the bridge to the ownership lookups in the next steps.</p>
+
+  <h3>Step 3. Look up the network owner by ASN</h3>
+  <p>Once you have an ASN from a geolocation lookup, you can resolve it to the operator name and every CIDR prefix that network announces. The ASN endpoint takes an <code>asn</code> field — an integer, without the <code>AS</code> prefix. For example, <code>15169</code> is one of Google's networks.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/asn \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "asn": 15169
+  &#125;'</code></pre>
+
+  <p>This is the call you use to compile per-network allow or deny lists, to map a customer's infrastructure across all the address blocks they announce, or to audit a claim that a given range belongs to a particular operator. Because it returns the routed prefixes, you can expand a single ASN into the full set of CIDRs it covers and match incoming IPs against them.</p>
+
+  <h3>Step 4. Confirm the network type with reverse DNS</h3>
+  <p>For the classic fraud question — "is this a datacenter IP or a residential ISP?" — reverse DNS is the cheapest tiebreaker. It resolves the IP back to its PTR hostname, which often names the operator directly. The endpoint takes a single <code>ip</code> field.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/reverse-dns \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "ip": "1.1.1.1"
+  &#125;'</code></pre>
+
+  <p>Not every IP has a PTR record configured, so treat the hostname as nullable and fall back to the ASN signal when it is absent. A hostname that names a known cloud provider, paired with a hosting ASN, is a strong "this is datacenter traffic" signal for a risk score.</p>
+
+  <h3>Step 5. Scale up with bulk geolocation</h3>
+  <p>One IP is a test. A real enrichment pipeline runs thousands. The bulk endpoint accepts a list of up to 100 IPs per call in the <code>ips</code> field and returns the same full enrichment for each one. Most teams chunk their IP set into batches of 100 and fan the calls out from a worker pool.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/geoip/bulk \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "ips": [
+      "8.8.8.8",
+      "1.1.1.1",
+      "208.67.222.222"
+    ]
+  &#125;'</code></pre>
+
+  <p>Each IP in the batch is billed as one call, so the cost of enriching a log file is simply the number of distinct IPs in it. Deduplicate before you send — most event streams hit the same handful of addresses repeatedly, and caching the result for an IP for a day or two cuts the volume dramatically without losing meaningful accuracy.</p>
+
+  <h3>Step 6. Land it in your warehouse</h3>
+  <p>The last step decides whether the pipeline pays for itself. Store each enriched record with the source IP, an <code>enriched_at</code> timestamp, and the raw response in a JSON column so you can re-extract fields later without re-querying. Key your geo cache on the IP and a coarse expiry — a day is plenty for most fraud and analytics use cases — and you turn a per-event lookup into a fixed, bounded cost.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a fintech onboarding team. Every signup arrives with a source IP, and the risk model needs three inputs from it within the request budget: the country, whether the address is residential or datacenter, and the network operator. The team does not want to rent a per-lookup threat feed for a signal this basic, and they cannot afford a slow external call in the signup path.</p>
+
+  <p>The pattern that works is a single geolocation call at signup, cached for the session, that yields country and ASN. The country drives a coarse risk band; the ASN is matched against a precompiled set of hosting and datacenter ASNs — built once with the ASN endpoint — to set a "datacenter origin" flag. When the flag fires and the stakes are high, a reverse-DNS call confirms the hostname before the score escalates. Three cheap, local-database lookups, no per-event vendor bill, and a risk signal that is good enough to gate the genuinely suspicious signups for human review.</p>
+
+  <p>An analytics team runs the same primitives differently. Instead of one IP at a time in the request path, they batch the day's distinct source IPs into chunks of 100 against the bulk endpoint overnight, join the country and operator fields back onto their event table, and power a "traffic by country and network" dashboard. Same data, batch shape, predictable nightly cost.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>A few failure modes are worth planning for. Private and reserved IPs — anything in the RFC 1918 ranges, loopback, or link-local space — are not publicly routable and will not geolocate meaningfully. Filter them out before you send, or treat a non-result as "internal traffic" rather than an error.</p>
+
+  <p>Missing PTR records are normal, not a bug. Plenty of perfectly legitimate IPs have no reverse DNS configured. Lean on the ASN signal as your primary network-type input and use reverse DNS as confirmation, not as the sole determinant.</p>
+
+  <p>City and coordinate drift is the most common way teams get burned. Because the data reflects network registration, a national ISP can register a large block in one city while serving customers across the country. Build country-level and ASN-level logic; reserve city and coordinates for soft hints and visualizations, never for hard decisions.</p>
+
+  <p>Finally, if a lookup genuinely cannot be served, the API returns a structured error and the call is auto-refunded — you are not charged for a failure, and your pipeline should branch on the error rather than writing a null record as if it were a real result.</p>
+
+  <h2>Where this fits in the wider stack</h2>
+  <p>IP geolocation and ASN lookup are the entry point to Ollagraph's broader <a href="/intelligence">intelligence</a> surface. The same local-database philosophy — fast, free-data, no abuse surface — runs through the rest of the intel endpoints, which is why teams building fraud and analytics pipelines tend to adopt several of them together. The <a href="/for-intel">intelligence use-case page</a> walks through how risk and OSINT teams compose these primitives into a working enrichment layer.</p>
+
+  <p>If your enrichment also needs to watch certificates and subdomains for the networks you care about, pair this recipe with <a href="/recipes/monitor-ssl-and-subdomains">SSL and subdomain monitoring</a>. And because every metered call exposes its own cost and outcome, the per-IP economics stay legible end to end — see the <a href="/observability">observability</a> page for how each call is logged at the URL and request level. Browse the full <a href="/capabilities">capability surface</a> when you are ready to compose a larger pipeline.</p>
+
+  <h2>What to do next</h2>
+  <p>Grab a key, paste the Step 2 command, and confirm you can geolocate a real IP in the next five minutes. Then pick one use case — a datacenter-origin flag in your signup flow, or a nightly traffic-by-country rollup — and wire the bulk endpoint into it. Most teams have a working internal enrichment job inside a week.</p>
+
+  <p>Read the <a href="/docs">docs</a>, explore the <a href="/intelligence">intelligence endpoints</a>, and ship something.</p>
+</Article>

@@ -1,0 +1,202 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+
+const url = "https://ollagraph.com/tools/schema-generator/";
+
+const faqs = [
+  { q: "What is JSON-LD schema markup?", a: "JSON-LD is the structured-data format Google and answer engines recommend: a small <script type=\"application/ld+json\"> block in your page's <head> that describes what the page is — an Article, an Organization, a Product, a set of FAQs — in schema.org vocabulary. It makes your content machine-readable, which drives rich results in search and helps AI engines understand and cite your page." },
+  { q: "Is this schema generator free?", a: "Yes. It runs entirely in your browser — no signup, nothing uploaded. Pick a type, fill the fields, copy the generated JSON-LD into your page's head." },
+  { q: "Which schema types does it support?", a: "The highest-impact types for AEO and rich results: Organization, Article, FAQPage, Product, and BreadcrumbList. FAQPage in particular is one of the strongest single schemas for earning AI-overview and answer-engine citations on question queries." },
+  { q: "Where do I put the generated JSON-LD?", a: "Paste the whole <script type=\"application/ld+json\"> block into your page's <head>, or anywhere in the body — search engines accept it in both. One block per type; you can include several blocks on the same page (for example, Article plus BreadcrumbList plus FAQPage)." },
+  { q: "How do I check my schema is valid?", a: "Validate it with Google's Rich Results Test and the Schema.org validator. To see whether your structured data actually helps you get cited by AI engines, run the page through our citation-readiness checker and AEO audit endpoints, which score schema coverage among other signals." },
+];
+
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebApplication", name: "Schema.org JSON-LD Generator", applicationCategory: "DeveloperApplication", operatingSystem: "Web", url, description: "Free browser-based JSON-LD schema generator for Organization, Article, FAQPage, Product, and BreadcrumbList — the structured data that earns rich results and AI citations.", offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, provider: { "@type": "Organization", name: "Ollagraph", url: "https://ollagraph.com" } },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Free tools", item: "https://ollagraph.com/tools/" },
+    { "@type": "ListItem", position: 3, name: "Schema.org JSON-LD Generator", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+
+const field = "width:100%; padding:11px 13px; border-radius:10px; border:1px solid var(--border); background:var(--surface, rgba(255,255,255,0.03)); color:inherit; font-size:14.5px;";
+const lbl = "display:block; font-size:13px; color:var(--text-muted); margin:14px 0 6px;";
+---
+<BaseLayout
+  title="Free Schema.org JSON-LD Generator — structured data for SEO & AEO | Ollagraph"
+  description="Free, browser-based JSON-LD schema generator. Create valid Organization, Article, FAQPage, Product, and BreadcrumbList markup for rich results and AI citations. No signup."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('tools')} />
+
+  <main class="article">
+    <span class="badge badge-mute" style="margin-bottom:14px;">FREE TOOL</span>
+    <h1 class="h-display h-1">Schema.org JSON-LD generator</h1>
+    <p class="article-lede">
+      Generate valid JSON-LD structured data — the markup that earns rich results and helps AI answer
+      engines understand and cite your page. Pick a type, fill the fields, copy the block into your
+      <code class="text-mono">&lt;head&gt;</code>. Runs entirely in your browser.
+    </p>
+
+    <div style="max-width:680px; margin-top:20px;">
+      <label style={lbl}>Schema type</label>
+      <select id="type" style={field}>
+        <option value="Organization">Organization</option>
+        <option value="Article">Article</option>
+        <option value="FAQPage">FAQPage</option>
+        <option value="Product">Product</option>
+        <option value="BreadcrumbList">BreadcrumbList</option>
+      </select>
+
+      <div data-grp="Organization">
+        <label style={lbl}>Name</label><input data-f="name" type="text" placeholder="Acme Inc." style={field} />
+        <label style={lbl}>URL</label><input data-f="url" type="url" placeholder="https://acme.com" style={field} />
+        <label style={lbl}>Logo URL</label><input data-f="logo" type="url" placeholder="https://acme.com/logo.png" style={field} />
+        <label style={lbl}>Description</label><input data-f="description" type="text" style={field} />
+        <label style={lbl}>Social / sameAs links (one per line)</label><textarea data-f="sameAs" rows="3" placeholder={"https://twitter.com/acme\nhttps://www.linkedin.com/company/acme"} style={field}></textarea>
+      </div>
+
+      <div data-grp="Article" hidden>
+        <label style={lbl}>Headline</label><input data-f="headline" type="text" style={field} />
+        <label style={lbl}>Author name</label><input data-f="author" type="text" style={field} />
+        <label style={lbl}>Date published</label><input data-f="datePublished" type="date" style={field} />
+        <label style={lbl}>Image URL</label><input data-f="image" type="url" style={field} />
+        <label style={lbl}>Publisher name</label><input data-f="publisher" type="text" style={field} />
+        <label style={lbl}>Description</label><input data-f="description" type="text" style={field} />
+      </div>
+
+      <div data-grp="FAQPage" hidden>
+        <label style={lbl}>Q&amp;A pairs — question on one line, answer on the next, blank line between pairs</label>
+        <textarea data-f="qa" rows="6" placeholder={"What is X?\nX is a thing that does Y.\n\nHow much does X cost?\nX is free to start."} style={field}></textarea>
+      </div>
+
+      <div data-grp="Product" hidden>
+        <label style={lbl}>Name</label><input data-f="name" type="text" style={field} />
+        <label style={lbl}>Description</label><input data-f="description" type="text" style={field} />
+        <label style={lbl}>Image URL</label><input data-f="image" type="url" style={field} />
+        <label style={lbl}>Brand</label><input data-f="brand" type="text" style={field} />
+        <label style={lbl}>Price</label><input data-f="price" type="text" placeholder="19.00" style={field} />
+        <label style={lbl}>Currency</label><input data-f="priceCurrency" type="text" value="USD" style={field} />
+      </div>
+
+      <div data-grp="BreadcrumbList" hidden>
+        <label style={lbl}>Breadcrumb trail — one per line: <code class="text-mono">Name | https://url</code></label>
+        <textarea data-f="crumbs" rows="4" placeholder={"Home | https://acme.com/\nBlog | https://acme.com/blog/\nThis post | https://acme.com/blog/post"} style={field}></textarea>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:18px; flex-wrap:wrap;">
+        <button id="gen" class="btn btn-primary btn-lg" type="button">Generate JSON-LD</button>
+        <button id="copy" class="btn btn-secondary" type="button" hidden>Copy</button>
+      </div>
+
+      <pre id="out" style="display:none; margin-top:18px; padding:16px; border:1px solid var(--border); border-radius:12px; background:rgba(0,0,0,0.25); white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.6;"></pre>
+    </div>
+
+    <article class="prose">
+      <h2>Why structured data still matters in 2026</h2>
+      <p>
+        Structured data is how you tell a machine what your page <em>is</em>, instead of making it guess
+        from prose. For classic search, JSON-LD drives rich results — the stars, FAQs, breadcrumbs, and
+        product cards that make a listing stand out. For answer engines, it does something subtler and
+        more valuable: it removes ambiguity. A model deciding whether to cite your page reads your schema
+        to confirm the author, the date, the entity, the question your page answers — exactly the signals
+        that separate a quotable source from a maybe.
+      </p>
+      <p>
+        Of the types here, <strong>FAQPage</strong> is the highest-leverage single addition for AEO: it
+        maps your content directly onto the question-and-answer shape engines extract. <strong>Article</strong>
+        with a real author and date carries the strongest E-E-A-T signals. <strong>Organization</strong>
+        establishes your brand as an entity. Add the ones that fit your page — you can include several
+        blocks on the same page.
+      </p>
+
+      <h2>How to use the output</h2>
+      <ul>
+        <li>Paste the generated <code class="text-mono">&lt;script type="application/ld+json"&gt;</code> block into your page's <code class="text-mono">&lt;head&gt;</code>.</li>
+        <li>Validate with Google's Rich Results Test and the Schema.org validator before shipping.</li>
+        <li>Keep it honest — schema that contradicts the visible page can hurt you, not help.</li>
+        <li>Want to know if it is actually earning citations? Score the page with our <a href="/tools/citation-readiness">citation-readiness checker</a> or the <a href="/aeo">AEO audit endpoints</a>, which grade schema coverage.</li>
+      </ul>
+
+      <h2>Sources &amp; further reading</h2>
+      <p>The standards this generator follows:</p>
+      <ul>
+        <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the serialization format this tool emits.</li>
+        <li><a href="https://en.wikipedia.org/wiki/Schema.org" target="_blank" rel="noopener">Schema.org</a> (Wikipedia) — the shared vocabulary the types come from.</li>
+        <li><a href="https://datatracker.ietf.org/doc/html/rfc8259" target="_blank" rel="noopener">RFC 8259 — JSON</a> (IETF, 2017) — the underlying data format.</li>
+      </ul>
+    </article>
+  </main>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Common questions</h2>
+    {faqs.map((f) => (<div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Markup is half the job.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">Add the schema, then check whether AI engines can actually read and cite your page — free, with the Ollagraph AEO tools.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="/tools/citation-readiness">Check citation-readiness</a>
+      <a class="btn btn-secondary btn-lg" href="/aeo">See AEO audits</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+
+  <script is:inline>
+    (function () {
+      var typeSel = document.getElementById('type');
+      var out = document.getElementById('out'), copyBtn = document.getElementById('copy');
+      var groups = Array.prototype.slice.call(document.querySelectorAll('[data-grp]'));
+      function grp(t) { return document.querySelector('[data-grp="' + t + '"]'); }
+      function val(t, f) { var el = grp(t).querySelector('[data-f="' + f + '"]'); return el ? (el.value || '').trim() : ''; }
+      function lines(s) { return (s || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean); }
+      function show() { var t = typeSel.value; groups.forEach(function (g) { g.hidden = g.getAttribute('data-grp') !== t; }); }
+      typeSel.addEventListener('change', show); show();
+
+      function build() {
+        var t = typeSel.value, o = { "@context": "https://schema.org", "@type": t };
+        if (t === 'Organization') {
+          o.name = val(t, 'name'); o.url = val(t, 'url');
+          if (val(t, 'logo')) o.logo = val(t, 'logo');
+          if (val(t, 'description')) o.description = val(t, 'description');
+          var sa = lines(val(t, 'sameAs')); if (sa.length) o.sameAs = sa;
+        } else if (t === 'Article') {
+          o.headline = val(t, 'headline');
+          if (val(t, 'author')) o.author = { "@type": "Person", name: val(t, 'author') };
+          if (val(t, 'datePublished')) { o.datePublished = val(t, 'datePublished'); o.dateModified = val(t, 'datePublished'); }
+          if (val(t, 'image')) o.image = val(t, 'image');
+          if (val(t, 'publisher')) o.publisher = { "@type": "Organization", name: val(t, 'publisher') };
+          if (val(t, 'description')) o.description = val(t, 'description');
+        } else if (t === 'FAQPage') {
+          var blocks = (val(t, 'qa') || '').split(/\n\s*\n/).map(function (b) { return b.split('\n').map(function (x) { return x.trim(); }).filter(Boolean); }).filter(function (b) { return b.length >= 2; });
+          o.mainEntity = blocks.map(function (b) { return { "@type": "Question", name: b[0], acceptedAnswer: { "@type": "Answer", text: b.slice(1).join(' ') } }; });
+        } else if (t === 'Product') {
+          o.name = val(t, 'name');
+          if (val(t, 'description')) o.description = val(t, 'description');
+          if (val(t, 'image')) o.image = val(t, 'image');
+          if (val(t, 'brand')) o.brand = { "@type": "Brand", name: val(t, 'brand') };
+          if (val(t, 'price')) o.offers = { "@type": "Offer", price: val(t, 'price'), priceCurrency: val(t, 'priceCurrency') || 'USD' };
+        } else if (t === 'BreadcrumbList') {
+          o.itemListElement = lines(val(t, 'crumbs')).map(function (l, i) {
+            var p = l.split('|').map(function (x) { return x.trim(); });
+            return { "@type": "ListItem", position: i + 1, name: p[0] || '', item: p[1] || '' };
+          });
+        }
+        return '<script type="application/ld+json">\n' + JSON.stringify(o, null, 2) + '\n<\/script>';
+      }
+      document.getElementById('gen').addEventListener('click', function () {
+        out.textContent = build(); out.style.display = 'block'; copyBtn.hidden = false;
+      });
+      copyBtn.addEventListener('click', function () {
+        navigator.clipboard.writeText(out.textContent).then(function () {
+          copyBtn.textContent = 'Copied'; setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+        });
+      });
+    })();
+  </script>
+</BaseLayout>

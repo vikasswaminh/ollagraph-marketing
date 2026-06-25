@@ -1,0 +1,154 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "What is technographic data?",
+    a: "Technographic data is information about the technology stack a company uses — the CDN, the CRM, the analytics platform, the payment processor, the mail server, the marketing automation tool. It sits alongside firmographic (industry, size, revenue) and demographic data (decision-maker roles) in the data hierarchy that powers modern B2B sales and marketing.",
+  },
+  {
+    q: "How is technographic data collected?",
+    a: "Three main methods. First, website analysis: crawl the target site and identify technologies from HTML signatures, JavaScript libraries, HTTP headers, DNS records, and SSL certificates. Second, public records: WHOIS, certificate transparency logs, ASN data. Third, job postings: parse hiring listings to infer tools and platforms a company is actively using. The best providers combine all three.",
+  },
+  {
+    q: "What is the difference between BuiltWith and ZoomInfo?",
+    a: "BuiltWith is the largest dedicated technographic database, with 670 million websites tracked and 58,000 technologies catalogued. ZoomInfo is a broader sales intelligence platform that includes technographic data alongside firmographic, contact, intent, and other layers. BuiltWith is the right pick when you want the deepest technographic detail; ZoomInfo is the right pick when you want technographic blended with the rest of the prospecting workflow.",
+  },
+  {
+    q: "How accurate is technographic detection?",
+    a: "It varies by detection method and target. Frontend technologies (analytics, ad platforms, CDNs) are detected with high accuracy because they leave deterministic signatures. Backend technologies (databases, internal infrastructure) are harder and often inferred indirectly from job postings or partner announcements. The honest answer is that detection is accurate enough for sales targeting but should be treated as evidence, not proof.",
+  },
+  {
+    q: "Can I get technographic data via API?",
+    a: "Yes. BuiltWith, Wappalyzer, TheirStack, Clearbit, ZoomInfo, and Ollagraph all expose APIs with various levels of coverage and pricing. Ollagraph returns technographic detection alongside DNS, WHOIS, SSL, and contact extraction in the same call, which simplifies integration for teams that need the full enrichment picture in one shot.",
+  },
+  {
+    q: "How fast does technographic data become stale?",
+    a: "Faster than you might think. Companies switch CDNs, analytics platforms, and marketing tools more often than they change CRMs or core infrastructure. As a rule of thumb, treat technographic signals as fresh for 30 to 90 days. For active targeting, re-enrich your highest-priority accounts at least quarterly.",
+  },
+  {
+    q: "Is technographic data legal to use?",
+    a: "Generally yes, when collected from publicly accessible signals. The technologies a public website uses are themselves public information. Personally identifying contact data has separate legal frameworks (GDPR, CCPA) and should be handled with care. Work with counsel for international rollouts, particularly in the EU.",
+  },
+  {
+    q: "How much should I expect to pay for a technographic API?",
+    a: "Pricing varies widely. Self-serve plans across the category start modestly for low volumes and scale into enterprise contracts with deep integration, custom data feeds, and SLAs. Ollagraph combines technographic with the rest of the intelligence stack, so the per-domain cost is typically lower than buying technographic separately.",
+  },
+];
+---
+<Article
+  title="Sales intelligence APIs in 2026: a buyer's guide to DNS, WHOIS, and technographic data"
+  description="What technographic data really is, what it isn't, and how to pick between BuiltWith, ZoomInfo, Clearbit, and the new wave of API-first providers."
+  date="2026-05-16"
+  readingTime={12}
+  tags={["sales intelligence", "technographic", "RevOps"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <h2>Why technographic data became table stakes</h2>
+  <p>Five years ago, "what technology does this company use" was a nice-to-have data point. Today it is the single highest-signal field in most B2B targeting strategies. Knowing that a prospect runs Stripe, uses Snowflake, and just switched their marketing automation to HubSpot tells a sales team more about likely fit and timing than the firmographic data ever did. The technographic data market reflects this shift — it grew from $367 million in 2020 to more than $1 billion in 2026, riding a roughly 26 percent annual growth rate.</p>
+
+  <p>That growth has attracted more vendors, more pricing models, more integrations, and more confusion. This guide walks through what the category actually contains, the major providers in 2026, what each is best at, and the criteria that should drive a buying decision. We will name names — generously where they deserve it — and we will be honest about where Ollagraph fits in.</p>
+
+  <h2>What technographic data really is</h2>
+  <p>The category is wider than most buyers initially realize. A complete technographic record for a single company can include dozens of fields across several layers.</p>
+
+  <p>The <strong>infrastructure layer</strong> covers the cloud provider, CDN, DNS provider, mail provider, and SSL certificate issuer. These are detectable from public DNS records, certificate transparency logs, and HTTP response headers. They change relatively slowly — a company that runs on AWS this year almost certainly runs on AWS next year.</p>
+
+  <p>The <strong>front-end stack</strong> covers analytics platforms (Google Analytics, Plausible, Heap), tag managers, A/B testing tools, customer data platforms, marketing automation pixels, and ad network integrations. These leave clear signatures in the HTML and JavaScript of a public website and are typically the highest-accuracy detections.</p>
+
+  <p>The <strong>application layer</strong> covers CRMs, support tools, payment processors, embedded widgets, and SaaS integrations visible on a marketing site or in customer-facing flows. These are partially detectable from front-end signatures and partially inferred from job postings, partner directories, and product integration listings.</p>
+
+  <p>The <strong>internal stack</strong> covers databases, data warehouses, CI/CD systems, observability tools, and other infrastructure that is not visible from the outside. This layer is largely inferred — from job postings, conference talks, partner announcements, and public engineering content — rather than directly detected.</p>
+
+  <p>Different providers cover these layers with different depth and confidence. A serious buyer should ask each vendor exactly which layers they cover, how they detect each one, and how they signal confidence.</p>
+
+  <h2>The major providers, fairly</h2>
+  <p>The technographic and sales intelligence vendor landscape has settled into a few archetypes by 2026.</p>
+
+  <p><strong>BuiltWith</strong> remains the depth specialist. They crawl over 670 million websites and track more than 58,000 technologies. The detection covers HTML, JavaScript libraries, HTTP headers, DNS records, and SSL certificates. If you need historical data — when did this company adopt this technology, when did they drop the previous one — BuiltWith is the strongest option in the category. The trade-off is that the API is built for technographic queries specifically; you bring your own pipelines for firmographic and contact data.</p>
+
+  <p><strong>Wappalyzer</strong> covers similar ground at a more accessible price point. They track around 7,400 technologies in 106 categories. Their detection coverage is more modest than BuiltWith's but the API is clean and the lookups are fast. For teams running modest volumes and primarily care about frontend technographic detection, Wappalyzer is excellent value.</p>
+
+  <p><strong>ZoomInfo</strong> is the broader play. They track 30,000-plus technologies across roughly 100 million companies, but technographic data sits inside a larger sales intelligence platform with intent signals, contact data, org charts, and CRM integrations. ZoomInfo is the right pick when technographic is one of several layers your sales team needs and you want the data flowing directly into Salesforce or HubSpot.</p>
+
+  <p><strong>Clearbit</strong> (now part of HubSpot) emphasizes enrichment-on-demand. Their core strength is appending firmographic, technographic, and demographic data to existing records in real time. The technographic depth is solid but not the deepest in the category; the value is in the integration breadth and the ergonomic enrichment API.</p>
+
+  <p><strong>HG Insights</strong> serves enterprise buyers who need attested data with confidence scores and a focus on infrastructure-level technographic — what databases, ERPs, and major SaaS platforms a company runs. The depth is impressive; the pricing is enterprise-grade.</p>
+
+  <p><strong>TheirStack</strong> is one of the newer entrants. They emphasize job-posting-based detection, which catches technologies before they show up in front-end signatures. For early-stage signals on infrastructure adoption, this is a real differentiator.</p>
+
+  <p><strong>Ollagraph</strong> is where we live. We combine technographic detection with DNS, WHOIS, SSL, contact extraction, and email verification in a single API. Our specific edge is breadth-per-call: one request returns the technology stack, the mail provider, the SSL posture, the WHOIS history, and the social and contact footprint, all in clean JSON. Teams who would otherwise pay BuiltWith for technographic, Hunter.io for email, and Clearbit for enrichment often replace all three with us at a fraction of the combined cost.</p>
+
+  <h2>How to choose</h2>
+  <p>The decision usually breaks along four axes.</p>
+
+  <p><strong>Coverage depth.</strong> If you need to know exactly which version of Drupal a company runs, BuiltWith is the right answer. If you need to know whether a company runs on AWS or GCP, almost any of the major vendors will tell you accurately. Match the depth of your buying criteria to the depth of the vendor's detection.</p>
+
+  <p><strong>Integration breadth.</strong> ZoomInfo and Clearbit are designed to flow data into Salesforce, HubSpot, Outreach, and other go-to-market tools with minimal engineering effort. A pure API like BuiltWith or Ollagraph gives you more flexibility but requires you to own the integration. Pick based on how much engineering time you have.</p>
+
+  <p><strong>Real-time versus batch.</strong> Some workflows need a live lookup at the moment a prospect engages — a website form fill, an inbound demo request. Others need batch enrichment overnight against a large account list. Most vendors handle both, but the latency profiles and pricing models differ. Clearbit and Ollagraph are real-time-first; ZoomInfo and BuiltWith are batch-first with real-time available.</p>
+
+  <p><strong>Adjacent data.</strong> Pure technographic is one column in a target account record. If you also need firmographic, intent, contact, and org-chart data, a platform play is often more efficient than stitching APIs. If you only need the technographic, an API specialist gets you better depth per dollar.</p>
+
+  <h2>What changes when intelligence lives next to scraping</h2>
+  <p>One pattern that has emerged in 2026 is teams co-locating their technographic enrichment with their scraping infrastructure. The reason is that the data you want for sales targeting is increasingly the same data you want for competitive monitoring, content extraction, and SEO analysis. Running these through separate vendors means stitching identifiers across systems, reconciling timestamps, and maintaining multiple API integrations.</p>
+
+  <p>Ollagraph's hypothesis when we built the intelligence layer was that this stitching tax was the largest hidden cost in the category. Our customers tell us we were right. The teams who have collapsed three vendors into one report saving 40 to 60 percent of integration engineering time and a similar fraction of vendor spend. That is the specific outcome we optimize for; if your team's costs do not look like that, the consolidation will not move the needle for you.</p>
+
+  <h2>How to evaluate a vendor</h2>
+  <p>Whichever vendor you are looking at, run the same evaluation. Pick 25 to 50 target accounts representative of your real ICP. Run each through every vendor's API. For each account, score on three axes:</p>
+
+  <ul>
+    <li><strong>Coverage.</strong> Did the vendor return data at all? Many providers have unexpected gaps for international companies, smaller companies, or companies in specific verticals.</li>
+    <li><strong>Accuracy.</strong> Spot-check the returned data against the company's actual public website. Track false positives (claimed technologies the company does not use) and false negatives (technologies clearly visible that were not detected).</li>
+    <li><strong>Recency.</strong> If you have ground truth on when a company switched providers — from a press release, a job posting, a customer reference — see whether the vendor's data reflects the recent state or a stale snapshot.</li>
+  </ul>
+
+  <p>Three weeks and 50 accounts is usually enough to make a confident vendor decision. Vendors who are good at their job will happily give you trial access for this kind of structured evaluation.</p>
+
+  <h2>The intelligence layer beyond technographic</h2>
+  <p>The interesting trend in 2026 is that "sales intelligence" no longer means just technographic and firmographic. The richest enrichment records include:</p>
+
+  <ul>
+    <li><strong>Email infrastructure</strong>: does this company use Google Workspace or Microsoft 365? Is the mail server protected with SPF and DMARC? Has the mail provider changed recently?</li>
+    <li><strong>SSL posture</strong>: when was the certificate issued, when does it expire, which issuer was used, what are the subject alternative names? Subject alternative names in particular are a goldmine for discovering related subdomains and product surfaces.</li>
+    <li><strong>WHOIS history</strong>: registrar, creation date, expiration date, contact emails. The creation date alone is a strong signal for company maturity.</li>
+    <li><strong>Social and contact footprint</strong>: every social link from the company's footer, every email address mentioned in their HTML, every phone number visible on the site.</li>
+    <li><strong>Logo and visual brand</strong>: favicon, apple-touch icon, logo paths — useful for personalization and for building visual prospect lists.</li>
+    <li><strong>Sitemap and content footprint</strong>: number of public pages, structure of their content hierarchy, presence of a blog or changelog.</li>
+  </ul>
+
+  <p>Buyers who think they are buying technographic should consider how many of these adjacent signals their vendor returns in the same call. The integration value of "one call, full picture" compounds the more layers you can collapse. With Ollagraph these signals come from a small set of endpoints you can compose: <code>/v1/enrich/company</code> for the combined company picture, <code>/v1/dns/intelligence</code> and <code>/v1/dns/lookup</code> for nameserver and mail records, <code>/v1/intel/ssl</code> for certificate posture, <code>/v1/intel/whois</code> for registration history, and <code>/v1/intel/page</code> for the technology footprint and contact details extracted from the page itself.</p>
+
+  <h2>A short worked example</h2>
+  <p>To make this concrete, set your key once and call the API. Keys authenticate every request as a bearer token:</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <p>A single enrichment call against a domain returns the company picture in one shot:</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/enrich/company \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "anthropic.com"
+  &#125;'</code></pre>
+
+  <p>When we ran this on a recent test, the response returned the email provider (Google Workspace), the nameserver provider (Cloudflare), SPF and DMARC presence (both true), the inferred technology footprint (SPF, Google Search Console, Microsoft 365, Stripe, Atlassian), and the full DNS record set — A, MX, TXT, NS — in 21 milliseconds. A second pass against <code>/v1/intel/ssl</code> and <code>/v1/intel/whois</code> returned the SSL certificate (Let's Encrypt, 51 days remaining, subject alternative names covering <code>console.anthropic.com</code> and a staging environment) and the WHOIS data (registered with MarkMonitor in 2001, expires in 2033), while <code>/v1/intel/page</code> filled in the page-level intelligence (AWS plus Cloudflare in the tech stack, three logo variants, no public RSS feeds).</p>
+
+  <p>That is six separate pieces of information that would have required three different vendors and a non-trivial integration to assemble five years ago. In 2026 it is one API key and a couple of calls. That is the shape the category is moving toward, regardless of which vendor you pick. You can see the full request and response shapes in the <a href="/docs">docs</a>.</p>
+
+  <h2>Where to start</h2>
+  <p>If you are early in your sales intelligence evaluation, run the structured 50-account benchmark we described above against at least three vendors that look like good fits. Score on coverage, accuracy, and recency. The winner will be obvious within a week.</p>
+
+  <p>If you want to include Ollagraph in that benchmark, the free tier covers 1,000 calls a month, every endpoint included. Enough to enrich your top 500 accounts twice without paying a cent. Browse the <a href="/capabilities">full capability set</a>, see the <a href="/pricing">pricing</a>, or read the <a href="/for-intel">intelligence use cases</a> to see how teams compose these endpoints.</p>
+
+  <h2>Sources &amp; further reading</h2>
+  <p>The standards behind the data underneath technographic and domain intelligence, for readers who want the primary sources:</p>
+  <ul>
+    <li><a href="https://datatracker.ietf.org/doc/html/rfc3912" target="_blank" rel="noopener">RFC 3912 — WHOIS Protocol Specification</a> (IETF, 2004) — the protocol behind domain-registration lookups.</li>
+    <li><a href="https://en.wikipedia.org/wiki/WHOIS" target="_blank" rel="noopener">WHOIS</a> (Wikipedia) — what registration data is, and how privacy rules now limit it.</li>
+    <li><a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj" target="_blank" rel="noopener">General Data Protection Regulation (GDPR)</a> (EU, 2016) — the compliance frame for enriching contact and company data.</li>
+  </ul>
+</Article>

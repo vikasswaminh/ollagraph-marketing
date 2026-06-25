@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import bodyHtml from '../../bodies/legal-acceptable-use.body.html?raw';
+import { navHtml, footerHtml } from '../../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml(""))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="Acceptable Use Policy — Ollagraph" description="What you may and may not do with the Ollagraph API — lawful, authorized, public-web use only.">
+  <Fragment set:html={rendered} />
+</BaseLayout>

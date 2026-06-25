@@ -1,0 +1,173 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "What format works best for LLM training data?",
+    a: "Clean markdown is the dominant format for LLM ingestion in 2026. It preserves headings, lists, and links — all signals that improve model understanding — while stripping presentational HTML that wastes tokens. JSON-LD complements markdown for structured retrieval tasks. Raw HTML works only when you have a downstream cleaning step you control.",
+  },
+  {
+    q: "How much data do I need for fine-tuning versus pretraining?",
+    a: "Fine-tuning typically needs hundreds to tens of thousands of high-quality examples — quality dominates quantity. Continued pretraining benefits from millions to billions of tokens of in-domain text. The shift in 2026 is that small high-quality datasets often outperform large noisy ones, so a 50,000-document curated corpus can rival a 5-million-document scrape.",
+  },
+  {
+    q: "Do I need a residential proxy for LLM training data collection?",
+    a: "For most public web content, no. Documentation sites, blogs, news, knowledge bases, and public APIs respond fine to well-behaved scrapers. Residential routing becomes necessary when your corpus includes sites with aggressive anti-bot defenses — Amazon, Zillow, LinkedIn, certain travel and finance sites. Plan your source policy first, then decide where you need the heavier route.",
+  },
+  {
+    q: "How do I deduplicate scraped pages effectively?",
+    a: "Hash the clean markdown output — not the HTML — to detect exact duplicates. For near-duplicates, use shingling or MinHash to spot pages that share most paragraphs. URL-level deduplication is necessary but not sufficient; the same content often appears at multiple URLs after canonicalization.",
+  },
+  {
+    q: "Should I crawl or use a sitemap to discover URLs?",
+    a: "Start with the sitemap when one exists — it is a curated list the site owner already maintains. Fall back to crawling only when sitemaps are incomplete or missing. Most sites publish a sitemap at /sitemap.xml; many split into nested index sitemaps for large catalogs.",
+  },
+  {
+    q: "How do I respect robots.txt for training data?",
+    a: "Read it on every host you crawl, before the first non-robots request. Honor User-agent: * directives and any User-agent: GPTBot, ClaudeBot, or specific bot directives if they apply. Many sites now use machine-readable opt-out signals like the noai meta tag — treat those as binding for training-data use.",
+  },
+  {
+    q: "What is the legal landscape for training-data scraping in 2026?",
+    a: "It remains jurisdiction-specific and use-case dependent. Publicly accessible content is generally lawful to fetch, but redistribution, model training, and commercial use have separate legal questions in different jurisdictions. Work with counsel before commercial training runs, especially for international datasets, and document your source policy.",
+  },
+  {
+    q: "How fast can I scrape without getting blocked?",
+    a: "It depends on the site. For typical content sites, one request every two to four seconds is polite and rarely triggers rate limits. Documentation and government sites tolerate higher concurrency. For sensitive sites, slow down further — one request every six to ten seconds. A managed API handles this for you across thousands of sites.",
+  },
+];
+---
+<Article
+  title="Building a web data pipeline for LLM training in 2026"
+  description="A practical guide to collecting, cleaning, and shipping training data at scale — what works, what fails, and what to outsource."
+  date="2026-05-16"
+  readingTime={14}
+  tags={["AI", "RAG", "training data"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <h2>The state of training-data pipelines</h2>
+  <p>If you are reading this, you already know that a model is only as good as the data you feed it. What has shifted in 2026 is the bar for what counts as good. Two years ago you could throw a hundred million pages of mixed-quality web content at a model and call it pretraining. Today, that approach loses to a carefully curated five-million-document corpus from the same budget. Quality has eaten quantity in pretraining the same way it has eaten quantity everywhere else in machine learning.</p>
+
+  <p>The hard part for most teams is not deciding to care about quality. It is building the pipeline that turns a list of source URLs into a clean, deduplicated, license-clear corpus that an embedding model or a fine-tuning run can actually consume. That pipeline has at least four stages, each with its own failure modes, and most teams underestimate at least two of them.</p>
+
+  <p>This article walks through the full pipeline as we see customers build it in 2026, names the parts that are easy to get wrong, and points out where buying beats building. We will name competitors directly where helpful, because pretending alternatives do not exist makes the writing less useful — and frankly, the data infrastructure space in 2026 is rich enough that nobody needs to be defensive about it.</p>
+
+  <h2>What you are actually building</h2>
+  <p>The training-data pipeline has four stages: <strong>discovery</strong>, <strong>fetching</strong>, <strong>cleaning</strong>, and <strong>provenance</strong>. Some teams add a fifth — <strong>deduplication and filtering</strong> — and treat it as a peer to the others. Either way, each stage has its own dominant failure modes.</p>
+
+  <p>Discovery is how you decide which URLs to fetch. The cheap mistake here is treating discovery as a free byproduct of fetching — letting a generic crawler pick its own targets and hoping the link graph delivers what you want. It rarely does. Modern training pipelines start with curated source lists: documentation portals, knowledge bases, public datasets, government open-data sites, and a handful of high-quality news and reference sources. Generic crawl-the-web pipelines produce corpora that are heavy on SEO content and light on the deep technical material that actually moves model quality.</p>
+
+  <p>Fetching is where most teams have been burned. A page that loads fine in your browser may return an empty body to a default Python request, because the site detected a missing JavaScript runtime or an obvious datacenter IP. The honest answer here is that fetching at scale requires more infrastructure than it looks like from a five-line prototype. Browser automation, stealth profiles, proxy rotation, retry logic, and rate-limit awareness all matter once you are pulling more than a few thousand pages.</p>
+
+  <p>Cleaning is the stage that decides whether your tokens are signal or noise. A typical web page is 80 to 95 percent boilerplate — navigation, headers, footers, cookie banners, ads, related-content widgets, comment sections, share buttons. If those tokens land in your training set, the model spends capacity learning to predict cookie banner copy. That is not what you paid for. Readability-style extraction — identifying the main content block and discarding everything around it — is the difference between a corpus that helps and a corpus that quietly drags performance down.</p>
+
+  <p>Provenance is what your legal team will ask you about three weeks before you ship. For every document in your training set, you should be able to answer: what URL did this come from, when was it fetched, what was the robots.txt at the time, was there an opt-out signal we missed, what license did the source declare? Pipelines that skip provenance early end up rebuilding it expensively later.</p>
+
+  <h2>Where the off-the-shelf options stand</h2>
+  <p>You have real alternatives to building this yourself, and several of them are very good. The shape of the decision in 2026 looks like this.</p>
+
+  <p>Firecrawl is the team that popularized clean markdown output for AI workflows. They earned that position with quality output and a developer experience that respects how AI engineers actually work. If you need clean markdown from a known list of URLs and your volume is modest, they are an excellent choice and the learning curve is short.</p>
+
+  <p>ScraperAPI built a reputation on simplicity. The API surface is minimal, the docs are clean, the onboarding takes minutes. For teams that just need raw HTML and want to do their own cleaning and structure extraction downstream, that simplicity is a real virtue.</p>
+
+  <p>The do-it-yourself path is always on the table too: rent a proxy pool, stand up a headless-browser farm, write the parsers, and keep all three healthy as your target sites ship layout changes. It is the most flexible option and the most expensive once you load in bandwidth, compute, and the engineering attention it quietly consumes. Most teams underestimate the last line.</p>
+
+  <p>Ollagraph — that is us — takes the same simplicity ScraperAPI is known for and adds two things on top that matter for training-data pipelines specifically. One: every endpoint returns LLM-ready markdown by default, with the structured signals (JSON-LD, OpenGraph, Twitter Card, microdata) returned alongside in the same call. Two: a built-in intelligence layer means you can pull the SSL, DNS, WHOIS, and tech-stack metadata for every source URL in the same pipeline, which is useful for provenance documentation and for filtering corpora by source category.</p>
+
+  <p>None of these is the wrong choice in isolation. The right choice depends on what your downstream stages look like, what your legal team needs to see, and how much pipeline maintenance you want to own.</p>
+
+  <h2>Discovery: getting the URL list right</h2>
+  <p>The single highest-leverage decision in a training-data pipeline is which URLs you choose to fetch. Spending an extra week on discovery saves months downstream.</p>
+
+  <p>Start with curated lists. For technical pretraining, the obvious sources are documentation sites for major open-source projects, technical books with permissive licenses, government technical archives, and high-quality educational publishers that offer text APIs. For general-purpose corpora, Common Crawl and the Pile-style aggregations remain the volume baseline, but a curated supplement of the top thousand reference and educational sites lifts model quality on benchmarks that matter.</p>
+
+  <p>Sitemaps are an underused resource. Most reasonable sites publish a <code>/sitemap.xml</code> with every public URL, often split into nested index sitemaps for large catalogs. Fetching the sitemap is one HTTP request that can replace days of crawler tuning. The Ollagraph <code>/v1/intel/sitemap</code> endpoint flattens nested index sitemaps into a single response, which is convenient when you are building a URL list for an LLM training run that spans hundreds of sites.</p>
+
+  <p>For sites without sitemaps, crawl conservatively. A breadth-first crawl with a budget of a few thousand pages and a depth limit of three or four levels gets you most of what is worth having. Past that the marginal page tends to be archival, tag pages, paginated lists, or boilerplate. Stopping early saves bandwidth and improves the average quality of your corpus.</p>
+
+  <p>One more discovery principle worth naming: write down what you are not going to fetch. Maintain an exclude list of social media sites, link aggregators, low-quality SEO farms, and known machine-generated content sites. The exclusions matter as much as the inclusions for corpus quality.</p>
+
+  <h2>Fetching: the part that bites you</h2>
+  <p>Fetching looks easy in a notebook. A line of Python pulls a page, you parse it with BeautifulSoup, you move on. At scale, the failures stack up fast.</p>
+
+  <p>The first failure mode is JavaScript-rendered content. A growing share of pages return an empty body or a thin skeleton to a default fetch and rely on client-side JavaScript to render the actual content. If your fetcher is not running a browser, those pages contribute nothing useful. The mitigation is a stealth headless browser that waits for the page to render before extraction. Running one yourself is workable for a few hundred URLs per minute; past that, the operational overhead is significant.</p>
+
+  <p>The second failure mode is anti-bot defenses. Sites that detect crawlers — Amazon, Zillow, LinkedIn, many travel and finance sites — return captcha walls, soft 403s, or shadowbanned responses that look fine but contain reduced or fake content. Detecting shadowbans requires comparing the response to a known-good fingerprint, which most pipelines never bother to do. The result is a corpus that quietly contains thousands of bot-wall pages mistaken for legitimate content.</p>
+
+  <p>The third failure mode is rate limiting and IP reputation. Datacenter IPs are flagged faster than residential IPs. A pipeline that runs from a single cloud region against a target site will hit rate limits within minutes. Rotation across IPs helps; residential routing helps more; respecting the site's own rate-limit headers helps most.</p>
+
+  <p>The fourth failure mode is retries. Naive retry-on-failure logic creates cascading failures when a target site goes briefly degraded. Exponential backoff with jitter, per-host concurrency limits, and dead-letter queueing for repeated failures are table stakes for a fetch pipeline that runs unattended overnight.</p>
+
+  <p>Most teams underestimate how much of their engineering time goes into fetcher reliability. By month six of a serious pipeline, the fetcher is the most complex service in the stack and the one most likely to wake somebody up at 2 a.m. If you have an option to outsource it, take it.</p>
+
+  <h2>Cleaning: the difference between a good corpus and a great one</h2>
+  <p>Once the bytes are in hand, the cleaning stage decides what fraction of them survive into the training set. The basic operations every pipeline needs:</p>
+
+  <ul>
+    <li><strong>Main-content extraction.</strong> Identify the article body and discard navigation, ads, footers, related-content widgets, share buttons, comment threads, cookie banners. Readability-style algorithms work well here.</li>
+    <li><strong>Markdown normalization.</strong> Convert the extracted content to clean markdown. Preserve headings, lists, links, and code blocks. Strip presentational attributes and inline styles.</li>
+    <li><strong>Language detection and filtering.</strong> Drop pages outside your target languages early, before tokenization budget burns on them.</li>
+    <li><strong>Quality filtering.</strong> Filter on length, readability score, ratio of code to prose, presence of meaningful punctuation. The exact filters depend on your training objective, but every serious pipeline has them.</li>
+    <li><strong>Deduplication.</strong> Hash-based exact dedup catches the obvious cases. MinHash or shingling catches near-duplicates. Both matter — exact dedup alone leaves 10 to 30 percent duplicate content in a typical web corpus.</li>
+  </ul>
+
+  <p>One observation that surprises teams new to this: the cleaning stage is where most of the bias in a corpus enters. If your cleaning filter prefers long-form English prose with consistent paragraph structure, you will end up with a corpus that overrepresents formal publications and underrepresents technical documentation, code, scientific writing, and non-English content. Audit your filters with the same care you audit your sources.</p>
+
+  <h2>Provenance: the stage everyone skips and regrets</h2>
+  <p>Every document in your training set should carry, at minimum, the source URL, the fetch timestamp, the licence declaration the source made (if any), the robots.txt state at the time of fetch, and any opt-out signals (the <code>noai</code> meta tag, X-Robots-Tag, machine-readable rights statements). This is not optional for commercial training in 2026. Regulators, publishers, and increasingly customers expect to see the audit trail.</p>
+
+  <p>Build the provenance schema first, before you fetch a single page. Retrofitting it after the corpus is built is painful and often impossible — the source pages will have changed, robots.txt may have been updated, opt-out signals may have been added or removed.</p>
+
+  <h2>How the pipelines we see at customers actually look</h2>
+  <p>The shapes vary, but the most successful patterns share a few traits.</p>
+
+  <p>First, they decouple discovery from fetching. The URL list lives in a versioned manifest — a git repo, a database table, an S3 file — that is reviewed by humans before any new sources go into production. This is the single most leveraged hygiene practice we see.</p>
+
+  <p>Second, they outsource fetching. The teams that try to run their own browser farm at scale eventually conclude the work is not differentiated. Whether they buy from Firecrawl, ScraperAPI, Ollagraph, build it themselves, or some combination depends on volume, vertical mix, and procurement preference. The point is that they buy.</p>
+
+  <p>Third, they keep cleaning in-house. Cleaning is where their proprietary judgement lives — the filters, the bias audits, the dedup heuristics. Outsourcing the bytes is fine; outsourcing the editorial decisions usually is not.</p>
+
+  <p>Fourth, they treat provenance as a first-class concern with a dedicated engineer or compliance partner. Not a JIRA ticket to address later.</p>
+
+  <h2>What a single pipeline call looks like with Ollagraph</h2>
+  <p>For the fetching and cleaning stages combined, a single call to <code>/v1/scrape</code> with <code>format: "markdown"</code> returns a clean markdown body and a metadata block. The same call, with <code>format: "html"</code>, gives you the raw page if your cleaning stage prefers to do its own extraction. <code>/v1/extract/structured</code> returns JSON-LD, OpenGraph, and microdata for structured retrieval downstream. <code>/v1/crawl</code> walks a full site and webhooks back a complete result set so your ingestion pipeline does not hold connections open. <code>/v1/intel/page</code> attaches the tech-stack, SSL, and contact metadata to each source for your provenance schema.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"
+
+curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://docs.example.com/guide",
+    "format": "markdown"
+  &#125;'</code></pre>
+
+  <p>For long-running site walks, submit the crawl and let it call you back rather than holding a connection open.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/crawl \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://docs.example.com",
+    "max_pages": 2000,
+    "webhook_url": "https://your-app.example.com/hooks/ollagraph"
+  &#125;'</code></pre>
+
+  <p>Poll <code>GET /v1/jobs/&#123;job_id&#125;</code> if you prefer pull, or wait for the webhook if you prefer push. Most production pipelines use the webhook path and treat the polling endpoint as a debugging tool.</p>
+
+  <p>None of this is unique to Ollagraph in the abstract — every option in the comparison above can produce similar outputs in similar shapes. The reason we built it the way we did is so that all of it lives behind one API key, one billing line, and one schema, which removes a meaningful integration tax for teams that would otherwise stitch together three providers.</p>
+
+  <h2>Where to go from here</h2>
+  <p>If you are early in your pipeline build, the highest-leverage move is to write down your source policy and your provenance schema before you fetch anything. If you are mid-build and the fetcher is the part eating your engineering hours, the highest-leverage move is to decide whether you want to keep owning that complexity.</p>
+
+  <p>If Ollagraph fits the shape of what you are building, the free tier covers a generous monthly grant across every endpoint, no credit card. Plenty to evaluate on a real subset of your corpus before committing to anything larger. Read the <a href="/docs">docs</a>, browse the <a href="/capabilities">capabilities</a>, and see the <a href="/pricing">pricing page</a> when you are ready to scale.</p>
+
+  <h2>Sources &amp; further reading</h2>
+  <p>The research and standards behind building web-scale training corpora, for readers who want the primary sources:</p>
+  <ul>
+    <li><a href="https://arxiv.org/abs/2101.00027" target="_blank" rel="noopener">The Pile: An 800GB Dataset of Diverse Text for Language Modeling</a> (Gao et al., 2020) — a canonical example of a curated web-scale training corpus.</li>
+    <li><a href="https://en.wikipedia.org/wiki/Web_scraping" target="_blank" rel="noopener">Web scraping</a> (Wikipedia) — the collection method, with its technical and legal background.</li>
+    <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the robots.txt standard that governs responsible large-scale collection.</li>
+    <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format that makes scraped pages cleaner to ingest.</li>
+  </ul>
+</Article>

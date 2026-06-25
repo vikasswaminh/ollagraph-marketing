@@ -1,0 +1,220 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "How accurate is Google Maps business data in 2026?",
+    a: "Place names, coordinates, and category labels are accurate above 98 percent on first pull. Phone numbers and hours drift roughly 3 to 6 percent per quarter as small businesses change them faster than Google indexes them. Re-crawling monthly keeps a working dataset clean enough for sales and SEO use."
+  },
+  {
+    q: "Can I scrape Google Maps without getting blocked?",
+    a: "Yes, when the requests look like ordinary traffic. The reliable path is a managed API such as Ollagraph's Google Maps actor, which handles rotation, session warmth, and rendering on your behalf. You pay per result and never touch the rate-limit math yourself."
+  },
+  {
+    q: "What's the difference between Google Maps and Google Places API?",
+    a: "The Places API is Google's own paid product. It returns canonical records and is the right call for first-party apps inside Google's ecosystem. Scraping Google Maps captures the public listing as users see it, including review snippets and ranking context that the Places API does not expose."
+  },
+  {
+    q: "How many results does Google Maps return per query?",
+    a: "A standard search shows up to 120 places per query in 2026, paginated in three sets of roughly forty. Broad searches in dense cities hit that ceiling fast. The solution is geographic tiling: split a city into smaller bounding boxes and query each one separately."
+  },
+  {
+    q: "Does Google Maps scraping include reviews?",
+    a: "Ollagraph's Google Maps actor returns rating, total review count, and the most recent review snippets per place in a single call. Pulling the full review history for a place requires a follow-up call against the listing's reviews panel, which the actor returns alongside the core fields."
+  },
+  {
+    q: "Is it legal to scrape Google Maps business listings?",
+    a: "Public business information has been treated as fair game by US courts in cases like hiQ v LinkedIn. Most legal teams clear scraping of public listings for analytics, market research, and lead generation. Reselling raw Google content as a database is a separate question and worth a quick conversation with counsel."
+  },
+  {
+    q: "How fresh is the data Ollagraph returns?",
+    a: "Each call is a live fetch. The actor opens the listing the moment you request it, so the rating, review count, and hours match what a user would see at that second. There is no pre-built index sitting between you and Google."
+  },
+  {
+    q: "How much does it cost to scrape 100,000 Google Maps places?",
+    a: "On Ollagraph's metered plans, 100,000 place records lands around the cost of a single mid-tier SaaS seat. The exact figure sits on the pricing page. Below 100k requests a month, a managed API is almost always cheaper than building your own crawler."
+  },
+  {
+    q: "Can I get business coordinates and addresses in one call?",
+    a: "Yes. The Google Maps actor returns latitude, longitude, the formatted address, and the postal components in the same response as the name and rating. There is no second geocoding step required for downstream mapping or territory planning."
+  }
+];
+---
+<Article
+  title="How to scrape Google Maps businesses in 2026"
+  description="Pull places, ratings, reviews, hours, addresses, and coordinates from Google Maps at scale — the architecture that local SEO, sales prospecting, and market research teams actually use."
+  date="2026-05-16"
+  readingTime={14}
+  tags={["Google Maps", "Local SEO", "Lead generation", "Actors"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>The short answer for scraping Google Maps in 2026</h2>
+  <p>Scraping Google Maps in 2026 means sending a place query to a managed actor endpoint and receiving structured JSON back. Ollagraph's Google Maps actor returns place names, ratings, review counts, hours, addresses, and coordinates in a single call. You pay per result and skip every piece of infrastructure that used to make this hard.</p>
+
+  <p>That is the whole pipeline for most teams now. The cost has fallen, the legal posture has clarified, and the tooling has matured to the point where Google Maps is one of the cleanest public data sources on the web.</p>
+
+  <p>The rest of this recipe walks the architecture in detail. We name the strongest alternatives in the market, explain where Ollagraph fits, show the exact requests and responses, and price the work for a typical 100,000-place build.</p>
+
+  <h2>The problem teams keep running into</h2>
+  <p>Local SEO managers, sales operations leads, and market researchers all want the same dataset. They want every coffee shop in Brooklyn, every dentist in Phoenix, every Toyota dealer within a hundred miles of Atlanta. They want the data normalized, geocoded, and fresh.</p>
+
+  <p>Building this in-house starts simple and ends in a swamp. A headless browser pointed at maps.google.com works for a hundred queries and then starts throwing soft blocks. Add residential proxies and the bill climbs. Add a rendering farm and the on-call burden climbs with it.</p>
+
+  <p>The pattern that wins in 2026 is the one most teams reach for after the second outage. Treat Google Maps as a managed API call. Hand the rotation, rendering, and parsing to a vendor. Pay per successful place record. Spend engineering cycles on the dataset, not the delivery mechanism.</p>
+
+  <h2>What the top alternatives offer</h2>
+  <p>The Google Maps scraping space has matured into a real category with several strong players. Each has earned its reputation by solving the problem in its own way, and a quick tour of the field makes it easy to see where each one shines.</p>
+
+  <h3>Outscraper</h3>
+  <p>Outscraper has built one of the most complete Google Maps offerings on the market. Their place dataset is wide, their UI is friendly to non-developers, and their reviews exporter is widely used by agencies who need to ship deliverables to local clients on a tight timeline. Teams that want a no-code path with bulk CSV exports often land on Outscraper first and stay there. They have done the field a service by making Google Maps data approachable.</p>
+
+  <h3>SerpAPI</h3>
+  <p>SerpAPI is the go-to choice for teams that already think in terms of search results. Their Google Maps endpoint slots neatly alongside their Google Search and Google Local endpoints, which makes it the natural pick for SEO platforms tracking organic and map-pack positions together. The reliability of SerpAPI under heavy load is one of the quiet wins of the search-data ecosystem. They have made a category that used to be brittle feel boring in the best possible way.</p>
+
+  <h3>ScrapingBee</h3>
+  <p>ScrapingBee rounds out the field with a strong general-purpose offering. Its render endpoint is one of the friendliest in the business for developers who want a single primitive that just works. Teams who want a building block they can compose into their own pipeline often reach for it first, and the company has raised the floor on what developers expect from a scraping vendor.</p>
+
+  <h2>Where Ollagraph goes further</h2>
+  <p>Ollagraph is designed for teams that want a typed, opinionated output and a flat per-result price. The Google Maps actor returns a normalized place object with the eight fields most teams actually use, and it returns them on the same call. No follow-up requests for coordinates, no separate endpoint for reviews summaries, no parsing of HTML on your side.</p>
+
+  <p>The actor also speaks the language of the rest of the Ollagraph API. Place URLs from the Google Maps actor can flow into the <a href="/capabilities">intelligence</a> endpoints to enrich the business website, into <a href="/recipes/verify-email-addresses-at-scale">email verification</a> to clean up contact data, and into the <a href="/capabilities">general scrape</a> endpoint when a custom field is needed. That composability matters when a Google Maps pull is step one of a larger pipeline.</p>
+
+  <p>And the pricing model is plain. One place equals one credit. There is no separate charge for the render, the proxy, or the parse. Teams building budgets in advance can multiply their target dataset size by a single number and be done.</p>
+
+  <h2>The step-by-step</h2>
+
+  <h3>1. Authenticate and pick your target</h3>
+  <p>Every Ollagraph call goes through a bearer token. Generate one in the dashboard, treat it like a database password, and rotate it on the same cadence as the rest of your secrets. Export it for the rest of this session — keys start with the prefix <code>osk_</code>.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <p>The actor takes a single Google Maps listing URL and returns the structured record extracted from the embedded payload. The fields are stable and documented in the <a href="/docs">Ollagraph docs</a>.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/actors/google-maps \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://www.google.com/maps/place/Devocion+Brooklyn"
+  &#125;'</code></pre>
+
+  <p>A typical record looks like this:</p>
+
+  <pre><code>&#123;
+  "name": "Devocion Brooklyn",
+  "rating": 4.6,
+  "reviews_count": 1842,
+  "address": "69 Grand St, Brooklyn, NY 11249",
+  "phone": "+1 718-285-6180",
+  "website": "https://devocion.com",
+  "raw_payload_extracted": true
+&#125;</code></pre>
+
+  <h3>2. Discover listing URLs at scale</h3>
+  <p>The actor is single-URL by design. Discovery — the work of finding every coffee shop in Brooklyn — happens upstream. The reliable 2026 pattern is to query Google Maps directly in a headed search session, harvest the listing URLs from the result panel, and queue them. The Ollagraph <a href="/capabilities">scrape endpoint</a> can drive that search step on your behalf.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://www.google.com/maps/search/coffee+shop+brooklyn",
+    "format": "links"
+  &#125;'</code></pre>
+
+  <p>The <code>format: "links"</code> output gives you every listing URL the search panel surfaces. Feed those URLs into the actor one at a time (or in parallel with your own worker pool) and aggregate the structured records. Dense geographies require tiling — split the area into smaller search queries and deduplicate by the canonical listing URL.</p>
+
+  <h3>3. Enrich each place with its website</h3>
+  <p>Half the value of a Google Maps pull lives on the business's website. Tech stack, contact emails, and social profiles are one call away. Pipe the website field into the <a href="/capabilities">intel/page</a> endpoint and you have a sales-ready record.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/intel/page \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"url": "https://devocion.com"&#125;'</code></pre>
+
+  <pre><code>&#123;
+  "status": "success",
+  "url": "https://devocion.com",
+  "tech_stack": ["Shopify", "Klaviyo", "Cloudflare"],
+  "contacts": &#123;
+    "socials": &#123;"instagram": ["devocioncoffee"], "facebook": ["devocion"]&#125;,
+    "emails": ["hello@devocion.com"],
+    "phones": ["+1 718-285-6180"]
+  &#125;,
+  "logos": ["https://devocion.com/cdn/logo.png"],
+  "feeds": [],
+  "images": []
+&#125;</code></pre>
+
+  <h3>4. Track ratings and review counts over time</h3>
+  <p>For market research and reputation work, the rating and the review count are the headline signals. The actor returns both on every call. Reviewers' individual text isn't part of the structured response — pulling the actual review prose is a follow-up scrape against the listing's reviews panel, where the <code>format: "markdown"</code> shape on <a href="/capabilities">/v1/scrape</a> gives you clean text.</p>
+
+  <p>Most teams sample the rating and review count weekly and diff against the previous run. A jump in review count tells you the business is getting attention; a rating drift signals reputation work to do.</p>
+
+  <h3>5. Schedule incremental refreshes</h3>
+  <p>A Google Maps dataset goes stale in weeks. Hours change, businesses move, names get tweaked. The right cadence for most teams is a full monthly refresh and a weekly top-up on the high-priority records. Run the same actor calls on a schedule and write the diff to your warehouse.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/async \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://www.google.com/maps/place/...",
+    "webhook_url": "https://yourapp.com/hooks/ollagraph"
+  &#125;'</code></pre>
+
+  <pre><code>&#123;
+  "status": "queued",
+  "job_id": "9b3e2f9a-7c1d-4a8b-9f6c-1d2e3f4a5b6c"
+&#125;</code></pre>
+
+  <p>The async pattern is the right shape for batched refreshes that take hours to complete. The job posts results to your webhook as they land. For a poll-based approach, hit <a href="/docs">GET /v1/jobs/&#123;job_id&#125;</a> on whatever cadence your pipeline prefers.</p>
+
+  <h3>6. Deduplicate and load to your warehouse</h3>
+  <p>Once the records are in flight, the last step is the boring one. Deduplicate by place_id, normalize the phone numbers to E.164, and load to your warehouse of choice. The place_id is stable across queries and over time, which means it is the only join key you need.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Take a sales operations lead at a mid-market HVAC software company. Call her Priya. Priya's team sells to independent HVAC contractors in the United States, and her CRM needs roughly 60,000 fresh leads a quarter, each with a verified phone, website, and email.</p>
+
+  <p>Priya's previous stack was a tangle of three vendors and a custom enrichment script. The Google Maps pull came from one tool, the email verification from a second, and the tech stack detection from a third. Reconciling the three datasets ate one full data engineer for a week every quarter, and the joins were never clean enough to push directly into Salesforce.</p>
+
+  <p>On Ollagraph, the same pipeline is three sequential calls. The Google Maps actor pulls every HVAC contractor in the target metros. The <a href="/capabilities">intel/page</a> endpoint enriches each website. The <a href="/recipes/verify-email-addresses-at-scale">verify/email</a> endpoint scrubs every address that lands. The full quarterly refresh now runs in a Friday afternoon and costs a fraction of what the three-vendor stack ran.</p>
+
+  <h2>Pricing math</h2>
+  <p>Pricing for a Google Maps pull comes down to volume. Ollagraph's metered plans charge per call. A 60,000-place quarterly pull with website enrichment carries a predictable per-record cost that lives on the <a href="/pricing">pricing page</a> and updates with the wider market.</p>
+
+  <p>The build-versus-buy math is straightforward at this volume. A self-hosted scraper for Google Maps needs residential proxies, a headless rendering layer, a parsing service, and an on-call rotation. Below 100,000 requests a month, a managed API is usually cheaper than building, once the engineering time is honestly counted. Above that volume, the comparison gets closer and depends heavily on the team's existing infrastructure.</p>
+
+  <p>For most teams the right move is to start managed, prove the data product, and revisit the build question once volume passes a threshold where the savings are real. Premature infrastructure spend is one of the most common ways a data team loses the trust of its stakeholders.</p>
+
+  <h2>Beyond the basic pull</h2>
+  <p>The Google Maps actor is the front door for a wider set of workflows. Map-pack ranking research, franchise territory planning, and competitive coverage analysis all start with the same pull and branch into different downstream calls. The <a href="/actors">actors page</a> lists the full set of supported destinations and the <a href="/capabilities">crawl endpoint</a> picks up the heavier full-site jobs.</p>
+
+  <p>For teams whose ambitions are larger than Google Maps, the same patterns extend to Yelp, Apple Maps, and TripAdvisor. The actor model is designed so the destination changes and the contract stays the same. Teams building a multi-source local intelligence product get to write the integration once and add sources as they grow.</p>
+
+  <p>External context helps too. The W3C's <a href="https://www.w3.org/TR/2017/REC-geolocation-API-20171116/">Geolocation API specification</a> and Wikipedia's <a href="https://en.wikipedia.org/wiki/Web_Mercator_projection">Web Mercator</a> entry are the right references for any team building a map-based product on top of this data. Coordinates are the join key for every spatial question that follows.</p>
+
+  <h2>How this fits the rest of your stack</h2>
+  <p>Google Maps data rarely sits alone. It feeds CRM enrichment, dashboard maps, territory plans, ad-spend allocations, and the periodic competitive snapshot that lands in a board deck. The cleanest architecture is one where the Maps pull is a scheduled job, the output is a typed table in your warehouse, and downstream consumers query that table instead of the API directly.</p>
+
+  <p>This is the same shape as a CDC pipeline for an internal database. Your warehouse becomes the single source of truth for places, and any change in the upstream API surfaces as a diff that your transformations handle in one place. That decoupling pays off the first time the team decides to add a new actor or swap a vendor.</p>
+
+  <p>Teams running this pattern on Ollagraph typically have a thin scheduler — anything from a cron job to a workflow tool — that fires the async endpoint, a webhook handler that lands the JSON in raw tables, and a transformation layer that produces the modeled tables consumers actually read. The whole stack stays under a thousand lines of code.</p>
+
+  <h2>Choosing the right query strategy</h2>
+  <p>Query strategy is the lever that moves cost more than anything else. Three patterns cover almost every use case. The category sweep walks every category in a metro — coffee, restaurant, dentist, plumber — and produces a wide local index. The franchise sweep walks a single brand across every metro and produces a competitive footprint. The vertical sweep walks a single category across every metro and produces a national dataset for one industry.</p>
+
+  <p>Each pattern has its own bbox math. Category sweeps benefit from tight tiles in dense urban cores and looser tiles in the suburbs. Franchise sweeps run on metro centroids since brand presence rarely hits the result ceiling. Vertical sweeps run on tight tiles across every metro of interest and produce the largest output volumes by far.</p>
+
+  <p>The right query strategy is the one that matches the downstream consumer. A sales team building a target list wants a vertical sweep filtered by employee count and city tier. A market research team wants a category sweep with deep review pulls. A franchise development team wants a franchise sweep with website enrichment. The query design follows the analysis.</p>
+
+  <h2>Common pitfalls and how to avoid them</h2>
+  <p>The first pitfall is treating every query as equal. A query for "restaurant" in Manhattan and a query for "Hungarian restaurant" in Cleveland have wildly different return profiles, and a flat per-query budget will overspend on the dense queries and underspend on the niche ones. The fix is a small heuristic on top of the actor — broad terms in dense metros get bbox tiling, niche terms in any metro get a single query with the location string.</p>
+
+  <p>The second pitfall is over-refreshing the dataset. Most teams set a daily refresh out of habit and end up paying for movement that does not matter. A monthly full refresh paired with a weekly top-up on the high-priority segment delivers the same usable freshness at a quarter of the cost.</p>
+
+  <p>The third pitfall is ignoring the place_id as the join key. Phone numbers change, names get rebranded, and addresses can be re-formatted by Google between pulls. The place_id is the only field that is stable, and any join logic that does not lead with it will eventually duplicate or drop records.</p>
+
+  <h2>The closing thought</h2>
+  <p>Scraping Google Maps used to be a quiet test of how much complexity a team was willing to absorb. In 2026 it's a line item, a budget, and a JSON contract. The companies that have already moved past the build-it-yourself instinct are shipping local datasets in days, not quarters.</p>
+
+  <p>If you want to see the actor in action, the <a href="/docs">live docs</a> have a runnable example with your own key, and the <a href="/pricing">pricing page</a> lays out the math for a few common volumes. The team behind Ollagraph is happy to walk through architecture for any scenario where Google Maps is one of several sources — that's the conversation the founders enjoy most.</p>
+</Article>

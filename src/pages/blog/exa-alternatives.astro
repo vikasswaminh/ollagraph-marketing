@@ -1,0 +1,182 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  {
+    q: "What is the best Exa alternative in 2026?",
+    a: "It depends on which half of Exa you use. For neural and AI web search, Tavily, Linkup, and Brave Search API are the strongest direct alternatives. For the content half — turning the URLs you find into clean, structured, LLM-ready data — Ollagraph is the closest fit, and it pairs with any of those search APIs.",
+  },
+  {
+    q: "Does Ollagraph do semantic or neural search like Exa?",
+    a: "No, and we won't pretend otherwise. Exa is an embeddings-based search engine; Ollagraph does not rank the open web by meaning. Ollagraph is the content layer: it fetches the URLs a search API returns and turns them into clean markdown, structured JSON, and domain intelligence. The two are complements, not the same product.",
+  },
+  {
+    q: "What is the difference between Exa and Tavily?",
+    a: "Both are AI search APIs for agents and RAG. Exa leans on neural, embeddings-based retrieval and offers Search, Contents, Find Similar, and Answer endpoints. Tavily focuses on simple, RAG-ready search with transparent pricing and a low barrier to entry. Many teams test both on their own queries before choosing.",
+  },
+  {
+    q: "Do I need both a search API and a scraping API for RAG?",
+    a: "Often, yes. A search API finds the right URLs; a content API turns those URLs into clean, complete text your model can use. Exa bundles both, which is convenient. Splitting them — a search API plus Ollagraph for retrieval and structure — gives you deeper extraction, JavaScript rendering, and intelligence on the pages you keep.",
+  },
+  {
+    q: "Which Exa alternative is most cost-effective?",
+    a: "For search, Serper and Brave Search API are among the lowest cost per thousand queries, and Tavily and Linkup offer useful free tiers. For content retrieval, Ollagraph prices in credits with pay-as-you-go from $5, refunds failed calls, and gives 1,000 free credits to start. The cheapest stack depends on your search-to-fetch ratio.",
+  },
+  {
+    q: "Can Exa alternatives handle JavaScript-rendered pages?",
+    a: "Search APIs return results and snippets, not full rendered pages. To reliably read JavaScript-heavy pages, you need a content API with browser rendering. Ollagraph escalates from a fast fetch to a full stealth browser automatically and tells you which path served the request, so dynamic pages return complete content.",
+  },
+  {
+    q: "Are these tools compatible with LangChain and MCP?",
+    a: "Most modern AI search and content APIs offer LangChain integrations or simple HTTP clients, and a growing number ship Model Context Protocol servers so agents can call them as tools. Ollagraph provides an MCP server that exposes its full surface — scrape, extract, intelligence, and actors — to any MCP-aware agent.",
+  },
+  {
+    q: "What is the difference between a search API and a scraping API?",
+    a: "A search API takes a query and returns ranked, relevant URLs or snippets — it answers 'where should I look?' A scraping or content API takes a URL and returns the full, clean page content — it answers 'what does this page actually say?' Most RAG and agent stacks need both: one to discover, one to retrieve in depth.",
+  },
+];
+---
+<Article
+  title="The best Exa alternatives for AI search in 2026"
+  description="Compare the best Exa alternatives for AI web search and content retrieval in 2026 — neural search, RAG, and extraction — and pick the right tool for the job."
+  date="2026-06-19"
+  readingTime={14}
+  tags={["AI search", "Exa", "RAG", "AI agents"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <h2>The short version</h2>
+  <ul>
+    <li><strong>Exa is a neural search engine</strong> for AI — it ranks the open web by meaning, then can return page content and grounded answers.</li>
+    <li><strong>"Exa alternatives" splits into two jobs:</strong> finding the right URLs (search) and turning those URLs into clean data (content).</li>
+    <li><strong>For search,</strong> Tavily, Linkup, Brave Search API, Perplexity Sonar, and Serper are the strongest direct alternatives.</li>
+    <li><strong>For content,</strong> Ollagraph is the closest fit — it fetches and structures the pages a search API returns, with rendering and intelligence built in.</li>
+    <li><strong>The honest answer</strong> is usually a pair: a search API to discover, plus a content API to retrieve. Some teams want one vendor; many prefer the best of each.</li>
+  </ul>
+
+  <h2>What Exa actually is</h2>
+  <p>Exa — formerly Metaphor — is an AI-first search engine built for machines rather than people. Instead of matching keywords, it uses <a href="https://en.wikipedia.org/wiki/Semantic_search" rel="nofollow">embeddings-based semantic search</a> to retrieve pages by meaning, which is why it became a favorite for agents and <a href="https://arxiv.org/abs/2005.11401" rel="nofollow">retrieval-augmented generation</a>. Its surface spans Search for neural and keyword retrieval, Contents for pulling clean page text and highlights, Find Similar for "more like this," and Answer for web-grounded responses with citations.</p>
+
+  <p>That breadth is the reason "Exa alternatives" is a harder question than it looks. People reach for Exa for two genuinely different jobs. The first is discovery — given a query, find the most relevant pages on the open web. The second is retrieval — given those pages, return clean, complete content a model can actually use. The best alternative depends entirely on which of those two jobs you are trying to replace, and most teams need both.</p>
+
+  <h2>Why teams look for an Exa alternative</h2>
+  <p>Exa is a strong product, and the reasons to compare are rarely complaints. Sometimes it is cost at scale, where a high search-to-fetch ratio makes a cheaper search API attractive. Sometimes it is depth, where a team finds that snippet-style content is not enough and they need full JavaScript rendering or structured extraction on the pages they keep. Sometimes it is sourcing preferences — privacy, an independent index, or verified-source guarantees. And sometimes it is simply that an agent needs more than search: it needs to read pages behind logins, extract product data, or enrich the domains it finds.</p>
+
+  <p>Below is the current field, honestly split by the job each tool is built for. We name everyone directly and say plainly where each fits — including where we do not.</p>
+
+  <h2>How to choose an Exa alternative</h2>
+  <p>Before the list, decide which axis you are optimizing. Five questions separate a clean fit from a frustrating one, and most teams answer them in the wrong order — feature-shopping before they have named the job.</p>
+
+  <ul>
+    <li><strong>Search or content?</strong> The first and most important question. If you need ranked URLs, you want a search API. If you need full, clean page text, you want a content API. If you need both, decide whether one bundled vendor or two specialists serves you better.</li>
+    <li><strong>Ranking method.</strong> Neural and embeddings-based search understands intent and finds conceptually related pages. Keyword and SERP-based search is faster and cheaper for known-item lookups. Match the method to how your queries are actually shaped.</li>
+    <li><strong>Content depth.</strong> Snippets and highlights are enough for some answers; RAG over technical material usually needs the full rendered page, structured fields, and the boilerplate stripped. Thin content quietly caps answer quality.</li>
+    <li><strong>Freshness and sourcing.</strong> Some workloads need today's news; others need a stable, independent index or verified sources you can cite. These are different guarantees, and not every provider makes the one you need.</li>
+    <li><strong>Cost shape.</strong> A high search-to-fetch ratio rewards a cheap search API; a high fetch-to-search ratio rewards a content layer that refunds failed calls and bills pay-as-you-go. Model your real ratio before you compare headline rates.</li>
+  </ul>
+
+  <h2>The Exa alternatives at a glance</h2>
+  <p>The table separates search APIs (discovery) from the content layer (retrieval). A complete RAG or agent stack usually uses one of each. Pricing models change, so treat the columns as the general model, not a live quote.</p>
+
+  <table>
+    <thead>
+      <tr><th>Tool</th><th>Primary job</th><th>Best for</th><th>Free tier</th><th>Pay-as-you-go</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Exa</strong> (baseline)</td><td>Neural search + content</td><td>Semantic discovery for agents</td><td>Free credits</td><td>Usage-based</td></tr>
+      <tr><td>Tavily</td><td>Search</td><td>Simple RAG search + extract</td><td>1,000 credits/mo</td><td>Usage-based</td></tr>
+      <tr><td>Linkup</td><td>Search</td><td>Trusted, sourced answers</td><td>Monthly free credit</td><td>Usage-based</td></tr>
+      <tr><td>Brave Search API</td><td>Search</td><td>Independent, private index</td><td>2,000 queries/mo</td><td>Per-1k requests</td></tr>
+      <tr><td>Perplexity Sonar</td><td>Answer + search</td><td>Cited, web-grounded answers</td><td>Trial credit</td><td>Usage-based</td></tr>
+      <tr><td>Serper</td><td>Search (SERP)</td><td>Fast, cheap Google results</td><td>Free credits</td><td>Per-query</td></tr>
+      <tr><td>You.com API</td><td>Search</td><td>Web + news for LLMs</td><td>Trial</td><td>Usage-based</td></tr>
+      <tr><td>SerpAPI</td><td>Search (SERP)</td><td>Structured multi-engine results</td><td>Free credits</td><td>Subscription</td></tr>
+      <tr><td>Firecrawl</td><td>Content (+ search)</td><td>Markdown context for agents</td><td>Free credits</td><td>Subscription</td></tr>
+      <tr><td>Jina AI</td><td>Content (+ search)</td><td>Free URL-to-markdown + search</td><td>Free endpoint</td><td>Usage-based</td></tr>
+      <tr><td><strong>Ollagraph</strong></td><td>Content + intelligence</td><td>Retrieve + structure what search finds</td><td>1,000 credits</td><td>Yes, from $5</td></tr>
+    </tbody>
+  </table>
+
+  <h2>The search-side alternatives</h2>
+  <p>If what you need from Exa is discovery — query in, relevant URLs out — these are the direct replacements, and they are good.</p>
+
+  <h3>Tavily</h3>
+  <p>Tavily is the most practical first stop for many teams. It is a search API built for agents and RAG, easy to test, easy to integrate, with a useful free tier of around a thousand credits a month. It returns concise, ranked, LLM-ready results and a light extract option, which is why it shows up in nearly every 2026 comparison. For a simple, transparent AI search layer, it is hard to go wrong starting here.</p>
+
+  <h3>Linkup</h3>
+  <p>Linkup optimizes for trusted, well-sourced answers. It is designed for LLMs and agents that need to cite where a fact came from, and it leans toward verified sources over raw breadth. For research assistants and business-intelligence use cases where provenance matters, Linkup's sourcing posture is a genuine differentiator.</p>
+
+  <h3>Brave Search API</h3>
+  <p>Brave brings something rare: a fully independent web index of tens of billions of pages, updated constantly, with no Google or Bing dependency underneath. That independence plus a privacy-first stance makes it attractive for teams that want results not shaped by the incumbents, at a predictable cost per thousand requests and a free monthly allowance.</p>
+
+  <h3>Perplexity Sonar</h3>
+  <p>Perplexity's Sonar API is less a search endpoint and more an answer engine: it returns a synthesized, web-grounded answer with citations. If your application wants a finished, sourced response rather than a list of URLs to process yourself, Sonar collapses search and synthesis into one call, which is a different and often welcome shape of product.</p>
+
+  <h3>Serper and SerpAPI</h3>
+  <p>When what you actually need is fast, structured search-engine results, Serper and SerpAPI are the workhorses. Serper is known for low cost and speed on Google results; SerpAPI for structured output across many engines. Neither is a neural-search product, and that is the point — for keyword-grade discovery at high volume, they are simple and economical.</p>
+
+  <h3>You.com API</h3>
+  <p>You.com exposes its web and news search to developers building LLM applications, with an emphasis on fresh, citable results. For agents that need current events and broad web coverage in a familiar request shape, it is a solid, no-friction option to evaluate alongside Tavily and Brave.</p>
+
+  <h2>Search depth versus content depth — the trade nobody mentions</h2>
+  <p>The comparison most round-ups skip is the one that decides answer quality. A search API can be excellent at finding the right ten URLs and still hand your model thin content — a title, a meta description, the first few hundred characters. For a quick factual answer, that is plenty. For retrieval over a dense technical page, a long-form article, or anything rendered by JavaScript, it is not, and the failure is silent: the model answers from a fragment and sounds confident doing it.</p>
+
+  <p>This is why bundling search and content in one call is convenient and occasionally limiting. The bundled content is tuned for breadth and speed, not for depth on the pages you decided to keep. When a query matters, you often want the search layer to stay fast and shallow — its job is ranking — and a separate content layer to go deep on the handful of URLs that survived ranking.</p>
+
+  <p>The practical signal that you have hit this wall is simple: your retrieval looks fine in testing on clean blog posts and degrades on the real corpus — documentation, dashboards, single-page apps, gated content. That degradation is a content-depth problem, not a search problem, and no amount of better ranking fixes it.</p>
+
+  <h2>The content side — and where Ollagraph fits</h2>
+  <p>Here is the honest part. Ollagraph is not a neural search engine, and we will not dress it up as one. It does not rank the open web by meaning, and if pure semantic discovery is what you need from Exa, one of the search APIs above is the right tool.</p>
+
+  <p>What Ollagraph does is the other half of the Exa workflow — the part that turns a URL into something a model can actually use. Once a search API hands you the relevant links, Ollagraph fetches them and returns clean, LLM-ready markdown, structured JSON-LD and OpenGraph data, and full content from JavaScript-heavy pages, escalating from a fast fetch to a stealth browser automatically. It crawls whole sites to a webhook, extracts contacts and tables, and attaches domain intelligence — DNS, WHOIS, SSL, GeoIP, tech-stack — to every page, all behind one key with pay-as-you-go from $5 and refunds on failed calls.</p>
+
+  <p>That makes the cleanest pattern a pair: use Exa, Tavily, Brave, or Serper to discover, and Ollagraph to retrieve and structure what they find. You get neural ranking from a specialist and deep, reliable content from a specialist, instead of accepting snippet-depth content as the price of bundling. For teams whose agents also need to read pages behind logins, pull marketplace data, or enrich domains, that second specialist earns its place quickly.</p>
+
+  <p>In practice the handoff is one extra call. Your search API returns a ranked list of URLs; you pass each one to a content endpoint and get back clean markdown your model can read in full.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"
+
+# 1) a search API returns ranked URLs (Exa, Tavily, Brave, Serper...)
+# 2) fetch the full, clean content of each result:
+curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123; "url": "https://example.com/the-result", "format": "markdown" &#125;'</code></pre>
+
+  <p>The same key reaches the rest of the pipeline when an agent needs it: <code>/v1/crawl</code> to walk a whole site to a webhook, <code>/v1/extract/structured</code> for JSON-LD and microdata, and the intelligence endpoints for the DNS, SSL, and tech-stack metadata behind a domain. One token, one bill, the content half of the workflow handled end to end. The discovery half stays with whichever search specialist you chose.</p>
+
+  <h2>Freshness, citations, and the trust question</h2>
+  <p>One axis deserves its own attention because it is where AI search products differ most and marketing pages say least: how fresh the results are, and how well you can prove where an answer came from. An agent that cites a stale page is worse than one that says it does not know.</p>
+
+  <p>Freshness depends on how often the provider's index updates. Independent indexes like Brave's refresh continuously; SERP-based tools inherit the underlying engine's freshness; neural indexes vary. If your use case is news, markets, or anything time-sensitive, test freshness explicitly on queries where you know the right answer changed recently — do not assume it.</p>
+
+  <p>Citations are the other half. Providers like Linkup and Perplexity build sourcing in, returning the references behind a result so your application can show its work. When you split search from content, you keep that trail naturally: the search API records which URL it ranked, and the content layer records exactly what it fetched and when. For regulated or high-stakes outputs, that explicit provenance is worth more than a slightly higher relevance score.</p>
+
+  <h2>Firecrawl and Jina — the hybrid options</h2>
+  <p>Two tools blur the line and deserve a mention. Firecrawl, best known for clean markdown, has expanded into a full web-data stack with its own Search alongside Scrape and Crawl — it positions itself as the "context API" for agents, and it is a capable one. Jina AI offers both a free URL-to-markdown Reader and a search endpoint, making it a friendly way to cover both jobs at low cost for lighter workloads. If you specifically want search and content from a single vendor, these two and Exa itself are the obvious places to look. If you want clean markdown plus structured data, intelligence, and vertical actors on the content side, compare them with the <a href="/blog/firecrawl-alternatives">Firecrawl alternatives</a> guide and the <a href="/vs/firecrawl">Ollagraph vs Firecrawl</a> page.</p>
+
+  <h2>How teams combine these in practice</h2>
+  <p>The strongest stacks treat discovery and retrieval as separate, swappable parts.</p>
+
+  <p><strong>The research agent.</strong> A query goes to a neural search API for the most relevant sources, then each result URL goes to a content API for the full, clean text — not a snippet — before the model reasons over it. The search specialist finds; the content specialist reads.</p>
+
+  <p><strong>The monitoring tool.</strong> A search API surfaces new pages mentioning a topic; a content layer fetches each one, renders the JavaScript, and extracts the structured fields that matter, on a schedule, delivered by webhook. Coverage comes from search; depth and reliability come from retrieval.</p>
+
+  <p><strong>The sales-intelligence platform.</strong> Search finds the companies; the content layer reads their sites and enriches each domain with DNS, SSL, tech-stack, and verified-email data in the same call. Our <a href="/blog/sales-intelligence-api-buyers-guide">sales intelligence buyer's guide</a> covers that enrichment layer in depth, and the <a href="/blog/aeo-vs-seo-2026">AEO vs SEO guide</a> covers making your own pages quotable by these engines.</p>
+
+  <p><strong>The competitive-intelligence dashboard.</strong> A market-watch product runs the same set of queries on a cadence, watches for new entrants and changed positioning, then reads each surfaced page in full to extract pricing, claims, and feature lists. Search keeps the watch list current; the content layer turns each result into structured fields the dashboard can diff over time. Neither job is optional, and stretching a single bundled API across both is where these tools tend to disappoint at scale.</p>
+
+  <h2>The bottom line</h2>
+  <p>If you only need discovery, replace Exa with a search API — Tavily to start, Brave for independence, Linkup for sourcing, Serper for cheap volume, Perplexity Sonar for finished answers. If the gap you feel is content depth — full pages, rendered correctly, structured, enriched — that is a different job, and pairing a search API with a dedicated content layer beats stretching either one to do both. The teams that get the most from these tools tend to stop hunting for a single product that does everything and start composing two specialists that each do one thing well.</p>
+
+  <p>Ollagraph is that content layer, and it is honest about staying in its lane: it does not search the web by meaning, and it does turn whatever you find into clean, structured, intelligence-rich data behind one key. Try it on your own URLs with 1,000 free credits and no card — browse the <a href="/capabilities">capabilities</a>, read the <a href="/docs">docs</a>, or see the <a href="/pricing">pricing page</a> when you are ready to scale.</p>
+
+  <h2>Sources &amp; further reading</h2>
+  <p>The research and standards behind neural search and retrieval, for readers who want the primary sources:</p>
+  <ul>
+    <li><a href="https://arxiv.org/abs/2004.04906" target="_blank" rel="noopener">Dense Passage Retrieval for Open-Domain Question Answering</a> (Karpukhin et al., 2020) — the embedding-search approach behind modern AI search.</li>
+    <li><a href="https://en.wikipedia.org/wiki/Vector_database" target="_blank" rel="noopener">Vector database</a> (Wikipedia) — how semantic search stores and queries embeddings.</li>
+    <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format a content layer extracts once search finds a page.</li>
+    <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the crawl standard any search or scraping tool should honor.</li>
+  </ul>
+</Article>

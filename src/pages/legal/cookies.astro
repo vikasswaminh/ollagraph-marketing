@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import bodyHtml from '../../bodies/legal-cookies.body.html?raw';
+import { navHtml, footerHtml } from '../../chrome';
+
+const rendered = bodyHtml
+  .replace('<div id="nav-root"></div>', navHtml(""))
+  .replace('<div id="footer-root"></div>', footerHtml());
+---
+<BaseLayout title="Cookie Policy — Ollagraph" description="How Ollagraph uses cookies and local storage — essential cookies only, privacy-first cookieless analytics, nothing to consent to.">
+  <Fragment set:html={rendered} />
+</BaseLayout>

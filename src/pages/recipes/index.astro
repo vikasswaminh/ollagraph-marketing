@@ -1,0 +1,67 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+import { recipes, categoryLabels, categoryOrder } from '../../data/recipes';
+
+const grouped = recipes.reduce<Record<string, typeof recipes>>((acc, r) => {
+  (acc[r.category] ||= []).push(r);
+  return acc;
+}, {});
+
+const collectionLd = {
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  name: "Ollagraph recipes — production playbooks for web data",
+  description: "End-to-end recipes for scraping, enrichment, AI ingestion, and crawling — the patterns real teams use in 2026.",
+  url: "https://ollagraph.com/recipes/",
+};
+const itemListLd = {
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  itemListElement: recipes.map((r, i) => ({
+    "@type": "ListItem",
+    position: i + 1,
+    url: `https://ollagraph.com/recipes/${r.slug}/`,
+    name: r.title,
+  })),
+};
+const nav = navHtml('recipes');
+const footer = footerHtml();
+---
+<BaseLayout
+  title="Web data recipes — production playbooks for 2026 — Ollagraph"
+  description="Step-by-step recipes for scraping Amazon, Zillow, Google Maps, building RAG pipelines, monitoring pricing, enriching leads, and verifying email — the 2026 stack."
+  jsonLd={[collectionLd, itemListLd]}
+>
+  <Fragment set:html={nav} />
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:720px;">
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Recipes that ship in 2026.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        Production-tested playbooks for the work data teams actually do. Each recipe walks the full pipeline — the tools, the trade-offs, the costs, the code.
+      </p>
+    </div>
+  </section>
+  <section class="section-tight">
+    <div class="container" style="max-width:960px; display:flex; flex-direction:column; gap:48px;">
+      {categoryOrder.filter((c) => grouped[c]?.length).map((cat) => (
+        <div>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+            <h2 class="h-display h-2" style="margin:0; font-size:24px;">{categoryLabels[cat]}</h2>
+            <span class="badge badge-mute">{grouped[cat].length}</span>
+          </div>
+          <div class="recipe-grid">
+            {grouped[cat].map((r) => (
+              <a class="recipe-card" href={`/recipes/${r.slug}/`}>
+                <div style="font-size:12px; color:var(--text-dim);">{r.readingTime} min read</div>
+                <h3>{r.title}</h3>
+                <p>{r.description}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+  <Fragment set:html={footer} />
+</BaseLayout>

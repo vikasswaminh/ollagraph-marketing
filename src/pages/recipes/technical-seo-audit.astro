@@ -1,0 +1,196 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is a programmatic technical SEO audit?", a: "A programmatic technical SEO audit runs the same checks an agency would run by hand — meta tags, structured data, redirect chains, broken links, readability, anchor text, mixed content — but as API calls you can script and schedule. Instead of opening a crawler UI once a quarter, you wire the checks into CI so every deploy is audited automatically and regressions are caught before they ship." },
+  { q: "How is technical SEO different from AEO or AI-search optimization?", a: "Technical SEO is about whether classic search engines can crawl, render, and trust your pages: clean meta tags, valid structured data, no broken links, no redirect bloat, no mixed-content warnings. AEO — answer-engine optimization — is about whether AI assistants can quote you accurately. They overlap but are not the same audit. This recipe covers classic technical SEO; for the AI-citation side, see the AEO guide on /aeo." },
+  { q: "Can I run an SEO audit in CI on every pull request?", a: "Yes, and that is the whole point of doing it through an API. Each Ollagraph SEO endpoint takes a URL and returns structured JSON, so you can call them from a CI step, assert on the fields you care about, and fail the build when a page regresses. Most teams run the audit against a preview deployment URL so problems are caught before merge." },
+  { q: "Which pages should I audit?", a: "Start with your highest-value templates: the homepage, top landing pages, and one representative page per template type — a product page, a blog post, a category page. Auditing one page per template usually surfaces the same systemic issues that a full-site crawl would, at a fraction of the calls. Expand to a fuller URL set once the per-template checks are green." },
+  { q: "Do these endpoints render JavaScript?", a: "The meta-audit and snippet endpoints accept an opt-in flag that routes the fetch through a premium residential pool with JS rendering, which is what you want for client-side-hydrated apps whose server HTML is nearly empty. The default fetch is a fast direct request. Use the rendered path for single-page apps and the default path for server-rendered sites." },
+  { q: "How much does a full audit cost per page?", a: "Each endpoint call is one credit. A full sweep of one page across the seven core checks is roughly seven credits, and failed calls are auto-refunded so a flaky target never costs you. There are no per-seat fees and no concurrency tiers; you pay per call. Exact credit balances and pack sizes live on the pricing page." },
+  { q: "Will this replace Screaming Frog or Sitebulb?", a: "For the recurring, automatable checks — meta tags, schema validity, redirects, broken links, mixed content — an API replaces the manual crawl-and-export loop and runs unattended in CI. Desktop crawlers still have a place for deep one-off exploration and visualisations. Many teams keep a desktop crawler for ad-hoc investigation and use the API for the checks they want to run on every deploy." },
+  { q: "How do I audit a whole site rather than single pages?", a: "Pair the SEO endpoints with a crawl to discover URLs first, then fan the discovered URLs out to the per-page checks. The crawl-entire-website recipe covers the discovery half; this recipe covers the per-page audit half. Keep the two stages separate so you can run discovery weekly and the per-page audit on every deploy." },
+];
+---
+<Article
+  title="How to run a technical SEO audit with an API in 2026"
+  description="Programmatic meta-tag, schema, redirect-chain, broken-link, and readability audits — wire a full technical SEO check into CI."
+  date="2026-06-18"
+  readingTime={12}
+  tags={["SEO", "audit", "API"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What a technical SEO audit actually means in 2026</h2>
+  <p>A technical SEO audit checks whether search engines can crawl, render, and trust your pages: are the meta tags present and correctly sized, is the structured data valid, do redirects resolve cleanly, are there broken links, is the copy readable, are anchors descriptive, and is every HTTPS page free of insecure subresources. In 2026 the practical way to run that audit is not a quarterly crawl in a desktop tool — it is a set of API calls you script once and run on every deploy.</p>
+
+  <p>That sentence is the answer-engine summary. The rest of this page is for the engineers and SEO leads who have to deliver against it. We will name the alternatives honestly, draw the line between classic technical SEO and AI-search optimization, and lay out the working recipe end to end with real curl commands against verified endpoints.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't want an audit report. You want pages that don't regress. There is a difference, and the difference is where most teams lose ground between audits.</p>
+
+  <p>The classic pattern is a quarterly crawl: someone runs a desktop spider, exports a spreadsheet, files a batch of tickets, and three months later a deploy quietly reintroduces half of what was fixed. A title tag gets truncated by a CMS change. A migration leaves a chain of three redirects where one would do. A marketing embed pulls in an <code>http://</code> script and trips a mixed-content warning. None of these are visible until the next manual crawl — by which point the rankings have already moved.</p>
+
+  <p>The reader of this page usually falls into one of three buckets. An in-house SEO lead who wants deploy-time guardrails instead of quarterly fire drills. A platform engineer asked to add SEO checks to CI without standing up a crawler farm. Or an agency engineer who audits dozens of client sites and wants the repetitive checks scripted so the humans can focus on strategy. If that is you, the <a href="/for-seo">SEO use-case page</a> and the <a href="/for-aeo-agencies">agency page</a> are the companion overviews to this recipe.</p>
+
+  <h2>Technical SEO is not AEO — draw the line first</h2>
+  <p>Before the recipe, one distinction worth getting right. Classic technical SEO is about whether Google and Bing can crawl, render, and trust the page. Answer-engine optimization — AEO — is about whether AI assistants can find and quote you accurately. The two overlap, but they are different audits with different success criteria.</p>
+
+  <p>This recipe is the classic-SEO half: meta tags, schema validity, redirects, broken links, readability, anchors, mixed content. If your question is instead "will an AI assistant cite this page correctly," that is the AEO audit, and the <a href="/aeo">AEO overview</a> is the right starting point. Run both — they catch different failure modes — but keep them mentally separate so you don't conflate a clean meta-tag grade with AI-citation readiness.</p>
+
+  <h2>What the alternatives offer</h2>
+  <p>The category has serious options, and giving them credit makes the trade-off clearer.</p>
+
+  <h3>Desktop crawlers</h3>
+  <p>Screaming Frog and Sitebulb are the reference tools for deep, exploratory crawls. They render JavaScript, visualise site structure, and surface long-tail issues a scripted check might miss. Their weakness is that they are interactive desktop apps — they don't naturally live in a CI pipeline, and running them on every pull request is not how they were designed to be used. Keep one around for one-off investigation.</p>
+
+  <h3>All-in-one SaaS platforms</h3>
+  <p>Ahrefs, Semrush, and similar platforms bundle a site auditor with rank tracking, backlink data, and keyword research. If you already pay for one for its core data, the audit module is a reasonable bonus. The catch is that the audit runs on the platform's schedule and surface, not yours — it is hard to assert on a specific field inside a CI step and fail a build on it.</p>
+
+  <h3>Build it yourself</h3>
+  <p>You can write the parsers: fetch the HTML, pull the meta tags, walk the JSON-LD, probe every link. It is the most flexible path and the one that quietly consumes the most engineering attention — you own the fetch layer, the anti-bot retries, the rendering for SPA pages, and the formula implementations for readability. Most teams underestimate that last mile.</p>
+
+  <h2>Where Ollagraph goes further</h2>
+  <p>Ollagraph exposes each technical-SEO check as its own endpoint that takes a URL and returns structured JSON. That shape is the point: every check is a single scriptable call, so the full audit becomes a few lines in a CI step rather than a tool you open. The fetch layer, the anti-bot retries, and the optional JS rendering are handled on our side; you get the verdict, not the plumbing.</p>
+
+  <p>Three outcomes matter. First, the checks run unattended — call them from CI against a preview URL and fail the build when a page regresses. Second, the economics are predictable: one credit per call, no per-seat fee, no concurrency tier, and failed calls auto-refund so a flaky target never bills you. Third, the SEO suite sits alongside the rest of the platform's <a href="/capabilities">scrape and crawl capabilities</a>, so the same bearer token that audits a page can also crawl the site to discover the pages worth auditing.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Every command is real, every endpoint is live, and every request body uses only documented fields. Drop these into a shell or a CI script and you have an audit. The full request and response schema for each endpoint is in the <a href="/docs">docs</a> and the live OpenAPI spec.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up, grab a key from the dashboard, and export it for the rest of this session. The same key authenticates every endpoint below.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Grade the meta tags</h3>
+  <p>Start with the foundational check. The meta-audit endpoint fetches a page, inspects its title, description, canonical, robots, and Open Graph fields, and grades them on a 0–100 / A–F scale. Point it at one representative URL per template.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/meta-audit \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/"
+  &#125;'</code></pre>
+
+  <p>The response carries a per-field grade and an overall score, so your CI step can assert on the score and fail the build when a CMS change truncates a title or drops a canonical. For client-side-hydrated apps whose server HTML is nearly empty, add <code>"use_residential_proxy": true</code> to fetch with JS rendering — note that the rendered path carries a surcharge, documented in the spec.</p>
+
+  <h3>Step 3. Validate the structured data</h3>
+  <p>Rich results depend on valid JSON-LD. The schema-validate endpoint parses the JSON-LD blocks on a page and checks them against Google's required-field lists for the common rich-result types, returning the list of types the page is eligible for.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/schema-validate \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/product/widget"
+  &#125;'</code></pre>
+
+  <p>You can also pass an <code>html</code> string instead of a <code>url</code> to validate markup before it ships — useful when your CI has the rendered HTML in hand and you want to check it without a network round trip. The endpoint tells you which rich-result types the page qualifies for, which is exactly the assertion you want in a test: "this product page must remain Product-eligible."</p>
+
+  <h3>Step 4. Map the redirect chains</h3>
+  <p>Redirect bloat is a silent ranking tax. The redirect-chain-map endpoint traces the full chain from a starting URL to its final destination and flags the SEO-relevant problems: chains that are too long, an HTTPS-to-HTTP downgrade, or a temporary 302/307 used where a permanent 301 belongs.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/redirect-chain-map \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "http://example.com/old-path"
+  &#125;'</code></pre>
+
+  <p>Run this against your old URLs after every migration. A chain of three hops where one would do is the kind of regression that never shows up in a smoke test but quietly bleeds crawl budget and link equity.</p>
+
+  <h3>Step 5. Find broken links</h3>
+  <p>The broken-links endpoint scans a single page for broken outbound and internal links, probing each link in parallel and reporting its status code and final URL. You can cap how many links it probes with <code>max_links</code> so a link-heavy page stays fast and cheap.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/broken-links-audit \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/",
+    "max_links": 50
+  &#125;'</code></pre>
+
+  <p>Broken links are the most user-visible technical-SEO defect and the easiest to regress when a linked resource moves. Running this on your highest-traffic pages on every deploy catches the 404 before a customer does.</p>
+
+  <h3>Step 6. Audit anchors and readability</h3>
+  <p>Two checks that protect on-page quality. The anchor-text endpoint audits every link on the page and flags generic anchors like "click here" and over-optimised exact-match anchors repeated at the same target — both patterns that weaken internal linking and can look manipulative.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/anchor-text-audit \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/blog/post"
+  &#125;'</code></pre>
+
+  <p>The readability endpoint scores a block of text with six standard formulas — Flesch, Flesch-Kincaid, Gunning-Fog, SMOG, ARI, and Coleman-Liau — plus a reading-time estimate. It takes the text directly, so extract the article body on your side first, then pass it in.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/readability \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "text": "Send a URL, pick a format, get back clean structured data. The audit runs on every deploy and fails the build when a page regresses."
+  &#125;'</code></pre>
+
+  <p>Wire a readability floor into your content CI and a draft that drifts into dense, unreadable prose gets flagged before it publishes.</p>
+
+  <h3>Step 7. Catch mixed content</h3>
+  <p>The last core check. The mixed-content endpoint finds <code>http://</code> subresources loaded by an HTTPS page — images, scripts, stylesheets, iframes, media — the kind of insecure reference that triggers a browser warning and undermines the trust signal of a secure page.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/mixed-content \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/"
+  &#125;'</code></pre>
+
+  <p>Mixed content is easy to introduce — one marketing embed, one legacy image URL — and easy to miss. A scripted check on your templates keeps it from slipping through.</p>
+
+  <h2>Wiring it into CI</h2>
+  <p>The seven checks above become an audit when you run them together against a preview deployment on every pull request. The pattern is simple: a CI step exports the API key, calls each endpoint against the preview URL for one representative page per template, parses the JSON, and exits non-zero when a threshold is breached — a meta-audit score below your floor, a redirect chain longer than two hops, any broken link, any mixed-content reference.</p>
+
+  <p>Because each call is independent and idempotent, you can fan them out in parallel and keep the whole audit well under the time budget of a normal CI run. And because failed calls auto-refund, a target that is briefly unreachable costs you nothing — the step can retry or warn rather than charging you for the flake. Keep the thresholds in version control next to the rest of your CI config so the audit's strictness is reviewed like any other code change.</p>
+
+  <h2>Two more endpoints worth knowing</h2>
+  <p>Beyond the seven core checks, two SEO endpoints round out the suite when you want content insight rather than a pass/fail verdict.</p>
+
+  <p>The keyword-extract endpoint pulls the top keywords and multi-word phrases from a block of text or a URL using a lightweight co-occurrence ranking — no LLM calls, no paid keyword feeds. It is a fast way to confirm that a page actually emphasises the terms you intended.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/keyword-extract \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/blog/post",
+    "top_k": 20
+  &#125;'</code></pre>
+
+  <p>The snippet-candidates endpoint extracts the paragraphs, lists, and tables on a page that are best shaped to win a featured snippet. It takes either an <code>html</code> blob or a <code>url</code>, and like the meta-audit it supports the opt-in rendered fetch for JS-hydrated docs sites that ship almost no paragraph markup in their server HTML.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/seo/snippet-candidates \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/guide"
+  &#125;'</code></pre>
+
+  <h2>From single pages to whole sites</h2>
+  <p>Auditing one representative page per template catches most systemic issues, but eventually you want coverage across every URL. The pattern that works is two-stage: discover the URLs with a crawl, then fan the discovered URLs out to the per-page checks above. The <a href="/recipes/crawl-entire-website">crawl-entire-website recipe</a> covers the discovery half — point it at a domain, collect the URL set into your warehouse, and feed that list into the audit step.</p>
+
+  <p>Keep the two stages on different cadences. Discovery is comparatively expensive and the URL set changes slowly, so a weekly crawl is usually enough. The per-page audit is cheap and the pages change on every deploy, so run it in CI continuously. Storing each audit result with a timestamp and the source URL gives you a history table — you can chart whether your meta-audit scores are trending up across the site and prove the audit is paying for itself.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider an in-house SEO lead at a mid-market SaaS company with a few hundred marketing pages on a headless CMS. Before automating, the team ran a desktop crawl once a quarter; between crawls, CMS edits and marketing experiments steadily reintroduced regressions, and the next crawl was a demoralising spreadsheet of repeat offenders.</p>
+
+  <p>After wiring the seven checks into CI, every pull request that touches a template now runs the audit against a preview deploy. A truncated title, a third redirect hop, a broken outbound link, or a stray <code>http://</code> script fails the build with a specific message, and the author fixes it before merge. The quarterly crawl became a confirmation rather than a fire drill, and the engineering cost was a single CI step plus a thresholds file in the repo. The agency-side version of this story is the same recipe applied across many client sites at once, which is why <a href="/for-aeo-agencies">agencies</a> tend to script it first.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>A few failure modes are worth planning for. Single-page apps render almost nothing in their server HTML, so a default fetch may report empty meta tags or zero snippet candidates that are actually present after hydration. The fix is the opt-in rendered fetch on the endpoints that support it — set the residential-proxy flag and you audit the hydrated page. Use it only where you need it, since the rendered path carries a surcharge.</p>
+
+  <p>Link-heavy pages can have hundreds of outbound links; probing all of them is slow and rarely necessary. Cap the broken-links scan with <code>max_links</code> on your most important links and accept that a deep long-tail sweep is a job for a periodic crawl, not a per-deploy check.</p>
+
+  <p>Finally, treat the audit thresholds as living configuration. A score floor that is too strict produces noisy build failures the team learns to ignore; one that is too loose lets regressions through. Start lenient, tighten as the obvious issues clear, and review the thresholds like any other code.</p>
+
+  <h2>What to do next</h2>
+  <p>Grab a key, paste the meta-audit command from Step 2, and confirm you can grade a real page in the next five minutes. Then pick one template, wire the seven core checks into a CI step against its preview URL, and set thresholds you can live with. Most teams have deploy-time SEO guardrails running inside a week.</p>
+
+  <p>Read the <a href="/docs">docs</a> for the full request and response schema, see the <a href="/pricing">pricing page</a> for credit packs, and browse the rest of the <a href="/recipes">recipes</a> when you are ready to add discovery and crawling to the pipeline.</p>
+</Article>

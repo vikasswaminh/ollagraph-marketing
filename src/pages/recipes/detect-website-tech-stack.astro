@@ -1,0 +1,184 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is technographic detection?", a: "Technographic detection is the practice of identifying the technologies a website runs — its frameworks, content management system, analytics tools, marketing tags, payment providers, and hosting infrastructure — from publicly observable signals. Sales and competitive-intelligence teams use technographics to qualify accounts, prioritise outreach, and map a market. Tools like BuiltWith, Wappalyzer, and Clearbit popularised the category; Ollagraph exposes the same signals through a metered API." },
+  { q: "Can you detect a website's tech stack from just a domain?", a: "Mostly, yes. A single page fetch surfaces a large share of the stack: server and CDN headers, JavaScript frameworks, analytics and tag-manager snippets, CMS fingerprints, and embedded structured data. DNS and SSL records add the infrastructure layer — mail provider, nameservers, certificate issuer. You point Ollagraph at the homepage URL (or the bare domain for DNS and SSL) and read the signals back as JSON. No browser extension, no per-seat license." },
+  { q: "How is this different from lead enrichment?", a: "Lead enrichment answers who works at a company and how to reach them — names, titles, emails, phone numbers. Technographic detection answers what a company runs — its software and infrastructure footprint. They are complementary. Ollagraph's company-enrichment recipe covers the contact side; this recipe covers the tech-stack side. Many teams run both against the same domain and join the results." },
+  { q: "Which Ollagraph endpoints reveal a site's tech stack?", a: "The core call is POST /v1/intel/page, which fetches a page and returns page-level intelligence including technology signals and contact patterns. You layer on POST /v1/intel/headers for server and CDN fingerprints, POST /v1/intel/social-tags for meta and CMS hints, POST /v1/intel/cookies for analytics and consent platforms, POST /v1/dns/intelligence and POST /v1/intel/ssl for the infrastructure layer, and POST /v1/enrich/company for the firmographic profile. Each is documented in the live spec." },
+  { q: "How accurate is API-based tech detection versus a tool like Wappalyzer?", a: "Both read the same public signals — headers, script tags, cookies, structured data — so coverage is comparable for anything observable from a server-side fetch. The trade-off is in the last mile. A real browser sees JavaScript-set cookies and client-rendered widgets that a plain fetch does not. For sites that inject their stack client-side, request JS rendering so the page is evaluated before signals are read. Treat every detection as evidence, not proof, and corroborate across signals." },
+  { q: "Is technographic detection legal?", a: "Reading the headers, markup, and DNS records a site publishes to every visitor is generally lawful in the United States and most jurisdictions — these are signals the site broadcasts publicly. As always, respect each site's terms for the parts of your workflow they govern, avoid authenticated or paywalled surfaces, and consult counsel before commercial redistribution. Ollagraph never persists scraped page content on your behalf." },
+  { q: "How much does it cost to detect a tech stack with Ollagraph?", a: "Each intelligence call costs one credit, and the exact balance change is shown in every response. A full stack profile for one domain is a handful of calls — page, headers, cookies, social tags, DNS, SSL, company — so the per-domain cost is small and predictable. Failed calls are auto-refunded, so a site that times out or blocks the fetch does not cost you a credit. See the pricing page for credit packs and pay-as-you-go." },
+  { q: "Can I detect the tech stack of thousands of domains in a batch?", a: "Yes. Each endpoint takes a single URL or domain, so the batch pattern is to fan domains out across a worker pool and call the intelligence endpoints per domain. Because failed calls auto-refund and each call is one credit, the cost scales linearly and predictably with your domain list. Land the JSON in your warehouse keyed by domain and you have a technographic table you can segment and score." },
+];
+---
+<Article
+  title="How to detect a website's tech stack from a domain in 2026"
+  description="Identify the frameworks, analytics, CMS, and infrastructure a site runs — technographic enrichment without a Clearbit contract."
+  date="2026-06-18"
+  readingTime={11}
+  tags={["technographic", "intelligence", "sales"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What detecting a website's tech stack means in 2026</h2>
+  <p>Detecting a website's tech stack means identifying the technologies a site runs — its JavaScript frameworks, content management system, analytics and marketing tags, payment and chat widgets, and the hosting and DNS infrastructure underneath — from signals the site publishes to every visitor. In 2026, the practical way to do this at scale is a metered API that fetches a domain and returns those signals as clean JSON, so you can enrich a target list without a per-seat license or a browser extension.</p>
+
+  <p>That paragraph is the answer most people land on this page looking for. The rest of it is for the revenue and research leaders who have to turn that answer into a working pipeline — a technographic table they can segment, score, and route. We will name the tools you are replacing, walk the signals honestly, and give you the recipe end to end.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't care that a prospect runs Next.js. You care what that fact lets you do. Technographics are a means to an end, and the end is almost always one of three things.</p>
+
+  <p>The first is account qualification. A sales team selling a developer tool wants to know which prospects already run a modern JavaScript framework, ship a tag manager, or expose a particular CDN — because those facts predict fit. The second is competitive displacement. A team selling against an incumbent wants a list of every domain running that incumbent's tracking snippet, because those are the accounts where a switch conversation lands. The third is market mapping. A research or strategy team wants to size a category by counting how many sites in a segment run a given platform.</p>
+
+  <p>All three need the same primitive: point at a domain, get back a structured description of what it runs. The category has had tools for this for over a decade. What changed is that the signals are now reachable through a single API call you can wire into your own systems, instead of a dashboard you export from by hand.</p>
+
+  <h2>What the alternatives offer</h2>
+  <p>Before the Ollagraph recipe, credit where it's due. The technographic category has mature options, and a couple of them are genuinely good at their slice of the problem.</p>
+
+  <h3>BuiltWith</h3>
+  <p>BuiltWith is the canonical technology-lookup database. Type in a domain and it returns a long, well-categorised list of detected technologies, plus historical adoption trends across the web. For one-off research and for sizing how widely a technology is deployed, BuiltWith is hard to beat. Where it gets expensive is programmatic access at list scale and joining its output into your own scoring logic.</p>
+
+  <h3>Wappalyzer</h3>
+  <p>Wappalyzer started as a browser extension and built a large, community-maintained fingerprint library. Its detection rules are the de facto reference for what a given snippet or header implies. The extension is free for spot checks; the API and bulk lookups are the paid tier. Wappalyzer is excellent at the detection logic itself and less opinionated about the firmographic layer around it.</p>
+
+  <h3>Clearbit and ZoomInfo</h3>
+  <p>Clearbit and ZoomInfo bundle technographics into a broader firmographic and contact dataset. You get tech signals alongside headcount, revenue band, and contacts in one record. That bundling is the value and the cost — you buy the whole platform, often on an annual contract with seat minimums, even when all you wanted was the tech-stack column for a list of domains.</p>
+
+  <h3>Build it yourself</h3>
+  <p>Rolling your own means writing a fetcher, a fingerprint library, and a parser, then maintaining all three as sites change their markup. The detection rules are the easy part — open-source fingerprint sets exist. The hard part is reliably fetching the page in the first place: sites that block plain HTTP clients, render their stack client-side, or sit behind anti-bot defenses. That fetch layer is where most in-house technographic projects quietly stall.</p>
+
+  <h2>Where Ollagraph goes further</h2>
+  <p>Ollagraph's intelligence endpoints are built for the team that wants the signals joined into their own systems, not exported from someone else's dashboard. We took the fetch problem — the genuinely hard part — and solved it once, then exposed the technographic signals through a handful of composable endpoints you call per domain.</p>
+
+  <p>Three things matter. First, the fetch is handled. Each intelligence call uses the same routing and retry machinery that powers the rest of the platform, so a site that blocks a naive client still returns signals. For stacks injected client-side, you can opt into JS rendering so the page is evaluated before signals are read. Second, the signals are composable. Rather than one monolithic "everything" response, you call the endpoint for the layer you need — page, headers, cookies, DNS, SSL — and join what's relevant. Third, the economics are flat: one credit per call, the exact cost shown in every response, and failed calls auto-refunded so a domain that times out costs you nothing.</p>
+
+  <p>Where a bundled platform sells you a contract, we sell you calls. Where a browser extension makes you click domain by domain, we give you an endpoint you fan across a worker pool. Ollagraph wins for the team that already has a target list and wants a technographic column next to it — at predictable per-call economics, with the firmographic layer one endpoint away.</p>
+
+  <h2>The signals, and which endpoint reads each one</h2>
+  <p>A tech stack is layered, and different signals live at different layers. Here is the map from layer to endpoint, so you call only what you need.</p>
+
+  <p><strong>The page itself</strong> is the richest single source. <code>POST /v1/intel/page</code> fetches a URL and returns page-level intelligence — including technology signals detected in the markup and scripts, plus contact patterns found on the page. This is the call that surfaces frameworks, embedded analytics, tag managers, and CMS fingerprints in one shot. Start here.</p>
+
+  <p><strong>The response headers</strong> reveal the server, the CDN, and the security posture. <code>POST /v1/intel/headers</code> fetches the URL and returns all response headers plus a security-header grade. Server banners, CDN markers, and cache headers are some of the most reliable stack signals because they are hard to fake and don't depend on rendering.</p>
+
+  <p><strong>The meta and markup</strong> carry CMS and platform hints. <code>POST /v1/intel/social-tags</code> returns Open Graph, Twitter Card, canonical URL, title, description, icons, language, theme color, and robots meta. Generator tags and icon paths in this response frequently betray the CMS or site builder behind a page.</p>
+
+  <p><strong>The cookies</strong> name the analytics and consent platforms. <code>POST /v1/intel/cookies</code> parses the Set-Cookie response headers — name, domain, path, SameSite, Secure, HttpOnly, and whether each is first- or third-party. Cookie names are a strong tell for analytics suites, A/B testing tools, and consent-management platforms. Note the documented limit: this reads header-set cookies only; cookies set by JavaScript need a real browser and are not visible from a server-side fetch.</p>
+
+  <p><strong>The DNS records</strong> describe the infrastructure. <code>POST /v1/dns/intelligence</code> takes a <code>domain</code> and returns DNS intelligence — the records that reveal mail provider, nameserver host, and verification tokens that often name SaaS vendors a company uses.</p>
+
+  <p><strong>The TLS certificate</strong> adds the issuer and validity picture. <code>POST /v1/intel/ssl</code> takes a <code>domain</code> and returns SSL/TLS certificate intelligence — issuer, validity window, and subject details that corroborate the hosting and CDN story from the headers.</p>
+
+  <p><strong>The firmographic profile</strong> ties it to a company. <code>POST /v1/enrich/company</code> pulls a lite company profile from a single page — Organization JSON-LD, og:* tags, social anchors, and contact patterns — so your technographic record carries a name, description, and social handles alongside the stack.</p>
+
+  <p>A note on field names: the intelligence endpoints that fetch a page take a <code>url</code>; the DNS and SSL endpoints take a bare <code>domain</code>. Response shapes evolve, so treat the live <a href="/docs">docs</a> and the OpenAPI spec as the source of truth for exact field names rather than hard-coding against a snapshot.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Real curl commands, real request shapes. Run them in order against a single domain to see the full picture, then fan the pattern across your list.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab a key from the dashboard, and export it for the session. Every call authenticates with a Bearer token.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Read the page-level signals</h3>
+  <p>Start with the page endpoint. It does the most work per call — fetching the homepage and returning page intelligence that includes the technology signals detected in the markup and scripts.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/page \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com"
+  &#125;'</code></pre>
+
+  <p>This is your anchor signal. For a site whose stack is rendered or injected client-side, the page may surface less from a plain fetch — that is the case where you reach for JS rendering, available as a request option on the fetch-based intelligence endpoints, so the page is evaluated before its signals are read.</p>
+
+  <h3>Step 3. Fingerprint the server and CDN from headers</h3>
+  <p>The headers endpoint returns the response headers and a security-header grade. Server and CDN markers here are among the most reliable stack signals you will collect.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/headers \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com"
+  &#125;'</code></pre>
+
+  <h3>Step 4. Pull CMS hints and platform tags</h3>
+  <p>The social-tags endpoint returns the meta layer — Open Graph, Twitter Card, canonical, icons, language, theme color, and robots meta. Generator tags and icon paths in this response frequently identify the CMS or site builder.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/social-tags \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com"
+  &#125;'</code></pre>
+
+  <h3>Step 5. Name the analytics and consent platforms from cookies</h3>
+  <p>The cookies endpoint parses the Set-Cookie headers. Cookie names map cleanly to analytics suites, testing tools, and consent platforms. Remember the documented boundary: this is header-set cookies only — JavaScript-set cookies need a real browser.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/cookies \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com"
+  &#125;'</code></pre>
+
+  <h3>Step 6. Add the infrastructure layer with DNS and SSL</h3>
+  <p>Switch from <code>url</code> to <code>domain</code> for the two infrastructure calls. DNS intelligence surfaces mail and nameserver providers and verification tokens; SSL intelligence surfaces the certificate issuer and validity window.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/dns/intelligence \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/ssl \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "domain": "example.com"
+  &#125;'</code></pre>
+
+  <h3>Step 7. Attach the company profile</h3>
+  <p>Finally, enrich the domain into a company record so your technographic row carries a name and description. Point the enrich call at the homepage or an /about page for the best result.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/enrich/company \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/"
+  &#125;'</code></pre>
+
+  <p>Seven calls, one domain, a complete technographic and firmographic picture. Each call is one credit, each shows its exact cost in the response, and any that fail to fetch are auto-refunded.</p>
+
+  <h2>From one domain to a technographic table</h2>
+  <p>One domain proves the pipeline. The value shows up when you run the same seven-call pattern across a target list. Because each endpoint takes a single <code>url</code> or <code>domain</code>, the scale pattern is straightforward: hold your domain list in your warehouse, fan calls out across a worker pool, and write each response back keyed by domain.</p>
+
+  <p>The output is a wide technographic table — one row per domain, columns for framework, CMS, CDN, analytics, mail provider, certificate issuer, and the firmographic profile. From there the use cases write themselves. Filter rows where the analytics column names a competitor's tag for a displacement list. Segment by framework to qualify fit for a developer tool. Count rows by CMS to size a category. Join against your CRM on domain to enrich open opportunities in place.</p>
+
+  <p>Keep the raw JSON responses in a column alongside the parsed fields. Detection logic improves and fingerprints get sharper; if you keep the raw response, you can re-derive a signal later without re-fetching the domain and spending the credit again.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a sales team at a CDP vendor that sells against a well-known analytics incumbent. Their best conversations happen at companies already running that incumbent's tracking snippet, because those teams feel the pain the CDP solves. Before, they bought this signal as a column in an expensive bundled dataset, refreshed quarterly, and exported it to a spreadsheet by hand.</p>
+
+  <p>After the switch, an analyst runs the seven-call pattern nightly against their inbound domain list and their named-account list. The cookies and page signals flag every domain carrying the incumbent's snippet; the company enrichment attaches a name and description; DNS and SSL corroborate the hosting story. The result lands in the warehouse, joins to the CRM on domain, and surfaces in the rep's queue as a "running the incumbent" tag the morning after a lead comes in. The signal went from a quarterly export to a nightly column, and the per-domain cost is a handful of credits.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>Technographic detection is inference from public signals, not ground truth, so plan for ambiguity. The first failure mode is client-side rendering: a single-page app may ship a near-empty initial HTML document, hiding most of the stack from a plain fetch. The fix is JS rendering on the fetch-based endpoints, so the page is evaluated before signals are read. It costs more per call; reserve it for domains where the plain fetch came back thin.</p>
+
+  <p>The second is the cookie boundary, worth repeating because it surprises people: <code>/v1/intel/cookies</code> reads Set-Cookie response headers only. Many analytics and consent tools set their cookies from JavaScript, which a server-side fetch never sees. Corroborate cookie evidence with the page and header signals rather than treating an empty cookie response as proof a site runs no analytics.</p>
+
+  <p>The third is shared infrastructure noise. DNS and SSL signals describe the platform a site sits on, not always a choice the company made — a site builder may terminate every customer's TLS through the same issuer and CDN. Read infrastructure signals as a layer of evidence, and weight the page-level and header signals more heavily when you want to know what the company itself chose to build with.</p>
+
+  <h2>Where this fits in the wider intelligence stack</h2>
+  <p>Tech-stack detection is one half of account intelligence; contact enrichment is the other. This recipe is the technographic side. For the people side — pulling a company profile and contact patterns from a domain — see the companion recipe on <a href="/recipes/enrich-leads-from-domain">enriching leads from a domain</a>. Run both against the same target list and you have a single row per account that says both what they run and who to talk to.</p>
+
+  <p>For the broader picture of how Ollagraph approaches this category, the <a href="/for-intel">intelligence-team landing page</a> lays out the use cases, the <a href="/intelligence">intelligence endpoint family</a> documents the full set of signal calls, and the <a href="/blog/sales-intelligence-api-buyers-guide">sales intelligence API buyer's guide</a> walks through how to evaluate a provider against the bundled platforms. Browse the rest of the <a href="/recipes">recipes</a> for adjacent playbooks, and the <a href="/capabilities">capabilities overview</a> for everything the platform fetches.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, paste the Step 2 command against a domain you know well, and confirm the page intelligence comes back in the next five minutes. Then pick one signal that maps to a real decision — the analytics cookie for a displacement list, the framework for fit scoring, the CMS for a category map — and wire just that one call across your target list. Add the other endpoints as the use case earns them. Most teams have a useful technographic column inside a day and a nightly enrichment job inside a week.</p>
+
+  <p>Read the <a href="/docs">docs</a>, check the <a href="/pricing">pricing page</a> for credit packs and pay-as-you-go, and ship something.</p>
+</Article>

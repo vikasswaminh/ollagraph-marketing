@@ -1,0 +1,181 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+
+// Snapshot of `pip-licenses --format=markdown` taken from the live
+// Ollagraph production API image on 2026-05-24. Regenerate when
+// dependencies change.
+
+interface Pkg { name: string; version: string; license: string; family: string; }
+
+function fam(license: string): string {
+  const l = license.toLowerCase();
+  if (l.includes("mit")) return "MIT";
+  if (l.includes("bsd")) return "BSD";
+  if (l.includes("apache")) return "Apache 2.0";
+  if (l.includes("isc")) return "ISC";
+  if (l.includes("psf") || l.includes("python software foundation")) return "PSF";
+  if (l.includes("mozilla public license") || l.includes("mpl")) return "MPL";
+  if (l.includes("lgpl")) return "LGPL (weak copyleft)";
+  if (l.includes("agpl")) return "AGPL (network copyleft)";
+  if (l.includes("gpl")) return "GPL (copyleft)";
+  if (l.includes("w3c")) return "W3C";
+  if (l.includes("0bsd")) return "0BSD";
+  return "Other";
+}
+
+const packages: Pkg[] = [
+  { name: "PyYAML", version: "6.0.3", license: "MIT License" },
+  { name: "aiohappyeyeballs", version: "2.6.2", license: "PSF" },
+  { name: "aiohttp", version: "3.13.5", license: "Apache-2.0 AND MIT" },
+  { name: "aiosignal", version: "1.4.0", license: "Apache 2.0" },
+  { name: "amqp", version: "5.3.1", license: "BSD" },
+  { name: "annotated-types", version: "0.7.0", license: "MIT" },
+  { name: "anyio", version: "4.13.0", license: "MIT" },
+  { name: "argon2-cffi", version: "23.1.0", license: "MIT" },
+  { name: "asyncpg", version: "0.30.0", license: "Apache 2.0" },
+  { name: "attrs", version: "26.1.0", license: "MIT" },
+  { name: "beautifulsoup4", version: "4.12.3", license: "MIT" },
+  { name: "billiard", version: "4.2.4", license: "BSD" },
+  { name: "celery", version: "5.4.0", license: "BSD" },
+  { name: "certifi", version: "2026.5.20", license: "Mozilla Public License 2.0" },
+  { name: "cffi", version: "1.17.1", license: "MIT" },
+  { name: "chardet", version: "7.4.3", license: "0BSD" },
+  { name: "charset-normalizer", version: "3.4.7", license: "MIT" },
+  { name: "click", version: "8.4.1", license: "BSD-3-Clause" },
+  { name: "cryptography", version: "46.0.0", license: "Apache-2.0 OR BSD-3-Clause" },
+  { name: "cssselect", version: "1.4.0", license: "BSD-3-Clause" },
+  { name: "curl_cffi", version: "0.7.4", license: "MIT" },
+  { name: "dnspython", version: "2.7.0", license: "ISC" },
+  { name: "et_xmlfile", version: "2.0.0", license: "MIT" },
+  { name: "extruct", version: "0.18.0", license: "BSD" },
+  { name: "fastapi", version: "0.115.6", license: "MIT" },
+  { name: "geoip2", version: "4.8.0", license: "Apache 2.0" },
+  { name: "h11", version: "0.16.0", license: "MIT" },
+  { name: "h3", version: "4.4.2", license: "Apache 2.0" },
+  { name: "html-text", version: "0.7.1", license: "MIT" },
+  { name: "html5lib", version: "1.1", license: "MIT" },
+  { name: "httpcore", version: "1.0.9", license: "BSD-3-Clause" },
+  { name: "httptools", version: "0.7.1", license: "MIT" },
+  { name: "httpx", version: "0.28.1", license: "BSD" },
+  { name: "idna", version: "3.16", license: "BSD-3-Clause" },
+  { name: "kombu", version: "5.6.2", license: "BSD-3-Clause" },
+  { name: "lxml", version: "5.3.0", license: "BSD" },
+  { name: "markdownify", version: "0.13.1", license: "MIT" },
+  { name: "maxminddb", version: "2.8.2", license: "Apache 2.0" },
+  { name: "mf2py", version: "2.0.1", license: "MIT" },
+  { name: "multidict", version: "6.7.1", license: "Apache 2.0" },
+  { name: "numpy", version: "2.2.6", license: "BSD" },
+  { name: "openpyxl", version: "3.1.5", license: "MIT" },
+  { name: "pdfminer.six", version: "20231228", license: "MIT" },
+  { name: "pdfplumber", version: "0.11.4", license: "MIT" },
+  { name: "pillow", version: "12.2.0", license: "MIT-CMU" },
+  { name: "pydantic", version: "2.10.4", license: "MIT" },
+  { name: "pydantic_core", version: "2.27.2", license: "MIT" },
+  { name: "pypdfium2", version: "5.8.0", license: "BSD-3-Clause + Apache-2.0" },
+  { name: "pyphen", version: "0.17.2", license: "GPLv2+ / LGPLv2+ / MPL-1.1 (used internally only — see note below)" },
+  { name: "pyrdfa3", version: "3.6.5", license: "W3C License" },
+  { name: "python-dateutil", version: "2.9.0", license: "Apache 2.0 / BSD" },
+  { name: "python-docx", version: "1.1.2", license: "MIT" },
+  { name: "python-dotenv", version: "1.2.2", license: "BSD-3-Clause" },
+  { name: "python-pptx", version: "1.0.2", license: "MIT" },
+  { name: "python-whois", version: "0.9.5", license: "MIT" },
+  { name: "rdflib", version: "7.6.0", license: "BSD" },
+  { name: "readability-lxml", version: "0.8.1", license: "Apache 2.0" },
+  { name: "redis", version: "5.2.1", license: "MIT" },
+  { name: "requests", version: "2.34.2", license: "Apache 2.0" },
+  { name: "scipy", version: "1.14.1", license: "BSD" },
+  { name: "sentry-sdk", version: "2.19.2", license: "BSD" },
+  { name: "starlette", version: "0.41.3", license: "BSD" },
+  { name: "stripe", version: "11.4.1", license: "MIT" },
+  { name: "textstat", version: "0.7.4", license: "MIT" },
+  { name: "timezonefinder", version: "6.5.9", license: "MIT" },
+  { name: "tldextract", version: "5.1.3", license: "BSD" },
+  { name: "ua-parser", version: "1.0.2", license: "Apache 2.0" },
+  { name: "urllib3", version: "2.7.0", license: "MIT" },
+  { name: "user-agents", version: "2.2.0", license: "MIT" },
+  { name: "uvicorn", version: "0.32.1", license: "BSD" },
+  { name: "uvloop", version: "0.22.1", license: "Apache 2.0 / MIT" },
+  { name: "vine", version: "5.1.0", license: "BSD" },
+  { name: "w3lib", version: "2.4.1", license: "BSD-3-Clause" },
+  { name: "websockets", version: "16.0", license: "BSD-3-Clause" },
+  { name: "xlsxwriter", version: "3.2.9", license: "BSD" },
+  { name: "yarl", version: "1.24.2", license: "Apache 2.0" },
+].map(p => ({...p, family: fam(p.license)}));
+
+// Group by license family for the summary table.
+const families: Record<string, number> = {};
+for (const p of packages) families[p.family] = (families[p.family] || 0) + 1;
+const familyEntries = Object.entries(families).sort((a, b) => b[1] - a[1]);
+---
+<BaseLayout title="Open-source licenses — Ollagraph" description="Complete list of every open-source dependency used in the Ollagraph API, with each one's license, version, and family.">
+  <Fragment set:html={navHtml('')} />
+  <main class="article">
+    <h1 class="h-display h-1">Open-source licenses</h1>
+    <article class="prose">
+      <p>Last updated: 2026-05-24</p>
+      <p>
+        Ollagraph is built on a foundation of carefully chosen open-source
+        software. This page lists every Python dependency in our production API
+        image along with its license and version, generated directly from the
+        running production environment via <code>pip-licenses</code>. Updated on
+        every dependency-bump release.
+      </p>
+
+      <h2>License-family summary</h2>
+      <table>
+        <thead>
+          <tr><th>License family</th><th>Packages</th></tr>
+        </thead>
+        <tbody>
+          {familyEntries.map(([f, count]) => (
+            <tr><td>{f}</td><td>{count}</td></tr>
+          ))}
+        </tbody>
+      </table>
+
+      <h2>Note on pyphen (LGPL / MPL)</h2>
+      <p>
+        The <code>pyphen</code> hyphenation library is dual-licensed under
+        GPLv2+, LGPLv2+, or MPL-1.1. We use it only internally as a transitive
+        dependency of <code>textstat</code> (which powers
+        <code>/v1/seo/readability</code>). Both LGPL and MPL are file-level
+        (weak) copyleft licenses: they permit commercial network-service use
+        without requiring source disclosure. We do not modify, re-distribute, or
+        expose <code>pyphen</code> directly to customers. If you would prefer us
+        to remove this dependency, contact
+        <a href="mailto:legal@ollagraph.com">legal@ollagraph.com</a>.
+      </p>
+
+      <h2>Full dependency list</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>Version</th>
+            <th>License</th>
+            <th>Family</th>
+          </tr>
+        </thead>
+        <tbody>
+          {packages.map((p) => (
+            <tr>
+              <td><code>{p.name}</code></td>
+              <td>{p.version}</td>
+              <td>{p.license}</td>
+              <td>{p.family}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p>
+        Don't see a package you expected? It may be a JavaScript dependency
+        (those live on the marketing-site build pipeline, not the API). Email
+        <a href="mailto:legal@ollagraph.com">legal@ollagraph.com</a> with the
+        package name.
+      </p>
+    </article>
+  </main>
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

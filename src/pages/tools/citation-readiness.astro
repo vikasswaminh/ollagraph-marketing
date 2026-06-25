@@ -1,0 +1,270 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+
+const url = "https://ollagraph.com/tools/citation-readiness/";
+
+// The 8 signals the audit scores. Kept in sync (in spirit) with the live
+// /v1/aeo/citation-readiness endpoint the in-product run actually calls.
+const signals = [
+  { t: "Answerable structure", d: "Clear question-style headings with direct, self-contained answers an engine can lift verbatim." },
+  { t: "Structured data", d: "JSON-LD / schema.org markup (Article, FAQPage, HowTo, Organization) that tells engines what the page is." },
+  { t: "Crawlability for AI", d: "robots.txt, llms.txt, and meta directives that actually allow the AI crawlers you want citing you." },
+  { t: "Entity clarity", d: "Unambiguous names, definitions, and 'what is' statements that pin down the entities on the page." },
+  { t: "Freshness signals", d: "Visible and structured dates, last-updated markers, and changelog cues engines use to trust currency." },
+  { t: "Extractable facts", d: "Numbers, lists, and tables in clean markup — the shapes models quote most reliably." },
+  { t: "Source authority", d: "Author, citations, and outbound references that raise the page's trust for answer engines." },
+  { t: "Render without JS", d: "Whether the substance is in the HTML or trapped behind JavaScript an engine may never run." },
+];
+
+const faqs = [
+  { q: "What is AI citation-readiness?", a: "It's how likely an AI answer engine — ChatGPT, Perplexity, Claude, Google's AI overviews — is to read your page, trust it, and cite it in an answer. It depends on structure, schema markup, crawlability for AI bots, clear entities, freshness, and whether your content is extractable without running JavaScript." },
+  { q: "Is this checker really free?", a: "Yes. Enter a URL and run the full audit on your 1,000 free credits — no card required. The audit is powered by Ollagraph's live /v1/aeo/citation-readiness endpoint, the same one teams call in production." },
+  { q: "How is citation-readiness different from SEO?", a: "SEO optimizes for ranking in a list of blue links; AEO (Answer Engine Optimization) optimizes for being the source an AI quotes in its answer. They overlap on crawlability and quality, but AEO weighs extractable structure, schema, clear answers, and entity clarity far more heavily. See our AEO vs SEO guide." },
+  { q: "Which AI crawlers does it check for?", a: "The audit inspects robots.txt, llms.txt, and meta rules for the major answer-engine and AI-training crawlers, and flags where you're unintentionally blocking the ones you'd want citing you." },
+  { q: "Does running the checker store my page content?", a: "No. Ollagraph returns your audit result and keeps only URL-level metadata for your usage and observability — the page content itself is never persisted. That's a product-wide default, not a setting." },
+  { q: "Can I run this on every page automatically?", a: "Yes — the same audit is a single API call. Once you've signed up, score a whole sitemap in a loop, wire it into CI to catch regressions, or schedule it. The web tool here is the front door to the API." },
+];
+
+const jsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "AI Citation-Readiness Checker",
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Web",
+    url,
+    description: "Free tool to check whether a web page is ready to be read, trusted, and cited by AI answer engines like ChatGPT, Perplexity, and Claude.",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    provider: { "@type": "Organization", name: "Ollagraph", url: "https://ollagraph.com" },
+  },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Free tools", item: "https://ollagraph.com/tools/" },
+    { "@type": "ListItem", position: 3, name: "AI Citation-Readiness Checker", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout
+  title="Free AI Citation-Readiness Checker — will ChatGPT cite your site? | Ollagraph"
+  description="Free tool: check whether your page is ready to be read, trusted, and cited by AI answer engines like ChatGPT, Perplexity, and Claude. Scores structure, schema, crawlability, and extractability."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('tools')} />
+
+  <main class="article">
+    <span class="badge badge-mute" style="margin-bottom:14px;">FREE TOOL</span>
+    <h1 class="h-display h-1">Is your site ready to be cited by AI?</h1>
+    <p class="article-lede">
+      AI answer engines — ChatGPT, Perplexity, Claude, Google's AI overviews — now sit between
+      your content and your audience. This free checker scores how ready a page is to be read,
+      trusted, and <strong>quoted</strong> by them, and tells you what to fix.
+    </p>
+
+    <form id="cr-form" style="display:flex; gap:10px; flex-wrap:wrap; margin:22px 0 8px; max-width:640px;">
+      <input
+        id="cr-url"
+        type="url"
+        inputmode="url"
+        required
+        placeholder="https://yoursite.com/page"
+        aria-label="Page URL to check"
+        style="flex:1 1 320px; min-width:0; padding:13px 15px; border-radius:12px; border:1px solid var(--border); background:var(--surface, rgba(255,255,255,0.03)); color:inherit; font-size:15px;"
+      />
+      <button id="cr-submit" class="btn btn-primary btn-lg" type="submit">Check my page</button>
+    </form>
+    <p id="cr-hint" style="color:var(--text-muted); font-size:13px; margin:0;">
+      Free instant score — <strong>no signup</strong>. Powered by the live
+      <code class="text-mono">/v1/aeo/citation-readiness</code> audit; get the full breakdown and fixes
+      with your <strong>1,000 free credits</strong>.
+    </p>
+
+    <div id="cr-result" role="status" aria-live="polite" style="margin-top:22px; max-width:640px;"></div>
+
+    <article class="prose">
+      <h2>What the checker scores</h2>
+      <p>
+        Citation-readiness is not one number you can fake — it's a handful of concrete signals an
+        answer engine uses to decide whether your page is worth reading and safe to quote. The audit
+        grades each one and returns a breakdown, not just a grade:
+      </p>
+      <ul>
+        {signals.map((s) => (<li><strong>{s.t}.</strong> {s.d}</li>))}
+      </ul>
+
+      <h2>Why citation-readiness matters now</h2>
+      <p>
+        Search is shifting from <em>ten blue links</em> to <em>one synthesized answer</em>. When an AI
+        engine answers a question, it reads a small set of sources and cites a few — and being one of
+        those cited sources is the new front page. A beautifully ranked page that an engine can't cleanly
+        parse, can't verify, or isn't allowed to crawl simply doesn't get quoted. Citation-readiness is
+        how you measure whether you're in that set.
+      </p>
+
+      <h2>How the score is produced</h2>
+      <p>
+        When you run the audit, Ollagraph fetches the page the way an answer engine would — rendering
+        JavaScript when needed — then inspects its structure, schema markup, crawl directives, entities,
+        and extractable facts, and returns a scored breakdown with specific findings. It's the same
+        <code class="text-mono">/v1/aeo/citation-readiness</code> endpoint our customers run in production
+        and in CI; this page is just the friendly front door to it.
+      </p>
+
+      <h2>How to improve a weak score</h2>
+      <ul>
+        <li><strong>Answer the question in the first sentence under each heading</strong> — engines lift self-contained answers, not buried ones.</li>
+        <li><strong>Add the right schema</strong> — <code class="text-mono">FAQPage</code>, <code class="text-mono">HowTo</code>, <code class="text-mono">Article</code> — so engines know what the page is.</li>
+        <li><strong>Ship an <code class="text-mono">llms.txt</code> and a clean <code class="text-mono">robots.txt</code></strong> that allow the AI crawlers you want citing you.</li>
+        <li><strong>Put facts in markup, not images</strong> — numbers, lists, and tables in HTML are what models quote.</li>
+        <li><strong>Render the substance server-side</strong> so content isn't trapped behind JavaScript an engine may not run.</li>
+      </ul>
+      <p>
+        Want the full playbook? Read <a href="/blog/aeo-vs-seo-2026">AEO vs SEO in 2026</a> and the
+        <a href="/aeo">AEO audits</a> overview.
+      </p>
+
+      <h2>How answer engines decide — primary sources</h2>
+      <p>
+        These signals aren't folklore; they track the public standards and research that answer
+        engines build on. The references this checker leans on:
+      </p>
+      <ul>
+        <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — whether an AI crawler is even allowed to read your page.</li>
+        <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format that tells engines what your page <em>is</em>.</li>
+        <li><a href="https://en.wikipedia.org/wiki/Large_language_model" target="_blank" rel="noopener">Large language models</a> (Wikipedia) — how the models that cite you read and chunk text.</li>
+        <li><a href="https://arxiv.org/abs/2005.11401" target="_blank" rel="noopener">Retrieval-Augmented Generation</a> (Lewis et al., 2020) — why extractable structure and freshness drive which page gets quoted.</li>
+      </ul>
+    </article>
+  </main>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Common questions</h2>
+    {faqs.map((f) => (<div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Score your whole site, free.</h2>
+    <p style="color:var(--text-muted); max-width:540px; margin:0 auto 22px;">
+      1,000 credits, one bearer token. Audit one page or loop the audit over your entire sitemap.
+    </p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup?utm_source=ollagraph&utm_medium=free-tool&utm_campaign=citation-readiness">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/aeo">See AEO audits</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+
+  <script is:inline>
+    (function () {
+      var form = document.getElementById('cr-form');
+      var input = document.getElementById('cr-url');
+      var btn = document.getElementById('cr-submit');
+      var out = document.getElementById('cr-result');
+      if (!form || !input || !out) return;
+
+      var FALLBACK_SIGNUP = 'https://app.ollagraph.com/signup'
+        + '?utm_source=ollagraph&utm_medium=free-tool&utm_campaign=citation-readiness&tool=citation-readiness';
+
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+      function gradeColor(g) {
+        return ({ A: '#22c55e', B: '#84cc16', C: '#eab308', D: '#f97316', F: '#ef4444' })[g] || 'var(--accent)';
+      }
+      function setBusy(b) {
+        if (btn) { btn.disabled = b; btn.textContent = b ? 'Scoring…' : 'Check my page'; }
+      }
+      function note(html) { out.innerHTML = '<div style="padding:14px 16px;border:1px solid var(--border);border-radius:14px;color:var(--text-muted);font-size:14px;">' + html + '</div>'; }
+
+      function renderResult(r, url) {
+        var color = gradeColor(r.grade);
+        var bars = (r.breakdown || []).map(function (b) {
+          var pct = b.max ? Math.round((b.score / b.max) * 100) : 0;
+          return ''
+            + '<div style="margin:10px 0;">'
+            +   '<div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--text-muted);margin-bottom:4px;">'
+            +     '<span>' + esc(b.label) + '</span><span>' + b.score + ' / ' + b.max + '</span>'
+            +   '</div>'
+            +   '<div style="height:7px;border-radius:6px;background:rgba(255,255,255,0.08);overflow:hidden;">'
+            +     '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:6px;"></div>'
+            +   '</div>'
+            + '</div>';
+        }).join('');
+
+        var signup = r.signupUrl || (FALLBACK_SIGNUP + '&url=' + encodeURIComponent(url));
+        var blocked = r.botBlocked
+          ? '<p style="margin:10px 0 0;font-size:13px;color:#f97316;">⚠ The page returned a bot-block to our crawler — AI crawlers likely see the same. That alone caps your citability.</p>'
+          : '';
+        var rec = r.topRecommendation
+          ? '<div style="margin-top:16px;padding:13px 15px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.02);">'
+            + '<div style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:6px;">Top fix</div>'
+            + '<div style="font-size:14px;line-height:1.5;">' + esc(r.topRecommendation) + '</div></div>'
+          : '';
+        var moreCount = Math.max(0, (r.recommendationCount || 0) - (r.topRecommendation ? 1 : 0));
+        var moreLine = moreCount > 0
+          ? moreCount + ' more recommendation' + (moreCount === 1 ? '' : 's') + ' plus the full signal breakdown'
+          : 'the full signal breakdown and every recommendation';
+
+        out.innerHTML = ''
+          + '<div style="border:1px solid var(--border);border-radius:18px;padding:22px;background:var(--surface,rgba(255,255,255,0.02));">'
+          +   '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">'
+          +     '<div style="display:flex;align-items:baseline;gap:8px;">'
+          +       '<span style="font-size:46px;font-weight:800;line-height:1;color:' + color + ';">' + esc(r.score) + '</span>'
+          +       '<span style="font-size:18px;color:var(--text-muted);">/ 100</span>'
+          +     '</div>'
+          +     '<div style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;font-weight:800;font-size:20px;color:#0b0e02;background:' + color + ';">' + esc(r.grade) + '</div>'
+          +     '<div style="font-size:13px;color:var(--text-muted);flex:1 1 180px;word-break:break-all;">' + esc(r.finalUrl || url) + (r.cached ? ' · cached' : '') + '</div>'
+          +   '</div>'
+          +   blocked
+          +   '<div style="margin-top:18px;">' + bars + '</div>'
+          +   rec
+          +   '<div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">'
+          +     '<a class="btn btn-primary" href="' + esc(signup) + '">Get the full report — free</a>'
+          +     '<span style="font-size:13px;color:var(--text-muted);">Unlock ' + moreLine + ' on 1,000 free credits.</span>'
+          +   '</div>'
+          + '</div>';
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var raw = (input.value || '').trim();
+        if (!raw) { input.focus(); return; }
+        if (!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
+        try { new URL(raw); } catch (_) { input.focus(); return; }
+
+        setBusy(true);
+        note('Fetching the page and scoring six citation signals…');
+
+        fetch('/api/citation-check', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ url: raw }),
+        }).then(function (resp) {
+          return resp.json().catch(function () { return { ok: false, fallback: true }; });
+        }).then(function (r) {
+          setBusy(false);
+          if (r && r.ok) { renderResult(r, raw); return; }
+          if (r && r.pageError) {
+            note("We couldn't fetch that page to score it (it may block crawlers or be unreachable). "
+              + 'Try another URL, or <a style="color:var(--accent)" href="' + esc(r.signupUrl || FALLBACK_SIGNUP) + '">run the deeper audit after signup</a>.');
+            return;
+          }
+          if (r && r.error === 'rate_limited') {
+            note('You’ve run a few checks in a row — give it a minute, or '
+              + '<a style="color:var(--accent)" href="' + esc(r.signupUrl || FALLBACK_SIGNUP) + '">sign up free</a> to run unlimited audits on your own credits.');
+            return;
+          }
+          // fallback / forbidden / anything else → straight to signup with the URL.
+          window.location.href = (r && r.signupUrl) || (FALLBACK_SIGNUP + '&url=' + encodeURIComponent(raw));
+        }).catch(function () {
+          setBusy(false);
+          window.location.href = FALLBACK_SIGNUP + '&url=' + encodeURIComponent(raw);
+        });
+      });
+    })();
+  </script>
+</BaseLayout>

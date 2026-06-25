@@ -6,8 +6,29 @@ import { navHtml, footerHtml } from '../chrome';
 const rendered = bodyHtml
   .replace('<div id="nav-root"></div>', navHtml("Ollagraph"))
   .replace('<div id="footer-root"></div>', footerHtml());
+
+const softwareApp = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Ollagraph",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Web, Cloud",
+  url: "https://ollagraph.com",
+  description: "One API for AI agents to fetch, extract, audit, and reason about the live web — 212 endpoints, one bearer token, one bill, one MCP server.",
+  offers: {
+    "@type": "AggregateOffer",
+    priceCurrency: "USD",
+    lowPrice: "5",
+    highPrice: "59",
+    offerCount: "4",
+  },
+};
 ---
-<BaseLayout title="Ollagraph — The Web Intelligence Layer for AI Agents">
+<BaseLayout
+  title="Ollagraph — The Web Intelligence Layer for AI Agents"
+  description="The all-in-one web data API for AI agents: scrape, crawl, extract, and intelligence behind one key — a fraction of the cost of stitching vendors together."
+  jsonLd={[softwareApp]}
+>
   <Fragment set:html={rendered} />
   <script is:inline src="/scripts/index.js"></script>
 </BaseLayout>

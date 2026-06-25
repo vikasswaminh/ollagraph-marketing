@@ -1,0 +1,130 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Is solving CAPTCHAs programmatically legal?", a: "It depends entirely on what you point it at. On web applications you own, or on third-party sites where you have explicit written authorization, automated CAPTCHA handling is a normal part of testing, accessibility, and monitoring work. Using it to defeat access controls or to scrape a site against its stated terms is a different matter and can run afoul of the Computer Fraud and Abuse Act and similar statutes. Ollagraph's CAPTCHA endpoints are intended for the first category only. Get authorization in writing and consult counsel before any commercial deployment." },
+  { q: "What CAPTCHA types does Ollagraph support?", a: "The /v1/captcha/solve endpoint is built for reCAPTCHA v3 invisible challenges — v3 only, by design. You pass the site_key and site_url and receive a token your automation can submit. The /v1/captcha/auto endpoint takes a single page URL and handles the challenge in the context of that page. For challenge types outside this scope, check the live spec at api.ollagraph.com/openapi.json before assuming support rather than guessing." },
+  { q: "What is the difference between /v1/captcha/solve and /v1/captcha/auto?", a: "Use /v1/captcha/solve when you already know the page's site_key and want a token back to inject into your own flow — it is the lower-level primitive. Use /v1/captcha/auto when you just have a page URL and want Ollagraph to handle the challenge in the context of that URL without you extracting parameters yourself. Solve gives you more control; auto gives you fewer moving parts." },
+  { q: "How much does a CAPTCHA call cost?", a: "Metered calls are one credit each, with no separate concurrency tier. Failed calls are auto-refunded, so a challenge that genuinely cannot be cleared does not cost you a credit. The exact per-credit rate for any tier lives on the pricing page, and every metered response reports its credit cost so your accounting is never a guess." },
+  { q: "Do I need to manage browsers or sessions myself?", a: "No. The CAPTCHA endpoints run server-side, so there is no headless browser for you to keep warm. When you do need stateful, multi-step automation — a login flow followed by several authenticated page loads — open a persistent browser session with /v1/session and drive it, then let the CAPTCHA endpoints handle any challenge that appears mid-flow." },
+  { q: "Can I use this to scrape a site that does not want to be scraped?", a: "No, and we ask you not to try. The CAPTCHA endpoints exist so that legitimate automation — testing your own apps, accessibility tooling, QA pipelines, and authorized data collection — is not blocked by challenges that were never meant to stop you. Bypassing anti-bot defenses to access a site against its wishes is outside the intended use, may violate that site's terms, and is your legal responsibility, not ours." },
+  { q: "What happens when a challenge cannot be cleared?", a: "The API returns a structured error rather than a half-finished result, and the failed call is auto-refunded. Your pipeline should treat a CAPTCHA error the same way it treats any transient failure: log it, back off, and retry on a sensible schedule. Do not write the error response into your data store as if it were a result — handle it as a control-flow signal." },
+  { q: "Where do I see the exact request and response shape?", a: "The canonical source is the live OpenAPI spec at api.ollagraph.com/openapi.json, rendered in the docs. The CaptchaSolveRequest and CaptchaAutoSolveRequest schemas there list every accepted field and its default. When this page and the spec disagree, the spec wins — it is generated from the running service." },
+];
+---
+<Article
+  title="How to solve CAPTCHAs programmatically in 2026"
+  description="Clear reCAPTCHA, hCaptcha, and Turnstile challenges in automation flows on sites you operate or are authorized to access — via one API."
+  date="2026-06-18"
+  readingTime={10}
+  tags={["CAPTCHA", "automation", "anti-bot"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What solving CAPTCHAs programmatically actually means in 2026</h2>
+  <p>Solving a CAPTCHA programmatically means having an API clear a challenge — a reCAPTCHA invisible check, for example — inside an automated flow so that legitimate, authorized work is not interrupted by a gate built to stop drive-by abuse. In 2026, the practical way to do this is a single API call that returns a token or a cleared page state, with no headless browser for you to babysit.</p>
+
+  <p>That sentence is the AEO answer. Everything below it is for the engineers who have to wire this into a real pipeline responsibly. Before we get to the recipe, one boundary needs to be stated plainly, because it is the whole point.</p>
+
+  <h2>Read this first: authorized use only</h2>
+  <p>Ollagraph's CAPTCHA endpoints exist for one reason — to keep <em>legitimate</em> automation from being blocked by challenges that were never meant to stop it. That means automated testing of web apps you own, accessibility tooling that has to traverse a challenge to reach the content behind it, QA pipelines exercising your own login and checkout flows, and data collection on sites you operate or have explicit written authorization to access. Use it only on sites you own or are authorized to access, and respect each site's terms of service.</p>
+
+  <p>What it is not for: defeating anti-bot defenses to scrape a site against its wishes, bypassing access controls you were never granted, or evading detection to do something the target site has told you not to do. Those uses can violate the Computer Fraud and Abuse Act and equivalent statutes elsewhere, and they are your legal responsibility, not ours. If you are not certain you are authorized, you are not authorized. Get it in writing and talk to counsel before any commercial deployment. With that established, here is how the feature actually works.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't want to solve CAPTCHAs. You want your authorized automation to run to completion. There is a difference, and the difference is where a surprising amount of QA and accessibility engineering time disappears.</p>
+
+  <p>The reader of this page usually falls into one of four buckets. A platform team running end-to-end tests against their own staging and production web apps, where a reCAPTCHA gate sits in the middle of a critical user journey. An accessibility team building tooling that has to get past an invisible challenge to audit the page behind it. A QA pipeline exercising login, signup, and checkout flows on a nightly cadence. Or a data team collecting from a partner's site under an explicit data-sharing agreement, where the partner's edge happens to challenge non-browser traffic.</p>
+
+  <p>Every one of those teams has the same hidden requirement. The challenge handling has to be quiet and deterministic. It should not require standing up a browser farm, it should return a clean signal on failure, and it should cost a predictable amount. That is the actual product.</p>
+
+  <h2>What the two endpoints do</h2>
+  <p>Ollagraph exposes two CAPTCHA operations. They solve adjacent problems and you pick based on how much you already know about the page.</p>
+
+  <h3>/v1/captcha/solve — the token primitive</h3>
+  <p>Use <code>/v1/captcha/solve</code> when you already know the page's <code>site_key</code> and you want a token back to inject into your own flow. This endpoint is built for reCAPTCHA v3 invisible challenges — v3 only, by design, per the live spec. You provide the <code>site_key</code> and the <code>site_url</code> of the page the key belongs to, optionally an <code>action</code> (it defaults to <code>submit</code>), and you receive a token your automation submits exactly as a real browser would. It is the lower-level building block: maximum control, you wire it into your own page interaction.</p>
+
+  <h3>/v1/captcha/auto — the page-level convenience</h3>
+  <p>Use <code>/v1/captcha/auto</code> when you have a page URL and would rather not extract parameters yourself. You pass a single <code>url</code> and an optional <code>action</code> (again defaulting to <code>submit</code>), and Ollagraph handles the challenge in the context of that page. Fewer moving parts, less to get wrong. Most teams reach for <code>auto</code> first and drop down to <code>solve</code> only when they need to inject a token into a hand-built flow.</p>
+
+  <p>Both endpoints run server-side, so there is no headless browser for you to keep alive. Both accept an optional <code>proxy</code> field when you need the challenge handled through a specific route. Both are metered at one credit per call, and both auto-refund a call that genuinely cannot be cleared. The authoritative field list for each — <code>CaptchaSolveRequest</code> and <code>CaptchaAutoSolveRequest</code> — lives in the live spec; treat it as the source of truth over any example on this page.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Real curl commands against authorized targets, real request shapes. Drop these into a shell once you have a key and you have the building blocks of a challenge-aware automation flow.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab an API key from the dashboard, and export it for the rest of this session. Keys start with the prefix <code>osk_</code> and authenticate every call.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Clear a challenge by page URL</h3>
+  <p>Start with <code>/v1/captcha/auto</code> against a page you own or are authorized to test. You pass the URL of the protected page and let Ollagraph handle the challenge in context. This is the fastest way to confirm the feature works end to end.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/captcha/auto \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://your-app.example.com/protected",
+    "action": "submit"
+  &#125;'</code></pre>
+
+  <p>The response carries the cleared challenge result and the credit cost of the call. If the challenge cannot be cleared, you get a structured error instead of a half-finished payload — and the call is auto-refunded. The exact response field names are documented in the live spec; read them there rather than hard-coding against an example.</p>
+
+  <h3>Step 3. Get a token for your own flow</h3>
+  <p>When you are driving the page interaction yourself and just need a token to submit, use <code>/v1/captcha/solve</code>. You supply the <code>site_key</code> the page uses and the <code>site_url</code> it belongs to. The <code>site_key</code> is the public key embedded in the page's reCAPTCHA widget, so you can read it straight out of the markup of a page you control.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/captcha/solve \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "site_key": "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI",
+    "site_url": "https://your-app.example.com/login",
+    "action": "submit"
+  &#125;'</code></pre>
+
+  <p>Take the returned token and submit it with your form exactly as a browser would. Because this endpoint targets reCAPTCHA v3 invisible challenges specifically, it slots into flows where the challenge runs in the background and your job is simply to attach a valid token to the request you were already making.</p>
+
+  <h3>Step 4. Fetch the page behind the gate</h3>
+  <p>Clearing the challenge is rarely the goal in itself — you want the content or the confirmation behind it. Once the gate is handled, pull the page with the standard <a href="/scrape">scrape endpoint</a>. Keep the two steps separate in your code so each has its own retry and error handling.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://your-app.example.com/protected/report"
+  &#125;'</code></pre>
+
+  <p>For a stateful sequence — log in, then load several authenticated pages, with a challenge appearing somewhere in the middle — open a persistent browser session first. A POST to <a href="/automation">/v1/session</a> opens a session and is free; you are only billed when you render or run a script in it. Drive the session through your flow and call the CAPTCHA endpoint at the point the challenge appears.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/session \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"</code></pre>
+
+  <p>The session response returns a session ID you carry into subsequent render and script calls. This is the right shape for any multi-step authorized flow where the challenge is one event among many rather than the whole task.</p>
+
+  <h3>Step 5. Handle failure as a control signal</h3>
+  <p>The last step is the one that decides whether your pipeline is trustworthy. A CAPTCHA call can fail — a challenge genuinely unsolvable at that moment, a transient route problem. When it does, the API returns a structured error and auto-refunds the credit. Treat that error exactly like any transient failure: log it, back off, retry on a sensible schedule. The one thing you must never do is write the error response into your data store as though it were a result. A CAPTCHA error is control flow, not data.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a platform team at a mid-market SaaS company. Their flagship app puts an invisible reCAPTCHA on the login and signup forms to cut down on credential-stuffing. That is good security — and it also breaks their own nightly end-to-end test suite, because the test runner is not a real browser and trips the challenge every time.</p>
+
+  <p>Before a managed API, the team had two bad options. Disable the challenge in the test environment, which meant the suite no longer exercised the real production path. Or maintain a headless-browser harness with a fragile reCAPTCHA workaround that broke whenever Google shipped a change. Neither was the job they were hired to do.</p>
+
+  <p>After wiring in the CAPTCHA endpoint, the test runner calls <code>/v1/captcha/solve</code> with the app's own <code>site_key</code> at the point the login form would challenge it, attaches the returned token, and proceeds. The suite now tests the real production path, including the challenge, against an app the team owns outright. When a call fails, the suite logs it and retries rather than reporting a false negative. The harness disappeared, and the test results got more honest, not less.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>Even with a managed API, a few failure modes are worth planning for. The most common mistake is pointing the endpoint at a challenge type it is not built for. <code>/v1/captcha/solve</code> targets reCAPTCHA v3 invisible challenges — v3 only, by design. If you have a different challenge in front of you, check the live spec before assuming coverage rather than guessing at parameters.</p>
+
+  <p>A second pitfall is using a stale or mismatched <code>site_key</code>. The key must belong to the same page named in <code>site_url</code>; a key copied from a different page will produce a token the target rejects. Read the key from the live markup of the page you are authorized to test, not from a cached copy.</p>
+
+  <p>The third is treating a failure as data. Because failed calls are auto-refunded, it is tempting to ignore them — but an error response written into your warehouse will poison everything downstream. Branch on the error explicitly and keep it out of your result tables.</p>
+
+  <p>Finally, the boundary that matters most: scope. The endpoint will do what you ask, but the authorization is yours to hold. Confirm every target is a site you own or have written permission to access before you point automation at it. The technical capability does not grant the legal right.</p>
+
+  <h2>Pairing the CAPTCHA endpoints with the rest of the stack</h2>
+  <p>Challenge handling is one piece of a fuller automation pipeline. Teams routinely pair it with the <a href="/scrape">scrape endpoint</a> to fetch the page behind the gate, with the <a href="/browser">browser automation surface</a> when the flow needs a real rendered page and a persistent session, and with the recipe for <a href="/recipes/scrape-pages-behind-login">collecting pages behind a login</a> when the authorized target sits behind authentication as well as a challenge. Keep each capability in its own step with its own error handling, and the whole pipeline stays debuggable.</p>
+
+  <h2>What to do next</h2>
+  <p>Confirm you have written authorization for whatever you point this at. Then sign up for a key, paste the Step 2 command against a page you own, and verify you can clear a challenge in the next five minutes. From there, pick one realistic, authorized use case — a nightly end-to-end suite, an accessibility audit, a monitored login flow — and wire the endpoint into it with proper failure handling.</p>
+
+  <p>Read the <a href="/docs">docs</a>, confirm the request shapes against the live spec, and ship something responsibly.</p>
+</Article>

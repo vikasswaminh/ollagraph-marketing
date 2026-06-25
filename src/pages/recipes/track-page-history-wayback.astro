@@ -1,0 +1,115 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is the Wayback Machine and where does the data come from?", a: "The Wayback Machine is the Internet Archive's public web archive — a non-profit service that has been capturing snapshots of public web pages since 1996. When you query a URL through Ollagraph's Wayback endpoint, you are reading the Internet Archive's own archive history, not a re-scrape. Ollagraph wraps the public archive index so you get a clean JSON answer in a single authenticated call instead of parsing the raw archive API yourself." },
+  { q: "How do I track how a page changed over time?", a: "Start with the Wayback endpoint to find the archived snapshots that exist for a URL — it returns the first and last archived snapshots with direct, dated archive URLs. Each of those archive URLs is itself a fetchable page, so you can then pull the snapshot's HTML or markdown through the scrape endpoint and diff it against a later snapshot. The first-and-last pair tells you the span of recorded history; fetching the dated snapshot URLs in between lets you reconstruct the change-over-time series." },
+  { q: "Can I see when a website first appeared?", a: "Yes. The Wayback endpoint returns the first archived snapshot for a URL, which is the earliest date the Internet Archive recorded that page. This is the standard OSINT answer to 'when did this site first appear?' — useful for vetting a vendor, dating a competitor's launch, or confirming when a claim was first published." },
+  { q: "Does Wayback give me every snapshot ever taken?", a: "Ollagraph's Wayback endpoint returns the first and last archived snapshots with their direct archive URLs — the bookends of recorded history for that URL. That tells you the span and gives you fetchable entry points at each end. To walk individual captures between those two dates, request the dated snapshot URLs directly through the scrape endpoint. For the complete capture index of a URL, the live OpenAPI spec is the source of truth for what each call returns." },
+  { q: "Is querying the Wayback Machine legal?", a: "Reading the Internet Archive's public archive is a routine, lawful research activity — it is the same data anyone can browse at web.archive.org. You are observing already-published, already-archived public pages. As always, what you do with the data downstream — redistribution, republishing archived copy, or training on it — raises separate questions; consult counsel before commercial deployment." },
+  { q: "How much does a Wayback lookup cost?", a: "A Wayback lookup is a single metered call — one credit — and every response shows its exact credit cost. If a call fails, it is auto-refunded, so you are never billed for an archive lookup that did not return. There is no separate Internet Archive fee on your side; Ollagraph handles the archive query for you." },
+  { q: "Why not just use web.archive.org directly?", a: "You can, for one-off manual lookups. The friction shows up at scale: the public archive index has its own response format, rate behavior, and quirks that you would have to handle for every URL in a monitoring list. Ollagraph normalizes the archive query into the same authenticated JSON contract as the rest of the API, so a Wayback lookup drops into the same pipeline, the same key, and the same billing as your scrape and crawl jobs." },
+  { q: "Can I build a change-over-time dataset from archived snapshots?", a: "Yes, and it is one of the strongest uses of the archive. Resolve a URL's archived snapshots through the Wayback endpoint, fetch the dated snapshot URLs through the scrape endpoint as markdown, store each capture with its archive date, and diff consecutive captures. The result is a clean historical record of how a competitor's pricing page, messaging, or feature list evolved — assembled entirely from public archived pages without you having to have scraped them at the time." },
+];
+---
+<Article
+  title="How to track historical page changes with the Wayback Machine in 2026"
+  description="Pull archived snapshots of any URL to monitor competitor changes, recover lost content, and build change-over-time datasets."
+  date="2026-06-18"
+  readingTime={10}
+  tags={["Wayback", "archive", "monitoring"]}
+  kind="recipe"
+  faqs={faqs}
+>
+  <h2>What tracking page history actually means in 2026</h2>
+  <p>Tracking historical page changes means pulling archived snapshots of a URL from a web archive and comparing them across dates, so you can see exactly how a page looked at points in the past. In 2026, the practical way to do this is to query the Internet Archive's Wayback Machine for a URL's archive history and then fetch the dated snapshots you care about — both in a single API.</p>
+
+  <p>That sentence is the answer. The rest of this page is for the people who have to deliver against it: the competitive-intelligence analyst who needs to prove a rival quietly changed its pricing, the content owner recovering a page that vanished in a migration, and the data team building a change-over-time corpus from public history. We will name the data source honestly, walk the recipe end to end, and show you where it fits in the rest of the stack.</p>
+
+  <h2>The problem you are actually trying to solve</h2>
+  <p>You don't care about archives for their own sake. You care about a question that only history can answer. <em>What did this page say last quarter?</em> <em>When did this competitor change its message?</em> <em>What was on the page we accidentally deleted?</em> The live web only ever shows you the present, and the present is exactly the version that has been edited to hide whatever you are looking for.</p>
+
+  <p>The reader of this page usually falls into one of three buckets. A competitive-intelligence analyst who needs dated evidence that a rival changed pricing, claims, or positioning — and needs it to hold up in a deck or a legal review. A content or SEO owner recovering copy, metadata, or whole pages lost in a redesign or a botched migration. Or a data team assembling a change-over-time dataset — tracking how a category of pages evolved across months or years — for trend analysis or model training on public material.</p>
+
+  <p>All three need the same primitive: a reliable way to ask "what snapshots of this URL exist, and what did they contain?" without standing up archive-crawling infrastructure of their own.</p>
+
+  <h2>Where the data comes from</h2>
+  <p>The data source here is the <strong>Wayback Machine</strong>, the public web archive run by the Internet Archive, a non-profit that has been capturing snapshots of public web pages since 1996. This is worth stating plainly because it changes the legal and ethical posture of the whole workflow: you are not re-scraping a competitor's live site over and over. You are reading an archive of pages that were already public and already captured. The snapshots already exist; you are just retrieving them.</p>
+
+  <p>Ollagraph does not run its own crawl of the past — nobody does, because the past is gone. What Ollagraph does is wrap the Internet Archive's public archive index behind the same authenticated JSON contract as the rest of the API, so a history lookup behaves exactly like every other call you make: one key, one request body, one clean response, one credit. You skip the archive index's own format and quirks and get a normalized answer you can drop straight into a pipeline.</p>
+
+  <h2>The recipe, step by step</h2>
+  <p>Here is the working playbook. Real curl commands, a realistic flow, and the place where each piece slots into a monitoring or recovery pipeline.</p>
+
+  <h3>Step 1. Get an API key</h3>
+  <p>Sign up on the <a href="/pricing">pricing page</a>, grab an API key from the dashboard, and export it for the rest of this session. Keys start with the prefix <code>osk_</code> and authenticate every call.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
+
+  <h3>Step 2. Look up a URL's archive history</h3>
+  <p>The Wayback endpoint takes a single field — the <code>url</code> you want to investigate — and returns that URL's archive history: the first and last archived snapshots, each with a direct, dated archive link. The first snapshot tells you when the page first entered the public record; the last tells you the most recent capture on file.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/intel/wayback \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://competitor.example.com/pricing"
+  &#125;'</code></pre>
+
+  <p>The single documented request field is <code>url</code>. Rather than print a response shape that could drift, treat the live <a href="/docs">OpenAPI spec</a> as the source of truth for the exact field names a Wayback response returns — it is the contract that never goes stale. Conceptually, you get back the bookends of the archive: the earliest recorded snapshot and the latest, each with a direct archive URL you can fetch in the next step.</p>
+
+  <p>That first-and-last pair is more useful than it sounds. For the "when did this first appear?" question, the first snapshot <em>is</em> the answer. For change detection, the last-snapshot date tells you how stale the archive is — if the Internet Archive last captured the page a week ago, you know your archived baseline is recent enough to diff against today's live page.</p>
+
+  <h3>Step 3. Fetch a specific archived snapshot</h3>
+  <p>An archive URL is just a URL — a real, fetchable page hosted by the Internet Archive. So once the Wayback lookup hands you a dated snapshot link, you pull its contents the same way you would pull any page: through the scrape endpoint. Request <code>markdown</code> and you get clean, diffable text instead of archive-wrapper HTML.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://web.archive.org/web/20240115000000/https://competitor.example.com/pricing",
+    "format": "markdown"
+  &#125;'</code></pre>
+
+  <p>Now you have the archived page as text. Run the same scrape against the live URL — or against a later snapshot — and you have two comparable documents. Diff them and the changes fall straight out: a price that moved, a plan tier that disappeared, a claim that was quietly softened.</p>
+
+  <h3>Step 4. Build the change-over-time series</h3>
+  <p>The first-and-last bookends define the span of recorded history. To reconstruct what happened <em>between</em> them, fetch the dated snapshot URLs at the cadence your question needs — monthly for a slow-moving positioning page, weekly for an aggressive pricing page — and store each capture with its archive date. The pattern is simple: resolve history once, fetch the dated snapshots you want, land each one with its date, diff consecutive captures.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://web.archive.org/web/20250601000000/https://competitor.example.com/pricing",
+    "format": "markdown"
+  &#125;'</code></pre>
+
+  <p>Each archived capture is a row in your history table. The discipline that makes this pay off is storage hygiene: keep the archive date, the original URL, and the raw markdown together, and add a uniqueness constraint on the URL-plus-date pair. You end up with a clean, queryable record of how a page evolved — assembled entirely from public archived material you never had to be watching in real time to capture.</p>
+
+  <h3>Step 5. Wire it into monitoring</h3>
+  <p>The history lookup is the backfill; live monitoring is the forward fill. Schedule a periodic Wayback lookup against the URLs you care about and watch the last-snapshot date — when the Internet Archive captures a new snapshot, that is your cue to fetch it and diff against the previous capture. Pair that with live polling of the same URL and you have both halves: the deep past from the archive, and the present from a live scrape, landing in the same table.</p>
+
+  <h2>A realistic scenario</h2>
+  <p>Consider a competitive-intelligence analyst at a B2B SaaS company. Their head of product is convinced a rival has been steadily raising prices and stripping features out of the entry tier, but every screenshot the team has is from "whenever someone happened to look." There is no dated record, so there is no argument.</p>
+
+  <p>The analyst runs a Wayback lookup on the rival's pricing URL and gets the archive history back in one call — a first snapshot from three years ago and a last snapshot from last week. They fetch a snapshot from each quarter through the scrape endpoint as markdown, land each capture with its archive date, and diff consecutive quarters. The story writes itself: the entry tier's price climbed across four captures, two features moved up to a higher plan between Q2 and Q3, and a "free forever" line disappeared entirely. Every claim is backed by a dated, public archive URL anyone can verify. The deck stops being an assertion and becomes evidence.</p>
+
+  <p>The same machinery serves the content owner who needs to recover a deleted help page, and the data team building a multi-year corpus of how an entire category of landing pages evolved. Different questions, one primitive.</p>
+
+  <h2>Where this fits in the stack</h2>
+  <p>Archive history is one lens; live observation is the other, and the strongest workflows use both. Pair the Wayback endpoint with <a href="/recipes/monitor-competitor-pricing">competitor pricing monitoring</a> to combine the deep past (what the price <em>was</em>) with the live present (what it <em>is</em>), so a single dashboard shows both the trend line and today's number.</p>
+
+  <p>When your investigation outgrows a handful of known URLs — when you need the archive history of every page in a competitor's site, not just their pricing page — start with a <a href="/recipes/crawl-entire-website">full-site crawl</a> to enumerate the URL set, then run a Wayback lookup against each discovered URL to build a site-wide history map. And the Wayback endpoint itself is one of a family of investigative tools; browse the rest of the <a href="/intelligence">intelligence endpoints</a> for DNS, email-authentication, and other OSINT lookups that share the same authenticated, one-credit-per-call contract.</p>
+
+  <h2>What can go wrong, and how to handle it</h2>
+  <p>A few realities of working with an archive are worth planning for. Not every URL is archived, and pages are not captured on a fixed schedule — popular pages are snapshotted often, obscure ones rarely. If a Wayback lookup returns no history for a URL, that is a real signal (the page may be new, low-traffic, or have blocked archiving), not an error in your pipeline. Treat "no snapshots" as a valid, handleable outcome.</p>
+
+  <p>Archived pages can also be partial. The Internet Archive captures what it can reach at capture time, so an old snapshot may be missing images, scripts, or content that loaded dynamically. For change tracking this rarely matters — pricing tables and copy are usually in the captured HTML — but do not assume a snapshot is a pixel-perfect replica of the live page on its capture date. Fetching it as markdown through the scrape endpoint keeps you focused on the text that carries the signal.</p>
+
+  <p>Finally, archive dates are capture dates, not change dates. A page may have changed on the first of the month and not been captured until the fifteenth. The snapshot proves the page looked a certain way <em>on or before</em> its capture date — which is exactly the bound you need for evidence, as long as you state it that way.</p>
+
+  <h2>What to do next</h2>
+  <p>Sign up for a key, paste the Wayback curl command from Step 2 against a URL you are curious about, and confirm you can pull its archive history in the next five minutes. Then pick one real question — how a competitor's pricing page changed last year, or what a page said before a migration wiped it — and run the resolve-then-fetch-then-diff loop end to end.</p>
+
+  <p>Read the <a href="/docs">docs</a>, explore the <a href="/intelligence">intelligence endpoints</a>, and ship something.</p>
+</Article>

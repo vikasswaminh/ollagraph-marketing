@@ -1,0 +1,178 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../chrome';
+
+const dnsExample = `# One call returns the full DNS + provider picture for a domain.
+curl -X POST https://api.ollagraph.com/v1/dns/intelligence \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"domain": "example.com"}'
+# Response includes email_provider, nameserver_provider,
+# has_spf, has_dmarc, inferred technologies, and the raw records.`;
+
+const whoisExample = `# Registrar, key dates, abuse contacts, nameservers — structured.
+curl -X POST https://api.ollagraph.com/v1/intel/whois \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"domain": "example.com"}'
+
+# Certificate posture for renewal monitoring.
+curl -X POST https://api.ollagraph.com/v1/intel/ssl \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -d '{"domain": "example.com"}'
+# Returns issuer, subject, SANs, not_after, days_remaining.`;
+
+const enrichExample = `import httpx
+
+# Turn a bare domain into a company + infrastructure profile.
+key = {"Authorization": "Bearer $OLLAGRAPH_API_KEY"}
+
+dns = httpx.post(
+    "https://api.ollagraph.com/v1/dns/intelligence",
+    headers=key, json={"domain": "example.com"},
+).json()
+
+company = httpx.post(
+    "https://api.ollagraph.com/v1/enrich/company",
+    headers=key, json={"url": "https://example.com"},
+).json()
+
+print(dns["email_provider"])        # which provider runs their mail
+print(dns["nameserver_provider"])   # which provider runs their DNS
+print(company["name"], company["socials"])`;
+
+const pillars = [
+  { title: "The DNS surface, decoded", body: "Raw A / MX / TXT / NS / CNAME / AAAA records from /v1/dns/lookup, and a separate intelligence pass that names the email provider, the nameserver provider, and the SPF / DMARC posture from those records. One request replaces a stack of dig commands and a lookup table." },
+  { title: "Certificates and history", body: "Live certificate posture from /v1/intel/ssl — issuer, SANs, expiry, days remaining — plus the full Certificate Transparency history for a domain and every subdomain it has ever issued a cert for. Built for renewal monitoring and footprint mapping, not one-off curiosity." },
+  { title: "Network identity", body: "GeoIP and ASN resolution for any public IPv4 or IPv6 address, served from a local database with no per-lookup latency. Map an IP to its country, network operator, and autonomous system without leaving the call you are already making." },
+  { title: "Registration and ownership", body: "WHOIS / RDAP returns the registrar, creation and expiry dates, abuse contacts, and nameservers as structured fields — not a free-text blob you have to parse. Detect when infrastructure quietly changes hands." },
+  { title: "Email authentication", body: "Parse and score SPF, DKIM, DMARC, and BIMI for a domain in a single DNS-only call. No SMTP probing, no mail sent — just the published policy and a posture score you can gate deliverability decisions on." },
+  { title: "Domain to company", body: "Point /v1/enrich/company at a homepage or about page and get a lite company profile built from public structured data — organization markup, open-graph tags, social profiles, and contact patterns. No third-party company-data feed in the loop." },
+];
+
+const families = [
+  { title: "DNS lookup", endpoint: "POST /v1/dns/lookup", body: "A, MX, TXT, NS, CNAME, and AAAA records in one structured response." },
+  { title: "DNS intelligence", endpoint: "POST /v1/dns/intelligence", body: "Email provider, nameserver provider, SPF and DMARC posture, and inferred technology footprint — layered on the raw lookup." },
+  { title: "WHOIS / RDAP", endpoint: "POST /v1/intel/whois", body: "Registrar, creation and expiry dates, abuse contacts, and nameservers as structured fields." },
+  { title: "SSL certificate", endpoint: "POST /v1/intel/ssl", body: "Issuer, subject, SANs, expiry date, and days remaining — built for monitoring and pipeline-aware renewals." },
+  { title: "Cert Transparency history", endpoint: "POST /v1/intel/cert-transparency-history", body: "Every certificate ever issued for the domain or any subdomain, from public CT logs, deduplicated and newest-first." },
+  { title: "Subdomain enumeration", endpoint: "POST /v1/intel/subdomain-enumerate", body: "Discover subdomains from public Certificate Transparency logs — no DNS brute-forcing, no paid feeds." },
+  { title: "Email authentication", endpoint: "POST /v1/intel/email-auth", body: "Parse and score SPF, DKIM, DMARC, and BIMI for a domain. All-DNS, no message ever sent." },
+  { title: "GeoIP", endpoint: "POST /v1/intel/geoip", body: "Country, region, city, lat/lon, timezone, ASN, and ISP for any public IPv4 or IPv6 — from a local database." },
+  { title: "ASN lookup", endpoint: "POST /v1/intel/asn", body: "Resolve an IP or AS number to its autonomous system, network operator, and announced prefixes." },
+  { title: "Page intelligence", endpoint: "POST /v1/intel/page", body: "Technology stack, contact emails and phones, social profiles, feeds, logos, and favicons from a single page." },
+  { title: "Company enrichment", endpoint: "POST /v1/enrich/company", body: "A lite company profile from one page — organization markup, og:* tags, social anchors, contact patterns." },
+];
+
+const faqs = [
+  { q: "What is the difference between /v1/dns/lookup and /v1/dns/intelligence?", a: "DNS lookup returns the raw records — A, MX, TXT, NS, and so on. DNS intelligence layers analysis on top: it names the provider running your email, the provider running your nameservers, whether SPF and DMARC are present, and the technologies it can infer from those records. The intelligence call returns the lookup data too, so you can replace two requests with one." },
+  { q: "Where does the certificate and subdomain data come from?", a: "From public Certificate Transparency logs. The cert-transparency-history endpoint returns every certificate ever issued for the domain or any subdomain, deduplicated and sorted newest-first. The subdomain-enumerate endpoint reads the same logs to surface hostnames a domain has issued certificates for. There is no DNS brute-forcing and no paid feed — it is all public, append-only log data." },
+  { q: "Can I check email deliverability posture without sending anything?", a: "Yes. The email-auth endpoint parses and scores SPF, DKIM, DMARC, and BIMI entirely from published DNS records. No SMTP handshake, no message is sent. You get the policy that is published and a posture score you can use to gate sending decisions, all from a single call." },
+  { q: "How is GeoIP and ASN resolution served?", a: "From a local database, so there is no per-lookup network round trip and no third-party rate limit in the path. Pass any public IPv4 or IPv6 address to /v1/intel/geoip for country, region, city, coordinates, timezone, ASN, and ISP, or hit /v1/intel/asn directly to resolve an IP or AS number to its network operator and announced prefixes." },
+  { q: "Is this safe to run at scale against the same domain?", a: "Yes. These endpoints either read public records — DNS, Certificate Transparency, WHOIS / RDAP — or perform a single non-intrusive request against the target. Heavy usage against one domain is rate-limited on our side before the target ever feels pressure." },
+  { q: "Does this rely on any paid threat-intelligence feed?", a: "No. The intelligence family is built on public, free-to-query data sources: the DNS system, public Certificate Transparency logs, RDAP / WHOIS, a local GeoIP and ASN database, and the public HTML and structured data of the page itself. There is no paid breach, reputation, or threat-intel feed in the customer-facing path." },
+  { q: "How is the intelligence family different from a standalone enrichment vendor?", a: "It is real-time and lives in the same API as scraping, crawling, and extraction, behind a single bearer token. You enrich a domain with DNS, certificates, network identity, and a company profile in the same pipeline that fetches its pages — no separate contract, no second SDK, and failed calls auto-refund so a registrar timeout never costs you a credit." },
+];
+
+const url = "https://ollagraph.com/intelligence/";
+const jsonLd = [
+  { "@context": "https://schema.org", "@type": "WebPage", name: "Domain & network intelligence API — Ollagraph", url, description: "WHOIS/RDAP, DNS, SSL and Certificate Transparency, GeoIP and ASN, email authentication, and company enrichment from a domain — one API, one key." },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Domain & network intelligence API", item: url },
+  ] },
+  { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
+];
+---
+<BaseLayout
+  title="Domain & network intelligence API — DNS, WHOIS, SSL, GeoIP, email auth — Ollagraph"
+  description="Send a domain or IP, get the full signal picture. WHOIS/RDAP, DNS intelligence, SSL and Certificate Transparency, GeoIP and ASN, email authentication, and company enrichment — one API, one key, no paid threat-intel feeds."
+  jsonLd={jsonLd}
+>
+  <Fragment set:html={navHtml('intelligence')} />
+
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:760px;">
+      <span class="badge badge-mute" style="margin-bottom:16px;">INTELLIGENCE</span>
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Every signal behind a domain. One key.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        WHOIS and RDAP, the full DNS surface, SSL and Certificate Transparency history, GeoIP and ASN, email authentication, and company enrichment from nothing but a domain — all from one API. Read public records and answer the questions that matter before you ever fetch a page.
+      </p>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:24px;">
+        <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
+        Built <a href="/for-intel" style="color:var(--accent);">for security teams</a> · packaged in the <a href="/bundles/domain-intelligence" style="color:var(--accent);">domain-intelligence bundle</a> · see the <a href="/recipes/enrich-leads-from-domain" style="color:var(--accent);">lead-enrichment recipe</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {pillars.map((p) => (
+          <div class="pcard">
+            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{p.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:760px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Examples that work today.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Drop any of these into a terminal or notebook.</p>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>DNS intelligence</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/dns/intelligence</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{dnsExample}</code></pre></div>
+      </div>
+      <div class="code-block" style="margin-bottom:16px;">
+        <div class="code-head"><span>WHOIS + certificate posture</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/intel/whois · /v1/intel/ssl</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{whoisExample}</code></pre></div>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>Domain to company profile</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/enrich/company</span></div>
+        <div class="code-body"><pre style="margin:0;"><code>{enrichExample}</code></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container" style="max-width:960px;">
+      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">The intelligence endpoint family.</h2>
+      <p style="color:var(--text-muted); text-align:center; margin:0 0 28px;">Every endpoint here reads public, free-to-query data — DNS, Certificate Transparency, RDAP, a local GeoIP database, and the page itself.</p>
+      <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px;">
+        {families.map((f) => (
+          <div class="pcard">
+            <div class="text-mono" style="color:var(--accent); font-size:12px; margin:0 0 8px;">{f.endpoint}</div>
+            <h3 style="font-family:var(--font-display); font-size:17px; font-weight:600; margin:0 0 8px;">{f.title}</h3>
+            <p style="color:var(--text-muted); font-size:14px; line-height:1.6; margin:0;">{f.body}</p>
+          </div>
+        ))}
+      </div>
+      <p style="color:var(--text-dim); font-size:13px; text-align:center; margin-top:20px;">
+        Part of the full <a href="/capabilities" style="color:var(--accent);">212-endpoint surface</a> — browse it as the <a href="/bundles/domain-intelligence" style="color:var(--accent);">domain-intelligence bundle</a> or alongside the <a href="/scrape" style="color:var(--accent);">scraping</a> and <a href="/crawl" style="color:var(--accent);">crawl</a> families.
+      </p>
+    </div>
+  </section>
+
+  <section class="article-faq">
+    <h2 class="h-display h-2">Domain intelligence questions</h2>
+    {faqs.map((f) => (
+      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+    ))}
+  </section>
+
+  <section class="article-cta section-tight" style="text-align:center;">
+    <h2 class="h-display h-2" style="margin:0 0 14px;">Enrich your first domains free.</h2>
+    <p style="color:var(--text-muted); max-width:520px; margin:0 auto 22px;">1,000 free credits, one bearer token, failed calls auto-refund. No paid threat-intel feed in the path.</p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <a class="btn btn-primary btn-lg" href="https://app.ollagraph.com/signup">Start free</a>
+      <a class="btn btn-secondary btn-lg" href="/recipes/enrich-leads-from-domain">Read the recipe</a>
+    </div>
+  </section>
+
+  <Fragment set:html={footerHtml()} />
+</BaseLayout>

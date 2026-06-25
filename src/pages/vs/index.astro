@@ -1,0 +1,41 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { navHtml, footerHtml } from '../../chrome';
+import { comparisons } from '../../data/comparisons';
+
+const collectionLd = {
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  name: "Ollagraph vs the alternatives — honest comparisons",
+  description: "How Ollagraph compares to Firecrawl, Apify, Tavily, Jina AI, Diffbot, ScraperAPI, and more — what each does well, and where Ollagraph goes further.",
+  url: "https://ollagraph.com/vs/",
+};
+const nav = navHtml('');
+const footer = footerHtml();
+---
+<BaseLayout
+  title="Ollagraph vs the alternatives — honest comparisons"
+  description="How Ollagraph compares to Firecrawl, Apify, Tavily, Jina AI, Diffbot, ScraperAPI, and more — what each does well, and where Ollagraph goes further."
+  jsonLd={[collectionLd]}
+>
+  <Fragment set:html={nav} />
+  <section class="section" style="padding-top:80px; text-align:center;">
+    <div class="container" style="max-width:720px;">
+      <h1 class="h-display h-1" style="margin:0 0 18px;">Honest comparisons.</h1>
+      <p style="color:var(--text-muted); font-size:18px; line-height:1.6;">
+        We name what each alternative does well first, then where Ollagraph goes further. No straw men.
+      </p>
+    </div>
+  </section>
+  <section class="section-tight">
+    <div class="container" style="max-width:760px; display:flex; flex-direction:column; gap:16px;">
+      {comparisons.map((c) => (
+        <a class="recipe-card" href={`/vs/${c.slug}/`}>
+          <h3 style="font-size:19px; margin:0 0 8px;">{c.positioning}</h3>
+          <p>{c.heroSub}</p>
+        </a>
+      ))}
+    </div>
+  </section>
+  <Fragment set:html={footer} />
+</BaseLayout>
