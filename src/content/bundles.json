@@ -308,5 +308,40 @@
       { "q": "Can I run site-audit endpoints in parallel?", "a": "Yes. All 10 are independent and idempotent. Your rate limit applies as the only constraint." },
       { "q": "Do you store a history for diffing month-over-month?", "a": "No — we do not persist response bodies. Save the JSON yourself, keyed by domain + run date, and diff client-side." }
     ]
+  },
+  {
+    "slug": "security",
+    "name": "Security",
+    "tagline": "7 endpoints for threat intelligence and malware scanning — URL, file-hash, and indicator reputation plus in-memory YARA file scanning.",
+    "persona": "For security teams, SOC analysts, and AI agents triaging URLs, files, and indicators against free, abuse-resistant threat data.",
+    "color": "red",
+    "endpoints": [
+      { "method": "POST", "path": "/v1/intel/url-reputation", "credits": 1, "summary": "Is a URL (or its host) a known phishing/malware URL? Matched against a free feed; we never fetch the URL." },
+      { "method": "POST", "path": "/v1/intel/hash-reputation", "credits": 1, "summary": "Look a SHA-256/SHA-1/MD5 up against a known-malware corpus. Only the hash is sent — never a file." },
+      { "method": "POST", "path": "/v1/intel/threat", "credits": 1, "summary": "One indicator (IP, domain, URL, or hash) returns a combined threat verdict across the free sources." },
+      { "method": "POST", "path": "/v1/scan/file", "credits": 2, "summary": "Scan an uploaded file with YARA, in-memory and never stored; built-in rules plus your own." },
+      { "method": "POST", "path": "/v1/intel/blacklist", "credits": 1, "summary": "Check an IP or domain against major DNSBL blocklists." },
+      { "method": "POST", "path": "/v1/intel/ip-reputation", "credits": 1, "summary": "Classify an IP — datacenter, cloud range, or Tor exit." },
+      { "method": "POST", "path": "/v1/intel/ssl", "credits": 1, "summary": "Inspect a host live TLS certificate — issuer, SANs, expiry." }
+    ],
+    "recipe": {
+      "title": "Triage an unknown indicator",
+      "steps": [
+        "Send the indicator (IP, domain, URL, or file hash) to /v1/intel/threat for a one-call combined verdict across the free threat sources.",
+        "For a URL specifically, call /v1/intel/url-reputation to see the phishing/malware feed match and host-level context.",
+        "For a file in hand, hash it and call /v1/intel/hash-reputation; if it is unknown, upload the bytes to /v1/scan/file for an in-memory YARA scan.",
+        "Enrich an IP with /v1/intel/ip-reputation (datacenter/Tor) and /v1/intel/blacklist (DNSBL) before allow/deny decisions."
+      ]
+    },
+    "samples": {
+      "curl": "curl -X POST https://api.ollagraph.com/v1/intel/threat \\\n  -H \"Authorization: Bearer $OLLAGRAPH_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"indicator\":\"185.39.181.103\"}'",
+      "python": "import httpx, os\n\nr = httpx.post(\n    \"https://api.ollagraph.com/v1/intel/threat\",\n    headers={\"Authorization\": f\"Bearer {os.environ['OLLAGRAPH_API_KEY']}\"},\n    json={\"indicator\": \"185.39.181.103\"},\n    timeout=30.0,\n)\nprint(r.json())",
+      "node": "const res = await fetch(\"https://api.ollagraph.com/v1/intel/threat\", {\n  method: \"POST\",\n  headers: {\n    \"Authorization\": `Bearer ${process.env.OLLAGRAPH_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ indicator: \"185.39.181.103\" }),\n});\nconsole.log(await res.json());"
+    },
+    "faq": [
+      { "q": "Where does the threat data come from?", "a": "Free, reputable open threat feeds, refreshed on a schedule — no paid intel subscriptions, consistent with our free-data-only model, so there are no surprise per-lookup vendor costs." },
+      { "q": "Do you store files I scan?", "a": "No. /v1/scan/file decodes and scans the bytes in memory and discards them — nothing is written to disk or retained. Hash lookups send only the hash, never the file." },
+      { "q": "Is this an abuse vector?", "a": "No. These are defensive, read-only lookups — no port scanning, no mass enumeration, no breach data. URL reputation never fetches the URL, and file scanning is size-capped and rate-limited." }
+    ]
   }
 ]
