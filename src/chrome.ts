@@ -97,7 +97,7 @@ export function navHtml(activeKey: string = ""): string {
       entry.key === activeKey || entry.items.some((i) => i.key === activeKey) ? " active" : "";
     const dd = entry.items.map((i) => leafLink(i, activeKey, "dd-link")).join("");
     return `<div class="nav-group">
-                  <button type="button" class="nav-link nav-group-label${groupActive}" aria-haspopup="true">${entry.label}${CARET_SVG}</button>
+                  <button type="button" class="nav-link nav-group-label${groupActive}" aria-haspopup="true" aria-expanded="false">${entry.label}${CARET_SVG}</button>
                   <div class="nav-dropdown">${dd}</div>
                 </div>`;
   }).join("");
@@ -110,8 +110,7 @@ export function navHtml(activeKey: string = ""): string {
                 <span>Ollagraph</span>
                 <span class="badge badge-mute" style="margin-left:4px;">BETA</span>
               </a>
-              <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-hidden="true" />
-              <nav class="nav-links">
+              <nav class="nav-links" id="nav-menu">
                 ${itemsHTML}
                 <div class="nav-mobile-cta">
                   <a class="nav-link" href="https://app.ollagraph.com/login">Log in</a>
@@ -125,13 +124,14 @@ export function navHtml(activeKey: string = ""): string {
                   Start free
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
                 </a>
-                <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-                </label>
+                <button type="button" class="nav-burger" aria-label="Open menu" aria-expanded="false" aria-controls="nav-menu" data-nav-burger>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+                </button>
               </div>
             </div>
           </div>
-        </div>`;
+        </div>
+        <main id="main-content" tabindex="-1">`;
 }
 
 export function footerHtml(): string {
@@ -198,6 +198,7 @@ export function footerHtml(): string {
         </div>`).join("");
 
   return `
+        </main>
         <footer class="footer">
           <div class="container-wide">
             <div class="footer-grid">
