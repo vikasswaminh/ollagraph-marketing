@@ -11,12 +11,17 @@ interface Props {
   title: string;
   description: string;
   date: string;
+  updated?: string;
+  image?: string;
   readingTime: number;
   tags: string[];
   kind?: 'recipe' | 'blog';
   faqs?: FAQItem[];
 }
-const { title, description, date, readingTime, tags, kind = 'recipe', faqs = [] } = Astro.props;
+const { title, description, date, updated, image, readingTime, tags, kind = 'recipe', faqs = [] } = Astro.props;
+// Article rich results want an image; default to the site OG card when a post
+// doesn't ship its own. dateModified is a REAL edit date (falls back to date).
+const articleImage = image || "https://ollagraph.com/og-image.png";
 
 const isRecipe = kind === 'recipe';
 const section = isRecipe ? { label: 'Recipes', path: '/recipes/' } : { label: 'Blog', path: '/blog/' };
@@ -28,7 +33,8 @@ const articleLd = {
   headline: title,
   description,
   datePublished: date,
-  dateModified: date,
+  dateModified: updated || date,
+  image: articleImage,
   keywords: tags.join(", "),
   author: { "@type": "Person", name: "Amit Sharma", address: { "@type": "PostalAddress", addressLocality: "New York", addressRegion: "NY", addressCountry: "US" } },
   publisher: { "@type": "Organization", name: "Ollagraph", logo: { "@type": "ImageObject", url: "https://ollagraph.com/favicon.svg" } },
@@ -51,7 +57,7 @@ const jsonLd = faqLd ? [articleLd, breadcrumbLd, faqLd] : [articleLd, breadcrumb
 const nav = navHtml(isRecipe ? 'recipes' : 'blog');
 const footer = footerHtml();
 ---
-<BaseLayout title={`${title} — Ollagraph`} description={description} jsonLd={jsonLd}>
+<BaseLayout title={`${title} — Ollagraph`} description={description} jsonLd={jsonLd} updated={updated}>
   <Fragment set:html={nav} />
   <main class="article">
     <a class="article-back" href={section.path}>← All {section.label.toLowerCase()}</a>
