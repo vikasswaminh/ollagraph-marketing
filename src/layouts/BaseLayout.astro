@@ -96,10 +96,10 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
       .nav-group{position:relative;display:inline-flex}
       .nav-dropdown{position:absolute;top:calc(100% + 6px);left:0;display:none}
       .nav-group:hover .nav-dropdown,.nav-group:focus-within .nav-dropdown{display:flex}
-      .nav-toggle,.nav-burger,.nav-mobile-cta{display:none}
+      .nav-burger,.nav-mobile-cta{display:none}
       @media (max-width:920px){
         .nav-links{display:none;position:absolute;top:64px;left:0;right:0;flex-direction:column;align-items:stretch}
-        .nav-toggle:checked ~ .nav-links{display:flex}
+        .nav-links.open{display:flex}
         .nav-group{display:block}
         .nav-dropdown{position:static;display:flex}
         .nav-burger{display:inline-flex}
@@ -116,6 +116,7 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
     <slot name="head" />
   </head>
   <body>
+    <a href="#main-content" class="skip-link">Skip to content</a>
     <slot />
     <!-- Essential-cookies notice. We set only a strictly-necessary session
          cookie + cookieless analytics, so this is informational (not a consent
@@ -137,6 +138,49 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
             el.style.display = 'none';
           });
         } catch (e) {}
+      })();
+    </script>
+    <!-- Nav accessibility: real button semantics for the mobile menu (aria-expanded),
+         click/touch-open + aria-expanded for the dropdown groups, Escape to close,
+         and aria-hidden on decorative icons. Progressive enhancement — CSS :hover /
+         :focus-within already open dropdowns without JS. -->
+    <script is:inline>
+      (function () {
+        var burger = document.querySelector('[data-nav-burger]');
+        var menu = document.getElementById('nav-menu');
+        if (burger && menu) {
+          burger.addEventListener('click', function () {
+            var open = menu.classList.toggle('open');
+            burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+            burger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+          });
+          menu.addEventListener('click', function (e) {
+            if (e.target.closest && e.target.closest('a')) {
+              menu.classList.remove('open');
+              burger.setAttribute('aria-expanded', 'false');
+            }
+          });
+        }
+        document.querySelectorAll('.nav-group').forEach(function (g) {
+          var btn = g.querySelector('.nav-group-label');
+          if (!btn) return;
+          var set = function (v) { btn.setAttribute('aria-expanded', v ? 'true' : 'false'); };
+          g.addEventListener('mouseenter', function () { set(true); });
+          g.addEventListener('mouseleave', function () { set(false); });
+          g.addEventListener('focusin', function () { set(true); });
+          g.addEventListener('focusout', function () { if (!g.contains(document.activeElement)) set(false); });
+          btn.addEventListener('click', function () { set(g.classList.toggle('dd-open')); });
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key !== 'Escape') return;
+          if (menu) menu.classList.remove('open');
+          if (burger) burger.setAttribute('aria-expanded', 'false');
+          document.querySelectorAll('.nav-group.dd-open').forEach(function (g) { g.classList.remove('dd-open'); });
+        });
+        // Hide purely decorative inline icons from assistive tech.
+        document.querySelectorAll('svg:not([role]):not([aria-hidden])').forEach(function (s) {
+          s.setAttribute('aria-hidden', 'true');
+        });
       })();
     </script>
     <!-- Cloudflare Web Analytics (privacy-first RUM; token is public by design) -->
