@@ -1,19 +1,17 @@
 ---
-interface Props { title: string; description?: string; canonical?: string; jsonLd?: object[] }
-const { title, description = "Web infrastructure for AI agents. 228 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical, jsonLd = [] } = Astro.props;
+interface Props { title: string; description?: string; canonical?: string; jsonLd?: object[]; updated?: string }
+const { title, description = "Web infrastructure for AI agents. 228 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical, jsonLd = [], updated } = Astro.props;
 // PNG, not SVG — X / LinkedIn / Slack / iMessage don't render SVG og:image.
 // Regenerate from og-image.svg with: node scripts/gen-og-image.mjs
 const ogImage = new URL("/og-image.png", Astro.site || "https://ollagraph.com").toString();
 const ogImageAlt = "Ollagraph — web infrastructure for AI agents. 228 endpoints, one API, one MCP server, one bill.";
 const canonicalUrl = canonical || Astro.url.href;
 
-// E-E-A-T / AEO citation signals, sitewide: a named author byline and a
-// last-updated timestamp (the static build time — the page is regenerated on
-// every deploy). Both are read by answer engines and by our own
-// /v1/aeo/citation-readiness audit.
+// E-E-A-T / AEO citation signals: a named author byline (sitewide) and an
+// HONEST last-updated timestamp — emitted only when a page passes a real
+// `updated` date, never a build-time value, so freshness isn't faked.
 const siteAuthor = "Amit Sharma";
 const siteLocation = { "@type": "PostalAddress", addressLocality: "New York", addressRegion: "NY", addressCountry: "US" };
-const buildIso = new Date().toISOString();
 
 // Sitewide structured data (every page). Page-specific schema (SoftwareApplication,
 // FAQPage, Article, HowTo, BreadcrumbList) is passed in via the `jsonLd` prop.
@@ -24,6 +22,7 @@ const orgLd = {
   url: "https://ollagraph.com",
   logo: "https://ollagraph.com/favicon.svg",
   description: "Web infrastructure for AI agents — fetch, extract, audit, and reason about the live web through one API.",
+  sameAs: ["https://github.com/vikasswaminh/ollagraph-mcp", "https://pypi.org/project/ollagraph-mcp/"],
   email: "hello@ollagraph.com",
   address: siteLocation,
   founder: { "@type": "Person", name: siteAuthor, jobTitle: "Founder", address: siteLocation },
@@ -48,6 +47,7 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="author" content={siteAuthor} />
     <link rel="canonical" href={canonicalUrl} />
 
@@ -66,7 +66,7 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
     <meta property="og:image:type" content="image/png" />
     <meta property="og:site_name" content="Ollagraph" />
     <meta property="og:url" content={canonicalUrl} />
-    <meta property="og:updated_time" content={buildIso} />
+    {updated && <meta property="og:updated_time" content={updated} />}
     <meta property="article:author" content={siteAuthor} />
 
     <!-- Twitter -->
