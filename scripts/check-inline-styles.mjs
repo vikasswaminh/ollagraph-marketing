@@ -11,7 +11,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const MAX = 1030; // baseline after slices 1-4 + normalization (2026-07)
+const MAX = 1004; // baseline after slices 1-4 + normalization (2026-07)
 const ROOTS = ["src/bodies", "src/pages"];
 
 let count = 0;
