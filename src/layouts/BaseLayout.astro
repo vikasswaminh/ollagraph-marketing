@@ -1,4 +1,11 @@
 ---
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+// Cache-bust the stylesheet: /styles.css is served with a 1-year cache and is
+// NOT filename-fingerprinted (it lives in public/, outside Astro's asset
+// pipeline). Appending a content hash gives every CSS change a new URL, so
+// returning visitors fetch the new CSS instead of a year-stale cached copy.
+const cssVer = createHash('sha1').update(readFileSync(new URL('../../public/styles.css', import.meta.url))).digest('hex').slice(0, 8);
 interface Props { title: string; description?: string; canonical?: string; jsonLd?: object[]; updated?: string }
 const { title, description = "Web infrastructure for AI agents. 228 endpoints across fetch, extract, audit, intelligence — one API, one MCP server.", canonical, jsonLd = [], updated } = Astro.props;
 // PNG, not SVG — X / LinkedIn / Slack / iMessage don't render SVG og:image.
@@ -107,7 +114,7 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
       }
     </style>
 
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href={`/styles.css?v=${cssVer}`} />
 
     <!-- Structured data (JSON-LD): Organization + WebSite sitewide, plus any page-specific schema -->
     {allJsonLd.map((obj) => (
