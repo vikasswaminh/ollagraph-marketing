@@ -1,0 +1,25 @@
+name: deploy
+on: [push, pull_request]
+jobs:
+  deploy:
+    runs-on: nh-runner
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.PAGES_PROJECT }}
+        run: |
+          set -e
+          if [ -f package.json ]; then
+            if [ -f pnpm-lock.yaml ]; then corepack enable; pnpm install --frozen-lockfile; pnpm build;
+            elif [ -f package-lock.json ]; then npm ci; npm run build;
+            else npm install; npm run build; fi
+            OUT=dist
+          else
+            OUT=_site; rm -rf "$OUT"; mkdir -p "$OUT"; cp -a . "$OUT"/; rm -rf "$OUT/.git" "$OUT/.gitea" "$OUT/.github"
+          fi
+          BR="${{ github.head_ref || github.ref_name }}"
+          echo "deploy $OUT -> $PROJECT (branch $BR)"
+          npx --yes wrangler@4 pages deploy "$OUT" --project-name="$PROJECT" --branch="$BR" --commit-dirty=true
