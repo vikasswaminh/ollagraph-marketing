@@ -22,6 +22,7 @@ const NAV: (Group | Leaf)[] = [
       { label: "MCP server",     href: "/mcp",           key: "mcp" },
       { label: "Observability",  href: "/observability", key: "observability" },
       { label: "AEO audits",     href: "/aeo",           key: "aeo" },
+      { label: "Compare",        href: "/vs",            key: "vs" },
     ],
   },
   {
