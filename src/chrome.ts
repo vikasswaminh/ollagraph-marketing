@@ -4,69 +4,19 @@
 // project). All other links, SVGs, badges, classes are byte-equivalent to the
 // original.
 
-// Grouped IA: top-level dropdown groups (Product / Solutions / Developers) plus
-// a flat Pricing link. Groups surface every page — including the high-intent
-// /for-* and /enterprise pages that used to live only in the footer — with
-// descriptive anchor text, so the nav distributes internal-link equity for SEO.
-// All <a> hrefs are present in the HTML regardless of hover state, so the
-// dropdowns are fully crawlable. Add a link here only when the page is real.
+// Flat IA: a slim top-level nav (Docs / Pricing / Blog / Compare) with no
+// dropdowns. The former grouped mega-menu was unstable (hover-gap flicker) and
+// crowded; every other page now lives in the footer, which is equally sitewide
+// and crawlable, so internal-link equity for the /for-*, /enterprise, and
+// use-case pages is preserved. Add a nav link here only when the page is real.
 type Leaf = { label: string; href: string; key?: string };
-type Group = { label: string; key: string; items: Leaf[] };
 
-const NAV: (Group | Leaf)[] = [
-  {
-    label: "Product", key: "product", items: [
-      { label: "Capabilities",   href: "/capabilities",  key: "capabilities" },
-      { label: "Actors",         href: "/actors",        key: "actors" },
-      { label: "Bundles",        href: "/bundles",       key: "bundles" },
-      { label: "MCP server",     href: "/mcp",           key: "mcp" },
-      { label: "Observability",  href: "/observability", key: "observability" },
-      { label: "AEO audits",     href: "/aeo",           key: "aeo" },
-      { label: "Compare",        href: "/vs",            key: "vs" },
-    ],
-  },
-  {
-    label: "Solutions", key: "solutions", items: [
-      { label: "For AI agent builders", href: "/for-ai",           key: "for-ai" },
-      { label: "For SEO consultants",   href: "/for-seo",          key: "for-seo" },
-      { label: "For AEO agencies",      href: "/for-aeo-agencies", key: "for-aeo-agencies" },
-      { label: "For security teams",    href: "/for-intel",        key: "for-intel" },
-      { label: "Enterprise",            href: "/enterprise",       key: "enterprise" },
-    ],
-  },
-  {
-    label: "Use cases", key: "usecases", items: [
-      { label: "Web scraping API",     href: "/scrape",       key: "scrape" },
-      { label: "Website crawler API",  href: "/crawl",        key: "crawl" },
-      { label: "Browser automation",   href: "/automation",   key: "automation" },
-      { label: "Headless browser API", href: "/browser",      key: "browser" },
-      { label: "Domain intelligence",  href: "/intelligence", key: "intelligence" },
-    ],
-  },
-  {
-    label: "Developers", key: "developers", items: [
-      { label: "API docs",            href: "/docs",                             key: "docs" },
-      { label: "Swagger UI",          href: "https://api.ollagraph.com/docs" },
-      { label: "OpenAPI spec",        href: "https://api.ollagraph.com/openapi.json" },
-      { label: "Postman collection",  href: "/ollagraph.postman_collection.json" },
-      { label: "Webhooks",            href: "/webhooks",     key: "webhooks" },
-      { label: "Architecture",        href: "/architecture", key: "architecture" },
-    ],
-  },
-  {
-    label: "Resources", key: "resources", items: [
-      { label: "Free tools", href: "/tools",     key: "tools" },
-      { label: "Recipes",   href: "/recipes",   key: "recipes" },
-      { label: "Blog",      href: "/blog",      key: "blog" },
-      { label: "Changelog", href: "/changelog", key: "changelog" },
-    ],
-  },
+const NAV: Leaf[] = [
+  { label: "Docs",    href: "/docs",    key: "docs" },
   { label: "Pricing", href: "/pricing", key: "pricing" },
+  { label: "Blog",    href: "/blog",    key: "blog" },
+  { label: "Compare", href: "/vs",      key: "vs" },
 ];
-
-function isGroup(x: Group | Leaf): x is Group {
-  return (x as Group).items !== undefined;
-}
 
 export const LOGO_SVG = `
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -79,28 +29,10 @@ export const LOGO_SVG = `
       </defs>
     </svg>`;
 
-function leafLink(l: Leaf, activeKey: string, cls: string): string {
-  const ext = l.href.startsWith("http");
-  const active = l.key && l.key === activeKey ? " active" : "";
-  const attrs = ext ? ` target="_blank" rel="noopener"` : "";
-  return `<a class="${cls}${active}" href="${l.href}"${attrs}>${l.label}</a>`;
-}
-
-const CARET_SVG = `<svg class="dd-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
-
 export function navHtml(activeKey: string = ""): string {
   const itemsHTML = NAV.map((entry) => {
-    if (!isGroup(entry)) {
-      const active = entry.key === activeKey ? " active" : "";
-      return `<a class="nav-link${active}" href="${entry.href}">${entry.label}</a>`;
-    }
-    const groupActive =
-      entry.key === activeKey || entry.items.some((i) => i.key === activeKey) ? " active" : "";
-    const dd = entry.items.map((i) => leafLink(i, activeKey, "dd-link")).join("");
-    return `<div class="nav-group">
-                  <button type="button" class="nav-link nav-group-label${groupActive}" aria-haspopup="true" aria-expanded="false">${entry.label}${CARET_SVG}</button>
-                  <div class="nav-dropdown">${dd}</div>
-                </div>`;
+    const active = entry.key === activeKey ? " active" : "";
+    return `<a class="nav-link${active}" href="${entry.href}">${entry.label}</a>`;
   }).join("");
   return `
         <div class="nav">
@@ -148,29 +80,49 @@ export function footerHtml(): string {
         { label: "Bundles",        href: "/bundles" },
         { label: "Observability",  href: "/observability" },
         { label: "MCP server",     href: "/mcp" },
-        { label: "AEO",            href: "/aeo" },
-        { label: "Pricing",        href: "/pricing" },
-        { label: "Enterprise",     href: "/enterprise" },
+        { label: "AEO audits",     href: "/aeo" },
         { label: "Compare",        href: "/vs" },
-        { label: "Free tools",     href: "/tools" },
+        { label: "Pricing",        href: "/pricing" },
+      ],
+    },
+    {
+      h: "Use cases",
+      items: [
+        { label: "Web scraping API",     href: "/scrape" },
+        { label: "Website crawler API",  href: "/crawl" },
+        { label: "Browser automation",   href: "/automation" },
+        { label: "Headless browser API", href: "/browser" },
+        { label: "Domain intelligence",  href: "/intelligence" },
+      ],
+    },
+    {
+      h: "Solutions",
+      items: [
+        { label: "AI agent builders",   href: "/for-ai" },
+        { label: "SEO consultants",     href: "/for-seo" },
+        { label: "AEO agencies",        href: "/for-aeo-agencies" },
+        { label: "Security teams",      href: "/for-intel" },
+        { label: "Enterprise",          href: "/enterprise" },
       ],
     },
     {
       h: "Developers",
       items: [
-        { label: "Docs",                href: "/docs" },
+        { label: "API docs",            href: "/docs" },
         { label: "Swagger UI",          href: "https://api.ollagraph.com/docs" },
         { label: "OpenAPI spec",        href: "https://api.ollagraph.com/openapi.json" },
         { label: "Postman collection",  href: "/ollagraph.postman_collection.json" },
+        { label: "Webhooks",            href: "/webhooks" },
+        { label: "Architecture",        href: "/architecture" },
         { label: "Changelog",           href: "/changelog" },
       ],
     },
     {
-      h: "For",
+      h: "Resources",
       items: [
-        { label: "AI agent builders",   href: "/for-ai" },
-        { label: "SEO consultants",     href: "/for-seo" },
-        { label: "Security teams",      href: "/for-intel" },
+        { label: "Free tools",  href: "/tools" },
+        { label: "Recipes",     href: "/recipes" },
+        { label: "Blog",        href: "/blog" },
       ],
     },
     {
@@ -195,7 +147,11 @@ export function footerHtml(): string {
   const colsHTML = cols.map((c) => `
         <div class="footer-col">
           <h4>${c.h}</h4>
-          ${c.items.map((i) => `<a href="${i.href}">${i.label}</a>`).join("")}
+          ${c.items.map((i) => {
+            const ext = i.href.startsWith("http");
+            const attrs = ext ? ` target="_blank" rel="noopener"` : "";
+            return `<a href="${i.href}"${attrs}>${i.label}</a>`;
+          }).join("")}
         </div>`).join("");
 
   return `
