@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
-cd /root/site
+cd "$(dirname "$0")/.."
+
+echo "=== Working dir: $(pwd) ==="
 
 echo "=== git status before ==="
 git status --porcelain
