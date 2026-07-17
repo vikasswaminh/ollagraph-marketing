@@ -10,6 +10,7 @@ export interface PostMeta {
 }
 
 export const posts: PostMeta[] = [
+  // Blog #3 — structured data extraction API guide
   { slug: "extract-structured-data-api-guide", title: "Extract Structured Data from Any Website: API Guide for Developers", description: "Learn how to extract structured data from any website using a JSON schema and one API call. Compare approaches, see real code, and build reliable web data pipelines.", date: "2026-07-18", readingTime: 28, tags: ["structured data extraction", "API", "web scraping", "JSON schema", "data pipeline"] },
   { slug: "how-ai-crawlers-read-your-website", title: "How AI Crawlers Read Your Website: Preparing Content for LLMs", description: "AI crawlers don't browse the web like humans. They fetch raw markup, strip the chrome, and convert what remains into tokens for LLMs. Learn how to make your content extractable before the model ever reads it.", date: "2026-07-17", readingTime: 22, tags: ["AI crawlers", "LLMs", "content optimization", "AEO", "web scraping"] },
   { slug: "optimizing-for-perplexity", title: "Optimizing for Perplexity: A Technical Guide to AI Citations", description: "A technical guide to getting your pages cited by Perplexity. Learn how Perplexity selects sources, what signals matter, and how to audit your content for AI citations.", date: "2026-07-17", readingTime: 18, tags: ["Perplexity", "AEO", "AI citations", "answer engine optimization"] },
