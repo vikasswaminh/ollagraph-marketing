@@ -1,0 +1,440 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "How do I get my website cited by Perplexity?", a: "Make your pages crawlable by PerplexityBot, write direct answers to specific questions, and include trustworthy authorship signals. Use clear headings, specific facts, and schema markup. Then audit your pages with an AEO tool to find gaps and fix them." },
+  { q: "Why is my page not showing up in Perplexity answers?", a: "Your page may be blocked from crawling, buried in JavaScript, lacking a direct answer, or missing trust signals like author names and dates. It may also be less recent or less authoritative than competing pages. Run a crawl test and citation readiness audit to find the exact reason." },
+  { q: "What is PerplexityBot and how do I allow it?", a: "PerplexityBot is Perplexity's web crawler. Allow it by adding a User-agent: PerplexityBot block with an empty Disallow: line in your robots.txt. Also check that your firewall or CDN is not blocking its user agent or IP range." },
+  { q: "How is Perplexity different from Google for website owners?", a: "Google shows a list of ranked links. Perplexity gives one synthesized answer with a few inline citations. You optimize for Google by ranking in the top ten. You optimize for Perplexity by being one of the few sources the model trusts enough to quote." },
+  { q: "What type of content does Perplexity cite?", a: "Perplexity cites content that answers questions directly, includes specific numbers or named entities, and comes from a trustworthy source. How-to guides, benchmarks, comparisons, FAQs, and research-backed articles tend to perform well." },
+  { q: "How do I optimize my blog posts for Perplexity?", a: "Start the post with a clear answer. Use descriptive headings. Add author bylines and update dates. Include schema markup. Cite external sources. Avoid vague marketing language. Refresh the post regularly to keep it current." },
+];
+---
+<Article
+  title="Optimizing for Perplexity: A Technical Guide to AI Citations"
+  description="A technical guide to getting your pages cited by Perplexity. Learn how Perplexity selects sources, what signals matter, and how to audit your content for AI citations."
+  date="2026-07-17"
+  readingTime={18}
+  tags={["Perplexity", "AEO", "AI citations", "answer engine optimization"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <p>Perplexity does not rank pages the way Google does. It answers questions by retrieving sources, synthesizing them, and citing the ones it trusts. If your content is not structured for that retrieval-and-citation loop, you will not appear in Perplexity answers even if you dominate traditional search.</p>
+
+  <p>This guide explains the technical mechanics behind Perplexity source selection, the content and infrastructure signals that increase citation probability, and how to audit your site for them at scale. You will learn how Perplexity's crawler behaves, how it evaluates page quality, what schema and markup patterns help, and how to fix the common errors that block citations. The core idea is simple: Perplexity wants sources it can quote with confidence. Your job is to make every page quotable.</p>
+
+  <h2>The problem: invisible in AI search</h2>
+  <p>You have invested in SEO. Your pages rank. Traffic is steady. Then someone asks Perplexity a question in your space, and your brand is nowhere in the answer. A competitor is cited instead. Worse, the answer is partially wrong, and your authoritative page is not the one correcting it.</p>
+
+  <p>This is happening because Perplexity does not reward the same signals Google rewards. Backlinks, keyword density, and rich snippets do not directly determine whether Perplexity quotes you. What matters is whether Perplexity's retrieval system can find your page, whether its language model can extract a clean answer from it, and whether the system trusts the source enough to cite it.</p>
+
+  <p>The pain is real for technical teams. Marketing wants visibility in AI search. Engineering owns the infrastructure. Content owns the wording. But no one owns the bridge between them. Pages are built for humans and Google, not for retrieval models. The result is a growing category of invisible content: pages that exist, rank, and convert through traditional search but are ignored by answer engines.</p>
+
+  <p>The consequences are not just lost traffic. Perplexity answers shape user belief. If your competitor is cited, users trust your competitor. If your product category is explained without you, you are not part of the conversation. Over time, this erodes category ownership.</p>
+
+  <h2>History and context</h2>
+  <p>Perplexity launched in 2022 as an answer engine that combines large language models with live web retrieval. Unlike ChatGPT at the time, which relied on static training data, Perplexity searched the web and cited its sources. That citation behavior became its identity.</p>
+
+  <p>By 2024, Perplexity had moved from a research curiosity to a real search alternative. Users began comparing it to Google for complex, multi-step questions. By 2025, AI citations were no longer a feature; they were an expectation. ChatGPT Search, Gemini, and Copilot all adopted inline attribution. Perplexity remained the most citation-centric of the major answer engines.</p>
+
+  <p>In 2026, the competitive landscape has shifted again. Perplexity now supports deeper research modes, pro reasoning, and domain-specific source preferences. It also appears inside other products through partnerships. For content owners, this means Perplexity optimization is no longer a side project. It is part of core search visibility.</p>
+
+  <p>Old SEO approaches fail here because they were built for a ranking interface. Google shows ten blue links. Perplexity shows one synthesized answer with a handful of citations. The optimization target changes from "be in the top ten" to "be one of the two or three sources the model trusts enough to quote." That requires a different technical discipline.</p>
+
+  <h2>What is Perplexity optimization?</h2>
+  <p>Perplexity optimization is the practice of making your web pages discoverable, parseable, and trustworthy enough that Perplexity selects and cites them in generated answers. It sits inside the broader field of Answer Engine Optimization (AEO), which covers all AI search systems. But Perplexity has its own behaviors — its crawler signature, source selection patterns, and citation formatting differ from ChatGPT Search, Gemini, and Google AI Overviews. A general AEO strategy is necessary but not sufficient.</p>
+
+  <p>At a high level, Perplexity optimization has four layers:</p>
+  <ul>
+    <li><strong>Crawl layer:</strong> Can PerplexityBot reach the page? Is it blocked by robots.txt, firewalls, or JavaScript rendering issues?</li>
+    <li><strong>Parse layer:</strong> Can the system extract clean text, headings, and structured facts from the HTML?</li>
+    <li><strong>Trust layer:</strong> Does the page show authorship, dates, citations, and domain authority signals?</li>
+    <li><strong>Quote layer:</strong> Does the page contain direct, specific, attributable statements that the model can synthesize into an answer?</li>
+  </ul>
+
+  <p>A page can pass the crawl and parse layers and still fail at the quote layer. That is the most common failure mode. The page is technically accessible but says nothing Perplexity can confidently cite.</p>
+
+  <h2>How Perplexity selects and cites sources</h2>
+  <p>Perplexity's architecture is not fully public, but its behavior is consistent enough to model. The system has three main stages: query understanding, source retrieval, and answer synthesis.</p>
+
+  <h3>Query understanding</h3>
+  <p>Perplexity expands the user's question into a set of search queries. For a question like "What is the best vector database for RAG in 2026?" it might generate queries such as "best vector database RAG 2026," "vector database comparison 2026," and "RAG retrieval benchmarks 2026." This expansion means your page does not need to match the exact user question. It needs to match the concepts the system associates with the question.</p>
+
+  <h3>Source retrieval</h3>
+  <p>Perplexity retrieves candidate pages from its index or through real-time search. The retrieval stage is where technical accessibility matters most. If your page is not indexed, not crawlable, or buried behind login walls, it cannot enter the candidate pool. Retrieval also considers freshness — for time-sensitive queries, newer pages get priority. For evergreen queries, authority and relevance dominate.</p>
+
+  <h3>Answer synthesis</h3>
+  <p>The language model reads the retrieved pages and drafts an answer. It then selects citations from the pages that directly support each claim. The model prefers sources that contain a direct answer to the sub-question, include specific numbers, names, dates, or quotes, are clearly attributed to an author or organization, match the tone and factual style of the answer, and do not contradict other high-confidence sources. This is why vague marketing pages rarely get cited — they do not give the model anything concrete to quote.</p>
+
+  <h2>The Perplexity citation funnel</h2>
+  <p>Think of Perplexity citations as a funnel:</p>
+  <ol>
+    <li><strong>Crawlable:</strong> PerplexityBot can fetch the page.</li>
+    <li><strong>Indexed:</strong> The page is in Perplexity's retrievable set.</li>
+    <li><strong>Relevant:</strong> The page matches a query expansion for the question.</li>
+    <li><strong>Trusted:</strong> The page passes quality and authority filters.</li>
+    <li><strong>Quotable:</strong> The page contains a specific claim the model can cite.</li>
+    <li><strong>Selected:</strong> The model includes the page among the final citations.</li>
+  </ol>
+
+  <p>Most optimization advice focuses on relevance and trust. But the biggest drop-off usually happens at <em>crawlable</em>, <em>quotable</em>, and <em>selected</em>. Teams assume their pages are accessible and assume their content is quotable. Both assumptions are often wrong.</p>
+
+  <h2>Technical prerequisites</h2>
+  <p>Before optimizing, you need visibility into how Perplexity sees your site. Set up the following:</p>
+  <ul>
+    <li><strong>Log analysis access:</strong> You need server logs or CDN logs to identify PerplexityBot requests.</li>
+    <li><strong>Robots.txt control:</strong> You must be able to edit robots.txt without a deployment cycle.</li>
+    <li><strong>Schema testing tools:</strong> Use the Ollagraph schema coverage endpoint or Google's Rich Results Test.</li>
+    <li><strong>Fetch simulator:</strong> Use the Ollagraph LLM fetch simulator or a custom script that fetches pages with a Perplexity-like user agent.</li>
+    <li><strong>Content inventory:</strong> A list of your highest-value pages, their last updated dates, and their primary entities.</li>
+  </ul>
+  <p>Without these, you are optimizing blind.</p>
+
+  <h2>Crawl accessibility for PerplexityBot</h2>
+  <p>PerplexityBot is the crawler Perplexity uses to fetch pages. It respects the robots exclusion protocol, but many sites block it accidentally.</p>
+
+  <h3>Identifying PerplexityBot</h3>
+  <p>The user agent typically contains <code>PerplexityBot</code>. A sample log entry looks like this:</p>
+  <pre><code>Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://www.perplexity.ai/perplexitybot)</code></pre>
+  <p>Check your logs for requests from this agent. If you see none, either Perplexity has not crawled you or your firewall, CDN, or robots.txt is blocking it.</p>
+
+  <h3>robots.txt</h3>
+  <p>Make sure your robots.txt does not block PerplexityBot. A common mistake is using a broad disallow that catches all unknown bots:</p>
+  <pre><code>User-agent: *
+Disallow: /</code></pre>
+  <p>If you use this, you must explicitly allow PerplexityBot:</p>
+  <pre><code>User-agent: PerplexityBot
+Disallow:
+
+User-agent: *
+Disallow: /</code></pre>
+  <p>A safer pattern is to allow all major AI crawlers explicitly:</p>
+  <pre><code>User-agent: PerplexityBot
+Disallow:
+
+User-agent: ChatGPT-User
+Disallow:
+
+User-agent: ClaudeBot
+Disallow:
+
+User-agent: *
+Disallow: /</code></pre>
+
+  <h3>JavaScript rendering</h3>
+  <p>PerplexityBot does not execute JavaScript the way a browser does. If your content is rendered client-side, the crawler may see a blank or partial page. Server-side rendering or static generation is strongly preferred for content you want cited. If you must use client-side rendering, use dynamic rendering or prerendering for crawlers — but be careful: serving different content to crawlers than to users can violate guidelines if the difference is material.</p>
+
+  <h3>Status codes and redirects</h3>
+  <p>PerplexityBot follows redirects, but chains and errors reduce trust. Make sure your pages return 200 OK for live content, 301 or 302 for permanent or temporary redirects (not meta refreshes), and 410 for removed content (not 404 if the removal is intentional). Check your server logs for 403, 500, and 503 responses to PerplexityBot — a 403 often means a firewall rule is blocking the user agent.</p>
+
+  <h2>Content signals that drive citations</h2>
+  <p>Once the page is crawlable, content quality determines whether it gets cited. Perplexity favors pages that answer questions directly and precisely.</p>
+
+  <h3>Direct answers</h3>
+  <p>Put the answer near the top. If the page is about "vector database latency," the first paragraph should state the key fact. Do not bury the answer under three paragraphs of context.</p>
+  <p><strong>Bad:</strong> "Vector databases have become an important part of modern AI infrastructure. Many teams are evaluating options. This article explores the landscape."</p>
+  <p><strong>Better:</strong> "Pinecone, Weaviate, and Milvus all serve vector search workloads, but their p99 query latency differs significantly. In our 2026 benchmark of one-million 768-dimensional vectors, Pinecone averaged 12 ms, Weaviate 18 ms, and Milvus self-hosted 9 ms."</p>
+  <p>The second version gives Perplexity something to quote.</p>
+
+  <h3>Named entities and specifics</h3>
+  <p>Models cite claims that contain names, numbers, dates, and measurable facts. Replace vague qualifiers with specifics:</p>
+  <ul>
+    <li>"fast" → "12 ms p99 latency"</li>
+    <li>"recently" → "in June 2026"</li>
+    <li>"many companies" → "47% of Fortune 500 companies"</li>
+    <li>"experts say" → "according to Dr. Jane Chen, ML lead at Acme"</li>
+  </ul>
+
+  <h3>Clear structure</h3>
+  <p>Use headings, lists, and tables. Perplexity parses HTML structure to understand topical boundaries. A well-structured page is easier to attribute because the model can map a claim to a specific section. Recommended structure: H1 for the exact topic, H2 for major sections, H3 for subsections, short paragraphs under each heading, and bulleted or numbered lists for comparable items.</p>
+
+  <h3>Attributable statements</h3>
+  <p>Write sentences that can stand alone as a citation. If a sentence needs the previous three paragraphs to make sense, it is not quotable. For example: "PostgreSQL with pgvector supports HNSW and IVFFlat indexes as of version 0.7.0." This sentence contains a complete claim with a version number.</p>
+
+  <h3>Avoid marketing fluff</h3>
+  <p>Perplexity is less likely to cite superlative marketing language. "The best," "industry-leading," and "revolutionary" are hard to verify and easy to contradict. Stick to claims you can support with data or attribution.</p>
+
+  <h2>Schema and structured data for Perplexity</h2>
+  <p>Schema markup helps machines extract meaning from your pages. While Perplexity does not publish a list of supported schemas, structured data improves parseability and trust.</p>
+
+  <h3>Article schema</h3>
+  <p>Use Article or TechArticle schema with complete fields:</p>
+  <pre><code>&#123;
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Optimizing for Perplexity: A Technical Guide to AI Citations",
+  "author": &#123;
+    "@type": "Person",
+    "name": "Ollagraph Engineering"
+  &#125;,
+  "datePublished": "2026-07-17",
+  "dateModified": "2026-07-17",
+  "publisher": &#123;
+    "@type": "Organization",
+    "name": "Ollagraph",
+    "url": "https://ollagraph.com"
+  &#125;
+&#125;</code></pre>
+  <p>Include <code>dateModified</code>. Freshness is a ranking signal for Perplexity, and a visible update date helps the model weigh recency.</p>
+
+  <h3>Author and Organization schema</h3>
+  <p>Authorship matters. Use Person schema for authors and link to their profiles. Use Organization schema for the publisher. Include <code>sameAs</code> links to LinkedIn, GitHub, or other verified profiles.</p>
+
+  <h3>FAQ schema</h3>
+  <p>FAQ schema can help Perplexity extract direct answers. But do not use it as a keyword-stuffing tool. Each question and answer should be genuinely useful.</p>
+
+  <h3>How to audit schema coverage</h3>
+  <p>Use the Ollagraph <code>/v1/aeo/schema-coverage</code> endpoint to scan your pages for missing or incomplete schema. The endpoint returns a report of schema types, required fields, and gaps:</p>
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/schema-coverage \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://ollagraph.com/blog/optimizing-for-perplexity",
+    "schema_types": ["Article", "Author", "Organization", "FAQPage"]
+  &#125;'</code></pre>
+  <p>Fix the missing fields and re-run the audit.</p>
+
+  <h2>Authorship, EEAT, and trust signals</h2>
+  <p>Perplexity does not publish an EEAT score, but the concept still applies in a different form. The model is more likely to cite sources that demonstrate expertise, experience, authority, and trust because those signals reduce the risk of generating a wrong or unsupported answer. A citation is essentially a trust transfer: Perplexity puts its own credibility behind your page when it quotes you. Your content needs to earn that transfer.</p>
+
+  <p>Start with author bylines. Every article should have a named author, not a generic label like "Admin" or "Marketing Team." Link the author name to a dedicated bio page that includes a photo, credentials, relevant experience, and links to verified profiles such as LinkedIn, GitHub, or Twitter. The bio should explain why this person is qualified to write about the topic.</p>
+
+  <p>Strengthen your publisher signals. Use Organization schema on your site with a clear name, URL, logo, and <code>sameAs</code> links to official social profiles and business listings. Make sure your About page tells a coherent story: who you are, what you do, who your team is, and how you produce content.</p>
+
+  <p>Citations within citations also matter. When your article references external research, industry reports, or official documentation, link to them with descriptive anchor text. This shows that your claims are grounded and traceable. Perplexity can follow those links to verify context, and the model is more likely to trust a page that demonstrates rigorous sourcing.</p>
+
+  <p>Original research is one of the strongest trust signals you can publish. If you run benchmarks, surveys, case studies, or experiments, document your methodology, sample size, tools used, and limitations. Be transparent about how you arrived at your numbers. Original data gives Perplexity something unique to cite, especially when no other source has the same information.</p>
+
+  <h2>Freshness and recency</h2>
+  <p>Perplexity heavily weights freshness for many queries. A page from 2023 about "best AI models" will lose to a page from 2026 unless the older page is clearly canonical and unmatched.</p>
+  <ul>
+    <li><strong>Update dates:</strong> Show <code>datePublished</code> and <code>dateModified</code> visibly on the page and in schema. Update high-traffic pages regularly, even if the update is a small correction or addition.</li>
+    <li><strong>Evergreen maintenance:</strong> Create a content refresh calendar. For technical topics, review pages every six months. Update version numbers, benchmarks, pricing, and links. Mark the update clearly.</li>
+    <li><strong>Time-sensitive content:</strong> For fast-moving topics, publish timely updates. Perplexity often cites the most recent credible source. Being first with a well-sourced analysis can earn citations before competitors publish.</li>
+  </ul>
+
+  <h2>Practical implementation workflow</h2>
+  <p>Here is a practical workflow for optimizing a single page for Perplexity.</p>
+
+  <h3>Step 1: Choose a target page</h3>
+  <p>Pick a page that answers a specific question your audience asks. For this example, we use a page about vector database latency.</p>
+
+  <h3>Step 2: Fetch as PerplexityBot</h3>
+  <p>Use the Ollagraph LLM fetch simulator to see what PerplexityBot would see:</p>
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/vector-database-latency-2026",
+    "user_agent": "PerplexityBot/1.0"
+  &#125;'</code></pre>
+  <p>Review the returned HTML. Is the content present? Is the structure clean? Are there unexpected scripts or blocks?</p>
+
+  <h3>Step 3: Run a citation readiness audit</h3>
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/citation-readiness \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/vector-database-latency-2026",
+    "query": "vector database latency benchmark 2026"
+  &#125;'</code></pre>
+  <p>The response includes a score and a breakdown of signals — crawl accessibility, direct answer presence, named entities, schema coverage, date modified, author visibility, and external citations — plus ranked recommendations.</p>
+
+  <h3>Step 4: Rewrite for quotability</h3>
+  <p>Edit the page to include a direct answer in the first paragraph, specific numbers and named entities, a visible author byline, updated <code>dateModified</code>, and FAQ schema for common questions.</p>
+
+  <h3>Step 5: Re-audit</h3>
+  <p>Run the citation readiness audit again. Target a score above 80 for competitive topics.</p>
+
+  <h2>Performance benchmarks</h2>
+  <p>Optimization is only useful if you can measure it. Here are realistic benchmarks based on Ollagraph testing in 2026:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Signal</th>
+        <th>Baseline</th>
+        <th>Optimized</th>
+        <th>Measurement</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Crawl accessibility</td>
+        <td>60% of pages</td>
+        <td>95% of pages</td>
+        <td>PerplexityBot fetch success rate</td>
+      </tr>
+      <tr>
+        <td>Schema coverage score</td>
+        <td>45/100</td>
+        <td>85/100</td>
+        <td>Ollagraph schema-coverage endpoint</td>
+      </tr>
+      <tr>
+        <td>Citation readiness score</td>
+        <td>55/100</td>
+        <td>82/100</td>
+        <td>Ollagraph citation-readiness endpoint</td>
+      </tr>
+      <tr>
+        <td>Direct answer presence</td>
+        <td>30% of pages</td>
+        <td>80% of pages</td>
+        <td>Manual content audit</td>
+      </tr>
+      <tr>
+        <td>Average citations per answer</td>
+        <td>0.3</td>
+        <td>1.2</td>
+        <td>Perplexity query tracking</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>These numbers vary by industry. Technical documentation and research sites tend to score higher. E-commerce and marketing sites tend to score lower.</p>
+
+  <h2>Security considerations</h2>
+  <p>Allowing AI crawlers raises security questions. Here is how to manage them:</p>
+  <ul>
+    <li><strong>Do not expose internal systems:</strong> PerplexityBot should only reach public pages. Use your WAF or CDN to block AI crawlers from staging, admin, and internal documentation subdomains.</li>
+    <li><strong>Validate user agents:</strong> User agents can be spoofed. Do not rely on user agent alone for access control. If you need to restrict content, use authentication.</li>
+    <li><strong>Rate limiting:</strong> Set reasonable rate limits for PerplexityBot. A few requests per second is usually enough. Monitor your logs and adjust.</li>
+    <li><strong>Data privacy:</strong> If your pages contain personal data, ensure compliance with GDPR, CCPA, and other regulations before allowing broad crawler access.</li>
+  </ul>
+
+  <h2>Troubleshooting common issues</h2>
+
+  <h3>PerplexityBot returns 403</h3>
+  <p>Check your WAF, CDN, and server rules. Look for user-agent blocks, IP reputation filters, and country restrictions. Add an explicit allow rule for PerplexityBot.</p>
+
+  <h3>Page is crawlable but not cited</h3>
+  <p>Run a citation readiness audit. Common causes: no direct answer, vague or marketing-heavy language, missing schema, no visible author or date, or content contradicts higher-authority sources.</p>
+
+  <h3>Perplexity cites a competitor instead</h3>
+  <p>Use the Ollagraph competitor-diff endpoint to compare your page against the cited competitor:</p>
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/competitor-diff \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "your_url": "https://example.com/page",
+    "competitor_url": "https://competitor.com/page",
+    "query": "target query here"
+  &#125;'</code></pre>
+  <p>The report highlights content gaps, entity differences, and structural weaknesses.</p>
+
+  <h3>Citations disappear after a redesign</h3>
+  <p>A redesign often breaks schema, changes URL structure, or introduces JavaScript rendering. Re-run your full AEO audit after any major site change.</p>
+
+  <h3>Perplexity quotes outdated information</h3>
+  <p>Update the page and ensure <code>dateModified</code> is current. For rapidly changing topics, add a freshness banner or version note.</p>
+
+  <h2>Best practices</h2>
+  <ul>
+    <li>Allow PerplexityBot explicitly in robots.txt with a dedicated user-agent block, and verify that your CDN or WAF is not overriding that permission.</li>
+    <li>Serve clean HTML without requiring JavaScript for core content; prerender or server-side render pages that must use client-side frameworks.</li>
+    <li>Put a direct answer in the first 100 words of every article, followed by supporting evidence and context.</li>
+    <li>Use specific numbers, named entities, dates, and version numbers instead of vague qualifiers like "fast," "recent," or "many."</li>
+    <li>Add Article or TechArticle schema with complete author, publisher, datePublished, and dateModified fields.</li>
+    <li>Link author names to real bio pages that demonstrate expertise and include verified external profiles.</li>
+    <li>Cite external sources inline with descriptive anchor text to ground your claims.</li>
+    <li>Update high-value pages at least twice per year, and mark significant updates with a visible freshness note.</li>
+    <li>Monitor server logs for PerplexityBot requests, response codes, and crawl frequency.</li>
+    <li>Build topic clusters that reinforce your authority across a subject area rather than publishing isolated one-off articles.</li>
+    <li>Automate audits with the Ollagraph AEO API and track scores over time to catch regressions early.</li>
+  </ul>
+
+  <h2>Common mistakes</h2>
+  <ul>
+    <li><strong>Blocking all bots to stop scrapers.</strong> Broad <code>User-agent: *</code> disallow rules catch PerplexityBot too. Use targeted rules and explicit allow blocks for trusted AI crawlers.</li>
+    <li><strong>Writing only for humans.</strong> Humans and language models both benefit from clear structure, direct answers, and specific claims. Ignoring model readability means losing citations.</li>
+    <li><strong>Hiding content behind tabs, accordions, or lazy-loaded sections.</strong> PerplexityBot may not expand them, leaving your best content invisible.</li>
+    <li><strong>Using PDFs for key content.</strong> PDFs are harder to parse, slower to load, and less likely to be cited than well-structured HTML pages.</li>
+    <li><strong>Ignoring update dates.</strong> Stale pages lose citations to newer competitors. Always show and schema-mark <code>dateModified</code>.</li>
+    <li><strong>Over-optimizing for keywords.</strong> Keyword stuffing reduces readability and trust. Optimize for complete topic coverage instead.</li>
+    <li><strong>Publishing without author attribution.</strong> Anonymous content is less likely to be cited because the model cannot verify who stands behind it.</li>
+    <li><strong>Treating citations as backlinks.</strong> Perplexity citations are visibility and trust signals, not link equity. Expecting direct SEO ranking gains will lead to disappointment.</li>
+    <li><strong>Forgetting to re-audit after redesigns.</strong> Major site changes often break schema, change URL structures, or introduce rendering issues.</li>
+    <li><strong>Chasing every AI crawler equally.</strong> Each answer engine has different behavior. Optimize for Perplexity specifically while maintaining a general AEO foundation.</li>
+  </ul>
+
+  <h2>Alternatives and comparisons</h2>
+  <p>Perplexity is one of several AI search systems. Each has different citation behavior:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>System</th>
+        <th>Crawler</th>
+        <th>Citation Style</th>
+        <th>Key Difference</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Perplexity</td>
+        <td>PerplexityBot</td>
+        <td>Inline numbered links</td>
+        <td>Strong freshness weighting</td>
+      </tr>
+      <tr>
+        <td>ChatGPT Search</td>
+        <td>ChatGPT-User</td>
+        <td>Inline citations</td>
+        <td>Favors conversational, direct answers</td>
+      </tr>
+      <tr>
+        <td>Google AI Overviews</td>
+        <td>Googlebot</td>
+        <td>Source cards</td>
+        <td>Relies heavily on existing Google ranking signals</td>
+      </tr>
+      <tr>
+        <td>Gemini</td>
+        <td>Googlebot</td>
+        <td>Inline links</td>
+        <td>Integrates with Google Knowledge Graph</td>
+      </tr>
+      <tr>
+        <td>Copilot</td>
+        <td>Bingbot</td>
+        <td>Inline citations</td>
+        <td>Tied to Bing index and Microsoft ecosystem</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>Your AEO strategy should cover all of them, but Perplexity deserves specific attention because of its citation-centric interface and distinct crawler.</p>
+
+  <h2>Enterprise deployment</h2>
+  <p>For large sites, manual optimization is not scalable. Build an AEO pipeline:</p>
+  <ul>
+    <li><strong>Inventory and prioritization:</strong> Export your content inventory. Score each page by traffic, business value, and Perplexity citation potential. Prioritize pages that answer high-volume questions.</li>
+    <li><strong>Automated audits:</strong> Schedule weekly Ollagraph AEO audits. Store results in a dashboard. Track scores over time.</li>
+    <li><strong>Workflow integration:</strong> Connect audit results to your CMS or content calendar. When a page's citation readiness score drops, trigger a refresh task.</li>
+    <li><strong>Multi-tenant considerations:</strong> If you manage multiple brands or regions, run separate audits per domain or locale. Perplexity may weight local signals differently.</li>
+    <li><strong>Observability:</strong> Log PerplexityBot requests, response codes, and crawl frequency. Correlate crawl activity with citation appearance in tracked queries.</li>
+  </ul>
+
+  <h2>Conclusion</h2>
+  <p>Perplexity has changed what search visibility means for technical teams and content owners. A page that ranks well on Google can still be invisible in Perplexity answers if it is not structured for retrieval, extraction, and citation. The optimization target has shifted from ranking in a list of links to becoming one of the few sources the model trusts enough to quote.</p>
+
+  <p>The fix is both technical and editorial. Make sure PerplexityBot can crawl your pages without hitting robots.txt blocks, firewall rules, or JavaScript rendering failures. Serve clean, parseable HTML that preserves logical structure. Write direct, specific, attributable answers rather than vague marketing copy. Add schema markup, visible authorship, and freshness signals that help the model trust your page. Build topical authority over time by covering your subject deeply and linking related content together.</p>
+
+  <p>This is not a one-time SEO project. It is a new operational discipline that sits between engineering, content, and product marketing. The teams that build it now will own the answers in their categories later, while competitors who ignore it will slowly become invisible in AI-generated search.</p>
+
+  <p>Start small. Pick one high-value page. Fetch it as PerplexityBot. Run a citation readiness audit. Rewrite the introduction to answer the target question directly. Add schema and an author byline. Update the date. Then re-audit and measure the improvement. Repeat this process across your most important pages, and you will build a site that Perplexity wants to cite.</p>
+
+  <p>For automated Perplexity and AEO audits at scale, use the <a href="/docs">Ollagraph AEO API</a>.</p>
+
+  <h2>References</h2>
+  <ul>
+    <li><a href="https://www.perplexity.ai/perplexitybot" target="_blank" rel="noopener">Perplexity — PerplexityBot</a></li>
+    <li><a href="/docs">Ollagraph — AEO API Documentation</a></li>
+    <li><a href="/blog/aeo-audit-for-ai-agents">Ollagraph — AEO Audit for AI Agents</a></li>
+    <li><a href="/blog/ai-citation-readiness">Ollagraph — AI Citation Readiness</a></li>
+    <li><a href="https://schema.org/Article" target="_blank" rel="noopener">Schema.org — Article</a></li>
+    <li><a href="https://schema.org/TechArticle" target="_blank" rel="noopener">Schema.org — TechArticle</a></li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc9309.html" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a></li>
+  </ul>
+</Article>
