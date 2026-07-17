@@ -90,25 +90,19 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-tight-latin.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="/fonts/inter-latin.woff2" crossorigin />
 
-    <!-- Critical nav CSS, inlined so the grouped dropdowns collapse and the mobile
-         toggle stays hidden on the very first paint — before styles.css applies.
-         Without this, an uncached first load briefly shows every dropdown item
-         expanded as a flat unstyled list (nav FOUC). styles.css reinforces these.
+    <!-- Critical nav CSS, inlined so the flat links lay out and the mobile burger
+         stays hidden on the very first paint — before styles.css applies (avoids a
+         brief nav FOUC on an uncached load). styles.css reinforces these.
          is:inline keeps Astro from scoping/bundling it — it must stay raw in <head>
          and match the set:html nav markup (which carries no scope attribute). -->
     <style is:inline>
       .nav-inner{height:64px;display:flex;align-items:center;gap:32px}
       .nav-links{display:flex;align-items:center;gap:4px;flex:1}
       .nav-right{display:flex;align-items:center;gap:8px}
-      .nav-group{position:relative;display:inline-flex}
-      .nav-dropdown{position:absolute;top:calc(100% + 6px);left:0;display:none}
-      .nav-group:hover .nav-dropdown,.nav-group:focus-within .nav-dropdown{display:flex}
       .nav-burger,.nav-mobile-cta{display:none}
       @media (max-width:920px){
         .nav-links{display:none;position:absolute;top:64px;left:0;right:0;flex-direction:column;align-items:stretch}
         .nav-links.open{display:flex}
-        .nav-group{display:block}
-        .nav-dropdown{position:static;display:flex}
         .nav-burger{display:inline-flex}
         .nav-hide-sm{display:none}
       }
@@ -148,9 +142,7 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
       })();
     </script>
     <!-- Nav accessibility: real button semantics for the mobile menu (aria-expanded),
-         click/touch-open + aria-expanded for the dropdown groups, Escape to close,
-         and aria-hidden on decorative icons. Progressive enhancement — CSS :hover /
-         :focus-within already open dropdowns without JS. -->
+         Escape to close, and aria-hidden on decorative icons. -->
     <script is:inline>
       (function () {
         var burger = document.querySelector('[data-nav-burger]');
@@ -168,21 +160,10 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
             }
           });
         }
-        document.querySelectorAll('.nav-group').forEach(function (g) {
-          var btn = g.querySelector('.nav-group-label');
-          if (!btn) return;
-          var set = function (v) { btn.setAttribute('aria-expanded', v ? 'true' : 'false'); };
-          g.addEventListener('mouseenter', function () { set(true); });
-          g.addEventListener('mouseleave', function () { set(false); });
-          g.addEventListener('focusin', function () { set(true); });
-          g.addEventListener('focusout', function () { if (!g.contains(document.activeElement)) set(false); });
-          btn.addEventListener('click', function () { set(g.classList.toggle('dd-open')); });
-        });
         document.addEventListener('keydown', function (e) {
           if (e.key !== 'Escape') return;
           if (menu) menu.classList.remove('open');
           if (burger) burger.setAttribute('aria-expanded', 'false');
-          document.querySelectorAll('.nav-group.dd-open').forEach(function (g) { g.classList.remove('dd-open'); });
         });
         // Hide purely decorative inline icons from assistive tech.
         document.querySelectorAll('svg:not([role]):not([aria-hidden])').forEach(function (s) {
