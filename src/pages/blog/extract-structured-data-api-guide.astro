@@ -1,0 +1,813 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is a structured data extraction API?", a: "A structured data extraction API is a service that takes a URL and a JSON schema from you, fetches the page, and returns typed data that matches the shape you defined. It handles the messy parts of web extraction — browser rendering, proxy rotation, anti-bot evasion, retries, and format cleanup — so you do not have to build that infrastructure yourself. The result is clean JSON you can send straight to a database, dashboard, or LLM." },
+  { q: "Do I need to know CSS or XPath?", a: "No. Schema-first extraction APIs infer fields from the descriptions and types in your JSON schema, so you rarely write selectors. You simply say what you want, such as price, title, or published date, and the engine maps those fields to the page. Selectors are still available for edge cases, but they are optional, not required." },
+  { q: "Can it handle JavaScript-rendered pages?", a: "Yes. Modern extraction APIs can launch a headless browser when you set render: true, which executes JavaScript just like a real user. This is essential for React, Vue, Angular, and any site that loads content after the initial page request. If a static fetch returns an empty skeleton, rendering is usually the first fix to try." },
+  { q: "What output formats are supported?", a: "Most structured extraction APIs return JSON because it is the easiest format for downstream systems to consume. Some providers also offer Markdown, CSV, or chunked LLM-ready output for RAG use cases. Choose JSON when you need typed records and Markdown when you need narrative text for embedding or summarization." },
+  { q: "How do I handle pagination?", a: "You can submit each page URL as a separate request in a batch, or use a crawl endpoint that follows next-page links automatically. For infinite scroll pages, the API can simulate scrolling until no new items appear. Either approach turns a multi-page list into a single structured dataset without manual looping." },
+  { q: "Is extracted data validated?", a: "Yes, as long as your schema includes types, required fields, enums, regex patterns, or other constraints. Validation catches bad records before they leave the API, so you get clear errors instead of silent nulls or malformed data in your pipeline. This makes extraction behave more like a typed API contract than a fragile scraper." },
+  { q: "What if a field is missing?", a: "Optional fields return null and the record still succeeds, while required fields cause the record to fail validation with a specific error. This gives you control over which fields are critical and which are secondary. It also prevents downstream systems from crashing on unexpected missing values." },
+  { q: "How fast is it?", a: "Static pages typically finish in under two seconds, while JavaScript-rendered pages take three to ten seconds depending on how heavy the site is. For large workloads, batch and async endpoints process many URLs in parallel and deliver results via webhook, so your application never blocks waiting for one page." },
+  { q: "Is web scraping legal?", a: "Legality depends on the target site, your location, and the data you collect. You should always respect robots.txt, the site's terms of service, and privacy regulations like GDPR and CCPA. If you are collecting personal, restricted, or commercially sensitive data, consult a lawyer before scaling." },
+  { q: "Can I use this for RAG or LLM pipelines?", a: "Yes. Structured JSON is ideal for knowledge bases, entity extraction, and LLM tool calls where precise fields matter. For unstructured long-form content, pair structured extraction with a Markdown or llm-ready scraping endpoint. Together they cover both records and narrative text." },
+  { q: "How do I choose a provider?", a: "Test each provider on your real URLs and compare success rate, latency, validation accuracy, and total cost per successful record. Run a sample of 100 to 1,000 pages and measure what actually works for your domains. Marketing claims rarely match production performance, so your own benchmark is the only reliable guide." },
+  { q: "What makes Ollagraph different?", a: "Ollagraph combines structured extraction, web scraping, document conversion, AEO audits, and MCP server access under a single API key and billing account. That means one integration, one support relationship, and one place to manage multiple data workflows. It is built for teams shipping AI agents, RAG systems, and data products that need more than just raw HTML." },
+];
+---
+<Article
+  title="Extract Structured Data from Any Website: API Guide for Developers"
+  description="Learn how to extract structured data from any website using a JSON schema and one API call. Compare approaches, see real code, and build reliable web data pipelines."
+  date="2026-07-18"
+  readingTime={28}
+  tags={["structured data extraction", "API", "web scraping", "JSON schema", "data pipeline"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <p>Most web data projects start with a simple question and end with a brittle parser. You need product prices, job listings, research citations, or real estate details from a website. The HTML is right there in the browser. So you write a CSS selector, run it on ten pages, and it works. Then the site redesigns, the class names change, a lazy-loading list breaks your loop, and your "simple" scraper becomes a maintenance nightmare that wakes you up at 2 a.m.</p>
+
+  <p>A structured data extraction API changes the game. Instead of writing brittle selectors, you describe the shape of the data you want — a JSON schema — and the API returns typed fields from any URL. The provider handles rendering, anti-bot protection, retries, and format normalization. You stop maintaining parsers and start consuming data.</p>
+
+  <p>In this guide you will learn what structured data extraction really means, why schema-first extraction beats selector-based scraping, how a modern extraction API works under the hood, how to design schemas that survive site changes, and how to build reliable pipelines with the Ollagraph API. We cover static pages, JavaScript-rendered apps, paginated lists, nested entities, validation, and the production patterns that separate a demo from a system you can trust.</p>
+
+  <p><strong>Key takeaway:</strong> Define the data shape you want once, in a JSON schema, and let the API do the extraction. Schema-first extraction is more maintainable, more accurate, and far easier to scale than writing and rewriting page-specific parsers.</p>
+
+  <h2>Key takeaways</h2>
+  <ul>
+    <li><strong>A structured data extraction API turns any public URL into typed JSON</strong> by applying a schema you define, so you get fields instead of raw HTML.</li>
+    <li><strong>Schema-first beats selector-first.</strong> Selectors break when the DOM changes; schemas describe intent and are resolved by the extraction engine.</li>
+    <li><strong>Rendering is not optional for modern sites.</strong> Many pages only expose their data after JavaScript runs, so the API must support headless browser extraction.</li>
+    <li><strong>Nested schemas handle real-world pages.</strong> Products have variants, jobs have requirements, papers have authors — your schema should model relationships, not flat rows.</li>
+    <li><strong>Validation belongs in the pipeline.</strong> Enforce types, required fields, and allowed values so bad extractions fail loudly instead of polluting downstream systems.</li>
+    <li><strong>Anti-bot handling should be automatic.</strong> The best APIs rotate proxies, manage fingerprints, and retry without the caller writing a line of networking code.</li>
+    <li><strong>Batch and async endpoints matter at scale.</strong> Synchronous calls are fine for prototypes; production pipelines need fan-out, webhooks, and durable retries.</li>
+    <li><strong>Ollagraph's /v1/extract/structured endpoint</strong> accepts a URL, a JSON schema, and optional rendering hints, then returns validated JSON you can insert directly into a database or feed to an LLM.</li>
+  </ul>
+
+  <h2>Problem statement</h2>
+  <p>You are building a price tracker, a lead enrichment tool, a research aggregator, or a knowledge base for an AI agent. Your source of truth is a website — or a thousand of them. The data is public, but it is not an API. It lives in HTML, behind JavaScript, inside tables, across paginated lists, and sometimes hidden behind login walls or anti-bot challenges.</p>
+
+  <p>The traditional approach is to inspect the page, find the right CSS selectors or XPath expressions, and write a parser. On a good day, this feels satisfying. On a bad day, it feels like archaeology. You dig through minified JavaScript, decode lazy-loaded JSON endpoints, and reverse-engineer infinite scroll. Then the website changes a class name and your entire pipeline breaks.</p>
+
+  <p>Here is a typical failure chain:</p>
+  <ol>
+    <li><strong>The selector dies silently.</strong> The page still returns HTML 200, but the <code>.price</code> class is now <code>.price-value</code>. Your script extracts nothing. Because the rest of your pipeline expects a number, it crashes three steps later with a confusing error that sends you hunting through logs.</li>
+    <li><strong>The data is in JavaScript, not HTML.</strong> You fetch the page with requests and the product list is empty. The real payload arrives as a fetch to <code>/api/products</code> that only fires inside a browser. Now you are running Playwright, managing browser sessions, and praying the site does not detect you.</li>
+    <li><strong>Pagination is inconsistent.</strong> Page one has a "Load more" button. Page two uses infinite scroll. Page three has a traditional pager. Your loop handles one case and fails on the others. You add special cases until the code is unreadable.</li>
+    <li><strong>The site blocks you.</strong> Your cloud server's IP is flagged. You add proxies. The proxies rotate too fast and the site serves a CAPTCHA. You add CAPTCHA solving. Your cost per page triples and your success rate still wobbles between 70% and 90%.</li>
+    <li><strong>The output is messy.</strong> Prices include currency symbols. Dates come in three formats. Phone numbers are missing country codes. Addresses are split across four fields in one record and two in another. You spend more time cleaning than extracting.</li>
+  </ol>
+
+  <p>These problems are not edge cases. They are the normal state of web data extraction. The real cost is not the first parser you write — it is the ongoing maintenance, the monitoring, the retries, and the data quality fixes.</p>
+
+  <p><strong>Who this article is for:</strong></p>
+  <ul>
+    <li>Data engineers building ingestion pipelines from public web sources.</li>
+    <li>ML engineers feeding structured web data into LLMs or RAG systems.</li>
+    <li>Product teams who need reliable price, job, real estate, or research data.</li>
+    <li>Founders evaluating extraction APIs versus building in-house scrapers.</li>
+  </ul>
+  <p>If you are tired of rewriting selectors every time a site redesigns, this guide is for you.</p>
+
+  <h2>History and context</h2>
+  <p>Web extraction has gone through the same cycle as most infrastructure problems: start simple, hit scale, then push complexity into a service.</p>
+
+  <p><strong>The regex era (late 1990s–early 2000s).</strong> Early scrapers treated HTML as a string. Regular expressions pulled out phone numbers, prices, and links. It was fragile but fast, and the web was simpler. Sites were mostly static, class names rarely changed, and bot detection barely existed.</p>
+
+  <p><strong>The DOM era (2000s–2010s).</strong> Libraries like Beautiful Soup and lxml made HTML traversal reliable. Scrapy introduced spiders, pipelines, and middleware. Teams could crawl entire domains. But they still owned every selector, every retry policy, and every proxy rotation.</p>
+
+  <p><strong>The API era (2010s–2020s).</strong> Many sites began offering official APIs. Where available, these were the right answer. But most of the web never exposed an API. And even when one existed, rate limits, missing fields, and terms of service made APIs incomplete. Scraping remained necessary.</p>
+
+  <p><strong>The JavaScript era (2015–present).</strong> React, Vue, and Angular moved content from server-rendered HTML into client-side bundles. Fetching the page was no longer enough; you had to execute it. Selenium, Puppeteer, and Playwright became standard tools. Extraction got slower, more expensive, and harder to operate at scale.</p>
+
+  <p><strong>The anti-bot arms race (2018–present).</strong> Cloudflare, Akamai, DataDome, and PerimeterX turned bot detection into a product. TLS fingerprinting, canvas fingerprinting, behavioral analysis, and managed challenges made naive scraping unreliable. Stealth patches, residential proxies, and managed browsers became table stakes.</p>
+
+  <p><strong>The LLM era (2023–present).</strong> Large language models created a new demand: extract structured data from messy, unstructured web content without writing brittle selectors. Early attempts used prompt-based extraction on raw HTML. They worked for simple pages and failed for complex ones. The next step was combining LLM understanding with reliable fetching and schema validation — exactly what a structured data extraction API provides today.</p>
+
+  <p>The through-line is clear: each generation pushed more operational complexity into shared infrastructure so developers could focus on the data, not the plumbing. A structured data extraction API is the current endpoint of that evolution. You describe what you want; the service handles how to get it.</p>
+
+  <h2>What is structured data extraction?</h2>
+  <p><strong>Definition:</strong> Structured data extraction is the process of converting unstructured or semi-structured web content — HTML, rendered JavaScript, PDFs, or images — into a typed, predictable format such as JSON by applying a predefined schema that describes the fields, types, and relationships you want to capture.</p>
+
+  <p>Break that down:</p>
+  <ul>
+    <li><strong>"Unstructured or semi-structured web content"</strong> — the source is not a clean API response. It is a page designed for humans, not machines.</li>
+    <li><strong>"Typed, predictable format"</strong> — the output has known field names, data types, and shapes. A price is a number. A date is ISO 8601. A list of authors is an array of objects.</li>
+    <li><strong>"Predefined schema"</strong> — you declare the target structure before extraction. The schema is the contract between you and the extraction engine.</li>
+    <li><strong>"Fields, types, and relationships"</strong> — good schemas model more than flat key-value pairs. They capture nested entities like product variants, job requirements, or citation metadata.</li>
+  </ul>
+
+  <p>Structured data extraction is different from raw scraping. Raw scraping gives you HTML or text and leaves the interpretation to you. Structured extraction gives you data you can use immediately: insert into a database, feed to an LLM, join with another dataset, or render in a dashboard.</p>
+
+  <p>It is also different from using a site's official API. An API is controlled by the site owner and exposes what they choose. Structured extraction lets you pull the data that is actually displayed on the page, which is often richer, more current, or simply unavailable through any official channel.</p>
+
+  <p><strong>Related terms:</strong></p>
+  <ul>
+    <li><strong>Web scraping API</strong> — fetches a page and returns content, usually HTML or Markdown. Structured extraction is a layer on top.</li>
+    <li><strong>Data extraction API</strong> — a broader term; may include document parsing, OCR, and table extraction as well as web pages.</li>
+    <li><strong>Schema extraction</strong> — the specific act of mapping page content to a schema.</li>
+    <li><strong>LLM extraction</strong> — using a language model to interpret page content and produce structured output. Modern APIs combine LLM extraction with deterministic validation.</li>
+  </ul>
+
+  <h2>Why schema-first extraction wins</h2>
+  <p>There are two ways to extract data from a web page. The old way is selector-first: inspect the DOM, write XPath or CSS selectors, and parse the text. The new way is schema-first: describe the desired output and let the engine figure out how to fill it.</p>
+
+  <p><strong>Selector-first extraction has 3 fatal weaknesses:</strong></p>
+  <ul>
+    <li><strong>It couples your code to the page layout.</strong> A class name change, a redesign, or an A/B test breaks your parser. You do not own the page, so every change is an incident.</li>
+    <li><strong>It does not handle ambiguity well.</strong> If a site shows prices differently on sale pages, bundles product variants in a dropdown, or puts dates in relative form like "2 days ago," selectors extract strings and leave the interpretation to you.</li>
+    <li><strong>It does not scale across sites.</strong> A selector that works for Amazon will not work for eBay. Each new domain requires a new parser. A team managing hundreds of sources ends up with hundreds of fragile scripts.</li>
+  </ul>
+
+  <p><strong>Schema-first extraction solves these problems by separating intent from implementation.</strong></p>
+  <ul>
+    <li><strong>Intent is stable.</strong> You want price, currency, availability, and rating. That intent does not change when the site redesigns.</li>
+    <li><strong>Implementation is delegated.</strong> The extraction engine maps your schema to the page using a mix of DOM analysis, computer vision, language models, and heuristics. When the layout changes, the engine adapts; your schema stays the same.</li>
+    <li><strong>Output is typed.</strong> The schema declares that price is a number and published_at is a date. The engine normalizes formats, strips currency symbols, and converts relative dates. You get clean data, not raw strings.</li>
+    <li><strong>Validation is built in.</strong> Required fields, allowed values, and regex patterns catch bad extractions before they reach your database. A missing price becomes a failed job with a clear error, not a silent null that breaks a report.</li>
+  </ul>
+
+  <p>The trade-off is control. Selector-first gives you pixel-perfect control over exactly which element is read. Schema-first gives you robustness and scale. For most production pipelines, that trade-off is worth it.</p>
+
+  <h2>Architecture of a structured data extraction API</h2>
+  <p>A modern structured data extraction API is not a single function. It is a pipeline that combines fetching, rendering, parsing, extraction, validation, and delivery. Understanding the architecture helps you debug failures and design better schemas.</p>
+
+  <h3>High-level flow</h3>
+  <p>User request → URL + schema + options → Fetch layer (static or headless) → Render layer (if JS required) → Anti-bot layer (proxies, fingerprints, retries) → Content normalization (HTML cleanup, table flattening) → Extraction engine (DOM + vision + LLM) → Schema validation → Typed JSON output → Webhook or synchronous response</p>
+
+  <h3>The fetch layer</h3>
+  <p>The fetch layer retrieves the target page. For static sites, a simple HTTP request is enough. For JavaScript-rendered sites, the API launches a headless browser, loads the page, waits for the DOM to stabilize, and optionally executes actions like clicks or scrolls.</p>
+  <p>The key decision is whether to render. Rendering is slower and more expensive, but many modern pages are unusable without it. A smart API can auto-detect whether rendering is needed or let you force it with a parameter.</p>
+
+  <h3>The anti-bot layer</h3>
+  <p>The anti-bot layer manages the identity of the request. It rotates IP addresses, varies user agents and headers, mimics real browser TLS fingerprints, and handles CAPTCHAs or challenge pages. The best APIs do this transparently: you do not configure proxies or solve puzzles; you just get the data.</p>
+
+  <h3>Content normalization</h3>
+  <p>Raw HTML is noisy. It contains navigation, ads, footers, popups, and inline scripts. The normalization layer removes boilerplate, repairs malformed markup, and converts tables and lists into clean structures. This step is critical because extraction quality depends on the quality of the input.</p>
+
+  <h3>The extraction engine</h3>
+  <p>The extraction engine maps the normalized content to your schema. It may use:</p>
+  <ul>
+    <li><strong>DOM heuristics</strong> for well-structured pages with clear labels.</li>
+    <li><strong>Computer vision</strong> for pages where visual layout carries meaning.</li>
+    <li><strong>Language models</strong> for ambiguous text, natural language fields, or complex relationships.</li>
+    <li><strong>Hybrid approaches</strong> that combine all three and vote on the best answer.</li>
+  </ul>
+  <p>The engine returns candidate values for each schema field. A confidence score may accompany each value.</p>
+
+  <h3>Schema validation</h3>
+  <p>The validation layer checks the extracted values against your schema. Types are enforced. Required fields are verified. Regex patterns catch malformed values. Allowed-value lists reject unexpected categories. Records that fail validation are flagged so you can inspect or retry them.</p>
+
+  <h3>Delivery</h3>
+  <p>For single pages, the API returns JSON synchronously. For large jobs, it accepts a batch of URLs, processes them in parallel, and delivers results via webhook or polling endpoint. Async delivery is essential for production pipelines.</p>
+
+  <h2>Core components and workflow</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Responsibility</th>
+        <th>Why it matters</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>URL queue</td>
+        <td>Accepts one URL or thousands, deduplicates, and prioritizes</td>
+        <td>Prevents duplicate work and controls load</td>
+      </tr>
+      <tr>
+        <td>Fetcher</td>
+        <td>Retrieves static HTML or renders JavaScript</td>
+        <td>Determines whether the page content is reachable</td>
+      </tr>
+      <tr>
+        <td>Anti-bot manager</td>
+        <td>Handles proxies, fingerprints, CAPTCHAs, retries</td>
+        <td>Keeps success rates high without manual intervention</td>
+      </tr>
+      <tr>
+        <td>Normalizer</td>
+        <td>Cleans HTML, removes noise, repairs structure</td>
+        <td>Improves extraction accuracy</td>
+      </tr>
+      <tr>
+        <td>Extraction engine</td>
+        <td>Maps content to schema fields</td>
+        <td>The core intelligence of the service</td>
+      </tr>
+      <tr>
+        <td>Validator</td>
+        <td>Enforces types, required fields, and constraints</td>
+        <td>Catches bad data before it leaves the pipeline</td>
+      </tr>
+      <tr>
+        <td>Output formatter</td>
+        <td>Returns JSON, Markdown, or chunked LLM-ready output</td>
+        <td>Matches the downstream use case</td>
+      </tr>
+      <tr>
+        <td>Webhook dispatcher</td>
+        <td>Delivers async results</td>
+        <td>Enables reliable large-scale processing</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>End-to-end workflow</h3>
+  <ol>
+    <li><strong>Define the schema.</strong> Decide what fields you need, their types, and which are required. Model nested entities like authors, variants, or specifications.</li>
+    <li><strong>Submit the URL and schema.</strong> Call the extraction API with the target URL, schema, and options such as rendering mode and timeout.</li>
+    <li><strong>The API fetches and renders.</strong> The provider handles all networking and browser work.</li>
+    <li><strong>Content is normalized.</strong> Boilerplate is removed and structure is repaired.</li>
+    <li><strong>Fields are extracted.</strong> The engine fills the schema using DOM, vision, and language model signals.</li>
+    <li><strong>Validation runs.</strong> Bad records are flagged with specific errors.</li>
+    <li><strong>You receive typed JSON.</strong> Insert it into a database, pass it to an LLM, or transform it further.</li>
+  </ol>
+  <p>This workflow turns a historically messy problem into a clean API contract.</p>
+
+  <h2>Designing a JSON schema for web extraction</h2>
+  <p>A good schema is the difference between useful data and garbage. Here are the principles we have learned from running extraction at scale.</p>
+
+  <h3>Be explicit about types</h3>
+  <p>Do not let the engine guess. If a field is a number, say so. If it is a date, specify the format. If it is a boolean, define what true and false mean.</p>
+
+  <pre><code>{
+  "price": { "type": "number", "description": "Numeric price without currency symbol" },
+  "currency": { "type": "string", "enum": ["USD", "EUR", "GBP"] },
+  "in_stock": { "type": "boolean" },
+  "published_at": { "type": "string", "format": "date" }
+}</code></pre>
+
+  <h3>Use descriptions as extraction hints</h3>
+  <p>The extraction engine reads field descriptions. A good description is not documentation for humans — it is guidance for the model. Be specific.</p>
+  <p>Instead of <code>"description": "The price"</code>, write <code>"description": "The current selling price, excluding shipping and tax, as a number"</code>.</p>
+
+  <h3>Model nested entities</h3>
+  <p>Real data is not flat. A product has variants. A job post has requirements. A research paper has authors and references. Use arrays and objects.</p>
+
+  <pre><code>{
+  "product": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string" },
+      "variants": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sku": { "type": "string" },
+            "size": { "type": "string" },
+            "price": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}</code></pre>
+
+  <h3>Mark required fields</h3>
+  <p>Required fields force the engine to either find the data or fail. This is better than silently returning nulls that break downstream logic.</p>
+
+  <h3>Add constraints</h3>
+  <p>Use <code>enum</code>, <code>pattern</code>, <code>minimum</code>, <code>maximum</code>, and <code>minLength</code> to enforce business rules. A price should not be negative. A country code should match a known list. An email should pass a regex.</p>
+
+  <h3>Include fallback fields</h3>
+  <p>Sometimes a page has partial data. Include optional fields for secondary information so the engine can capture what is available without failing the whole record.</p>
+
+  <h3>Keep schemas stable</h3>
+  <p>Resist the urge to change field names every week. Stable schemas let downstream consumers trust the contract. If you need new fields, add them; do not rename existing ones without a migration plan.</p>
+
+  <h2>Configuration and setup</h2>
+
+  <h3>Prerequisites</h3>
+  <ul>
+    <li>An API key from your provider.</li>
+    <li>A target URL to test against.</li>
+    <li>A JSON schema describing the data you want.</li>
+    <li>A tool to make HTTP requests: curl, Python requests, or an SDK.</li>
+  </ul>
+
+  <h3>Getting an API key</h3>
+  <p>Sign up at the provider's dashboard, create a project, and copy the API key. Store it in an environment variable, never in source code.</p>
+  <pre><code>export OLLAGRAPH_API_KEY="ollagraph_live_..."</code></pre>
+
+  <h3>Choosing an endpoint</h3>
+  <p>Most providers offer several extraction endpoints:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Endpoint</th>
+        <th>Use case</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>POST /v1/extract/structured</code></td>
+        <td>Single URL, synchronous, schema-driven JSON</td>
+      </tr>
+      <tr>
+        <td><code>POST /v1/extract/structured/batch</code></td>
+        <td>Many URLs in one request</td>
+      </tr>
+      <tr>
+        <td><code>POST /v1/extract/structured/async</code></td>
+        <td>Large jobs with webhook delivery</td>
+      </tr>
+      <tr>
+        <td><code>POST /v1/scrape/llm-ready</code></td>
+        <td>When you want chunked Markdown for RAG instead of JSON</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>Start with the synchronous endpoint. Move to batch or async when you are processing more than a few dozen URLs per minute.</p>
+
+  <h3>Common options</h3>
+  <ul>
+    <li><code>render: true</code> to force headless browser rendering.</li>
+    <li><code>stealth</code>: enable anti-bot evasion.</li>
+    <li><code>proxy_country</code>: restrict proxy exit nodes to a country.</li>
+    <li><code>timeout</code>: maximum wait time in seconds.</li>
+    <li><code>actions</code>: browser actions to perform before extraction, such as clicking a cookie banner or scrolling a list.</li>
+    <li><code>schema</code>: the JSON schema describing desired output.</li>
+  </ul>
+
+  <h2>Examples: from URL to typed JSON</h2>
+
+  <h3>Example 1: Extract product details</h3>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/extract/structured \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/products/wireless-headphones",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "brand": { "type": "string" },
+        "price": { "type": "number" },
+        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP"] },
+        "rating": { "type": "number", "minimum": 0, "maximum": 5 },
+        "review_count": { "type": "integer" },
+        "in_stock": { "type": "boolean" },
+        "description": { "type": "string" }
+      },
+      "required": ["name", "price", "currency"]
+    },
+    "render": true
+  }'</code></pre>
+
+  <p><strong>Expected response:</strong></p>
+  <pre><code>{
+  "status": "success",
+  "url": "https://example.com/products/wireless-headphones",
+  "data": {
+    "name": "Studio Pro Wireless Headphones",
+    "brand": "AudioTech",
+    "price": 249.99,
+    "currency": "USD",
+    "rating": 4.7,
+    "review_count": 1284,
+    "in_stock": true,
+    "description": "Over-ear wireless headphones with active noise cancellation and 30-hour battery life."
+  }
+}</code></pre>
+
+  <h3>Example 2: Extract job postings</h3>
+
+  <pre><code>import requests
+
+schema = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "company": {"type": "string"},
+        "location": {"type": "string"},
+        "employment_type": {"type": "string", "enum": ["Full-time", "Part-time", "Contract", "Internship"]},
+        "salary_min": {"type": "number"},
+        "salary_max": {"type": "number"},
+        "currency": {"type": "string"},
+        "requirements": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "posted_at": {"type": "string", "format": "date"}
+    },
+    "required": ["title", "company"]
+}
+
+response = requests.post(
+    "https://api.ollagraph.com/v1/extract/structured",
+    headers={"Authorization": f"Bearer {api_key}"},
+    json={"url": "https://example.com/jobs/software-engineer", "schema": schema, "render": True}
+)
+print(response.json())</code></pre>
+
+  <h3>Example 3: Extract research paper metadata</h3>
+
+  <pre><code>{
+  "url": "https://example.com/papers/attention-is-all-you-need",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "title": { "type": "string" },
+      "authors": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "published_at": { "type": "string", "format": "date" },
+      "abstract": { "type": "string" },
+      "doi": { "type": "string" },
+      "keywords": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "required": ["title", "authors"]
+  }
+}</code></pre>
+
+  <p>These examples share a pattern: you describe the shape, the API fills it, and you get typed JSON back.</p>
+
+  <h2>Handling JavaScript-rendered and dynamic pages</h2>
+  <p>Modern websites are increasingly JavaScript applications. The HTML you fetch with a simple request is often a skeleton. The real content loads after the browser executes JavaScript, makes API calls, and renders components.</p>
+
+  <h3>When to render</h3>
+  <p>Render when:</p>
+  <ul>
+    <li>The page is built with React, Vue, Angular, or another SPA framework.</li>
+    <li>Content appears after scrolling, clicking, or waiting.</li>
+    <li>The data you want is loaded by a separate XHR or fetch request.</li>
+    <li>A quick static fetch returns empty or incomplete HTML.</li>
+  </ul>
+
+  <h3>How to render</h3>
+  <p>Set <code>render: true</code> in your request. The API launches a headless browser, loads the page, waits for the DOM to reach a stable state, and then runs extraction.</p>
+
+  <h3>Waiting for specific elements</h3>
+  <p>Some pages load content asynchronously. You can tell the API to wait for a specific selector or a minimum time before extracting.</p>
+
+  <pre><code>{
+  "url": "https://example.com/products",
+  "render": true,
+  "wait_for": ".product-list",
+  "timeout": 30
+}</code></pre>
+
+  <h3>Browser actions</h3>
+  <p>Sometimes you need to interact with the page before the data appears. Common actions include clicking a cookie accept button, expanding an accordion, selecting a dropdown option, or scrolling to trigger infinite load.</p>
+
+  <pre><code>{
+  "url": "https://example.com/products",
+  "render": true,
+  "actions": [
+    {"type": "click", "selector": "#accept-cookies"},
+    {"type": "scroll", "selector": ".product-list", "times": 3},
+    {"type": "wait", "milliseconds": 2000}
+  ]
+}</code></pre>
+
+  <p>Actions make the API behave like a user. Use them sparingly; each action adds latency and cost.</p>
+
+  <h2>Pagination, lists, and nested entities</h2>
+  <p>Most useful data is not on a single page. It is spread across lists, search results, and paginated archives. A good extraction API must handle this.</p>
+
+  <h3>Extracting a list from one page</h3>
+  <p>If the page contains a list of items, define the schema as an array.</p>
+
+  <pre><code>{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "products": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "price": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}</code></pre>
+
+  <h3>Crawling paginated results</h3>
+  <p>For paginated lists, submit each page URL separately or use a crawl endpoint that follows pagination links. Some APIs accept a start URL and a pattern for next-page links.</p>
+
+  <pre><code>{
+  "url": "https://example.com/jobs?page=1",
+  "crawl": {
+    "max_pages": 10,
+    "next_page_selector": "a.next-page"
+  }
+}</code></pre>
+
+  <h3>Handling infinite scroll</h3>
+  <p>Infinite scroll loads more items as the user scrolls. The API can simulate repeated scroll actions until no new items appear or a maximum is reached.</p>
+
+  <pre><code>{
+  "url": "https://example.com/search",
+  "render": true,
+  "actions": [
+    {"type": "scroll", "selector": "body", "times": 10, "pause": 1000}
+  ]
+}</code></pre>
+
+  <h3>Nested entities</h3>
+  <p>Do not flatten what should be nested. A real estate listing has an address object. A product has a reviews array. A course has a syllabus with lessons. Nested schemas preserve relationships and make downstream processing easier.</p>
+
+  <h2>Validation, error handling, and quality checks</h2>
+  <p>Extraction is probabilistic. Pages vary, layouts change, and sometimes data is simply missing. A production pipeline must detect and handle failures gracefully.</p>
+
+  <h3>Schema validation</h3>
+  <p>Use JSON Schema constraints to enforce data quality at the source. Required fields, types, enums, and patterns catch most problems immediately.</p>
+
+  <h3>Common error types</h3>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Error</th>
+        <th>Cause</th>
+        <th>Fix</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>fetch_failed</code></td>
+        <td>The page could not be retrieved</td>
+        <td>Check URL, retry, or use a different proxy</td>
+      </tr>
+      <tr>
+        <td><code>render_timeout</code></td>
+        <td>The page did not stabilize in time</td>
+        <td>Increase timeout or simplify actions</td>
+      </tr>
+      <tr>
+        <td><code>blocked</code></td>
+        <td>Anti-bot challenge was encountered</td>
+        <td>Enable stealth or residential proxies</td>
+      </tr>
+      <tr>
+        <td><code>validation_failed</code></td>
+        <td>Extracted data did not match schema</td>
+        <td>Relax schema or inspect page structure</td>
+      </tr>
+      <tr>
+        <td><code>field_missing</code></td>
+        <td>A required field was not found</td>
+        <td>Make field optional or add fallback logic</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Retry strategy</h3>
+  <p>Retry transient failures with exponential backoff. Do not retry validation failures blindly; inspect them first. Use async endpoints for large jobs so retries do not block your application.</p>
+
+  <h3>Quality checks</h3>
+  <p>After extraction, run sanity checks:</p>
+  <ul>
+    <li>Are required fields present?</li>
+    <li>Do numeric fields fall in expected ranges?</li>
+    <li>Are dates parseable and reasonable?</li>
+    <li>Are foreign keys consistent across records?</li>
+  </ul>
+  <p>Log failures and alert when success rates drop below a threshold.</p>
+
+  <h2>Performance and benchmarks</h2>
+  <p>Structured extraction is slower than a raw HTTP fetch because it may render a browser, run a model, and validate output. Understanding the cost model helps you budget and optimize.</p>
+
+  <h3>Latency expectations</h3>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Operation</th>
+        <th>Typical latency</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Static fetch + extraction</td>
+        <td>500 ms – 2 s</td>
+        <td>Fastest path for simple pages</td>
+      </tr>
+      <tr>
+        <td>Headless render + extraction</td>
+        <td>3 s – 10 s</td>
+        <td>Depends on page complexity and JS load</td>
+      </tr>
+      <tr>
+        <td>Batch of 100 URLs</td>
+        <td>10 s – 60 s</td>
+        <td>Parallelized, delivered async</td>
+      </tr>
+      <tr>
+        <td>Complex nested schema</td>
+        <td>2 s – 8 s</td>
+        <td>More fields and nesting add processing time</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Throughput</h3>
+  <p>Throughput depends on concurrency limits, proxy pools, and target site tolerance. A well-designed API can process thousands of pages per hour. For very large jobs, use async batch endpoints and webhooks.</p>
+
+  <h3>Cost drivers</h3>
+  <ul>
+    <li><strong>Rendering:</strong> headless browser pages cost more than static fetches.</li>
+    <li><strong>Anti-bot:</strong> residential proxies and CAPTCHA solving add cost.</li>
+    <li><strong>Model usage:</strong> LLM-based extraction is more expensive than heuristic extraction.</li>
+    <li><strong>Volume:</strong> most providers offer tiered pricing; high volume lowers per-page cost.</li>
+  </ul>
+
+  <h3>Benchmarking your own workload</h3>
+  <p>Do not trust vendor benchmarks alone. Measure:</p>
+  <ul>
+    <li>Success rate per domain.</li>
+    <li>Average latency per page type.</li>
+    <li>Validation failure rate.</li>
+    <li>Cost per successful record.</li>
+  </ul>
+  <p>Run a representative sample of 100–1,000 URLs and compare providers on these metrics. The cheapest option is rarely the most reliable.</p>
+
+  <h2>Security and legal considerations</h2>
+  <p>Extracting data from websites carries responsibilities. Do it wrong and you risk legal exposure, blocked IPs, and reputational damage.</p>
+
+  <h3>Respect robots.txt</h3>
+  <p>Check the target site's robots.txt before crawling. Avoid pages that are explicitly disallowed. This is not just good citizenship; it reduces the chance of being blocked.</p>
+
+  <h3>Terms of service</h3>
+  <p>Read the target site's terms of service. Some sites prohibit scraping entirely. Others allow it for personal or non-commercial use. When in doubt, seek legal advice.</p>
+
+  <h3>Do not overload servers</h3>
+  <p>Use reasonable concurrency and rate limits. A structured extraction API should throttle requests to avoid hammering target sites. Aggressive scraping can get you blocked and harm the provider's proxy pool.</p>
+
+  <h3>Handle personal data carefully</h3>
+  <p>If you extract names, emails, addresses, or other personal information, you may be subject to GDPR, CCPA, or other privacy laws. Minimize collection, secure storage, and document your lawful basis.</p>
+
+  <h3>Secure your API key</h3>
+  <p>Treat your extraction API key like any other secret. Store it in a vault or environment variable. Rotate it regularly. Monitor usage for anomalies.</p>
+
+  <h2>Troubleshooting</h2>
+  <p>Even with a good API, things go wrong. Here is how to diagnose the most common issues.</p>
+
+  <h3>The response is empty or partial</h3>
+  <ul>
+    <li>Check whether the page requires JavaScript. Try <code>render: true</code>.</li>
+    <li>Verify the URL is publicly accessible and not behind a login wall.</li>
+    <li>Inspect whether the content loads after a user action. Add browser actions.</li>
+  </ul>
+
+  <h3>Validation keeps failing</h3>
+  <ul>
+    <li>Loosen required fields temporarily to see what the engine actually extracts.</li>
+    <li>Inspect the raw page content to confirm the data exists.</li>
+    <li>Adjust field descriptions to guide the engine.</li>
+  </ul>
+
+  <h3>Success rate drops on one domain</h3>
+  <ul>
+    <li>The site may have changed its layout or anti-bot defenses.</li>
+    <li>Enable stealth mode or residential proxies.</li>
+    <li>Reduce concurrency and add delays between requests.</li>
+  </ul>
+
+  <h3>Latency is too high</h3>
+  <ul>
+    <li>Avoid rendering unless necessary.</li>
+    <li>Reduce the number of browser actions.</li>
+    <li>Use batch endpoints instead of many synchronous calls.</li>
+  </ul>
+
+  <h3>Data quality is inconsistent</h3>
+  <ul>
+    <li>Add more constraints to your schema.</li>
+    <li>Run post-extraction sanity checks.</li>
+    <li>Compare results across a sample of pages to spot outliers.</li>
+  </ul>
+
+  <h2>Best practices</h2>
+  <ul>
+    <li><strong>Start simple.</strong> Define a small schema with required fields, test it on a few URLs, and expand once it is reliable.</li>
+    <li><strong>Use rendering only when needed.</strong> Static extraction is faster and cheaper. Enable rendering only after a static fetch fails.</li>
+    <li><strong>Design schemas for stability.</strong> Describe intent, not layout. Avoid field names tied to current DOM classes.</li>
+    <li><strong>Validate aggressively.</strong> Required fields and constraints catch problems early.</li>
+    <li><strong>Handle failures explicitly.</strong> Log errors, alert on drops, and retry transient failures.</li>
+    <li><strong>Use async for scale.</strong> Batch and webhook endpoints are built for production volume.</li>
+    <li><strong>Monitor cost per record.</strong> Track extraction cost against business value, not just API spend.</li>
+    <li><strong>Respect target sites.</strong> Follow robots.txt, rate limits, and terms of service.</li>
+    <li><strong>Version your schemas.</strong> Treat schemas like API contracts. Use versioning to avoid breaking downstream consumers.</li>
+    <li><strong>Test continuously.</strong> Run a daily or weekly sample extraction to detect site changes before they break production.</li>
+  </ul>
+
+  <h2>Common mistakes</h2>
+  <ol>
+    <li><strong>Writing page-specific selectors inside a schema-first API.</strong> If you are still hand-crafting XPath, you are not getting the full benefit. Let the engine resolve fields from intent.</li>
+    <li><strong>Over-specifying the schema.</strong> Requiring twenty fields on a page that only reliably exposes ten leads to constant validation failures. Start with the fields that matter most.</li>
+    <li><strong>Ignoring rendering.</strong> Many failures are simply because the page is a JavaScript app. Always test with <code>render: true</code> before debugging the schema.</li>
+    <li><strong>Flattening nested data.</strong> A product with variants should not become five separate records with duplicated names. Model relationships properly.</li>
+    <li><strong>Skipping validation.</strong> Untyped JSON is a liability. Enforce types and constraints at the extraction layer.</li>
+    <li><strong>Running everything synchronously.</strong> Sync calls are fine for demos. At scale they create backpressure and timeouts. Use async.</li>
+    <li><strong>Not monitoring success rates.</strong> A silent 60% success rate is worse than a loud failure. Track and alert.</li>
+  </ol>
+
+  <h2>Alternatives and comparison</h2>
+  <p>There are several ways to extract structured data from websites. Each has a place.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Approach</th>
+        <th>Best for</th>
+        <th>Downsides</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Official API</td>
+        <td>Clean, authorized data</td>
+        <td>Often incomplete, rate-limited, or unavailable</td>
+      </tr>
+      <tr>
+        <td>Selector-based scraping</td>
+        <td>Full control over parsing</td>
+        <td>Brittle, high maintenance, scales poorly</td>
+      </tr>
+      <tr>
+        <td>LLM prompt extraction</td>
+        <td>Ambiguous or unstructured text</td>
+        <td>Expensive, slower, may hallucinate</td>
+      </tr>
+      <tr>
+        <td>Structured data extraction API</td>
+        <td>Reliable, scalable, schema-driven</td>
+        <td>Less control than custom selectors</td>
+      </tr>
+      <tr>
+        <td>Browser automation tools</td>
+        <td>Complex interactions</td>
+        <td>Heavy operational burden</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>When to choose Ollagraph</h3>
+  <p>Choose Ollagraph when you want one API that handles fetching, rendering, anti-bot evasion, extraction, and validation. It is especially strong for teams building AI agents, RAG pipelines, or data products that need to extract from many different domains without maintaining a parser farm.</p>
+
+  <h3>When to build in-house</h3>
+  <p>Build in-house if scraping is your core product, you target a small number of domains you fully control, or you need highly specialized behavior that no API exposes. Be honest about the operational cost: proxies, browsers, retries, and monitoring are not free.</p>
+
+  <h2>Enterprise and cloud deployment</h2>
+
+  <h3>Scaling considerations</h3>
+  <p>At enterprise scale, extraction is not a single API call. It is a pipeline with queues, workers, retries, and observability.</p>
+  <ul>
+    <li>Use async batch endpoints for large URL lists.</li>
+    <li>Store jobs in a durable queue such as SQS, RabbitMQ, or Kafka.</li>
+    <li>Process results with webhook handlers that validate, transform, and load data.</li>
+    <li>Maintain separate schemas per domain or use case.</li>
+  </ul>
+
+  <h3>Multi-tenant usage</h3>
+  <p>If you serve multiple customers, isolate schemas and API keys per tenant. Track usage and success rates per tenant for billing and debugging.</p>
+
+  <h3>Observability</h3>
+  <p>Monitor:</p>
+  <ul>
+    <li>Requests per minute and per domain.</li>
+    <li>Success rate and validation failure rate.</li>
+    <li>Average latency and p99 latency.</li>
+    <li>Cost per successful record.</li>
+    <li>Error breakdown by type.</li>
+  </ul>
+  <p>Good observability turns extraction from a black box into a managed service.</p>
+
+  <h2>Conclusion</h2>
+  <p>Extracting structured data from websites does not have to mean maintaining a graveyard of brittle parsers. A schema-first extraction API lets you define the data you want, submit a URL, and receive typed JSON that is ready for databases, dashboards, or LLMs. The provider owns the rendering, anti-bot, retry, and normalization complexity. You own the schema and the business logic.</p>
+
+  <p>Start with a small, stable schema and a few test URLs. Use static extraction first, enable rendering only when needed, and move to batch or async endpoints as volume grows. Validate aggressively, monitor success rates, and respect the sites you extract from.</p>
+
+  <p>If you are building AI agents, RAG pipelines, or data products that depend on web content, structured data extraction is one of the highest-leverage tools you can adopt. It turns the messy web into clean, usable data — one API call at a time.</p>
+
+  <p><strong>Next step:</strong> Try the Ollagraph <code>/v1/extract/structured</code> endpoint with a URL and schema from your own project. Then read the Web Scraping API guide to learn how to fetch and render pages at scale.</p>
+
+  <h2>References</h2>
+  <ul>
+    <li><a href="/docs">Ollagraph API documentation</a></li>
+    <li><a href="/docs/extract/structured">Ollagraph /v1/extract/structured reference</a></li>
+    <li><a href="https://json-schema.org/" target="_blank" rel="noopener">JSON Schema specification</a></li>
+    <li><a href="https://www.robotstxt.org/orig.html" target="_blank" rel="noopener">robots.txt specification</a></li>
+    <li><a href="https://playwright.dev/" target="_blank" rel="noopener">Playwright documentation</a></li>
+    <li><a href="https://www.cloudflare.com/application-services/products/bot-management/" target="_blank" rel="noopener">Cloudflare bot management overview</a></li>
+    <li><a href="https://gdpr.eu/" target="_blank" rel="noopener">GDPR guidance on web scraping and personal data</a></li>
+  </ul>
+</Article>
