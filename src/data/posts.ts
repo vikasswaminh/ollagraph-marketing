@@ -23,3 +23,4 @@ export const posts: PostMeta[] = [
   { slug: "scraping-zillow-in-2026", title: "Scraping Zillow in 2026: what works, what fails, what to do about it", description: "An honest look at the bot defenses, embedded payload extraction, and the three working strategies for getting Zillow data into a production pipeline.", date: "2026-05-16", readingTime: 11, tags: ["real estate", "Zillow", "anti-bot"] },
   { slug: "aeo-vs-seo-2026", title: "AEO vs SEO in 2026: optimizing for AI answer engines", description: "Answer Engine Optimization is the new layer on top of SEO. What changes, what stays the same, and how to measure whether AI engines can actually cite you.", date: "2026-06-18", readingTime: 10, tags: ["AEO", "SEO", "AI search"] },
 ];
+
