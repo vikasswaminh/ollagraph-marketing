@@ -1,21 +1,32 @@
 #!/bin/bash
 set -e
-cd /workspace
+cd /root/site
 
-echo "=== git status before ===" > /tmp/deploy_result.txt
-git status --porcelain >> /tmp/deploy_result.txt 2>&1
+echo "=== git status before ==="
+git status --porcelain
 
-echo "=== git add ===" >> /tmp/deploy_result.txt
-git add src/pages/blog/extract-structured-data-api-guide.astro src/data/posts.ts >> /tmp/deploy_result.txt 2>&1
+echo ""
+echo "=== git add (blog post + posts manifest) ==="
+git add src/pages/blog/extract-structured-data-api-guide.astro src/data/posts.ts
 
-echo "=== git status after add ===" >> /tmp/deploy_result.txt
-git status --porcelain >> /tmp/deploy_result.txt 2>&1
+echo ""
+echo "=== git status after add ==="
+git status --porcelain
 
-echo "=== git commit ===" >> /tmp/deploy_result.txt
-git commit -m "Add blog post: Extract Structured Data from Any Website API Guide" >> /tmp/deploy_result.txt 2>&1
+echo ""
+echo "=== git commit ==="
+git commit -m "Add blog post: Extract Structured Data from Any Website API Guide"
 
-echo "=== git push ===" >> /tmp/deploy_result.txt
-git push origin main >> /tmp/deploy_result.txt 2>&1
+echo ""
+echo "=== git push ==="
+git push origin main
 
-echo "=== done ===" >> /tmp/deploy_result.txt
-echo "SUCCESS" >> /tmp/deploy_result.txt
+echo ""
+echo "=== npm run deploy (build + wrangler + targeted cache purge) ==="
+# PURGE_URLS env var tells purge-cache.mjs to only purge the blog URLs,
+# avoiding a full purge_everything that would evict the entire edge cache.
+PURGE_URLS="https://ollagraph.com/blog/,https://ollagraph.com/blog/extract-structured-data-api-guide/" npm run deploy
+
+echo ""
+echo "=== DONE ==="
+echo "Blog post deployed successfully with targeted CDN purge only."
