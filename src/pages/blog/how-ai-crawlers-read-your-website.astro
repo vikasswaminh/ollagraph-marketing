@@ -1,0 +1,499 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is an AI crawler?", a: "An AI crawler is a bot that fetches web pages and extracts text for large language models. It reads raw HTML, strips decoration, and converts content into chunks models can retrieve. Examples include GPTBot, OAI-SearchBot, ClaudeBot, and PerplexityBot. Unlike human browsers, AI crawlers care about structure and text, not visuals." },
+  { q: "How is an AI crawler different from Googlebot?", a: "Googlebot renders JavaScript deeply and ranks whole pages using hundreds of signals. AI crawlers usually fetch static HTML and focus on extracting citable passages. Their success is measured by citation frequency, not search position. The unit of value is the passage, not the page." },
+  { q: "Do AI crawlers execute JavaScript?", a: "Most AI crawlers do not execute JavaScript, or only in a very limited way. If your content renders client-side, crawlers may see an empty or partial page. Server-side rendering puts the answer text into the initial HTML. That is the safest way to ensure AI crawlers can read your content." },
+  { q: "Will blocking GPTBot prevent me from being cited by ChatGPT?", a: "No, blocking GPTBot does not stop ChatGPT from citing your page. GPTBot is used to train future models, not to power live search citations. ChatGPT search uses OAI-SearchBot and ChatGPT-User for citations. You can block GPTBot while allowing the search and browsing bots." },
+  { q: "What is llms.txt and do I need one?", a: "llms.txt is a markdown file at your domain root that points AI systems to your best content. It acts like a curated directory for language models, not a replacement for crawlable pages. It is optional but useful for signaling intent and improving discovery. You still need readable, high-quality content on your actual pages." },
+  { q: "How do I know if an AI crawler can read my site?", a: "Fetch your pages using the exact user-agent of each AI crawler you care about. Compare the returned text to what a normal browser sees. If the crawler preview is thin, missing, or different, you have a rendering or access problem. Tools like Ollagraph's LLM fetch simulator automate this check." },
+  { q: "Does schema markup help with AI citations?", a: "Schema markup reduces ambiguity and strengthens trust signals for AI models. Article schema with author, datePublished, dateModified, and publisher is especially useful. It is not a direct ranking trigger, but it supports the signals models already prefer. Well-structured metadata makes your page easier to understand and cite." },
+  { q: "How often should I update content for AI crawlers?", a: "Update high-traffic and time-sensitive pages whenever facts, products, or guidance change. Add a visible last-updated date and matching dateModified schema. Fresh content wins for recent queries because models prefer current sources. Stale pages are not wrong, but they are less likely to be cited." },
+  { q: "Can I pay to be cited by AI answer engines?", a: "No, there is no paid placement system for AI citations. Citations are earned through crawl access, content quality, specificity, and trust. You cannot buy a citation from ChatGPT, Perplexity, or Claude. The only path is to make your pages reachable, readable, and worth citing." },
+  { q: "What is the fastest way to improve AI crawler visibility?", a: "Start with an allowlist audit to confirm crawlers can reach your pages. Then run a fetch simulator to check whether they can actually read your content. Finally, score citation readiness and fix the highest-impact content issues. Work in that exact order: access first, readability second, content quality third." },
+  { q: "Should I create separate pages for AI crawlers?", a: "No, you should never create separate pages or serve different content just for AI crawlers. That is cloaking, and it damages trust with both crawlers and search engines. Optimize your real pages so they work for humans and machines together. The same content should serve both audiences cleanly." },
+  { q: "How does Ollagraph help with AI crawler preparation?", a: "Ollagraph provides APIs and tools to audit AI bot access, simulate crawler fetches, and score citation readiness. It also generates llms.txt files and converts pages into LLM-ready markdown. These tools turn assumptions into measurable fixes. You can test every gate instead of guessing." },
+];
+---
+<Article
+  title="How AI Crawlers Read Your Website: Preparing Content for LLMs"
+  description="AI crawlers don't browse the web like humans. They fetch raw markup, strip the chrome, and convert what remains into tokens for LLMs. Learn how to make your content extractable before the model ever reads it."
+  date="2026-07-17"
+  readingTime={22}
+  tags={["AI crawlers", "LLMs", "content optimization", "AEO", "web scraping"]}
+  kind="blog"
+  faqs={faqs}
+>
+  <p>AI crawlers do not browse the web the way humans do. They fetch raw markup, strip away the chrome, convert what remains into plain text or structured chunks, and feed those chunks into large language models that decide what to cite, summarize, or ignore. If your content is buried in JavaScript, wrapped in ambiguous HTML, or written as vague marketing prose, the crawler may see almost nothing worth keeping. Preparing content for LLMs means making the important information extractable before the model ever reads it.</p>
+
+  <p>This guide explains how AI crawlers actually read websites in 2026, what they keep and what they discard, and the concrete changes that make your pages usable for ChatGPT, Perplexity, Claude, Google AI Overviews, and the next generation of answer engines. It is written for technical SEOs, content leads, developers, and founders who want their sites to show up inside AI-generated answers rather than disappear beneath them.</p>
+
+  <p>The central idea is simple: an AI crawler is a text-extraction pipeline with a budget. Every unnecessary token it spends on navigation, scripts, or decorative markup is a token it cannot spend on your answer. The teams that win are the ones that engineer their pages for extraction first and decoration second.</p>
+
+  <h2>Key takeaways</h2>
+  <ul>
+    <li><strong>AI crawlers are retrieval systems, not browsers.</strong> They prioritize raw text, headings, lists, and tables over visual design.</li>
+    <li><strong>Most AI crawlers fetch HTML without executing JavaScript.</strong> Content injected client-side is often invisible to them.</li>
+    <li><strong>Crawlers respect robots.txt, but WAFs, CDNs, and bot-management platforms can block them</strong> before robots.txt is ever read.</li>
+    <li><strong>LLMs cite content that is direct, specific, structured, and current.</strong> Vague claims and buried answers rarely survive extraction.</li>
+    <li><strong>Semantic HTML matters.</strong> Proper headings, paragraphs, tables, and lists give crawlers clean units to index and models clean units to quote.</li>
+    <li><strong>llms.txt is a useful signaling file,</strong> but it does not replace crawlable, readable, high-quality content on your actual pages.</li>
+    <li><strong>You can test what AI crawlers see</strong> using fetch simulation, allowlist audits, and citation-readiness scoring.</li>
+    <li><strong>Preparing content for LLMs is a continuous discipline,</strong> not a one-time SEO task. Models, crawlers, and answer engines change.</li>
+  </ul>
+
+  <h2>Why AI crawlers matter more than ever</h2>
+  <p>For two decades, the goal of website optimization was to rank on a search engine results page. You wrote a title tag, earned backlinks, and hoped a user clicked your blue link. That model is not disappearing, but it is no longer the only game. ChatGPT, Perplexity, Claude, Google AI Overviews, and Copilot now answer questions directly, often without sending the user anywhere. When they do cite sources, the citation itself becomes the referral.</p>
+
+  <p>This changes the economics of content. A page that ranks number one on Google but is never cited by an AI answer engine is losing a growing share of discovery. Conversely, a page that is well-structured for extraction can be cited repeatedly across many queries, even if it does not dominate traditional rankings. The crawler is the first gate to that new channel.</p>
+
+  <p>The shift is also structural. Traditional search engines built an index of pages and ranked them by query relevance. Answer engines retrieve passages from pages and synthesize answers from them. The unit of competition is no longer the page; it is the extractable passage. If your page does not contain a clean, self-contained answer that a crawler can pull out, the model will pull from someone else.</p>
+
+  <p>For Ollagraph customers, this is especially urgent. If you are building tools, APIs, or technical services, your buyers increasingly research inside AI assistants. They ask "What is the best way to scrape a website for LLMs?" or "How do I audit my site for AI citations?" and expect a synthesized answer with sources. If your documentation and blog posts are not crawler-friendly, you are not in the conversation.</p>
+
+  <p>The good news is that most of the fixes are not exotic. They are technical SEO fundamentals applied with a new consumer in mind. The bad news is that many sites fail at the first step without knowing it, because they have never looked at their pages through the eyes of a machine reader.</p>
+
+  <h2>What "reading" means to an AI crawler</h2>
+  <p>When a human reads a webpage, they see layout, color, typography, images, and motion. They infer hierarchy from size and spacing. They skim headings, read captions, and skip ads. An AI crawler does none of this. It receives an HTTP response, parses the markup, extracts text and links, and converts the result into a sequence of tokens that a model will later process.</p>
+
+  <p>"Reading," for an AI crawler, therefore means:</p>
+  <ol>
+    <li>Fetching the raw HTML or rendered DOM.</li>
+    <li>Parsing the document into a tree of elements.</li>
+    <li>Extracting visible text, headings, lists, tables, links, and metadata.</li>
+    <li>Cleaning boilerplate such as navigation, footers, ads, and repeated sidebars.</li>
+    <li>Chunking the remaining text into passages that fit a context window.</li>
+    <li>Embedding those chunks into a vector space where they can be retrieved by semantic similarity.</li>
+  </ol>
+
+  <p>The final output is not a visual impression. It is a compressed, tokenized representation of the information on the page. If the information is missing, ambiguous, or surrounded by noise, the representation is poor and the model will not use it.</p>
+
+  <p>This is why the phrase "preparing content for LLMs" is more accurate than "optimizing for AI search." You are not trying to trick a ranking algorithm. You are trying to make your content legible to a system that consumes text at industrial scale and has no patience for decoration.</p>
+
+  <h2>The AI crawler pipeline: from URL to token</h2>
+  <p>To understand how to prepare content, it helps to follow a single URL through the crawler pipeline. The exact implementation varies by company, but the stages are remarkably consistent across OpenAI, Anthropic, Perplexity, and Google.</p>
+
+  <h3>Stage 1: Discovery</h3>
+  <p>The crawler learns about a page through links found on previously crawled pages, submitted sitemaps (including sitemap.xml and llms.txt), third-party indexes and APIs, and user browsing requests that trigger live fetches. Discovery is not random. Crawlers prioritize URLs that appear authoritative, fresh, and frequently linked. A page with no internal links and no sitemap entry may never be discovered at all.</p>
+
+  <h3>Stage 2: Politeness and access control</h3>
+  <p>Before fetching, the crawler checks robots.txt. It looks for a user-agent rule that matches its own name, such as <code>User-agent: GPTBot</code> or <code>User-agent: OAI-SearchBot</code>. If the rule disallows the path, the crawler skips it. Some crawlers also honor crawl-delay directives, though these are increasingly ignored at scale.</p>
+
+  <p>Access control is not limited to robots.txt. CDNs, WAFs, and bot-management platforms can return 403 or challenge pages based on user-agent, IP reputation, or request fingerprint. This is where many sites accidentally block AI crawlers while remaining open to Googlebot.</p>
+
+  <h3>Stage 3: Fetch</h3>
+  <p>The crawler sends an HTTP request, usually with a distinctive user-agent string. It may request only the HTML, or it may execute a limited amount of JavaScript. Most AI crawlers are not full browsers. They do not interact with pages, click buttons, or wait for lazy-loaded content. If your answer appears only after a user scrolls or clicks, the crawler may never see it.</p>
+
+  <h3>Stage 4: Rendering and extraction</h3>
+  <p>Once the crawler has the document, it extracts the main content. This involves removing scripts, styles, and hidden elements; identifying the primary content area versus boilerplate; converting HTML to plain text or markdown; and preserving structure through headings, lists, tables, and paragraphs.</p>
+
+  <p>Modern extraction systems use heuristics, machine learning, or both. They look for semantic cues such as <code>&lt;article&gt;</code>, <code>&lt;main&gt;</code>, and heading hierarchy. A page with clean semantic HTML is far easier to extract accurately than a page made of nested <code>&lt;div&gt;</code> soup.</p>
+
+  <h3>Stage 5: Chunking and embedding</h3>
+  <p>The cleaned text is split into passages, typically a few hundred tokens each. Each passage is converted into an embedding vector that captures its meaning. These vectors are stored in a retrieval index. When a user asks a question, the answer engine retrieves the passages whose embeddings are closest to the query embedding.</p>
+
+  <p>This is the stage where structure pays off. A well-structured page produces clean chunks with clear boundaries. A poorly structured page produces chunks that start in the middle of one thought and end in the middle of another, making them less useful for retrieval.</p>
+
+  <h3>Stage 6: Retrieval and citation</h3>
+  <p>When a user asks a question, the model retrieves relevant passages, synthesizes an answer, and decides which sources to cite. The citation decision depends on relevance, specificity, trust, and freshness. A passage that directly answers the question with concrete details is far more likely to be cited than a passage that talks around it.</p>
+
+  <p>The entire pipeline is a funnel. Every stage can drop your content. If discovery fails, you are never fetched. If access fails, you are never rendered. If extraction fails, you are never chunked. If your content is not cite-worthy, you are never surfaced. Optimization has to address every stage, in order.</p>
+
+  <h2>How AI crawlers differ from Googlebot</h2>
+  <p>Many teams assume that if a page works for Google, it works for AI crawlers. The overlap is real but incomplete. Googlebot has spent decades learning to render JavaScript, understand layout, and rank pages using hundreds of signals. AI crawlers are newer, simpler, and optimized for a different job.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Dimension</th>
+        <th>Googlebot</th>
+        <th>AI crawlers (GPTBot, ClaudeBot, PerplexityBot)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Primary goal</td>
+        <td>Build a ranked web index</td>
+        <td>Extract passages for retrieval and training</td>
+      </tr>
+      <tr>
+        <td>JavaScript rendering</td>
+        <td>Extensive, with patience for lazy loading</td>
+        <td>Limited or none; prefers static HTML</td>
+      </tr>
+      <tr>
+        <td>Content unit</td>
+        <td>Page</td>
+        <td>Passage</td>
+      </tr>
+      <tr>
+        <td>Success signal</td>
+        <td>Ranking position</td>
+        <td>Citation frequency</td>
+      </tr>
+      <tr>
+        <td>Boilerplate tolerance</td>
+        <td>High; understands site structure</td>
+        <td>Lower; noise competes for context window</td>
+      </tr>
+      <tr>
+        <td>Freshness handling</td>
+        <td>Strong date signals and recrawl patterns</td>
+        <td>Strong; stale pages dropped for time-sensitive queries</td>
+      </tr>
+      <tr>
+        <td>Trust signals</td>
+        <td>Backlinks, domain authority, E-E-A-T</td>
+        <td>Author bylines, citations, specificity, schema</td>
+      </tr>
+      <tr>
+        <td>Robots.txt scope</td>
+        <td>Honors Googlebot and Googlebot-News</td>
+        <td>Honors their own named user-agents</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>The biggest practical difference is rendering. Googlebot will often wait for JavaScript and execute complex single-page applications. AI crawlers frequently will not. A React site that ranks well on Google can be nearly empty to an AI crawler if it relies on client-side rendering for its core content.</p>
+
+  <p>The second difference is the unit of value. Google rewards the page as a whole. AI answer engines reward the passage. A page with one brilliant, self-contained answer can be cited repeatedly, while a page with scattered insights may be ignored entirely.</p>
+
+  <p>The third difference is trust construction. Google has PageRank and decades of link graph data. AI answer engines rely more heavily on signals they can read directly from the page: author identity, publication date, outbound references, and concrete specifics. These signals are easier to control and easier to fake, which is why the best systems cross-reference them.</p>
+
+  <h2>The major AI crawlers and what they want</h2>
+  <p>Not all AI crawlers behave the same way. Each has a named user-agent and a documented purpose. Knowing which bot does what helps you decide what to allow, block, or optimize for.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Crawler / user-agent</th>
+        <th>Operator</th>
+        <th>Primary purpose</th>
+        <th>Should you allow it?</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>GPTBot</td>
+        <td>OpenAI</td>
+        <td>Training future models</td>
+        <td>Optional; allows training but does not affect citations</td>
+      </tr>
+      <tr>
+        <td>OAI-SearchBot</td>
+        <td>OpenAI</td>
+        <td>Building ChatGPT search index</td>
+        <td>Yes, if you want to appear in ChatGPT search</td>
+      </tr>
+      <tr>
+        <td>ChatGPT-User</td>
+        <td>OpenAI</td>
+        <td>Live browsing inside ChatGPT</td>
+        <td>Yes, for in-conversation access</td>
+      </tr>
+      <tr>
+        <td>ClaudeBot</td>
+        <td>Anthropic</td>
+        <td>Crawling for Claude's knowledge and retrieval</td>
+        <td>Yes, for Claude citations</td>
+      </tr>
+      <tr>
+        <td>PerplexityBot</td>
+        <td>Perplexity</td>
+        <td>Indexing for Perplexity answers</td>
+        <td>Yes, for Perplexity citations</td>
+      </tr>
+      <tr>
+        <td>Google-Extended</td>
+        <td>Google</td>
+        <td>Training Gemini and AI models</td>
+        <td>Optional; separate from Google Search</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>The distinction between training crawlers and search crawlers matters. GPTBot collects content to train future models. Blocking it means your content is less likely to appear in the model's training data, but it does not prevent you from being cited by ChatGPT search, which uses OAI-SearchBot and ChatGPT-User. Many companies block GPTBot for intellectual-property reasons while allowing search bots for visibility.</p>
+
+  <p>OAI-SearchBot and ChatGPT-User are the two OpenAI agents that directly affect whether you appear in ChatGPT answers. ClaudeBot matters for Claude's web access and citations. PerplexityBot matters for Perplexity. Google-Extended is Google's AI training crawler and is separate from Googlebot, which still handles traditional search indexing.</p>
+
+  <p>A permissive but precise robots.txt for AI visibility looks like this:</p>
+
+  <pre><code>User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /</code></pre>
+
+  <p>This example allows the search and citation bots while opting out of training crawlers. Adjust based on your company's preferences, but be explicit. Broad <code>User-agent: *</code> rules create ambiguity.</p>
+
+  <h2>Gate 1: Can the crawler reach your page?</h2>
+  <p>The first gate is access. If the crawler cannot fetch your page, nothing else matters. Access problems usually fall into three categories.</p>
+
+  <h3>robots.txt mistakes</h3>
+  <p>The most common issue is a broad disallow rule that accidentally blocks AI crawlers. Many CMS templates and hosting platforms now ship with "block AI bots" toggles that write aggressive rules. A single <code>User-agent: * / Disallow: /</code> line can override more specific rules depending on how the crawler parses precedence.</p>
+
+  <p>Best practice: place named user-agent blocks at the top of robots.txt, before any wildcard rules. Crawlers typically match the first specific block they find.</p>
+
+  <h3>CDN and WAF blocking</h3>
+  <p>Cloudflare, Akamai, AWS WAF, and similar services can block or challenge requests based on user-agent, IP reputation, or behavioral fingerprinting. An AI crawler may receive a 403, a JavaScript challenge, or a CAPTCHA that it cannot solve. Your robots.txt can be perfect while the crawler is still locked out at the edge.</p>
+
+  <p>The only way to detect this is to fetch your site as the crawler and see what comes back. We will cover how to do that in the testing section.</p>
+
+  <h3>Bot management platforms</h3>
+  <p>Services like DataDome, Imperva, and Kasada classify crawlers as threats. Some have explicit allowlists for major AI crawlers, but defaults vary. If your site uses one of these, verify that OAI-SearchBot, ClaudeBot, and PerplexityBot are allowed, not just Googlebot.</p>
+
+  <p>Access is binary. Either the crawler gets your page or it does not. Fix this gate before spending time on content optimization.</p>
+
+  <h2>Gate 2: Can the crawler read your page?</h2>
+  <p>Once the crawler is allowed in, the second question is whether it receives meaningful content. This is where rendering differences bite.</p>
+
+  <h3>JavaScript-only content</h3>
+  <p>Modern frameworks like React, Vue, and Angular often render critical content client-side. A human sees a fully populated page after JavaScript executes. An AI crawler that does not run JavaScript sees a skeleton with empty <code>&lt;div&gt;</code> containers. To the crawler, the page is blank.</p>
+
+  <p>The fix is not to abandon JavaScript. It is to ensure that the answer text is present in the initial HTML. Options include server-side rendering (SSR), static site generation (SSG), hybrid rendering where the critical content is server-rendered and interactive elements hydrate client-side, and pre-rendering services for crawlers.</p>
+
+  <h3>Interstitials and cookie walls</h3>
+  <p>Cookie consent banners, age gates, newsletter popups, and login walls can block content extraction. If the crawler cannot dismiss the interstitial, it may index only the banner text. The same applies to content that requires authentication or session cookies.</p>
+
+  <h3>Accidental cloaking</h3>
+  <p>Cloaking means serving different content to bots than to humans. Sometimes this is deliberate and manipulative. More often it is accidental, caused by geo-routing, A/B testing, or bot-specific rendering paths. Either way, if the crawler sees a different page than the user, trust suffers.</p>
+
+  <h3>Layout-driven extraction failures</h3>
+  <p>Even when content is in the HTML, poor structure can confuse extractors. A page that puts its main article inside a generic <code>&lt;div&gt;</code> with no <code>&lt;article&gt;</code>, <code>&lt;main&gt;</code>, or heading hierarchy is harder to parse than a page that uses semantic HTML. Extractors rely on cues. Give them cues.</p>
+
+  <h2>Gate 3: Does the model want to cite your page?</h2>
+  <p>Reachability and readability get you into the index. Cite-worthiness gets you into the answer. Models prefer passages that are direct, specific, structured, and trustworthy.</p>
+
+  <p><strong>Directness.</strong> A passage that answers the question in the first sentence is more citable than a passage that warms up for three paragraphs. Put the answer near the top. Use a "short version" or summary block if the topic is complex.</p>
+
+  <p><strong>Specificity.</strong> Numbers, dates, named entities, and concrete claims are easier to quote than vague generalities. "Reduces latency from 4.2 seconds to 89 milliseconds" is citable. "Improves performance a lot" is not.</p>
+
+  <p><strong>Structure.</strong> Headings, lists, tables, and short paragraphs create clean extraction units. A wall of text forces the model to guess where one idea ends and another begins. Structured content reduces that guesswork.</p>
+
+  <p><strong>Trust.</strong> Author bylines, publication dates, outbound citations, and clear sourcing all signal credibility. A page with no author, no date, and no references is less likely to be cited than a page that shows its work.</p>
+
+  <p><strong>Freshness.</strong> For time-sensitive queries, models strongly prefer recent content. A visible "last updated" date, current examples, and schema dateModified all help. Stale content is not wrong; it is just less likely to be chosen.</p>
+
+  <h2>Writing content that AI crawlers can extract</h2>
+  <p>Writing for LLM extraction is not dumbing content down. It is organizing information so that a machine can find the boundaries between ideas. The same practices that help human readers skim also help machines chunk.</p>
+
+  <h3>Lead with the answer</h3>
+  <p>Start sections with a clear statement of what the section covers. Do not bury the point under history, context, or preamble. A reader who has to hunt for the answer will leave; a crawler that has to hunt will extract something else.</p>
+
+  <h3>Use descriptive headings</h3>
+  <p>Headings are the table of contents for both humans and machines. A heading like "How to Allow PerplexityBot" is more useful than "Best Practices" or "Getting Started." Descriptive headings improve extraction and retrieval.</p>
+
+  <h3>Prefer short paragraphs</h3>
+  <p>Long paragraphs are hard to chunk. Aim for one idea per paragraph. If a paragraph covers three distinct points, split it. This improves readability for humans and chunk quality for models.</p>
+
+  <h3>Include lists and tables</h3>
+  <p>Lists and tables are naturally extractable. They compress information into structured units that models can quote directly. A comparison table is often more citable than a paragraph describing the same comparison.</p>
+
+  <h3>Name entities explicitly</h3>
+  <p>Do not say "the leading provider." Say "AWS," "Stripe," or "Ollagraph." Named entities help retrieval and citation. They also make your content more concrete and useful.</p>
+
+  <h3>Add a summary block</h3>
+  <p>A short summary at the top of a long article gives the model a self-contained passage to retrieve. This is why executive summaries and "key takeaways" sections are effective for AI search.</p>
+
+  <h2>HTML structure for LLM extraction</h2>
+  <p>The words matter, but so does the markup that wraps them. Semantic HTML gives crawlers explicit signals about what each part of the page means.</p>
+
+  <h3>Use &lt;main&gt; and &lt;article&gt;</h3>
+  <p>Wrap the primary content in <code>&lt;main&gt;</code> and individual pieces of content in <code>&lt;article&gt;</code>. These tags tell extractors where the real content lives, reducing the chance that navigation or footer text is mistaken for the article.</p>
+
+  <h3>Use heading hierarchy correctly</h3>
+  <p>Use one <code>&lt;h1&gt;</code> per page, then <code>&lt;h2&gt;</code> for major sections, <code>&lt;h3&gt;</code> for subsections, and so on. Do not skip levels. A logical heading tree is a content outline that extractors can follow.</p>
+
+  <h3>Avoid div soup</h3>
+  <p>A page made entirely of <code>&lt;div&gt;</code> and <code>&lt;span&gt;</code> tags gives extractors no semantic cues. Replace generic containers with meaningful elements where possible: <code>&lt;nav&gt;</code>, <code>&lt;header&gt;</code>, <code>&lt;footer&gt;</code>, <code>&lt;section&gt;</code>, <code>&lt;aside&gt;</code>, <code>&lt;figure&gt;</code>, <code>&lt;figcaption&gt;</code>.</p>
+
+  <h3>Tables for data, not layout</h3>
+  <p>Use <code>&lt;table&gt;</code> for actual tabular data. Layout tables from the early 2000s confuse extractors and accessibility tools alike. If you are using a table to position elements, switch to CSS grid or flexbox.</p>
+
+  <h3>Alt text and captions for images</h3>
+  <p>AI crawlers cannot see images the way humans do, but they can read alt text and captions. Descriptive alt text makes image content available as text. Captions under figures are especially useful.</p>
+
+  <h3>Avoid hidden content</h3>
+  <p>Content hidden with <code>display: none</code> or <code>visibility: hidden</code> may be skipped by extractors. If the content is important, keep it visible. If it is not important, remove it rather than hiding it.</p>
+
+  <h2>The role of schema, metadata, and dates</h2>
+  <p>Structured data and metadata do not directly determine citations, but they reduce ambiguity and increase trust.</p>
+
+  <h3>Article schema</h3>
+  <p>Use Article or BlogPosting schema with author, datePublished, dateModified, and publisher. This gives models explicit signals about who wrote the content and when it was updated.</p>
+
+  <pre><code>&#123;
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "How AI Crawlers Read Your Website",
+  "author": &#123;
+    "@type": "Person",
+    "name": "Ollagraph Engineering"
+  &#125;,
+  "datePublished": "2026-07-17",
+  "dateModified": "2026-07-17",
+  "publisher": &#123;
+    "@type": "Organization",
+    "name": "Ollagraph"
+  &#125;
+&#125;</code></pre>
+
+  <h3>Open Graph and Twitter cards</h3>
+  <p>These tags are primarily for social sharing, but they also provide a clean title, description, and image reference that some extractors read. They are cheap to include and reduce ambiguity.</p>
+
+  <h3>Canonical URLs</h3>
+  <p>A clear canonical tag helps crawlers avoid indexing duplicate versions of the same content. Duplicate content splits citation signals across multiple URLs.</p>
+
+  <h3>Last updated dates</h3>
+  <p>Show a visible "last updated" date near the top of the article. Pair it with dateModified schema. Freshness is a strong signal for time-sensitive queries.</p>
+
+  <h3>Author bylines</h3>
+  <p>Include a real author name and, where possible, a link to an author page with credentials. Anonymous content is not automatically disqualified, but it is at a disadvantage against content with verifiable expertise.</p>
+
+  <h2>llms.txt, sitemap.xml, and robots.txt</h2>
+  <p>Three files sit at the boundary between your site and the AI ecosystem. Each has a different job.</p>
+
+  <h3>robots.txt</h3>
+  <p>robots.txt is the access control file. It tells crawlers what they are allowed to fetch. It is the first gate. Without a clear, bot-specific robots.txt, you leave access decisions to defaults and upstream infrastructure.</p>
+
+  <h3>sitemap.xml</h3>
+  <p>sitemap.xml is the discovery file. It lists URLs you want crawlers to find, along with optional metadata like lastmod and priority. It helps discovery but does not guarantee indexing or citation.</p>
+
+  <h3>llms.txt</h3>
+  <p>llms.txt is the context file. It is a markdown file at your domain root that points AI systems to the most important, machine-readable versions of your content. It is an emerging convention, not a universal standard, but it signals intent and can improve how models understand your site.</p>
+
+  <p>A minimal llms.txt looks like this:</p>
+
+  <pre><code># Ollagraph
+
+&gt; Web infrastructure for AI agents: fetch, extract, audit, and reason about the live web.
+
+## Core Documentation
+- [Quickstart](https://ollagraph.com/docs/quickstart.md)
+- [API Reference](https://ollagraph.com/docs/api.md)
+- [AEO Strategy](https://ollagraph.com/blog/aeo-strategy.md)
+
+## Product
+- [Capabilities](https://ollagraph.com/capabilities.md)
+- [Pricing](https://ollagraph.com/pricing.md)</code></pre>
+
+  <p>llms.txt is useful, but it is not a shortcut. It cannot compensate for pages that are blocked, unreadable, or poorly written. Treat it as a finishing touch, not a strategy.</p>
+
+  <h2>Common mistakes that break AI crawlers</h2>
+  <p>Most AI crawler failures are not exotic edge cases. They are the result of common habits that made sense for traditional SEO but fail for LLM extraction.</p>
+
+  <ol>
+    <li><strong>Blocking all bots to block bad bots.</strong> A broad <code>User-agent: * / Disallow: /</code> rule keeps out scrapers, but it also keeps out OAI-SearchBot, ClaudeBot, and PerplexityBot. Be specific about which bots you want to allow.</li>
+    <li><strong>Relying on client-side rendering for core content.</strong> If your article text is injected by JavaScript, many AI crawlers will not see it. Server-render the critical content and hydrate interactivity around it.</li>
+    <li><strong>Hiding answers behind tabs, accordions, or carousels.</strong> Content that appears only after user interaction is often invisible to crawlers. If the information is important, make it visible by default.</li>
+    <li><strong>Writing vague, generic content.</strong> Marketing fluff does not get cited. Specific claims, numbers, and named entities do. Replace "industry-leading" with measurable specifics.</li>
+    <li><strong>Neglecting dates and authorship.</strong> Stale, anonymous content is less trustworthy to models. Add visible dates and real author bylines.</li>
+    <li><strong>Using images for text.</strong> Text embedded in images is not extractable. Use HTML text for anything you want crawlers to read. Images should supplement, not replace, textual content.</li>
+    <li><strong>Ignoring mobile parity.</strong> Some crawlers fetch mobile versions. If your mobile site strips content or shows different markup, you may lose extraction quality.</li>
+    <li><strong>Forgetting to test.</strong> The biggest mistake is assuming. You cannot know what a crawler sees until you fetch as that crawler and inspect the result.</li>
+  </ol>
+
+  <h2>A practical workflow for LLM-ready content</h2>
+  <p>Here is a repeatable process for preparing a page or an entire site for AI crawlers.</p>
+
+  <h3>Step 1: Audit access</h3>
+  <p>Run an allowlist audit to see which AI crawlers can reach your domain. Fix any robots.txt, CDN, or WAF blocks before doing anything else.</p>
+
+  <h3>Step 2: Simulate fetches</h3>
+  <p>Fetch key pages as OAI-SearchBot, ClaudeBot, and PerplexityBot. Compare the visible text to what a browser sees. If the crawler preview is thin, you have a rendering or extraction problem.</p>
+
+  <h3>Step 3: Score citation readiness</h3>
+  <p>Evaluate pages for direct answers, specificity, structure, trust signals, and freshness. Prioritize the highest-impact fixes.</p>
+
+  <h3>Step 4: Restructure content</h3>
+  <p>Rewrite sections to lead with answers, add specifics, break up long paragraphs, and use lists and tables. Ensure headings are descriptive.</p>
+
+  <h3>Step 5: Fix HTML semantics</h3>
+  <p>Add <code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, and proper heading hierarchy. Remove layout tables and hidden content. Add schema markup and visible dates.</p>
+
+  <h3>Step 6: Add discovery files</h3>
+  <p>Create or update robots.txt, sitemap.xml, and llms.txt. Make sure they are consistent and do not contradict each other.</p>
+
+  <h3>Step 7: Re-test and monitor</h3>
+  <p>AI crawlers and answer engines change. Re-run audits after major edits, after infrastructure changes, and on a regular schedule. Track which pages get cited and double down on what works.</p>
+
+  <h2>Testing what AI crawlers actually see</h2>
+  <p>Assumptions are dangerous. The only way to know what an AI crawler sees is to fetch your page as that crawler. Ollagraph provides three endpoints for this.</p>
+
+  <h3>AI bot allowlist audit</h3>
+  <p>Check whether your robots.txt and upstream infrastructure allow or block 14 named AI crawlers.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/ai-bot-allowlist \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"domain":"yourdomain.com"&#125;'</code></pre>
+
+  <p>The response reports, per bot, whether it is allowed, blocked, or ambiguous, along with the rule that caused the decision.</p>
+
+  <h3>LLM fetch simulator</h3>
+  <p>See exactly what different AI crawlers receive when they fetch a URL. This detects JavaScript-only content, cloaking, and edge blocking.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"url":"https://yourdomain.com/your-page"&#125;'</code></pre>
+
+  <p>The response includes status code, content length, a visible-text preview per user-agent, and flags for JS-only or cloaking issues.</p>
+
+  <h3>Citation readiness scorer</h3>
+  <p>Score a page against the signals that increase citation probability.</p>
+
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/citation-readiness \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"url":"https://yourdomain.com/your-page"&#125;'</code></pre>
+
+  <p>The report covers direct answer presence, numerical specifics, named entities, outbound references, author byline, last-updated date, and content depth.</p>
+
+  <h2>Best practices</h2>
+  <ul>
+    <li><strong>Be explicit in robots.txt.</strong> Name the bots you care about and place their rules before wildcard rules.</li>
+    <li><strong>Server-render your answers.</strong> Critical content should be in the initial HTML, not injected by JavaScript.</li>
+    <li><strong>Write for extraction.</strong> One idea per paragraph, descriptive headings, lists, tables, and concrete specifics.</li>
+    <li><strong>Show your work.</strong> Author bylines, dates, outbound citations, and schema markup all increase trust.</li>
+    <li><strong>Keep content fresh.</strong> Update high-traffic pages regularly and surface the last-updated date.</li>
+    <li><strong>Use semantic HTML.</strong> <code>&lt;main&gt;</code>, <code>&lt;article&gt;</code>, and logical heading hierarchy help extractors find the real content.</li>
+    <li><strong>Provide a clean llms.txt.</strong> Point AI systems to your best, most authoritative content in markdown form.</li>
+    <li><strong>Test continuously.</strong> Fetch as AI crawlers, score citation readiness, and iterate.</li>
+    <li><strong>Fix access before content.</strong> A blocked page cannot be cited, no matter how well it is written.</li>
+    <li><strong>Think in passages, not pages.</strong> The unit of competition is the extractable answer, not the entire article.</li>
+  </ul>
+
+  <h2>Conclusion</h2>
+  <p>AI crawlers read websites by stripping away everything that makes a page pretty and keeping only what makes it informative. They do not care about your hero animation, your color palette, or your font choice. They care whether the answer is in the HTML, whether it is specific, and whether they are allowed to take it.</p>
+
+  <p>Preparing content for LLMs is therefore a discipline of subtraction and structure. Subtract the barriers that keep crawlers out. Subtract the JavaScript that hides your answers. Subtract the vague prose that models cannot quote. Then structure what remains with clear headings, short paragraphs, lists, tables, and honest metadata.</p>
+
+  <p>The reward is not a better position on a search results page. It is inclusion inside the answers that millions of users now read first. That is a new channel, and it is winnable by the teams that treat AI crawler readiness as engineering, not marketing.</p>
+
+  <p>Start with access. Confirm readability. Then make every page worth citing. The tools to test each step already exist. The only mistake is assuming you do not need them.</p>
+
+  <h2>References</h2>
+  <ul>
+    <li><a href="https://platform.openai.com/docs/bots" target="_blank" rel="noopener">OpenAI — Web crawler documentation: GPTBot, OAI-SearchBot, and ChatGPT-User</a></li>
+    <li><a href="https://support.anthropic.com" target="_blank" rel="noopener">Anthropic — ClaudeBot web crawler information</a></li>
+    <li><a href="https://www.perplexity.ai/perplexitybot" target="_blank" rel="noopener">Perplexity — PerplexityBot documentation</a></li>
+    <li><a href="https://developers.google.com/search/docs/crawling-indexing/overview-google-crawlers" target="_blank" rel="noopener">Google — Google-Extended and AI crawlers</a></li>
+    <li><a href="https://llmstxt.org" target="_blank" rel="noopener">Answer.AI — llms.txt proposal and specification</a></li>
+    <li><a href="/docs">Ollagraph — AEO API documentation: ai-bot-allowlist, llm-fetch-simulator, citation-readiness</a></li>
+    <li><a href="/tools/llms-txt-generator">Ollagraph — llms.txt generator and audit tool</a></li>
+  </ul>
+</Article>
