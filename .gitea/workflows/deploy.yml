@@ -28,3 +28,7 @@ jobs:
           fi
           echo "deploy $OUT -> $PROJECT (branch $REF)"
           npx --yes wrangler@4 pages deploy "$OUT" --project-name="$PROJECT" --branch="$REF" --commit-dirty=true
+          # Purge CDN edge cache so new content is visible immediately
+          if [ -f "$W/scripts/purge-cache.mjs" ]; then
+            node "$W/scripts/purge-cache.mjs"
+          fi
