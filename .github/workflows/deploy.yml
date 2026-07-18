@@ -11,12 +11,15 @@ jobs:
     runs-on: [self-hosted, mkt]
     steps:
       - uses: actions/checkout@v4
-      - name: Build and deploy to Cloudflare Pages
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Build
         run: |
           set -e
           npm ci || npm install
           npm run build
-          npx --yes wrangler@4 pages deploy dist --project-name=ollagraph-marketing --branch=main --commit-dirty=true
+
+      - name: Publish to Cloudflare Pages
+        # No credential is exposed to this job. The wrapper below runs as root
+        # on the runner host, loads the token itself, and only ever publishes
+        # to this repo's own Pages project.
+        run: sudo -n /usr/local/sbin/mkt-deploy-ollagraph "$GITHUB_WORKSPACE/dist"
