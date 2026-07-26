@@ -1,0 +1,426 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why does format affect LLM performance?", a: "LLMs process tokens, not pages. Raw HTML adds large amounts of non-content tokens like classes and layout wrappers, which dilute signal and increase cost. Cleaner formats concentrate meaning, improving retrieval matches and downstream reasoning." },
+  { q: "When is Markdown the better choice?", a: "Markdown is best for most retrieval and prompt contexts because it preserves headings, lists, links, and code with minimal overhead. This yields higher information density per token and more consistent chunking. It is especially effective for articles, docs, and knowledge bases." },
+  { q: "When should HTML be kept instead of converted?", a: "Keep HTML when precise structure matters, such as complex tables, nested components, or when DOM relationships carry meaning. It also helps when you need exact traceability to source elements. In these cases, selective cleaning is better than full conversion." },
+  { q: "How does format impact chunking and retrieval?", a: "Consistent, lightweight structure leads to more predictable chunk boundaries and embeddings. Markdown headings and lists create natural splits, improving recall and precision. Mixed or noisy HTML can fragment meaning and produce uneven chunks that hurt retrieval." },
+  { q: "What are the cost implications of HTML vs Markdown?", a: "HTML often inflates token counts due to markup and attributes, directly increasing inference cost and latency. Markdown reduces token usage by stripping presentation noise while keeping semantics. Over large corpora, this difference materially affects budget and throughput." },
+  { q: "How should teams decide and validate their format choice?", a: "Treat format as an experiment, not a default. Measure token counts, retrieval accuracy, answer quality, and latency across formats on the same corpus. Standardize on the format that maximizes information gain per token and enforce it consistently in the pipeline." },
+];
+---
+<Article
+  title="Markdown vs HTML for LLM Context: What Actually Wins"
+  description="Choosing Markdown or HTML changes token cost, retrieval quality, and reasoning. Here’s when each format improves LLM context and how to decide with evidence."
+  date="2026-07-26"
+  readingTime={27}
+  tags={["llm-context", "markdown", "html", "rag", "token-efficiency"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>There is a quiet decision hiding inside every retrieval and agent pipeline, and most teams make it by accident: what format do you hand the model? Raw HTML scraped straight off the page? Cleaned Markdown? Something in between?</p>
+<p>It sounds like a plumbing detail. It is not. The format you feed a large language model changes token cost, retrieval accuracy, structural fidelity, and how easily the model can reason over the content. Get it wrong and you pay for thousands of useless &lt;div class="wrapper"&gt; tokens, confuse the model with layout noise, and watch your answer quality quietly sag.</p>
+<p>This guide settles the Markdown-vs-HTML question the honest way: it depends on the stage and the goal — but for most LLM context, clean Markdown wins, and here is exactly when it does not.</p>
+<p>You will learn how each format behaves under tokenization, how it affects chunking and retrieval, where HTML's extra structure genuinely helps, and how to build a format strategy that is measurable rather than superstitious.</p>
+
+<h2>1. Problem Statement</h2>
+<p>Teams building on LLMs usually think about models, prompts, and vector databases. They rarely think about the shape of the text they pour into all three. That omission causes a predictable set of failures.</p>
+<ol>
+<li>You pay for markup you don't need. A single blog paragraph wrapped in production HTML can carry ten times its own weight in &lt;div&gt;, class, style, and data-* attributes. Every one of those characters becomes tokens, and tokens are money, latency, and context-window pressure. Feed raw HTML and you are literally paying the model to read CSS class names.</li>
+<li>Layout noise drowns meaning. HTML describes presentation: grids, wrappers, tracking pixels, SVG icons, cookie banners. The model has to work harder to separate "the actual article" from "the scaffolding around it." More noise means lower signal, and lower signal means weaker retrieval and vaguer answers.</li>
+<li>Naive Markdown loses structure the model needed. The opposite mistake is just as real. Strip a page down too aggressively and you flatten a pricing table into a run-on sentence, drop the heading that told you which section you were in, or lose the link that made a claim verifiable. Now the format is clean but lossy.</li>
+<li>Inconsistent formatting breaks everything downstream. If some documents arrive as HTML, some as Markdown, and some as plain text, your chunker and embedder see three different worlds. Retrieval quality becomes a function of which source a fact came from — an untraceable, maddening bug.</li>
+<li>The choice is never audited. Most pipelines pick a format once, in week one, based on whatever the scraping library returned by default. Nobody measures whether the other format would retrieve better or cost less. The decision is superstition, not evidence.</li>
+</ol>
+<p>The 2026 lens. The same principle that wins in search wins here: information gain per token. The best format is the one that preserves the maximum meaning in the minimum, cleanest representation — and lets you prove it. This guide treats format as a first-class, measurable engineering choice, not a default you inherit.</p>
+
+<h2>2. Definitions: Markdown, HTML, and "AI Context"</h2>
+<p>Before comparing, define the three terms precisely, because most arguments online are people talking past each other.</p>
+<p><strong>HTML (HyperText Markup Language)</strong> is a presentation-and-structure language for browsers. It uses angle-bracket tags (&lt;h1&gt;, &lt;table&gt;, &lt;div&gt;, &lt;span&gt;) and attributes (class, id, style, data-*) to describe how content is organized and how it should be rendered. Crucially, most HTML on a real web page is not content — it is scaffolding: layout containers, styling hooks, scripts, analytics, and accessibility plumbing.</p>
+<p><strong>Markdown</strong> is a lightweight, human-readable text format that encodes structure with minimal syntax: # for headings, - for lists, | for tables, backticks for code, [text](url) for links. It captures the semantics that matter for reading — hierarchy, emphasis, lists, tables, code, links — while discarding presentation. A Markdown document is close to how a person would type the content in a plain notepad, plus a few structural marks.</p>
+<p><strong>"AI Context"</strong> is the text you place inside the model's context window at inference time — the retrieved chunks in a RAG system, the fetched page in an agent, or the examples in a prompt. Better AI context means text that is:</p>
+<ul>
+<li>Faithful — it preserves the facts, structure, and relationships of the source.</li>
+<li>Efficient — it spends few tokens on anything that isn't meaning.</li>
+<li>Consistent — every document arrives in the same predictable shape.</li>
+<li>Traceable — you can map any claim back to its source location.</li>
+</ul>
+<p>The whole Markdown-vs-HTML debate is really a debate about which format maximizes faithful, efficient, consistent, traceable context.</p>
+
+<h2>3. Why Format Even Matters to an LLM</h2>
+<p>If a model is "smart," why does formatting change its output at all? Three mechanical reasons.</p>
+<p><strong>Tokenization: every character has a price.</strong> LLMs don't read characters or words — they read tokens, sub-word units produced by a tokenizer. HTML markup tokenizes badly: &lt;div class="col-md-6 wrapper"&gt; fragments into many tokens that carry zero information about the actual content. Markdown's syntax (#, -, |) is far leaner. On a typical article, the same content can cost 2–5× more tokens as raw HTML than as clean Markdown. That difference is pure overhead — you pay it on every request, and it eats into the finite context window.</p>
+<p><strong>Attention: signal-to-noise drives quality.</strong> Transformer attention has to distribute focus across everything in the window. When 60% of the tokens are layout scaffolding, the model spends attention "budget" parsing structure that doesn't matter, and the genuinely important sentences compete with &lt;/span&gt;&lt;/div&gt;&lt;/div&gt; for prominence. Cleaner input means a higher ratio of meaningful tokens, which correlates with more accurate, less distractible responses.</p>
+<p><strong>Structure: models learned from Markdown-shaped text.</strong> Modern LLMs were trained on enormous amounts of Markdown (READMEs, forums, docs, chat) and understand its conventions natively. A # heading, a |-delimited table, or a fenced code block is unambiguous to the model. HTML is understood too, but it arrives tangled with presentational noise the model must first see past. Giving the model the structure it already reasons in fluently reduces the work required to extract meaning.</p>
+<p>The core insight: the model doesn't care how the page looked in a browser. It cares about the semantic structure and the facts. HTML encodes both meaning and presentation; Markdown encodes mostly meaning. For AI context, the presentation half is dead weight — sometimes harmless, often harmful, always paid for.</p>
+
+<h2>4. Architecture: Where Format Lives in the Pipeline</h2>
+<p>Format isn't a single choice — it's a transformation that happens at a specific place in your ingestion pipeline, and where you make it determines what you can preserve.</p>
+<p>The critical stage is Convert, and it sits right after extraction:</p>
+<pre><code>Fetch (raw HTML) → Extract (main content) → Convert (format decision)
+    → Clean → Chunk → Embed → Index → Retrieve → Context → LLM</code></pre>
+<p>The critical stage is Convert, and it sits right after extraction:</p>
+<ol>
+<li><strong>Fetch</strong> returns raw HTML (or a rendered DOM). This is the richest but noisiest representation.</li>
+<li><strong>Extract</strong> identifies the main content and its structure — headings, tables, lists, code, links — discarding chrome.</li>
+<li><strong>Convert</strong> is the fork in the road: serialize that extracted structure as Markdown, keep a cleaned-HTML subset, or emit structured JSON. This is the Markdown-vs-HTML decision point.</li>
+<li>Everything downstream — cleaning, chunking, embedding, retrieval, and the final context — inherits the consequences of that choice.</li>
+</ol>
+<p>Why the placement matters: if you convert to Markdown before extracting structure, you can lose tables and headings irreversibly. If you convert after a structure-aware extraction, Markdown keeps the meaning and drops only the noise. Extract structure first, then choose the leanest format that preserves it.</p>
+<p><strong>Key principle:</strong> format is a projection, not a source of truth. Keep the raw HTML in cheap storage so you can re-project into any format later. Your context format (usually Markdown) is a derived, replaceable view — never the only copy of the data.</p>
+
+<h2>5. Pillar/Cluster Strategy for This Topic</h2>
+<p>This article is a pillar page on content formatting for AI. It answers the headline question in depth and links out to focused cluster articles that each drill into one sub-decision.</p>
+<p>Recommended cluster articles (each links back to this pillar):</p>
+<ol>
+<li><strong>HTML-to-Markdown conversion: patterns that don't lose tables</strong><br>
+The practical "how-to" behind the format decision. It covers conversion techniques that survive real-world pages — mapping &lt;h1&gt;–&lt;h6&gt; to # levels, &lt;pre&gt;&lt;code&gt; to fenced blocks, and especially how to handle tables (merged cells, multi-level headers) without flattening them into unusable prose. Why it matters: naive converters silently destroy the highest-value content (tables, code), so this article shows the patterns that keep meaning intact.</li>
+<li><strong>Token counting and cost modeling for RAG context</strong><br>
+Turns the "Markdown is cheaper" claim into actual numbers. It shows how to count tokens with a real tokenizer, compare HTML vs Markdown on your own corpus, and model the recurring cost of format overhead (tokens × chunks × queries × price). Why it matters: proves the efficiency argument with math instead of assumptions, and helps justify format choices to stakeholders.</li>
+<li><strong>Structure-aware chunking for Markdown documents</strong><br>
+How the format you chose feeds the next stage. It explains splitting on heading boundaries, keeping tables and code blocks whole, sizing chunks to the embedding model, and attaching heading-path metadata. Why it matters: clean Markdown makes semantic chunking easy; this article shows how to exploit that for better retrieval.</li>
+<li><strong>Preserving links and citations through format conversion</strong><br>
+Focuses on traceability. It covers keeping [anchor text](url) intact during conversion, capturing source URLs and section anchors as metadata, and mapping every chunk back to its origin. Why it matters: links are how you verify claims and debug wrong answers — lose them in conversion and you lose auditability.</li>
+<li><strong>When to keep HTML: tables, forms, and semantic attributes</strong><br>
+The honest counter-argument. It documents the specific cases where Markdown is lossy and a minimal HTML subset wins — complex tables, &lt;time datetime&gt;, microdata, forms, ARIA semantics. Why it matters: balances the guide so it's credible, not dogmatic, and gives readers a clear "exception list."</li>
+<li><strong>JSON and XML as LLM context: structured alternatives</strong><br>
+Widens the debate beyond two options. It compares JSON/XML for cases where content is inherently structured (API data, catalogs, records) and shows when a schema beats free-form Markdown. Why it matters: for structured/tabular data, a typed format often produces cleaner, more reliable context than either Markdown or HTML.</li>
+<li><strong>Prompt injection through markup: sanitizing scraped content</strong><br>
+The security angle. It shows how hidden HTML (comments, display:none text, attributes) can smuggle malicious instructions into a model, and how conversion + sanitization neutralizes them. Why it matters: scraped content is untrusted input; stripping to clean Markdown is itself a defense, and this article explains how to do it safely.</li>
+</ol>
+
+<p>Internal linking rule: the pillar links down to each cluster with descriptive anchor text, and every cluster links up to this page and sideways to one or two siblings. This builds a tight topical graph around "content formatting for LLMs" that signals genuine subject authority.</p>
+
+<h2>6. Search Intent and Content Coverage</h2>
+<p>The query "Markdown vs HTML for LLMs" is fundamentally a decision-and-comparison intent: the reader wants a clear recommendation plus the reasoning to defend it.</p>
+<p><strong>Primary intent:</strong> "Which format should I feed my LLM, and why?"</p>
+<p><strong>Secondary intents this guide deliberately covers:</strong></p>
+<ul>
+<li>"Which is cheaper / uses fewer tokens?" → Token Efficiency (§9) and Cost Engineering (§14).</li>
+<li>"Which preserves my tables and code correctly?" → Complex Content (§11).</li>
+<li>"Does format affect retrieval accuracy?" → Chunking and Retrieval Impact (§12).</li>
+<li>"When is HTML actually the right call?" → HTML Deep Dive (§8) and Decision Framework (§17).</li>
+<li>"How do I convert cleanly?" → Configuration Patterns (§16).</li>
+</ul>
+<p><strong>Coverage principle:</strong> a thin article just declares "Markdown is better." A page that ranks and helps proves it with token math, retrieval reasoning, and an honest list of exceptions. Information gain here comes from the nuance — the when-not-to is what competitors omit.</p>
+
+<h2>7. Markdown Deep Dive: Strengths and Weaknesses</h2>
+<p>Markdown is the default recommendation for LLM context for good, concrete reasons — but it is not free of trade-offs.</p>
+<p><strong>Strengths</strong></p>
+<ul>
+<li><strong>Token efficiency.</strong> Minimal syntax means the vast majority of tokens are content, not markup. This is the single biggest win and it compounds on every request.</li>
+<li><strong>Native model fluency.</strong> LLMs read and write Markdown constantly during training. Headings, lists, tables, and fenced code are unambiguous to them.</li>
+<li><strong>Human-auditable.</strong> You can open a Markdown chunk and instantly see what the model sees. Debugging retrieval becomes a reading exercise, not a DOM-inspection chore.</li>
+<li><strong>Clean structure signals.</strong> # heading levels give the model (and your chunker) a reliable outline of the document's hierarchy.</li>
+<li><strong>Portable and diff-friendly.</strong> Plain text stores, versions, and diffs cheaply — ideal for change detection and reproducibility.</li>
+</ul>
+<p><strong>Weaknesses</strong></p>
+<ul>
+<li><strong>Limited expressiveness.</strong> Standard Markdown has no native concept of colspans, nested tables, cell alignment beyond basics, or rich metadata. Complex tables degrade.</li>
+<li><strong>Ambiguity at the edges.</strong> Multiple Markdown "flavors" (CommonMark, GFM) differ on tables, footnotes, and task lists. Inconsistent generation causes inconsistent parsing.</li>
+<li><strong>Lossy for semantics HTML encodes explicitly.</strong> ARIA roles, &lt;time datetime&gt;, microdata, and &lt;abbr&gt; meanings can vanish in conversion unless you capture them as metadata first.</li>
+<li><strong>Whitespace fragility.</strong> Nested lists and code fences are sensitive to indentation; sloppy conversion produces broken structure.</li>
+</ul>
+<p><strong>Verdict on Markdown:</strong> it is the best general-purpose context format because it maximizes meaning-per-token and matches how models think. Its weaknesses are real but mostly appear at the extremes — dense tables and semantic metadata — which you handle by capturing those as structured fields alongside the Markdown, not by abandoning it.</p>
+
+<h2>8. HTML Deep Dive: Strengths and Weaknesses</h2>
+<p>HTML is usually the wrong format to hand a model directly — but "usually" is not "always," and understanding its strengths tells you exactly when to keep it.</p>
+<p><strong>Strengths</strong></p>
+<ul>
+<li><strong>Maximum structural expressiveness.</strong> Complex tables (colspan/rowspan), nested structures, forms, and definition lists have precise, standardized representations. Nothing about the layout is ambiguous.</li>
+<li><strong>Explicit semantics.</strong> Tags like &lt;time datetime="2026-01-01"&gt;, &lt;article&gt;, &lt;nav&gt;, &lt;abbr title="..."&gt;, and microdata/JSON-LD carry machine-readable meaning that Markdown simply cannot express.</li>
+<li><strong>Attribute-level metadata.</strong> data-* attributes, ids, and classes can carry IDs, timestamps, or source anchors useful for traceability — if you deliberately keep the right ones.</li>
+<li><strong>Lossless intermediate.</strong> Because raw HTML is the source, it is by definition the most faithful representation you can hold before any transformation.</li>
+</ul>
+<p><strong>Weaknesses</strong></p>
+<ul>
+<li><strong>Token bloat.</strong> The dominant problem. Real-world HTML is mostly non-content markup; feeding it directly wastes tokens, money, and context window.</li>
+<li><strong>Noise and distraction.</strong> Scripts, styles, tracking, wrappers, and chrome dilute the signal the model needs, degrading attention and retrieval.</li>
+<li><strong>Injection surface.</strong> Hidden elements, comments, and attributes are a natural carrier for prompt-injection payloads (see §15).</li>
+<li><strong>Inconsistency across templates.</strong> Two sites express the same table with wildly different DOMs, so "feed the HTML" yields inconsistent input.</li>
+</ul>
+<p><strong>Verdict on HTML:</strong> keep it as your stored source of truth and reach for a cleaned, minimal HTML subset as context only when the content's meaning genuinely depends on structure Markdown can't express — primarily complex tables and explicit semantic attributes. Raw production HTML should almost never enter a context window unfiltered.</p>
+
+<h2>9. Head-to-Head: Token Efficiency</h2>
+<p>This is where Markdown wins most decisively, and it's worth making the mechanism concrete.</p>
+<p>Consider a simple two-row pricing table. In production HTML it might look like:</p>
+<pre><code>&lt;div class="pricing-wrapper"&gt;
+  &lt;table class="tbl tbl--striped" data-testid="pricing"&gt;
+    &lt;thead&gt;&lt;tr&gt;&lt;th class="c1"&gt;Plan&lt;/th&gt;&lt;th class="c2"&gt;Price&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+    &lt;tbody&gt;
+      &lt;tr&gt;&lt;td class="c1"&gt;Basic&lt;/td&gt;&lt;td class="c2"&gt;$10&lt;/td&gt;&lt;/tr&gt;
+      &lt;tr&gt;&lt;td class="c1"&gt;Pro&lt;/td&gt;&lt;td class="c2"&gt;$30&lt;/td&gt;&lt;/tr&gt;
+    &lt;/tbody&gt;
+  &lt;/table&gt;
+&lt;/div&gt;
+</code></pre>
+<p>The same information in Markdown:</p>
+<pre><code>| Plan  | Price |
+|-------|-------|
+| Basic | $10   |
+| Pro   | $30   |
+</code></pre>
+
+<p>The Markdown version conveys identical facts in a fraction of the characters — and those characters tokenize efficiently, while the HTML fragments class="c1", data-testid, and the wrapper div into many meaningless tokens.</p>
+
+<p><strong>Why this matters at scale:</strong></p>
+<ul>
+<li><strong>Cost.</strong> If you retrieve 8 chunks per query and each carries 3× token overhead as HTML, you pay roughly 3× for input tokens on every single request, forever.</li>
+<li><strong>Context window.</strong> A finite window fills with markup instead of meaning, so you fit fewer real facts — directly lowering answer quality on complex questions.</li>
+<li><strong>Latency.</strong> More input tokens means slower time-to-first-token. Format overhead is a permanent tax on responsiveness.</li>
+</ul>
+
+<p><strong>Rule of thumb:</strong> for prose-heavy web content, expect Markdown to use somewhere between one-half and one-fifth the tokens of the equivalent raw HTML. Measure it on your corpus with a real tokenizer — don't trust a blog's single number, including this one.</p>
+
+<h2>10. Head-to-Head: Structural Fidelity</h2>
+
+<p>Token efficiency is meaningless if the lean format drops facts. So the real question is: does Markdown preserve enough structure? For the overwhelming majority of web content, yes — with specific exceptions.</p>
+
+<p><strong>What Markdown preserves faithfully:</strong></p>
+<ul>
+<li>Heading hierarchy — the document outline the model uses for context.</li>
+<li>Ordered and unordered lists, including reasonable nesting.</li>
+<li>Emphasis, inline code, blockquotes.</li>
+<li>Links with anchor text — critical for traceability and claim verification.</li>
+<li>Simple-to-moderate tables and fenced code blocks with language hints.</li>
+</ul>
+
+<p><strong>Where HTML retains an edge:</strong></p>
+<ul>
+<li>Complex tables with merged cells, multi-level headers, or spanning rows.</li>
+<li>Explicit machine semantics — datetime, microdata, ARIA roles, unit annotations.</li>
+<li>Deeply nested or non-linear structures (e.g., interactive widgets, forms).</li>
+</ul>
+
+<p>The practical resolution is not "pick the lossless format" — it's extract structure first, serialize to Markdown, and capture the few HTML-only semantics as explicit metadata fields. A published date becomes a published: field in the chunk's metadata, not a lost &lt;time&gt; tag. A complex table becomes either faithful Markdown or, when that fails, a small structured block. You get Markdown's efficiency and HTML's meaning, because you separated the two instead of choosing between them.</p>
+
+<p><strong>Fidelity test:</strong> convert a representative sample to Markdown, then ask a knowledgeable reviewer, "Is any fact or relationship missing versus the rendered page?" If the answer is "only the merged-cell table on page 12," you've found your exception — handle that page specially, not your whole corpus.</p>
+
+<h2>11. Head-to-Head: Tables, Code, and Complex Content</h2>
+
+<p>Complex content is where the debate actually gets interesting, because this is where naive Markdown conversion visibly fails.</p>
+
+<p><strong>Tables.</strong> Simple grids convert perfectly to Markdown and read cleanly for the model. Problems appear with:</p>
+<ul>
+<li>Merged cells (colspan/rowspan). Markdown has no native representation. Options: flatten with repeated values, linearize into "key: value" sentences per row, or retain a minimal HTML &lt;table&gt; for that table only.</li>
+<li>Multi-level headers. Collapse into compound column names ("Q1 Revenue") during conversion so each cell stays self-describing.</li>
+<li>Very wide tables. Consider linearizing to record form so a retrieved chunk keeps each row self-contained rather than truncating columns.</li>
+</ul>
+
+<p><strong>Code.</strong> Markdown wins clearly here. Fenced code blocks with language hints are unambiguous, preserve whitespace, and match training data exactly. HTML's &lt;pre&gt;&lt;code&gt; with syntax-highlighting &lt;span&gt;s is the worst case — it shatters every keyword into span-wrapped tokens. Always convert code to fenced Markdown blocks and strip highlight markup.</p>
+
+<p><strong>Other complex content.</strong></p>
+<ul>
+<li><strong>Math:</strong> preserve LaTeX/MathML as delimited expressions; don't let conversion mangle it.</li>
+<li><strong>Lists with embedded structure:</strong> Markdown handles nesting well if indentation is generated carefully.</li>
+<li><strong>Images/figures:</strong> keep alt text and captions as Markdown — they carry meaning; drop the binary and layout wrappers.</li>
+</ul>
+
+<p>The complex-content rule: default to Markdown, detect the specific structures it can't express (mainly merged-cell tables and explicit semantics), and handle only those with a targeted fallback — minimal HTML or a structured block. Never downgrade your entire corpus to HTML because 2% of tables are hard.</p>
+
+<h2>12. Head-to-Head: Chunking and Retrieval Impact</h2>
+
+<p>Format doesn't just affect the final context handed to the model — it shapes every step in between, and chunking is where the effect is largest.</p>
+
+<p><strong>Format drives chunk boundaries</strong> Good chunking splits on semantic boundaries — sections, headings, coherent ideas. Markdown makes those boundaries explicit and machine-readable: a ## heading is an unmistakable split point, and the heading text itself becomes clean metadata ("this chunk is under Pricing → Enterprise"). Raw HTML buries the same boundary inside &lt;h2 class="..."&gt; wrapped in layout &lt;div&gt;s, so a naive character-splitter cuts mid-tag and produces chunks that begin with &lt;/div&gt;&lt;/section&gt;&lt;div class=. That is not a chunk — it's shrapnel.</p>
+
+<p><strong>Format affects embedding quality</strong> Embeddings encode meaning. When markup noise inflates a chunk, the embedding is partly "about" class names and div structure rather than the actual topic. Two chunks with identical content but different wrapper markup can even embed to slightly different vectors — hurting the consistency retrieval depends on. Clean Markdown produces embeddings dominated by content, which is exactly what you want the vector to represent.</p>
+
+<p><strong>Format affects what fits</strong> Because HTML is token-heavy, a fixed-size chunk holds less actual content as HTML than as Markdown. Your retrieval unit becomes diluted: the same 512-token chunk might carry two paragraphs of meaning in Markdown but only one — plus scaffolding — in HTML. Fewer facts per chunk means you need more chunks to answer, which crowds the context window and raises cost.</p>
+
+<p><strong>Retrieval takeaway:</strong> Markdown improves chunking (clear boundaries), embedding (content-dominated vectors), and density (more meaning per chunk) simultaneously. This is why format choice quietly moves your recall@k — and why you should A/B test formats against a real evaluation set rather than assuming.</p>
+
+<h2>13. Grounding, Citations, and Traceability by Format</h2>
+<p>Grounded answers require mapping every claim back to a source. Format affects how easily you preserve that trail.</p>
+<p><strong>Links are the currency of traceability</strong> Both formats can preserve links, but they behave differently. Markdown's [anchor text](url) keeps the human-readable anchor and the target together, compactly — the model sees both the claim and where it came from. HTML preserves links too, but wrapped in attributes and often decorated with tracking parameters and rel noise that add tokens without adding meaning. When you convert to Markdown, you get a natural moment to normalize links: strip tracking params, resolve relatives to absolutes, and keep anchor text intact.</p>
+<p><strong>Metadata is where HTML semantics survive</strong> The traceability signals HTML encodes — &lt;time datetime&gt;, canonical URLs, author microdata — shouldn't be discarded just because your context format is Markdown. Capture them during extraction into a structured metadata object attached to each chunk: source_url, heading_path, published, modified, content_hash. This is the best of both: Markdown for the content the model reads, structured fields for the provenance your system audits.</p>
+<p><strong>Citation-ready chunks</strong> Because Markdown chunks carry a clean heading path, a retrieved chunk can be cited as "Source page → Section → Subsection" without parsing a DOM. Even if you never show citations to users, this makes debugging a wrong answer a two-minute trace instead of an archaeology dig.</p>
+<p><strong>Traceability rule:</strong> let content and provenance travel in different lanes. Markdown carries meaning; a metadata object carries the audit trail. Trying to smuggle provenance inside the context (as raw HTML attributes) just reintroduces the token bloat you were avoiding.</p>
+
+<h2>14. Cost and Performance Engineering</h2>
+<p>Format is one of the highest-leverage, lowest-effort cost levers in a RAG or agent system, because it multiplies across every request.</p>
+<p>Where the savings come from:</p>
+<ul>
+<li>Input tokens per request. If Markdown cuts context tokens by 60%, you cut the input-token cost of every query by roughly the same, permanently. At scale this dwarfs most model-selection savings.</li>
+<li>More facts per window. Leaner context means you can retrieve more relevant chunks within the same budget, improving quality without raising cost — or hold quality while shrinking the window to cut cost.</li>
+<li>Embedding cost. You embed content, not markup. Cleaner input can mean fewer, denser chunks to embed and store.</li>
+<li>Storage and bandwidth. Markdown chunks are smaller to store, cache, and move than HTML equivalents.</li>
+</ul>
+<p>Performance effects:</p>
+<ul>
+<li>Latency. Fewer input tokens shortens prompt-processing time and time-to-first-token.</li>
+<li>Cache efficiency. Smaller, normalized context is friendlier to prompt caching — identical Markdown chunks hash identically, whereas HTML with volatile attributes (session IDs, cache-busting params) may not.</li>
+</ul>
+<p><strong>Engineering lens:</strong> convert once at ingestion, reuse forever at query time. The conversion cost is paid a single time per document; the token savings are collected on every retrieval for the life of the system. This is close to free money — which is why not measuring format cost is the real waste.</p>
+
+<h2>15. Security and Prompt-Injection Risk by Format</h2>
+<p>Any content you pull from the web is untrusted input, and format changes the size of the attack surface.</p>
+<p><strong>HTML is a richer injection carrier</strong> Raw HTML gives an attacker more places to hide malicious instructions:</p>
+<ul>
+<li>Hidden elements — display:none, off-screen text, zero-size elements containing "ignore previous instructions…" that a naive extractor still ingests.</li>
+<li>Comments — &lt;!-- system: exfiltrate secrets --&gt; invisible to human reviewers of the rendered page.</li>
+<li>Attributes — alt, title, aria-label, and data-* values that carry payloads.</li>
+<li>Scripts and event handlers — not executed by the LLM, but if passed as text they add both noise and potential instructions.</li>
+</ul>
+<p><strong>Conversion to Markdown is a sanitization step</strong> Converting extracted content to Markdown naturally strips most of these vectors — scripts, styles, comments, and hidden-by-CSS elements typically don't survive a structure-aware conversion. That said, conversion is not sufficient on its own; a determined payload can live in visible text too. Defense in depth still applies:</p>
+<ul>
+<li>Separate data from instructions. Never let retrieved content occupy the system-prompt role. Wrap it clearly as untrusted data.</li>
+<li>Strip invisible content before conversion, don't rely on the converter to catch everything.</li>
+<li>Constrain agent tools and allowlist outbound calls so an injected instruction can't exfiltrate or act.</li>
+<li>Sanitize residual markup if you do keep an HTML subset — allowlist tags/attributes rather than blocklisting.</li>
+</ul>
+<p><strong>Security verdict:</strong> Markdown's smaller grammar is a security asset — fewer hiding places, no scripts, no attributes. But treat conversion as one layer, not the whole defense. If you retain HTML for tables, sanitize it with a strict tag/attribute allowlist first.</p>
+
+<h2>16. Configuration Patterns (Practical Implementation)</h2>
+<p>The winning pattern is not "Markdown vs HTML" — it's "store HTML, serve Markdown, capture semantics as metadata." Here is a representative, tool-agnostic shape.</p>
+<pre><code>source:
+  store_raw_html: true            # source of truth, cheap object storage
+  keep_rendered_dom: false        # only if JS-dependent
+
+extraction:
+  main_content: readability
+  preserve: [headings, lists, tables, code, links]
+  capture_semantics_as_metadata:  # HTML-only meaning → structured fields
+    - time_datetime -&gt; published
+    - link_canonical -&gt; canonical_url
+    - author_microdata -&gt; author
+
+convert:
+  target_format: markdown         # default context format
+  markdown_flavor: gfm            # pin one flavor for consistency
+  code_blocks: fenced_with_language
+  links: keep_anchor_text
+  normalize_links:
+    strip_tracking_params: true
+    resolve_relative_to_absolute: true
+  complex_tables:
+    strategy: markdown_first
+    fallback: minimal_sanitized_html   # only for merged-cell tables
+
+sanitize:
+  remove: [scripts, styles, comments, hidden_elements]
+  html_fallback_allowlist:
+    tags: [table, thead, tbody, tr, th, td]
+    attributes: [colspan, rowspan]
+
+chunk:
+  strategy: semantic              # split on Markdown headings first
+  attach_metadata: [source_url, heading_path, published, content_hash]
+
+evaluate:
+  compare_formats: true           # A/B markdown vs html-subset
+  metrics: [tokens_per_chunk, recall_at_k, groundedness, cost_per_query]</code></pre>
+<p>Why this shape works: it refuses the false binary. Raw HTML stays as the replayable source of truth; Markdown is the lean, model-friendly projection used as context; the handful of HTML-only semantics are rescued into metadata; and complex tables get a targeted, sanitized fallback — all while an evaluation block proves the choice on your own data.</p>
+
+<h2>17. Decision Framework: When to Use Which</h2>
+<p>Use this as your default policy, then override per-source only with evidence.</p>
+<ul>
+<li><strong>General web/article content for RAG</strong> — Recommended format: <em>Markdown</em> — Why: Best meaning-per-token; native model fluency</li>
+<li><strong>Code, docs, technical content</strong> — Recommended format: <em>Markdown</em> — Why: Fenced blocks preserve code perfectly</li>
+<li><strong>Simple/moderate tables</strong> — Recommended format: <em>Markdown</em> — Why: Converts faithfully, stays lean</li>
+<li><strong>Merged-cell / multi-header tables</strong> — Recommended format: <em>Minimal sanitized HTML (that table only)</em> — Why: Markdown can't express spans</li>
+<li><strong>Content needing explicit semantics (dates, microdata)</strong> — Recommended format: <em>Markdown + metadata fields</em> — Why: Rescue semantics without HTML bloat</li>
+<li><strong>Agent fetching a page mid-task</strong> — Recommended format: <em>Markdown</em> — Why: Lean context, lower injection surface</li>
+<li><strong>Source of truth / archival storage</strong> — Recommended format: <em>Raw HTML</em> — Why: Lossless, replayable into any format</li>
+<li><strong>Fine-tuning dataset from web</strong> — Recommended format: <em>Markdown</em> — Why: Clean, consistent, matches model priors</li>
+<li><strong>Structured records (products, specs)</strong> — Recommended format: <em>JSON (see §20)</em> — Why: Key–value data isn't prose at all</li>
+</ul>
+<p>The one-line policy: Store HTML, serve Markdown, rescue HTML-only semantics into metadata, and fall back to a sanitized HTML subset only for tables Markdown genuinely cannot express — and prove every exception with an eval.</p>
+<p>When in doubt, default to Markdown. The burden of proof is on HTML: it must demonstrate that the specific content carries meaning Markdown loses. For the long tail of ordinary web pages, it can't — so Markdown wins by default.</p>
+
+<h2>18. Troubleshooting: A Format Decision Tree</h2>
+<p>When a RAG or agent pipeline gives bad answers, format is an underrated suspect. Walk this tree before blaming the model.</p>
+<p><strong>Symptom: "The model ignores or misreads retrieved context."</strong></p>
+<ul>
+<li>Inspect a raw chunk. Is it full of &lt;div class=…&gt;, &lt;/span&gt;, or comment tags? → You're feeding HTML shrapnel. Fix: convert to Markdown at ingestion.</li>
+<li>Are chunks starting/ending mid-tag? → Your splitter is cutting through markup. Fix: split on Markdown headings, not raw characters.</li>
+</ul>
+<p><strong>Symptom: "Costs are higher than expected for the answer quality."</strong></p>
+<ul>
+<li>Measure tokens_per_chunk. Is markup a large fraction? → HTML bloat. Fix: Markdown conversion typically recovers 40–70% of context tokens.</li>
+<li>Are you retrieving many chunks to answer simple questions? → Low density per chunk. Fix: leaner format packs more meaning per retrieval unit.</li>
+</ul>
+<p><strong>Symptom: "Tables come back garbled or with wrong numbers."</strong></p>
+<ul>
+<li>Simple table mangled after conversion? → Converter misconfigured. Fix: enable GFM tables; verify header/row alignment.</li>
+<li>Merged/multi-header table flattened incorrectly? → Markdown genuinely can't express it. Fix: fall back to a sanitized HTML subset for that table only.</li>
+</ul>
+<p><strong>Symptom: "Answers cite the wrong section / can't be traced."</strong></p>
+<ul>
+<li>Chunks lack heading context? → Metadata not captured at chunk time. Fix: attach heading_path + source_url during chunking.</li>
+<li>Dates/authors missing? → Semantics lost in conversion. Fix: capture &lt;time datetime&gt;, canonical, microdata into metadata fields.</li>
+</ul>
+<p><strong>Symptom: "Suspicious model behavior after ingesting a page."</strong></p>
+<ul>
+<li>Hidden text or comments in the source? → Possible prompt injection. Fix: strip hidden/comment/script content before conversion; isolate retrieved data from the instruction role.</li>
+</ul>
+<p>Rule of thumb: if the answer is wrong, look at the actual bytes in the chunk before touching prompts or swapping models. Most "model problems" are really "context problems," and format is the first place they show up.</p>
+
+<h2>19. Enterprise and Cloud Considerations</h2>
+<p>At team and org scale, format decisions become governance decisions.</p>
+<p><strong>Standardize the projection, not just the storage.</strong> Pick one Markdown flavor (e.g., GFM), pin it, and document it. When five teams each convert HTML differently, you get five inconsistent chunk styles feeding one shared index — and inconsistent embeddings. A single, versioned conversion contract keeps retrieval behavior stable across teams.</p>
+<p><strong>Keep raw HTML as the system of record.</strong> Store the original HTML in cheap object storage (S3/GCS/Azure Blob) as the replayable source of truth. When you improve your extraction or change Markdown flavor, you re-project from source rather than re-scraping the web. This makes format changes a batch job, not a crawl.</p>
+<p><strong>Version everything that touches meaning.</strong> Extraction rules, converter version, sanitization allowlist, and chunker config should all be versioned and stamped onto chunks (e.g., a pipeline_version field). When answer quality shifts, you can tie it to a specific config change and roll back.</p>
+<p><strong>Cloud cost shape.</strong></p>
+<ul>
+<li>Storage: raw HTML (cold) + Markdown chunks (warm) + vectors (hot). Tier accordingly.</li>
+<li>Compute: conversion is a one-time ingestion cost; the token savings recur on every query — so the ROI compounds with query volume.</li>
+<li>Caching: normalized Markdown hashes stably, improving prompt-cache hit rates across a fleet.</li>
+</ul>
+<p><strong>Governance and compliance.</strong> Because provenance lives in structured metadata (source_url, published, content_hash), you get auditability "for free": you can prove what a chunk was, where it came from, and whether it changed — which is exactly what security and legal reviews ask for.</p>
+
+<h2>20. Alternatives and Comparisons: JSON, XML, and Hybrid</h2>
+<p>Markdown vs HTML isn't the whole universe. Two other formats matter, plus the hybrid approach that usually wins.</p>
+<p><strong>JSON — for structured records, not prose.</strong> When the content is data — product specs, pricing tiers, config, API responses — JSON beats both Markdown and HTML. It gives the model explicit key–value structure with minimal ambiguity, and it round-trips cleanly into your application. Use JSON when the answer you need is a field, not a paragraph. Its weakness: JSON for long narrative text is awkward and token-inefficient (lots of quotes, braces, escaping).</p>
+<p><strong>XML — verbose, but useful for tagged delimiting.</strong> Full XML documents share HTML's bloat problem and are rarely the right content format. But lightweight XML-style tags are genuinely useful as delimiters in prompts — e.g., wrapping untrusted retrieved content in &lt;context&gt;…&lt;/context&gt; so the model (and your parser) can tell data from instructions. Use XML tags for structure around content, not as the content format itself.</p>
+<p><strong>Hybrid — the approach most production systems land on.</strong></p>
+<ul>
+<li>Markdown for the prose the model reads.</li>
+<li>JSON/metadata for structured fields and provenance (source_url, heading_path, published).</li>
+<li>Sanitized HTML subset only for complex tables Markdown can't express.</li>
+<li>XML-style tags to delimit and label untrusted blocks in the final prompt.</li>
+</ul>
+<ul>
+<li><strong>Markdown</strong> — Best at: Prose, docs, code, simple tables — Weak at: Merged-cell tables, rich semantics</li>
+<li><strong>HTML</strong> — Best at: Lossless source, complex tables — Weak at: Token bloat, injection surface, noise</li>
+<li><strong>JSON</strong> — Best at: Structured records, fields — Weak at: Long narrative text, readability</li>
+<li><strong>XML</strong> — Best at: Delimiting/labeling, strict schemas — Weak at: Verbosity as a content format</li>
+</ul>
+
+<h2>21. Frequently Asked Questions</h2>
+<p><strong>1. Is Markdown always better than HTML for LLMs?</strong><br>
+For prose, docs, and code — yes, in almost every case, because it delivers more meaning per token with less noise. The exceptions are narrow: complex tables with merged cells, and cases where you need to preserve rich HTML-only semantics (best handled via metadata, not raw HTML).</p>
+
+<h2>2. Why do LLMs "understand" Markdown so well?</h2>
+<p>Because their training corpora are saturated with it — GitHub, docs, Stack Overflow, forums. Markdown structure closely matches the model's learned priors, so headings and lists act as strong, familiar signals.</p>
+
+<h2>3. Won't I lose information converting HTML to Markdown?</h2>
+<p>You lose presentational markup (classes, styles, layout divs) — which is exactly the noise you want gone. You only risk losing semantic signals (dates, canonical URLs, microdata), so capture those into metadata during extraction. Keep raw HTML in storage so conversion is never lossy at the source level.</p>
+
+<h2>4. How much can Markdown actually save on tokens?</h2>
+<p>Commonly 40–70% versus equivalent raw HTML, depending on how markup-heavy the source is. Component-heavy modern pages sit at the high end.</p>
+
+<h2>5. Does format affect retrieval accuracy, or just cost?</h2>
+<p>Both. Format shapes chunk boundaries and embedding quality, which directly move recall@k — not just token bills. That's why you should A/B test formats on your own eval set.</p>
+
+<h2>6. Should I store Markdown or HTML?</h2>
+<p>Store raw HTML as the source of truth; serve Markdown as the projection used for context. Re-project from HTML whenever your pipeline improves.</p>
+
+<h2>7. Is converting to Markdown enough to stop prompt injection?</h2>
+<p>No. It removes many hiding places (scripts, comments, hidden elements), so it's a helpful layer — but you still need defense in depth: separate data from instructions, strip invisible content, and constrain agent tools.</p>
+
+<h2>22. Conclusion</h2>
+<p>The Markdown-vs-HTML question feels like a formatting nitpick, but it's really a decision about how much of every token, every retrieval, and every dollar you spend on signal versus noise.</p>
+<p>The evidence points one way for the common case: Markdown is the right default for feeding prose to LLMs. It aligns with how models were trained, it preserves the structure that matters (headings, lists, code, links) while shedding the markup that doesn't, and it does so at a fraction of the token cost. Those savings and quality gains compound across every query for the life of the system.</p>
+<p>But the sophisticated answer isn't "Markdown always." It's a layered strategy:</p>
+<ul>
+<li>Store HTML as the lossless, replayable source of truth.</li>
+<li>Serve Markdown as the lean projection your models actually read.</li>
+<li>Rescue HTML-only semantics (dates, canonical, microdata) into structured metadata.</li>
+<li>Fall back to sanitized HTML only for tables Markdown genuinely can't express.</li>
+<li>Reach for JSON when the content is data, not prose — and XML tags to frame untrusted blocks.</li>
+<li>Prove every exception with an eval, because your data is the only benchmark that counts.</li>
+</ul>
+</Article>
