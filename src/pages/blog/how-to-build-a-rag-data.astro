@@ -1,0 +1,498 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why do most RAG systems fail in production?", a: "Most failures originate in the data pipeline, not the model. Poor scraping, noisy text, and bad chunking lead to low-quality retrieval that looks plausible but is wrong. Because these failures are silent, teams often misdiagnose them as model issues." },
+  { q: "What are the hardest parts of a RAG pipeline?", a: "Fetching, cleaning, and chunking web data are the most error-prone stages. Modern sites often require rendering to extract real content, and removing boilerplate without losing signal is non-trivial. Chunking must preserve meaning, or retrieval quality drops sharply." },
+  { q: "How does chunking affect retrieval quality?", a: "Chunking determines what information can be retrieved together. If chunks split sentences or separate related context, the model receives incomplete evidence and fills gaps incorrectly. Well-structured chunks aligned to semantic boundaries improve both recall and answer accuracy." },
+  { q: "How can I measure whether retrieval is working?", a: "Use metrics like Recall@k with a small, curated set of test questions. This reveals whether relevant chunks are actually being retrieved. Measuring retrieval directly is far more reliable than inspecting embeddings or relying on subjective evaluation." },
+  { q: "Why is provenance important in RAG systems?", a: "Provenance links each chunk back to its exact source location, enabling citations and debugging. Without it, you cannot verify answers or trace errors to specific inputs. Strong provenance increases trust and makes the system auditable." },
+  { q: "How can Ollagraph simplify RAG data pipelines?", a: "Ollagraph can collapse fetching, cleaning, and chunking into a single step that returns structured, token-sized chunks with source offsets. This removes common ingestion bugs and ensures consistent, retrieval-ready data. Teams can then focus on evaluation and product behavior instead of pipeline fragility." },
+];
+---
+<Article
+  title="Build a RAG Data Pipeline That Actually Retrieves"
+  description="Learn how to turn messy web content into clean, chunked, searchable data for RAG. Avoid silent failures by fixing ingestion, chunking, and retrieval measurement."
+  date="2026-07-26"
+  readingTime={26}
+  tags={["RAG", "data-pipeline", "vector-search", "retrieval-quality", "llm"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Retrieval-augmented generation lives or dies on the quality of the data you feed it, and almost nobody talks about that part. The tutorials jump straight to embeddings and a vector database, wave their hands at "load your documents," and leave you to discover the hard way that the reason your chatbot hallucinates isn't the model — it's that half your source pages were empty JavaScript shells, your chunks were split mid-sentence, and your "clean text" is full of cookie banners and navigation menus.</p>
+<p>This guide is about the unglamorous 80% of a RAG system: the data pipeline that turns messy web pages into clean, chunked, embedded, searchable knowledge. We'll walk the whole path — from a URL, through scraping and cleaning, through chunking and embedding, into a vector store, and back out via similarity search — and we'll build a working version of it with real code. Along the way you'll see where pipelines break, how to measure retrieval quality instead of guessing at it, and how a single API call can collapse the three most error-prone stages (fetch, clean, chunk) into one step so you can spend your time on the parts that actually differentiate your product.</p>
+<p>By the end you'll have a mental model, runnable code, a benchmark harness, and a checklist you can take into production.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>A RAG pipeline is a data pipeline first. Retrieval quality is bounded by ingestion quality: garbage in, hallucinations out.</li>
+<li>The hardest stages are fetch, clean, and chunk — not embed. Embedding is a solved commodity; getting clean, well-bounded chunks out of the live web is where projects actually fail.</li>
+<li>Chunking is a retrieval decision, not a formatting one. Chunk size and overlap directly change what your model can find and cite.</li>
+<li>Measure retrieval, don't vibe-check it. Recall@k and a small golden question set will tell you more than staring at embeddings ever will.</li>
+<li>Freshness is a pipeline property. A RAG system is only as current as its last ingestion run; design re-crawling in from day one.</li>
+<li>You can collapse fetch + clean + chunk into one call. POST /v1/scrape/llm-ready returns token-sized chunks with byte offsets, which removes the most bug-prone code you'd otherwise own.</li>
+<li>Keep source offsets end to end. Citations ("the model said X, here's the exact source span") are what make RAG trustworthy — and they start at ingestion.</li>
+</ul>
+
+<h2>1. The Problem: Why RAG Systems Fail at the Data Layer</h2>
+<p>Here's a scene that plays out in a thousand engineering teams. Someone builds a RAG prototype over a weekend. They point it at their docs, wire up an embedding model and a vector database, connect an LLM, and it works — on the ten pages they tested. Everyone's excited. Then they scale it to the real corpus, ship it, and the demo magic evaporates. The bot confidently invents answers. It cites the wrong page. It can't find things that are obviously in the source material. The team spends the next month blaming the model, swapping embedding providers, and tuning prompts, when the actual culprit was upstream the whole time: the data pipeline was quietly feeding the system garbage.</p>
+<p>RAG has a brutal property that traditional software doesn't: it fails silently and plausibly. A broken web scraper throws an error you can see. A broken RAG pipeline returns a fluent, confident, wrong answer that looks exactly like a right one. The failure is invisible until a user trusts it and gets burned. That's why the data layer deserves far more attention than it usually gets — it's the layer where the failures are born, and it's the layer nobody instruments.</p>
+<p>Let me name the specific ways ingestion sabotages retrieval, because once you can see them you can defend against every one.</p>
+<ul>
+<li><strong>The Empty Shell.</strong> Your scraper fetches a modern documentation site or knowledge base built as a single-page app. The raw HTML comes back 200 OK — and nearly empty, because the real content is rendered by JavaScript after load. Your pipeline dutifully embeds a page of navigation chrome and a loading spinner. The vector store now contains a confident, well-formed representation of nothing. At query time it either returns nothing useful or, worse, matches on boilerplate.</li>
+<li><strong>The Boilerplate Flood.</strong> Even when you do get the content, you also get the cookie banner, the nav menu, the "related articles" sidebar, the footer with forty links, and the newsletter popup text. Multiply that across ten thousand pages and a huge fraction of your embedded tokens are site furniture that appears on every page. This is poison for retrieval: the boilerplate is identical everywhere, so it drags unrelated pages together in vector space and dilutes the signal you actually care about.</li>
+<li><strong>The Mid-Sentence Chunk.</strong> You split your text into fixed 1,000-character windows because a tutorial told you to. But characters don't respect meaning. A chunk boundary lands in the middle of a sentence, or between a heading and the paragraph it introduces, or halfway through a code block. Now the fact a user needs is split across two chunks, and neither one — retrieved alone — contains the whole answer. The model gets half the context and fills in the rest from imagination.</li>
+<li><strong>The Lost Source.</strong> Your pipeline embeds text but throws away where each chunk came from — the URL, the byte range, the heading it lived under. So when the model produces an answer, you can't show the user the source. You can't build a citation. You can't even debug which chunk caused a bad answer. A RAG system without provenance is a black box that asks users to trust it blindly, which is precisely the trust you were trying to earn.</li>
+<li><strong>The Stale Snapshot.</strong> You scrape once, embed everything, ship it, and move on. Three months later the source pages have changed — prices, policies, product details, API signatures — but your vector store is frozen at ingestion day. The bot now answers with confident, well-retrieved, out-of-date facts. Freshness isn't a model problem or a retrieval problem; it's a pipeline problem, and if you didn't design re-ingestion in from the start, retrofitting it is painful.</li>
+</ul>
+<p>Notice the pattern: every one of these failures happens before the embedding model ever runs. You can have the best embeddings and the fastest vector database on earth and still ship a system that hallucinates, because retrieval quality is fundamentally bounded by ingestion quality. Garbage in, hallucinations out. The rest of this guide is about building the ingestion half properly — so that the smart, expensive parts downstream actually have something good to work with.</p>
+
+<h2>2. A Short History of How We Got to RAG Pipelines</h2>
+<p>To understand why the data pipeline looks the way it does, it helps to see the road that led here. RAG didn't arrive fully formed; it's the current answer to a problem people have been chipping at for years.</p>
+<p><strong>The Keyword Era.</strong> For a long time, "find relevant text" meant keyword search — TF-IDF, then BM25, the workhorse behind classic search engines and every Ctrl+F you've ever pressed. It's fast, it's transparent, and it's still genuinely useful. But it matches words, not meaning. Ask for "how to reset my password" and a keyword index won't surface a document titled "recovering account access" unless someone thought to include the magic words. The gap between what users type and how documents are written is where keyword search quietly fails.</p>
+<p><strong>The Embedding Shift.</strong> The breakthrough was learning to represent text as vectors — dense arrays of numbers where semantic similarity becomes geometric closeness. Word2Vec and GloVe hinted at it; sentence and document embedding models made it practical. Suddenly "reset my password" and "recover account access" could sit near each other in vector space even with no shared keywords, because the meaning was close. This is the quiet revolution underneath everything that followed: retrieval by similarity instead of by literal match.</p>
+<p><strong>The Vector Database Emerges.</strong> Embeddings are only useful if you can search millions of them quickly, and brute-force comparison doesn't scale. Approximate nearest neighbor algorithms (HNSW, IVF, and friends) made sub-second similarity search over huge collections feasible, and a wave of vector databases and vector-capable extensions grew up around them. Now you could store a corpus as vectors and, given a query vector, get the closest matches back in milliseconds.</p>
+<p><strong>Large Language Models Change the Goal.</strong> When capable LLMs arrived, they could write fluently about almost anything — but with two stubborn flaws: they only knew what was in their training data (a fixed, aging snapshot), and they would confidently make things up when they didn't know. You couldn't cheaply retrain them on your private docs or on this morning's news, and you couldn't trust them to admit ignorance.</p>
+<p><strong>RAG Stitches It Together.</strong> Retrieval-augmented generation is the elegant synthesis: instead of asking the model to remember facts, you retrieve the relevant facts at query time and hand them to the model as context, asking it to answer using only what you provided. The model brings language fluency; your data brings ground truth. This solves both flaws at once — the model can answer about your private, current data, and it can cite where each fact came from. The 2020 research framing gave it a name, and the tooling caught up fast.</p>
+<p><strong>And Then Reality Set In.</strong> As teams moved RAG from demo to production, attention shifted from the clever retrieval step to the boring, decisive ingestion step. People discovered exactly the failure modes from Section 1 — empty shells, boilerplate, bad chunks, lost provenance, staleness — and realized that the "R" in RAG is only as good as the pipeline that fills the store it retrieves from. That realization is where we are now, and it's why the modern conversation has moved from "which vector database?" to "how do I get clean, well-chunked, well-sourced data into it, and keep it fresh?"</p>
+<p>The web scraping API era arrived at just the right moment for this. As RAG teams confronted the fact that a huge share of the knowledge they wanted lived on live, JavaScript-heavy, anti-bot-defended web pages, the ability to turn "any URL" into "clean, chunked, LLM-ready text" with one call stopped being a convenience and became the natural front door of the pipeline. That's the door we'll walk through next.</p>
+
+<h2>3. What a RAG Data Pipeline Actually Is (Definition)</h2>
+<p><strong>Definition.</strong> A RAG data pipeline is an automated system that transforms raw web pages (or documents) into indexed, searchable vectors in a vector database, ready for retrieval at query time. It ingests unstructured content from live sources, cleans and chunks it in semantically coherent units, converts those units to embeddings via an embedding model, and stores the vectors alongside metadata (URLs, source offsets, headings) so retrieval can be traced back to provenance.</p>
+<p>Break that down:</p>
+<ul>
+<li><strong>"Ingests unstructured content from live sources"</strong> — the pipeline starts with messy, real-world data: web pages with JavaScript, PDFs, Markdown docs, whatever knowledge you want queryable. It doesn't assume they're clean or static.</li>
+<li><strong>"Cleans and chunks it in semantically coherent units"</strong> — boilerplate is stripped; text is split at meaningful boundaries (sentence ends, section breaks) not arbitrary character counts. Chunk size and overlap are tuned to the retrieval use case, not picked at random.</li>
+<li><strong>"Converts those units to embeddings"</strong> — each chunk is passed to an embedding model (OpenAI's text-embedding-3-small, Mistral's embeddings, or an open-source alternative) that produces a vector representation. That vector captures semantic meaning.</li>
+<li><strong>"Stores the vectors alongside metadata"</strong> — the vector goes into the store with the original text, the source URL, the byte offset in the source, the heading it lived under, and the ingestion timestamp. This metadata is what allows citations and debugging later.</li>
+<li><strong>"Ready for retrieval at query time"</strong> — when a user asks a question, the system embeds the question the same way, finds the closest vectors in the store, and hands the model the matching original text.</li>
+</ul>
+<p><strong>What it is not:</strong> a RAG pipeline is not a one-shot etl job — it should be designed for periodic re-ingestion to keep data fresh. It's not just embedding — embedding is the easy part. It's not a replacement for a search engine, though it's complement one. It's not magic — retrieval quality is bounded by ingestion quality, and no amount of clever prompting or re-ranking fixes garbage source chunks.</p>
+<p>A quick vocabulary note:</p>
+<ul>
+<li><strong>Chunk</strong> = a contiguous span of text, small enough to fit in an embedding model's context window, semantically coherent enough to be retrieved whole.</li>
+<li><strong>Embedding</strong> = a vector representation of text, where similarity in vector space correlates with semantic similarity.</li>
+<li><strong>Vector store</strong> = a database optimized for approximate nearest neighbor search, where you can ask "give me the K vectors closest to this query vector" in milliseconds.</li>
+<li><strong>Metadata</strong> = attached information about each chunk: source URL, byte offsets, title, timestamp, or anything else you need to trace a citation.</li>
+</ul>
+
+<h2>4. Architecture: The Seven Stages End to End</h2>
+<p>When you follow a single page from raw URL to searchable vector, it travels through seven distinct stages, each with failure modes and tuning options. Here's the end-to-end flow:</p>
+<pre><code>RAW INPUT (URLs)
+│
+▼
+┌──────────────────┐
+│ STAGE 1: Fetch   │  HTTP request, JS rendering, proxy/anti-bot if needed
+└────────┬─────────┘
+│
+▼
+┌──────────────────┐
+│ STAGE 2: Clean   │  Remove boilerplate, nav, scripts, ads, cookie banners
+└────────┬─────────┘
+│
+▼
+┌──────────────────┐
+│ STAGE 3: Chunk   │  Split into semantically coherent units of appropriate size
+└────────┬─────────┘
+│        (with overlap for context stitching)
+▼
+┌──────────────────┐
+│ STAGE 4: Enrich  │  Attach metadata: URL, byte offsets, headings, timestamps
+└────────┬─────────┘
+│
+▼
+┌──────────────────┐
+│ STAGE 5: Embed   │  Convert each chunk to a vector via embedding model
+└────────┬─────────┘
+│
+▼
+┌──────────────────┐
+│ STAGE 6: Store   │  Write vectors + metadata into vector database
+└────────┬─────────┘
+│
+▼
+┌──────────────────┐
+│ STAGE 7: Index   │  Build retrieval indices, cache warm-start data
+└────────┬─────────┘
+│
+▼
+QUERY TIME
+&#123; embedded query vector &#125; → [ similar vectors + metadata ] → [ original text chunks ] → LLM</code></pre>
+<p><strong>The Orchestrator's Job:</strong> Notice that all seven stages are driven by an orchestrator — a scheduler, a queue processor, or a workflow engine (Airflow, Temporal, a Lambda function per URL, whatever your cloud platform gives you). The orchestrator pulls URLs from a source list, drives each one through all seven stages, checks for errors and retries at each gate, and logs provenance metadata so you can later answer "why is this fact in the database and why does it rank where it does?"</p>
+<p><strong>Cost Flows Through the Pipeline:</strong> Each stage costs something different. Stage 1 (fetch) costs API credits or server resources. Stage 2 (clean) is CPU but cheap. Stage 3 (chunk) is trivial. Stage 4 (enrich) is just metadata bookkeeping. Stage 5 (embed) is the expensive part — you pay per-token to the embedding model provider. Stage 6 (store) is storage + indexing. So the biggest levers on cost are: how many pages you ingest, how many tokens each page becomes, and how often you re-ingest. Start with fewer, smaller pages and scale up only when you've tuned the other knobs.</p>
+<p><strong>Quality Gates:</strong> Between each stage, you can insert checks. Did the fetch return a real page or an empty shell? Does the cleaned text have enough signal or is it mostly boilerplate? Are chunks too big to fit in context, or too small to contain a complete thought? These aren't abstract quality checks — they're bets you're making about what the LLM can do with the output of each stage, and they should be automated and logged, not manual eyeballing.</p>
+
+<h2>5. The Data Lifecycle: Following One Page Through the Pipeline</h2>
+<p>Let's trace one real URL from ingestion to query, so the abstract stage flow becomes concrete. We'll use a realistic example: a technical documentation page with sections, code blocks, and headings.</p>
+<p><strong>Source URL:</strong> https://docs.example.com/api/authentication</p>
+
+<h3>Stage 1 — Fetch</h3>
+<p>The orchestrator sends the URL to the scraping layer. Because it's a documentation site (modern, likely JS-rendered), the request goes:</p>
+<pre><code>POST /v1/scrape/llm-ready
+&#123;
+  "url": "https://docs.example.com/api/authentication",
+  "max_tokens": 512,
+  "overlap_tokens": 64
+&#125;</code></pre>
+<p>The API detects the page is a SPA, spins up a browser, waits for the content to load, and returns clean Markdown plus pre-chunked segments. The response includes:</p>
+<pre><code>&#123;
+  "status": "success",
+  "url": "https://docs.example.com/api/authentication",
+  "title": "Authentication — Example API Docs",
+  "content_markdown": "# Authentication...",
+  "chunks": [
+    &#123;
+      "text": "# Authentication\n\nAuthentication is required for all API endpoints...",
+      "token_count": 487,
+      "byte_start": 0,
+      "byte_end": 2156,
+      "position": 0
+    &#125;,
+    &#123;
+      "text": "## API Keys\n\nAPI Keys are the primary...",
+      "token_count": 501,
+      "byte_start": 2156,
+      "byte_end": 4203,
+      "position": 1
+    &#125;
+    ...
+  ]
+&#125;</code></pre>
+<p>The key detail: the scraping API already did Stages 1, 2, and 3 (fetch, clean, chunk). You got back chunks that are:</p>
+<ul>
+<li>Already stripped of boilerplate (no nav, footer, cookie banner).</li>
+<li>Already split at semantic boundaries (not mid-sentence).</li>
+<li>Already sized to fit an embedding model context window.</li>
+<li>Already furnished with byte offsets so you can trace every chunk back to its exact source location.</li>
+</ul>
+
+<h3>Stage 4 — Enrich</h3>
+<p>The pipeline now enriches each chunk with metadata</p>
+<pre><code>&#123;
+  "text": "# Authentication\n\nAuthentication is required...",
+  "token_count": 487,
+  "byte_start": 0,
+  "byte_end": 2156,
+  "url": "https://docs.example.com/api/authentication",
+  "title": "Authentication — Example API Docs",
+  "heading": "Authentication",
+  "ingestion_timestamp": "2026-06-18T14:23:45Z",
+  "source_hash": "sha256:abc123...",
+  "chunk_id": "auth_0_0"
+&#125;</code></pre>
+<p>That metadata is tiny compared to the text — a few hundred bytes. But it's the difference between being able to cite "I found that in the Authentication section of the API docs" versus just returning text with no provenance. Keep it.</p>
+
+<h3>Stage 5 — Embed</h3>
+<p>Each enriched chunk is sent to an embedding model. Let's say you're using OpenAI's text-embedding-3-small:</p>
+<pre><code>embedding = client.embeddings.create(
+    model="text-embedding-3-small",
+    input=chunk["text"],
+    dimensions=1536
+)
+vector = embedding.data[0].embedding  # [0.042, -0.123, ..., 0.556]</code></pre>
+<p>You get back a 1536-dimensional vector. Store it with the metadata:</p>
+<pre><code>&#123;
+  "id": "auth_0_0",
+  "vector": [0.042, -0.123, ..., 0.556],
+  "text": "# Authentication\n\nAuthentication is required...",
+  "url": "https://docs.example.com/api/authentication",
+  "byte_start": 0,
+  "byte_end": 2156,
+  "ingestion_timestamp": "2026-06-18T14:23:45Z"
+&#125;</code></pre>
+
+<h3>Stage 6 — Store</h3>
+<p>Write the vector and metadata into your vector database (Pinecone, Weaviate, PostgreSQL with pgvector, Qdrant, etc.). The database indexes the vector for sub-millisecond nearest-neighbor search.</p>
+
+<h3>Stage 7 — Index</h3>
+<p>Build retrieval indices, warm caches, and mark the page as successfully ingested. Log the success:</p>
+<pre><code>&#123;
+  "url": "https://docs.example.com/api/authentication",
+  "chunks_ingested": 4,
+  "total_tokens": 1987,
+  "total_cost_credits": 0.15,
+  "vectors_stored": 4,
+  "ingestion_timestamp": "2026-06-18T14:23:45Z",
+  "status": "success"
+&#125;</code></pre>
+
+<h3>Query Time — Retrieval</h3>
+<p>Three months later, a user asks: "How do I authenticate API requests?"</p>
+<p>The system:</p>
+<ol>
+<li>Embeds the query using the same embedding model:</li>
+</ol>
+<pre><code>query_vector = embed("How do I authenticate API requests?")</code></pre>
+<ol start="2">
+<li>Searches the vector database for the K closest vectors:</li>
+</ol>
+<pre><code>results = vector_store.query(query_vector, k=5)
+[
+  &#123; id: "auth_0_0", similarity: 0.89, url: "...", byte_start: 0, byte_end: 2156 &#125;,
+  &#123; id: "auth_0_1", similarity: 0.84, url: "...", byte_start: 2156, byte_end: 4203 &#125;,
+  ...
+]</code></pre>
+<ol start="3">
+<li>Retrieves the original text for the top K results:</li>
+</ol>
+<pre><code>context = "\n\n".join([
+  result.text for result in results[:3]
+])</code></pre>
+<ol start="4">
+<li>Hands the context to the LLM:</li>
+</ol>
+<pre><code>prompt = f"""Use the following context to answer the question.
+
+Context:
+&#123;context&#125;
+
+Question: How do I authenticate API requests?
+
+Answer:"""</code></pre>
+<ol start="5">
+<li>The LLM produces an answer — and because you kept byte offsets, you can add a citation:</li>
+</ol>
+<p><strong>Answer:</strong> You authenticate API requests using an API Key. [Citation: docs.example.com/api/authentication, bytes 2156-4203]</p>
+<p>That byte range maps back to the exact "API Keys" section. A user can click, view the original source, and verify the answer. That's the trust RAG is supposed to build.</p>
+
+<h2>6. Core Components of the Pipeline</h2>
+<p>At a high level, a RAG pipeline is composed of a few key modules. Understanding each helps you reason about where failures come from and how to fix them.</p>
+<p><strong>The Fetcher.</strong> Retrieves the raw content from URLs. This is either a direct HTTP client (for static content) or a real browser (for JavaScript-rendered pages). A scraping API collapses this — you don't own the fetcher, the provider does, and you call it once per URL. That's the deal: less control, less operational pain.</p>
+<p><strong>The Cleaner.</strong> Removes boilerplate, navigation, ads, cookie notices, and other non-content text. For web pages, this is often a rule-based pipeline (remove nav tags, footer elements, scripts) or a ML-based main-content detector (trapezius, readability algorithms). The goal is to maximize signal-to-noise: every token you embed should contribute to retrieval quality. Boilerplate is the enemy.</p>
+<p><strong>The Chunker.</strong> Splits cleaned text into chunks of appropriate size and at appropriate boundaries. This is where many teams fail — they use fixed character or token windows without regard for semantic structure. A good chunker respects sentence boundaries, section headers, and code block boundaries. It overlaps chunks (so context doesn't get lost at boundaries) and it logs chunk boundaries for later citation. If a scraping API provides llm-ready output, it's done this work for you; otherwise, you have to own it.</p>
+<p><strong>The Enricher.</strong> Attaches metadata to each chunk: the source URL, the title, headings, byte offsets, ingestion timestamp, and anything else you'll want later when a user asks “why did you retrieve that?” This is the quiet hero of citations — if you throw away offsets at this stage, you can never build citations later.</p>
+<p><strong>The Embedder.</strong> Converts each chunk to a vector via an embedding model. This is the commodity part — OpenAI, Anthropic, Mistral, local open-source models, they all work. What matters is consistency: embed your corpus with the same model you'll use at query time, or vector space becomes incoherent and retrieval fails silently.</p>
+<p><strong>The Storer.</strong> Writes vectors and metadata to the vector database. This is usually the database's SDK or a bulk-insert API. Make this idempotent — if a re-ingestion happens, you should be able to overwrite the old vectors for a URL cleanly without duplicates.</p>
+<p><strong>The Orchestrator.</strong> Drives the whole pipeline: queues URLs, spawns workers for Stages 1–7, handles retries, logs success/failure, and triggers re-ingestion on a schedule. This can be Airflow, a simple cron job + database queue, or serverless fan-out via Lambda/Cloud Functions. The key is that it's separate from the pipeline logic, so you can re-run pieces and debug in isolation.</p>
+<p><strong>The Query Handler.</strong> Not technically part of ingestion, but it completes the loop. At query time it: embeds the query, searches the vector store, retrieves matching chunks, and hands them to the LLM. It also attaches provenance metadata to the final answer.</p>
+
+<h2>7. The End-to-End Workflow</h2>
+<p>Before we write code, let's walk the control flow of a single ingestion run in plain language, so the code in Section 8 reads as an implementation of something you already understand rather than a pile of API calls.</p>
+<p>A run begins with the source registry handing the pipeline a batch of URLs to process — either the full set (first run) or just the ones due for a refresh (subsequent runs). For each URL, the pipeline does the following:</p>
+<ol>
+<li><strong>Ask: does this need fetching?</strong> Look up the URL in the registry. If we have a recent content hash and the refresh policy says it's not due, skip it — the cheapest work is the work you don't do. Otherwise, proceed.</li>
+<li><strong>Fetch, clean, and chunk in one move.</strong> Call the LLM-ready scrape endpoint with the URL and your chunking parameters. Back comes a title and a list of chunks, each with text, a token count, and byte offsets. In one request we've done the three hardest stages, and — importantly — if the fetch fails, the pipeline should surface that error, not silently store nothing (defending against the empty shell).</li>
+<li><strong>Compute a content hash.</strong> Hash the returned content. Compare it to the stored hash. If it's identical, the page hasn't meaningfully changed; update the “last checked” timestamp and move on without re-embedding. If it's new or different, continue.</li>
+<li><strong>Embed the chunks.</strong> Send the batch of chunk texts to the embedding model. Get back one vector per chunk. Attach each vector to its chunk's text and metadata.</li>
+<li><strong>Upsert into the vector store.</strong> Write each record — &#123;id, vector, text, url, heading, byte_start, byte_end, content_hash, ingested_at&#125; — using a deterministic id (e.g., a hash of url + chunk index) so re-runs update rather than duplicate.</li>
+<li><strong>Update the registry.</strong> Store the new content hash and timestamp for the URL. If the page returned fewer chunks than before (content shrank) or is now gone (404), delete the orphaned chunk records so the store stays honest.</li>
+</ol>
+<p>When every URL in the batch is done, the run ends. The read path — a completely separate process, remember — can now serve queries against whatever the run wrote.</p>
+<p>Two properties are worth calling out because they separate a toy script from a real pipeline:</p>
+<ul>
+<li><strong>Idempotency.</strong> Running the pipeline twice on the same unchanged corpus should produce the same vector store, not a doubled one. Deterministic ids and upserts (not inserts) are what buy you this. It means you can safely retry a failed run, or re-run after a crash, without corrupting your data.</li>
+<li><strong>Incrementality.</strong> After the first run, cost scales with what changed, not with corpus size. The content-hash check in step 3 is the whole trick: it turns the nightly refresh from “re-embed 50,000 pages” into “re-embed the 40 that moved.” That's the difference between a pipeline that's affordable to keep fresh and one that isn't.</li>
+</ul>
+<p>With the workflow clear, the code almost writes itself.</p>
+
+<h2>8. Quickstart: Scrape → Chunk → Embed → Search</h2>
+<p>This section builds a minimal but real RAG data pipeline you can run. It ingests a set of URLs into a Postgres + pgvector store using Ollagraph's LLM-ready scrape for fetch/clean/chunk, then answers a question with similarity search. It's deliberately small enough to read in one sitting and complete enough to extend.</p>
+<p>Prerequisites: Python 3.10+, a Postgres database with the pgvector extension, an Ollagraph API key (osk_... — 1,000 free credits, no card), and an embedding model API key. Set OLLAGRAPH_API_KEY, EMBEDDING_API_KEY, and DATABASE_URL in your environment.</p>
+
+<h3>8.1 The Schema</h3>
+<p>One table holds everything — vector and provenance together. (Adjust the vector dimension to match your embedding model; 1,536 is a common default.)</p>
+
+<pre><code>CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS chunks (
+    id            TEXT PRIMARY KEY,
+    url           TEXT NOT NULL,
+    heading       TEXT,
+    text          TEXT NOT NULL,
+    byte_start    INTEGER,
+    byte_end      INTEGER,
+    content_hash  TEXT NOT NULL,
+    ingested_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    embedding     VECTOR(1536)
+);
+
+-- ANN index for fast similarity search (cosine distance).
+CREATE INDEX IF NOT EXISTS chunks_embedding_idx
+    ON chunks USING hnsw (embedding vector_cosine_ops);
+
+-- Lets us delete/refresh all chunks for a URL cheaply.
+CREATE INDEX IF NOT EXISTS chunks_url_idx ON chunks (url);</code></pre>
+
+<p>Notice the schema is the design: the vector and its provenance live in the same row, so a similarity search returns the source URL and byte offsets for free. Citations are not an afterthought bolted on later — they fall out of the storage model.</p>
+
+<h2>8.2 Fetch + Clean + Chunk, in One Call</h2>
+<p>Here's the component that would otherwise be hundreds of lines of headless-browser and boilerplate-stripping code. With the LLM-ready endpoint it's one request that returns chunks ready to embed.</p>
+
+<pre><code># python
+
+import os
+import requests
+
+OLLAGRAPH_API_KEY = os.environ["OLLAGRAPH_API_KEY"]
+OLLAGRAPH_BASE = "https://api.ollagraph.com"
+
+def fetch_chunks(url: str, max_tokens: int = 512, overlap_tokens: int = 64):
+    """Fetch, clean, and chunk a URL in a single call.
+    Returns (title, [chunk, ...]) where each chunk has:
+    text, token_count, byte_start, byte_end
+    """
+    resp = requests.post(
+        f"&#123;OLLAGRAPH_BASE&#125;/v1/scrape/llm-ready",
+        headers=&#123;"Authorization": f"Bearer &#123;OLLAGRAPH_API_KEY&#125;"&#125;,
+        json=&#123;
+            "url": url,
+            "max_tokens": max_tokens,
+            "overlap_tokens": overlap_tokens,
+            "js_eval": True,          # render JS-heavy pages
+            "wait_until": "networkidle",
+        &#125;,
+        timeout=120,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    # Defend against the "empty shell": no chunks means no usable content.
+    chunks = data.get("chunks", [])
+    if not chunks:
+        raise ValueError(f"No content extracted from &#123;url&#125; (empty shell?)")
+return data.get("title"), chunks</code></pre>
+
+<p>That if not chunks guard is small but important: it turns a silent "stored nothing" failure into a loud, catchable error — directly defending against Failure one from Section 1.</p>
+
+<h2>8.3 Embed a Batch of Chunks</h2>
+<p>The embedder is a thin wrapper over your model's batch endpoint. Keep it boring and deterministic.</p>
+
+<pre><code># python
+
+EMBEDDING_API_KEY = os.environ["EMBEDDING_API_KEY"]
+EMBEDDING_URL = "https://api.your-embedding-provider.com/v1/embeddings"
+EMBEDDING_MODEL = "text-embedding-3-small"  # 1536 dims; match your schema
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Embed a batch of texts. One model, used for both docs and queries."""
+    resp = requests.post(
+        EMBEDDING_URL,
+        headers=&#123;"Authorization": f"Bearer &#123;EMBEDDING_API_KEY&#125;"&#125;,
+        json=&#123;"model": EMBEDDING_MODEL, "input": texts&#125;,
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return [item["embedding"] for item in resp.json()["data"]]</code></pre>
+
+<h2>8.4 Ingest: Tie It Together with Upsert and Hashing</h2>
+<p>This is the write path. Note the deterministic ids, the content-hash short-circuit, and the delete-then-insert that keeps refreshes clean.</p>
+
+<pre><code># python
+
+import hashlib
+import json
+import psycopg
+
+DATABASE_URL = os.environ["DATABASE_URL"]
+
+def _chunk_id(url: str, index: int) -> str:
+    return hashlib.sha256(f"&#123;url&#125;#&#123;index&#125;".encode()).hexdigest()
+
+def _content_hash(chunks) -> str:
+    joined = "\n".join(c["text"] for c in chunks)
+    return hashlib.sha256(joined.encode()).hexdigest()
+
+def ingest_url(conn, url: str):
+    title, chunks = fetch_chunks(url)
+    new_hash = _content_hash(chunks)
+    with conn.cursor() as cur:
+        # Incrementality: skip unchanged pages.
+        cur.execute("SELECT content_hash FROM chunks WHERE url = %s LIMIT 1", 
+                   (url,))
+        row = cur.fetchone()
+        if row and row[0] == new_hash:
+            print(f"unchanged, skipping: &#123;url&#125;")
+            return 0
+        vectors = embed_texts([c["text"] for c in chunks])
+        # Idempotent refresh: clear old chunks for this URL, then write new.
+        cur.execute("DELETE FROM chunks WHERE url = %s", (url,))
+        for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
+            cur.execute(
+                """INSERT INTO chunks
+                (id, url, heading, text, byte_start, byte_end,
+                 content_hash, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    _chunk_id(url, i), url, title, chunk["text"],
+                    chunk.get("byte_start"), chunk.get("byte_end"),
+                    new_hash, json.dumps(vec),
+                ),
+            )
+        conn.commit()
+        print(f"ingested &#123;len(chunks)&#125; chunks: &#123;url&#125;")
+        return len(chunks)
+
+def ingest(urls: list[str]):
+    with psycopg.connect(DATABASE_URL) as conn:
+        for url in urls:
+            try:
+                ingest_url(conn, url)
+            except Exception as e:  # noqa: BLE001
+                print(f"FAILED &#123;url&#125;: &#123;e&#125;")</code></pre>
+
+<h2>8.5 Search: The Read Path in a Dozen Lines</h2>
+<p>The read path is short precisely because the write path did the hard work. Embed the query with the same model, ask Postgres for the nearest chunks, and you get answers with citations.</p>
+
+<pre><code># python
+
+def search(query: str, k: int = 5):
+    [query_vec] = embed_texts([query])  # same model as ingestion
+    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT text, url, heading,
+               1 - (embedding &lt;=&gt; %s::vector) AS score
+            FROM chunks
+            ORDER BY embedding &lt;=&gt; %s::vector
+            LIMIT %s""",
+            (json.dumps(query_vec), json.dumps(query_vec), k),
+        )
+        return [
+            &#123;"text": t, "url": u, "heading": h, "score": s&#125;
+            for (t, u, h, s) in cur.fetchall()
+        ]
+
+if __name__ == "__main__":
+    ingest([
+        "https://help.example.com/articles/refunds",
+        "https://help.example.com/articles/shipping",
+    ])
+    for hit in search("can I get my money back after three weeks?"):
+        print(f"[&#123;hit['score']:.3f&#125;] &#123;hit['url']&#125; — &#123;hit['heading']&#125;")
+        print(f"    &#123;hit['text'][:120]&#125;...")</code></pre>
+
+<p>Run it, and you'll see the refunds chunk come back for a query that never used the word "refund" — semantic retrieval doing its job — with the source URL attached, ready to hand to an LLM as cited context. That &lt;=&gt; operator is pgvector's cosine distance; 1 - distance turns it into an intuitive similarity score.</p>
+
+<p>That's a complete, honest RAG data pipeline in well under 150 lines: LLM-ready scraping for the three hard stages, a batch embedder, an idempotent upsert with hashing and refresh, and a search that returns citations. Everything from here — better chunking knobs, real evaluation, security, scale — is refinement on this skeleton, and that's exactly what the rest of the guide covers.</p>
+
+<p><strong>Q: How do I know if my chunk size is right?</strong><br>
+A: A chunk should answer a single, coherent question from your domain. Too small (&lt; 128 tokens) and you lose context; too large (&gt; 2048 tokens) and you're embedding noise. Use a held-out set of queries, ingest with different chunk sizes (256, 512, 1024 tokens), and track Recall@5. Then you'll know instead of guess.</p>
+
+<p><strong>Q: How do I keep my corpus fresh without re-embedding everything every night?</strong><br>
+A: The content-hash check is your tool. On each refresh run, fetch the page, hash its content, and compare to the stored hash. If identical, skip re-embedding — just update the "last checked" timestamp. This turns nightly refreshes from O(corpus size) to O(changed content). For most sites, 80–90% of pages are unchanged daily, so your embedding costs plummet.</p>
+
+<p><strong>Q: Can I use a smaller embedding model to save money?</strong><br>
+A: Yes — text-embedding-3-small (1536d) costs ~$0.02 per 1M tokens. But smaller models may give worse recall on your domain. The right answer is to benchmark: ingest with both, evaluate on a golden question set (10–20 hand-curated queries), and choose based on Recall@5 and cost, not guessing. Document which model you used — changing models later means re-embedding everything.</p>
+
+<p><strong>Q: What if a page 404s or disappears after I've ingested it?</strong><br>
+A: When a fetch fails, explicitly DELETE FROM chunks WHERE url = %s to remove orphaned vectors. Don't let stale chunks linger — they pollute search results. If you're running dynamic crawls, also do periodic cleanup: DELETE FROM chunks WHERE url NOT IN (SELECT url FROM source_registry).</p>
+
+<p><strong>Q: Can I combine multiple sources (docs, blog, API reference) into one vector store and filter by source?</strong><br>
+A: Yes — add a "source" column to your schema. Then filter on search: WHERE source IN ('docs', 'api_ref') if the query context says to prefer official sources. Store the source in metadata and use it in the read path at query time.</p>
+
+<p><strong>Q: What metrics should I actually track in production?</strong><br>
+A: Three: Recall@k (do your top-5 results include the right answer?), latency (under 500ms per query), and cost (per-query embedding spend). Hand-curate a golden question set with known answers and measure Recall@5 weekly. If it drops, investigate. If cost is growing faster than traffic, investigate inefficient re-embedding.</p>
+
+<p><strong>Q: How do I version my embedding model so I can safely switch models later?</strong><br>
+A: Add an embedding_model column to your schema. At ingest time, write the model name. At query time, read the stored chunks' model names. If mixed, require re-embedding everything before search — consistency is worth the cost. Most teams choose this over searching only the latest model version.</p>
+
+<h2>Conclusion</h2>
+<p>Your RAG pipeline succeeds or fails on the write path, not the read path. The seven-stage architecture — Discover, Fetch, Clean, Chunk, Embed, Index, Refresh — makes clear what you should build in-house and what you should delegate. Delegate fetching, cleaning, and chunking (high-maintenance, undifferentiated work) to an API. Own the source registry, refresh logic, and vector store (where you differentiate). Measure your write path quality with Recall@5 on a golden question set, iterate on chunk boundaries and embedding consistency, and use content hashes to turn nightly refreshes from expensive to cheap. The 150-line code skeleton in Section 8 is real and runnable — start there, measure retrieval quality weekly, and adapt the principles to your domain.</p>
+
+<h2>Refrences:</h2>
+<ul>
+<li>Ollagraph API: https://docs.ollagraph.com (/v1/scrape, /v1/scrape/llm-ready, /v1/convert/*)</li>
+<li>pgvector: https://github.com/pgvector/pgvector (PostgreSQL vector extension; HNSW indexing)</li>
+<li>OpenAI Embeddings: https://platform.openai.com/docs/guides/embeddings (text-embedding-3-small, 1536d, $0.02/1M tokens)</li>
+<li>Mistral Embeddings: https://docs.mistral.ai/capabilities/embeddings/ (1024d, multilingual)</li>
+</ul>
+</Article>
