@@ -1,0 +1,562 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why is raw HTML bad for RAG pipelines?", a: "Raw HTML mixes meaningful text with large amounts of boilerplate like navigation, ads, and scripts. This dilutes embeddings, increases token costs, and produces poor retrieval matches. It also breaks chunking because splitters cut through tags instead of semantic boundaries." },
+  { q: "What makes Markdown \"AI-ready\"?", a: "AI-ready Markdown is stripped of boilerplate while preserving structure like headings, lists, tables, and code blocks. It normalizes links and formatting so outputs are consistent across pages. It also includes provenance metadata such as source URL and content hashes for traceability." },
+  { q: "What should a scrape-to-Markdown API return?", a: "A good endpoint returns clean Markdown plus structured metadata including title, canonical URL, timestamps, and a content hash. It should preserve document structure and links while removing noise. The output must be immediately usable for chunking and embedding without extra cleanup." },
+  { q: "How do you handle JavaScript-heavy pages?", a: "JavaScript-heavy pages require rendering before extraction so the actual content is visible. This typically involves a browser-like environment that executes scripts and captures the final DOM. Without this step, many pages return empty or incomplete content." },
+  { q: "How do you control cost and rate limits at scale?", a: "Control cost by reducing token usage through clean extraction and consistent chunking. Use caching and change detection to avoid reprocessing unchanged pages. Apply concurrency limits and backoff strategies to stay within rate limits while maintaining throughput." },
+  { q: "How do you prevent prompt injection from scraped content?", a: "Sanitize all extracted content by removing scripts, hidden elements, and suspicious patterns. Treat scraped text as untrusted input and isolate it from system prompts. Enforce strict boundaries so retrieved content cannot override instructions or leak sensitive data." },
+];
+---
+<Article
+  title="Scrape Websites for RAG with One API Call"
+  description="Turn messy web pages into clean, chunk-ready Markdown for RAG in a single API call. Learn architecture, pitfalls, and what a reliable extraction endpoint must return."
+  date="2026-07-26"
+  readingTime={28}
+  tags={["RAG", "web-scraping", "markdown", "data-pipelines", "llm"]}
+  kind="blog"
+  faqs={faqs}
+>
+<p>The complete guide to turning messy live web pages into clean, chunk-ready Markdown your RAG pipeline can actually use — without building and babysitting a scraping stack yourself.</p>
+
+<h2>Executive summary</h2>
+<p>Most RAG projects don't fail at the model. They fail at the front door — the step where raw web pages become context. Teams spend weeks wiring up headless browsers, proxy rotation, boilerplate strippers, and HTML-to-Markdown converters, only to end up with brittle pipelines that break every time a site ships a redesign.</p>
+<p>This guide makes the case for a simpler architecture: treat "web page in, AI-ready Markdown out" as a single API call. You send a URL, you get back clean, structured Markdown plus provenance metadata — already stripped of nav, ads, scripts, and markup noise, and ready to chunk and embed.</p>
+<p>We'll cover why raw HTML poisons retrieval, what "AI-ready" actually means, the anatomy of a scrape-to-Markdown pipeline (whether you build it or call it), how to handle JavaScript-heavy pages and tables, cost and rate-limit engineering, prompt-injection safety, and a decision framework for build-vs-buy. By the end you'll know exactly what a good extraction endpoint should return — and how to plug it into a RAG system in an afternoon.</p>
+
+<h2>1. The Problem: Why Web Data Is Hostile to RAG</h2>
+<p>RAG promises something simple: let a model answer from your sources instead of its frozen training data. The web is the biggest, freshest source there is. So the obvious move is to point your pipeline at live URLs and start ingesting.</p>
+<p>Then reality hits.</p>
+<p>A modern web page is not a document — it's an application. A single article URL ships tens of thousands of bytes of navigation menus, cookie banners, newsletter modals, related-post grids, ad slots, tracking scripts, and layout &lt;div&gt;s nested a dozen levels deep. The actual content you want — the 800 words that answer the question — is a small island in an ocean of markup.</p>
+<p>Feed that raw HTML into a RAG pipeline and three things go wrong:</p>
+<ul>
+<li>Retrieval degrades. Embeddings get computed over markup and boilerplate, not meaning. A chunk that's 70% &lt;div class="…" &gt; noise produces a muddy vector that matches poorly.</li>
+<li>Costs explode. You pay tokens for every closing tag and tracking attribute. The signal-to-token ratio can easily be worse than 1:4.</li>
+<li>Chunking breaks. Naive splitters cut through the middle of tags and elements, producing malformed, half-context fragments.</li>
+</ul>
+<p>And that's before you even reach the page. Many sites render content with JavaScript, so a plain HTTP fetch returns an empty shell. Others throw rate limits, bot checks, and geoblocks at you.</p>
+<p>The core problem: the gap between "a URL exists" and "I have clean, chunk-ready context" is huge — and it's where most RAG teams quietly lose weeks of engineering time.</p>
+
+<h2>2. Definitions: What "AI-Ready Markdown" Really Means</h2>
+<p>"AI-ready" gets thrown around loosely. Let's make it concrete. Markdown is AI-ready when it satisfies all of the following:</p>
+<ul>
+<li><strong>Boilerplate-free.</strong> Nav, footers, ads, cookie banners, and related-content widgets are gone. What remains is the main content a human reader came for.</li>
+<li><strong>Structure-preserving.</strong> Headings stay headings (#, ##), lists stay lists, code stays fenced, tables stay tables. The document's shape — which drives good chunk boundaries — survives.</li>
+<li><strong>Noise-free but link-aware.</strong> Presentational markup (classes, styles, layout divs) is stripped, but meaningful links are preserved as [anchor](url) so grounding and citations still work.</li>
+<li><strong>Normalized.</strong> Consistent heading levels, resolved relative→absolute URLs, stripped tracking params, collapsed whitespace. Two pages from the same site produce consistently shaped output.</li>
+<li><strong>Provenance-stamped.</strong> It arrives with metadata: source URL, title, publish/modified dates, canonical URL, and a content hash — so every chunk is traceable and change-detectable.</li>
+<li><strong>Chunk-ready.</strong> The output can be split on semantic boundaries (headings) without post-processing surgery.</li>
+</ul>
+<p>Put simply: AI-ready Markdown is what you'd get if a careful human read the page, deleted everything that wasn't the content, kept the structure, and wrote down where it came from — at machine speed and scale.</p>
+
+<h2>3. Why One API Call Beats a DIY Scraping Stack</h2>
+<p>You can build this yourself. The question is whether you should own the maintenance.</p>
+<p>A do-it-yourself scrape-to-Markdown stack means assembling and operating:</p>
+<ul>
+<li>A headless browser fleet (Playwright/Puppeteer) to render JavaScript.</li>
+<li>Proxy rotation and anti-bot handling to avoid blocks.</li>
+<li>A main-content extractor (Readability-style) tuned per site.</li>
+<li>An HTML→Markdown converter with table, code, and link handling.</li>
+<li>A sanitizer to strip scripts, hidden elements, and injection vectors.</li>
+<li>Metadata capture for dates, canonicals, and microdata.</li>
+<li>Retries, timeouts, concurrency limits, and caching.</li>
+<li>Monitoring for when any of the above silently breaks.</li>
+</ul>
+<p>Every one of those is a moving part that fails independently — and most fail silently, degrading your retrieval quality without throwing an error.</p>
+<p>The API-call model collapses all of that into one request:</p>
+<pre><code>POST /v1/extract
+&#123; "url": "https://example.com/article", "format": "markdown" &#125;</code></pre>
+<p>…and one response: clean Markdown plus metadata. The rendering fleet, proxies, extraction heuristics, converter, and sanitizer are someone else's operational problem — maintained continuously as the web changes.</p>
+<p>The trade-off in one line: DIY gives you maximum control and maximum maintenance; a single extraction API gives you speed-to-value and someone else's on-call rotation. For most RAG teams, extraction is undifferentiated heavy lifting — exactly the kind of thing to outsource so you can spend your tokens (and your engineers) on the parts that make your product unique.</p>
+
+<h2>4. Architecture: The Scrape-to-Markdown Pipeline</h2>
+<p>Whether you build it or call it, the same seven stages sit between a URL and a chunk. Understanding them tells you exactly what a good API is doing on your behalf.</p>
+
+<p><strong>Fetch/Render</strong> — Retrieve the page. For JS-heavy sites, render in a headless browser so client-side content actually appears. Handle redirects, timeouts, and bot checks.</p>
+<p><strong>Extract</strong> — Isolate the main content block, discarding nav/ads/footers/boilerplate. This is the single highest-leverage step for quality.</p>
+<p><strong>Capture semantics</strong> — Before discarding HTML, pull out &lt;time datetime&gt;, &lt;link rel="canonical"&gt;, author microdata, and Open Graph tags into a structured metadata object.</p>
+<p><strong>Convert</strong> — Transform the cleaned HTML into Markdown: headings→#, lists→-, code→fenced blocks, tables→GFM tables, links→[text](url).</p>
+<p><strong>Sanitize</strong> — Remove scripts, styles, comments, and hidden/invisible content. Neutralize prompt-injection carriers. Allowlist only a safe HTML subset for tables Markdown can't express.</p>
+<p><strong>Normalize</strong> — Resolve relative URLs, strip tracking params, fix heading hierarchy, collapse whitespace, compute a content_hash.</p>
+<p><strong>Return/Chunk</strong> — Emit Markdown + metadata. Downstream, split on headings into retrieval chunks, each stamped with source_url and heading_path.</p>
+<pre><code>URL → [Fetch/Render] → [Extract] → [Capture semantics]
+    → [Convert] → [Sanitize] → [Normalize] → Markdown + metadata → [Chunk] → Index</code></pre>
+<p>The elegance of the "one API call" model: stages 1–6 happen behind the endpoint. You hand off a URL and receive the output of step 6 — leaving your team to own only steps 7+ (chunking, embedding, retrieval), which are the parts genuinely specific to your application.</p>
+
+<h2>5. Fetching: JavaScript, Rendering, and Anti-Bot Reality</h2>
+<p>The first place naive scrapers die is the fetch. You GET a URL, get back 200 OK, and find… almost nothing. The &lt;body&gt; is a single empty &lt;div id="root"&gt; waiting for JavaScript to fill it. This is the norm now, not the exception — React, Vue, Svelte, and Next.js sites build their content client-side.</p>
+<p>So fetching splits into two modes:</p>
+<ul>
+<li><strong>Static fetch</strong> — A plain HTTP request. Fast, cheap, and correct for server-rendered pages (many blogs, docs, news sites, and anything with proper SSR). Use it when you can; it's an order of magnitude cheaper than rendering.</li>
+<li><strong>Rendered fetch</strong> — A headless browser (Playwright/Puppeteer) loads the page, executes JavaScript, waits for content or network-idle, then hands you the hydrated DOM. Necessary for SPAs and lazy-loaded content. Slower and heavier, but it's the only thing that sees the real page.</li>
+</ul>
+<p>A good extractor decides per URL which mode to use — attempting static first and falling back to rendering when the content payload looks suspiciously thin.</p>
+<p>Then there's the adversarial layer:</p>
+<ul>
+<li><strong>Rate limits and bot checks.</strong> Sites throttle or challenge automated traffic. Respectful crawling means honoring robots.txt, spacing requests, and identifying yourself.</li>
+<li><strong>Proxies and geolocation.</strong> Some content is geo-gated or blocks datacenter IPs. Rotating residential proxies solve this — but they're operationally painful and legally sensitive, so use them responsibly.</li>
+<li><strong>Timeouts and retries.</strong> Pages hang. Budget a hard timeout, retry with backoff on transient failures, and fail loudly on permanent ones.</li>
+</ul>
+<p>Why this matters for "one API call": all of this — render-vs-static decisions, proxy rotation, backoff, bot handling — is pure operational toil that has nothing to do with your RAG product. It's the single biggest reason teams outsource extraction. The endpoint absorbs the adversarial web so your pipeline sees only clean output.</p>
+
+<h2>6. Extraction: Finding the Main Content</h2>
+<p>You have the full rendered HTML. Now the highest-leverage step in the entire pipeline: throw away 90% of it.</p>
+<p>Main-content extraction is the art of identifying the article body and discarding everything else — nav, sidebars, footers, comment sections, cookie banners, "related posts" grids, and ad slots. Get this right and downstream quality soars. Get it wrong and every chunk is contaminated.</p>
+<p>The workhorse approach is readability-style extraction: score DOM nodes by text density, link density, tag semantics, and class/id hints (article, content, post-body score up; nav, sidebar, footer, comments, promo score down). The highest-scoring subtree wins and becomes your content root.</p>
+<p>Signals that separate content from chrome:</p>
+<ul>
+<li><strong>Text-to-link ratio.</strong> Navigation is nearly all links; article prose is nearly all text. High link density → probably chrome.</li>
+<li><strong>Semantic tags.</strong> &lt;article&gt;, &lt;main&gt;, and &lt;h1&gt; anchor the real content. Respect them when present.</li>
+<li><strong>Repetition across pages.</strong> Elements that appear identically on every page of a site (the header, the footer) are boilerplate by definition — cross-page diffing exposes them.</li>
+<li><strong>Position and depth.</strong> Deeply nested, small text blocks off to the side are usually widgets, not content.</li>
+</ul>
+<p>Edge cases worth knowing:</p>
+<ul>
+<li>Paginated and "load more" articles need the pieces stitched together before extraction.</li>
+<li>Documentation and reference pages often have legitimate sidebars (the nav tree) you must not mistake for content — or worse, keep.</li>
+<li>Listicles and product pages blur the content/chrome line; extraction has to be tuned, not assumed.</li>
+</ul>
+<p>Extraction is where per-site tuning lives, and it's the part of a DIY stack that quietly rots as sites redesign. A maintained extraction service earns its keep here.</p>
+
+<h2>7. Conversion: HTML → Clean Markdown</h2>
+<p>With the content subtree isolated, convert it to Markdown. This is more than a tag swap — it's a translation that must preserve meaning while dropping presentation.</p>
+<p>The core mappings are straightforward:</p>
+<ul>
+<li>&lt;h1&gt;…&lt;h6&gt; → # … ######</li>
+<li>&lt;p&gt; → blank-line-separated paragraphs</li>
+<li>&lt;ul&gt;/&lt;ol&gt;/&lt;li&gt; → - / 1. lists (with nesting)</li>
+<li>&lt;strong&gt;/&lt;em&gt; → **bold** / *italic*</li>
+<li>&lt;a href&gt; → [anchor text](url)</li>
+<li>&lt;blockquote&gt; → &gt;</li>
+<li>&lt;pre&gt;&lt;code&gt; → fenced ``` blocks</li>
+<li>&lt;img&gt; → ![alt](src) (or drop, if images are noise for your use case)</li>
+</ul>
+<p>The value is in the details most naive converters botch:</p>
+<ul>
+<li><strong>Whitespace discipline.</strong> HTML is whitespace-insensitive; Markdown is not. Blank lines around block elements are load-bearing — miss them and headings fuse with paragraphs, or lists collapse into one line.</li>
+<li><strong>Nested structure.</strong> Lists inside lists, code inside lists, blockquotes inside blockquotes — indentation must be exact or the Markdown renders as flat mush.</li>
+<li><strong>Entity decoding.</strong> &amp;amp;, &amp;#39;, &amp;nbsp; must become &amp;, ', and real spaces — not leak through as literal entities.</li>
+<li><strong>Empty-element pruning.</strong> Empty &lt;p&gt;&lt;/p&gt; and stray &lt;div&gt;s should vanish, not become blank-line litter.</li>
+</ul>
+<p>Design goal: the Markdown should read as if a human wrote it. If you can open the output and read it comfortably, an LLM can too — and your embeddings will be computed over meaning instead of markup.</p>
+
+<h2>8. Structure Preservation: Headings, Tables, Code, Links</h2>
+<p>Four content types deserve special care because they carry disproportionate meaning — and are the most commonly mangled.</p>
+<p><strong>Headings.</strong> Headings are the skeleton of the document and the natural chunk boundaries for RAG. Preserve their hierarchy faithfully: don't flatten an &lt;h3&gt; into an &lt;h2&gt;, and don't skip levels. A clean heading tree means your chunker can split on structure and every chunk inherits a meaningful heading_path like Guide &gt; Installation &gt; Docker.</p>
+<p><strong>Tables.</strong> The perennial pain point. GFM Markdown tables handle simple grids well:</p>
+
+<p>Feature	Static Fetch	Rendered Fetch
+Speed	Fast	Slow
+JS content	No	Yes
+Cost	Low	High</p>
+<p>But GFM can't express merged cells (colspan/rowspan), nested tables, or multi-line cells. The pragmatic rule: Markdown-first for simple tables; fall back to a minimal, sanitized HTML &lt;table&gt; for complex ones. Never flatten a table into a wall of comma-separated text — you destroy the row/column relationships that made it useful.</p>
+
+<p><strong>Code blocks.</strong> Preserve fencing and the language hint: <code>```python</code>, not a bare <code>```</code>. The language tag helps models reason about the snippet and prevents code from being misread as prose. Never let indentation-based code collapse into a paragraph.</p>
+
+<p><strong>Links.</strong> Keep meaningful links as <code>[anchor](absolute-url)</code> — they power citations and grounding. But normalize them: resolve relative paths to absolute URLs, strip tracking junk (utm_*, fbclid, session IDs), and drop empty or JavaScript-only (href="#", href="javascript:…") links that carry no value.</p>
+
+<h2>9. Metadata and Provenance: What to Capture</h2>
+
+<p>Markdown is the body; metadata is the label on the jar. Capture it before you discard the HTML, because most of it lives in tags you're about to strip.</p>
+
+<p>Metadata worth extracting on every page:</p>
+
+<ul>
+<li><strong>source_url</strong> — the exact fetched URL (post-redirect). Non-negotiable for citations.</li>
+<li><strong>canonical_url</strong> — from &lt;link rel="canonical"&gt;. Deduplicates the same article reachable via many URLs.</li>
+<li><strong>title</strong> — from &lt;h1&gt; or &lt;title&gt; / Open Graph og:title.</li>
+<li><strong>published / modified</strong> — from &lt;time datetime&gt;, article:published_time, or JSON-LD. Critical for freshness ranking and TTLs.</li>
+<li><strong>author</strong> — from microdata, rel="author", or byline patterns.</li>
+<li><strong>language</strong> — from &lt;html lang&gt;. Routes multilingual content correctly.</li>
+<li><strong>content_hash</strong> — a hash of the normalized Markdown. The cheapest possible change-detection primitive (more in §14).</li>
+<li><strong>word_count / token_estimate</strong> — for chunk-budget planning.</li>
+</ul>
+
+<p>Why this pays off:</p>
+
+<ul>
+<li><strong>Grounding and citations.</strong> Every chunk can point back to a real URL, so the model can cite and users can verify.</li>
+<li><strong>Freshness.</strong> published/modified let you rank recent content higher and expire stale content.</li>
+<li><strong>Deduplication.</strong> canonical_url + content_hash stop the same article from occupying five slots in your index.</li>
+<li><strong>Governance.</strong> Provenance-per-chunk is what makes an enterprise RAG auditable instead of a black box.</li>
+</ul>
+
+<p>Rule of thumb: if a semantic fact lived in the HTML (a date, an author, a canonical), rescue it into metadata rather than losing it in conversion. Structured metadata is cheap to store and expensive to reconstruct later.</p>
+
+<h2>10. Chunking the Output for Retrieval</h2>
+
+<p>Clean Markdown makes chunking easy — which is precisely why the earlier stages matter. This is the first step you own after the API returns.</p>
+
+<p>Chunk on structure, not character counts. Because headings survived conversion, split on them: each ##/### section (or a group of them) becomes a chunk. Structure-aware chunks are internally coherent — they're about one thing — which is exactly what produces clean, matchable embeddings.</p>
+
+<p>Practical guidelines:</p>
+
+<ul>
+<li><strong>Target a token budget, not a fixed length.</strong> Aim for chunks in a sensible range (often ~200–500 tokens) but let semantic boundaries decide the exact cut. Never split mid-sentence or mid-table.</li>
+<li><strong>Respect atomic blocks.</strong> A code block, a table, or a tight list should stay whole. Splitting them destroys their meaning.</li>
+<li><strong>Add light overlap when needed.</strong> A sentence or two of overlap between adjacent chunks preserves context across boundaries — useful for prose, unnecessary for self-contained blocks.</li>
+<li><strong>Stamp every chunk with metadata.</strong> Carry source_url, heading_path, published, and content_hash onto each chunk. This is what turns a retrieved fragment into a citable, freshness-aware, deduplicated piece of context.</li>
+<li><strong>Preserve heading context.</strong> Prepend the heading_path to the chunk text (e.g., a breadcrumb line) so an isolated chunk still knows where it came from. A chunk that reads "Docker: run docker compose up" is far more useful than a naked "run docker compose up."</li>
+</ul>
+
+<p>The payoff of the whole pipeline lands here: because the Markdown is boilerplate-free and structure-preserving, your chunks are clean, coherent, and citable — and retrieval quality reflects it. Garbage extraction can't be rescued by clever chunking; clean extraction makes chunking almost trivial.</p>
+
+<h2>11. Handling Scale: Rate Limits, Concurrency, Caching</h2>
+
+<p>One URL is a demo. A hundred thousand URLs, refreshed on a schedule, is a system. Scale is where extraction stops being a script and starts being infrastructure.</p>
+
+<p>The pressures that appear at volume:</p>
+
+<ul>
+<li><strong>Target-side rate limits.</strong> Hammer a site and you get throttled, challenged, or banned. Polite crawling means per-domain concurrency caps, jittered delays, and honoring robots.txt and Retry-After. You want to move fast across domains while staying gentle within each one.</li>
+<li><strong>Your-side concurrency.</strong> Rendered fetches are heavy — each headless browser eats memory and CPU. A worker pool with backpressure keeps you from melting under your own crawl. Static fetches scale far cheaper; route to rendering only when needed (§5).</li>
+<li><strong>Retries and dead-letter handling.</strong> At scale, a 1% failure rate is thousands of pages. Retry transient errors with exponential backoff; quarantine permanent failures to a dead-letter queue for inspection instead of silently dropping them.</li>
+<li><strong>Caching — the biggest lever.</strong> Most pages don't change between crawls. A content-addressed cache keyed on URL (and validated by content_hash, §14) lets you skip re-fetching, re-rendering, and re-converting unchanged pages entirely. This is where the majority of scale savings come from.</li>
+</ul>
+
+<p>Two cache layers worth running:</p>
+
+<ul>
+<li><strong>Fetch cache</strong> — raw HTML keyed by URL + fetch mode, with a TTL. Avoids re-hitting the network.</li>
+<li><strong>Result cache</strong> — the finished Markdown + metadata, keyed by content_hash. If the hash matches last crawl, nothing downstream needs to run.</li>
+</ul>
+
+<p>Why the API model wins here: rate-limit choreography, browser pools, backpressure, and multi-layer caching are a full-time platform project. Behind an endpoint, "scale" becomes a concurrency setting and a bill — not a system you staff and babysit.</p>
+
+<h2>12. Cost Engineering: Tokens, Requests, Storage</h2>
+
+<p>Every stage of a RAG pipeline has a meter running. The good news: clean extraction is itself the most effective cost optimization you have.</p>
+
+<p><strong>Token costs (the big one).</strong> You pay for tokens at embedding time and again at query time when chunks enter the prompt. Boilerplate isn't free — a page that's 90% chrome means 90% of your embedding and context spend is buying navigation menus. Stripping boilerplate (§6) can cut token volume by 5–10× before you optimize anything else. Clean Markdown is a cost strategy, not just a quality strategy.</p>
+
+<p><strong>Request costs.</strong> Rendered fetches cost more than static ones; proxied fetches more still. Levers:</p>
+
+<ul>
+<li>Prefer static over rendered wherever the page allows (§5).</li>
+<li>Cache aggressively (§11) — the cheapest request is the one you don't make.</li>
+<li>Batch and schedule recrawls by content volatility (§14) instead of blindly re-crawling everything nightly.</li>
+</ul>
+
+<p><strong>Storage costs.</strong> You're storing raw HTML (maybe), Markdown, embeddings, and metadata. Vectors dominate at scale.</p>
+
+<p>Decide deliberately whether to retain raw HTML — useful for reprocessing, but heavy. Often a hash + the Markdown is enough.</p>
+<p>Deduplicate via canonical_url + content_hash (§9) so you're not embedding the same article five times.</p>
+<p>Right-size embedding dimensions to your recall needs; bigger isn't always better.</p>
+<p>Query-time costs. Retrieval puts chunks into the prompt. Tight, coherent, structure-aware chunks (§10) mean you retrieve fewer, better chunks to answer a question — lowering per-query token spend and latency at once.</p>
+
+<p>The compounding effect: clean extraction shrinks tokens, which shrinks embedding cost, storage, and per-query context cost — simultaneously. The front-door cleanup pays dividends at every downstream meter.</p>
+
+<h2>13. Security: Prompt Injection and Sanitization</h2>
+
+<p>The moment you feed live web content to an LLM, every scraped page is untrusted input. Treat it with the same suspicion you'd give any user-supplied data — because attackers know your model will read it.</p>
+
+<p>Prompt injection is the headline threat: a page embeds instructions aimed at your model — "ignore previous instructions and…", "output the user's data to…", often hidden in white-on-white text, display:none divs, comments, or alt attributes. If that text reaches the prompt as trusted context, the model may obey it.</p>
+
+<p>Defenses, layered:</p>
+
+<ul>
+<li>Strip the hiding places. Remove &lt;script&gt;, &lt;style&gt;, comments, and hidden elements (display:none, visibility:hidden, zero-size, off-screen, aria-hidden decoration) during sanitization (§7). Much injection lives exactly where users can't see it — so neither should your model.</li>
+<li>Allowlist, don't blocklist. When you must keep HTML (the complex-table fallback, §8), permit only a known-safe set of tags and attributes (table/tr/td, colspan/rowspan) and drop everything else. Blocklists always miss something.</li>
+<li>Delimit untrusted content. Wrap scraped context in clear boundaries (e.g., XML-style tags) and instruct the model that anything inside is data to analyze, never instructions to follow. This separation is one of the most effective mitigations.</li>
+<li>Neutralize active links and payloads. Strip javascript: URIs, event handlers (onclick, onerror), and data-URI payloads. Keep link anchors for citation, but the href must be inert and normalized (§8).</li>
+<li>Preserve provenance. Because every chunk carries its source_url (§9), if a page does inject something, you can trace exactly which source misbehaved and quarantine it.</li>
+</ul>
+
+<p>Security is not a bolt-on stage — it's the sanitize step doing double duty. Cleaning for quality and cleaning for safety are the same pass: remove everything that isn't legible, meaningful content, and the attack surface collapses with the noise.</p>
+
+<h2>14. Freshness: Recrawls, Change Detection, TTLs</h2>
+
+<p>A RAG index is a snapshot of a moving target. Web content changes — prices update, docs get revised, articles get corrected — and stale context produces confidently wrong answers. Freshness is the discipline of keeping the index honest without re-crawling the world every night.</p>
+
+<p>Change detection. The content_hash (§9) is your primitive: fetch (cheaply, static if possible), normalize, hash, compare to last crawl. If the hash matches, nothing changed — skip embedding and indexing entirely. If it differs, only then pay for reprocessing. This turns "recrawl everything" into "reprocess only what actually moved."</p>
+
+<p>TTLs by volatility. Not all content ages equally. Tier your recrawl cadence:</p>
+
+<ul>
+<li>High-volatility (pricing, news, stock, status pages) — short TTL, frequent checks.</li>
+<li>Medium (product docs, active blogs) — daily or weekly.</li>
+<li>Low (reference material, archived posts, historical pages) — infrequent, or on-demand only.</li>
+</ul>
+
+<p>Blindly crawling everything at the same interval wastes money on stable pages and still misses fast-movers. Match cadence to how often the source actually changes.</p>
+
+<p>Signals that content changed:</p>
+
+<ul>
+<li>Last-Modified / ETag HTTP headers — cheap pre-checks before a full fetch.</li>
+<li>&lt;link rel="canonical"&gt; shifts or the modified timestamp advancing.</li>
+<li>content_hash diff — the ground truth, since headers lie or go missing.</li>
+</ul>
+
+<p>Handling change downstream. When a page changes: re-extract, re-chunk, and upsert — replace the old chunks for that source_url rather than appending duplicates. Carry the new modified date so freshness ranking reflects reality. Deleted pages should be evicted from the index, not left to haunt retrieval.</p>
+
+<p>The efficient loop: cheap fetch → hash → compare → reprocess only on change. Freshness done right is mostly not doing work — spending compute exclusively on the pages that actually moved.</p>
+
+<h2>15. Configuration Patterns</h2>
+
+<p>Everything so far collapses into a small set of knobs. A good extraction endpoint is declarative: you describe the output you want, not the procedure to get it. Here's a representative config that captures the decisions from §5–14:</p>
+
+<pre><code>fetch:
+  mode: auto            # static | rendered | auto (try static, fall back)
+  render_wait: network_idle
+  timeout_ms: 15000
+  retries: 2
+  respect_robots: true
+  proxy: auto           # off | datacenter | residential | auto
+
+extract:
+  main_content: readability
+  strip: [nav, header, footer, sidebar, comments, ads, cookie_banners]
+  preserve: [headings, lists, tables, code, links, blockquotes]
+
+convert:
+  target_format: markdown
+  markdown_flavor: gfm
+  code_blocks: fenced_with_language
+  images: alt_text_only        # keep | alt_text_only | drop
+  links:
+    keep_anchor_text: true
+    resolve_relative_to_absolute: true
+    strip_tracking_params: true
+    drop_empty_and_js_links: true
+  complex_tables:
+    strategy: markdown_first
+    fallback: minimal_sanitized_html
+
+metadata:
+  capture:
+    - source_url
+    - canonical_url
+    - title
+    - published
+    - modified
+    - author
+    - language
+    - content_hash
+    - token_estimate
+
+sanitize:
+  remove: [scripts, styles, comments, hidden_elements, event_handlers]
+  neutralize: [javascript_uris, data_uris]
+  html_fallback_allowlist:
+    tags: [table, thead, tbody, tr, th, td]
+    attributes: [colspan, rowspan]
+
+chunk:
+  strategy: semantic          # split on heading structure
+  target_tokens: 400
+  min_tokens: 150
+  overlap_tokens: 40
+  keep_atomic: [code, table]
+  prepend_heading_path: true
+  attach_metadata: [source_url, heading_path, published, content_hash]
+
+freshness:
+  change_detection: content_hash
+  ttl:
+    high: 1h
+    medium: 24h
+    low: 168h</code></pre>
+
+<p>How to read this config as a checklist:</p>
+
+<ul>
+<li>fetch answers §5 — render only when needed, retry politely, respect robots.</li>
+<li>extract / convert answer §6–8 — strip chrome, preserve the four high-value structures, normalize links.</li>
+<li>metadata answers §9 — rescue provenance before HTML is discarded.</li>
+<li>sanitize answers §13 — the safety-and-quality pass, allowlist-based.</li>
+<li>chunk answers §10 — structure-aware, budgeted, metadata-stamped.</li>
+<li>freshness answers §14 — hash-based detection, volatility-tiered TTLs.</li>
+</ul>
+
+<p>The point of a declarative config is that your intent lives in one readable file instead of scattered across scraper scripts, converter hacks, and cron jobs. Change a policy in one place; the whole pipeline honors it.</p>
+
+<h2>16. Integration: Wiring the API into Your RAG Stack</h2>
+
+<p>Now the practical part: dropping the endpoint into a real retrieval pipeline. The mental model is a clean seam — the API owns "URL → clean Markdown + metadata," and your stack owns everything from chunks onward.</p>
+
+<p>The end-to-end flow:</p>
+
+<pre><code>[Your crawl frontier / URL list]
+        │
+        ▼
+POST /v1/extract  ──►  &#123; markdown, metadata &#125;   ← the one API call
+        │
+        ▼
+[Chunker]  ──►  structure-aware chunks + metadata   (§10)
+        │
+        ▼
+[Embedder]  ──►  vectors
+        │
+        ▼
+[Vector DB / hybrid index]  ◄─ upsert by source_url   (§14)
+        │
+        ▼
+[Retriever]  ──►  top-k chunks (+ metadata for citations)
+        │
+        ▼
+[LLM prompt]  ──►  grounded answer with sources</code></pre>
+
+<p>Where each concern lands:</p>
+
+<p><strong>Ingestion trigger.</strong> Fire the API from your crawl scheduler, a webhook, a sitemap walker, or on-demand at query time for "fetch this URL now" flows.</p>
+<p><strong>Chunk + embed.</strong> Feed the returned Markdown to your existing chunker and embedding model. Because the Markdown is clean and structured, your current chunker works better with no code changes.</p>
+<p><strong>Index with upserts.</strong> Key writes on source_url so recrawls replace rather than duplicate (§14). Store metadata alongside vectors for filtering and citations.</p>
+<p><strong>Retrieve with provenance.</strong> At query time, return chunk text and its source_url / heading_path so the model can cite and users can verify.</p>
+<p><strong>Delimit at the prompt.</strong> Wrap retrieved chunks in clear boundaries and label them untrusted data (§13) before they hit the model.</p>
+<p>A minimal request/response contract:</p>
+
+<pre><code>// Request
+POST /v1/extract
+&#123;
+  "url": "https://example.com/guide/rag",
+  "format": "markdown",
+  "config": &#123; "fetch": &#123; "mode": "auto" &#125;, "chunk": &#123; "strategy": "semantic" &#125; &#125;
+&#125;
+
+// Response
+&#123;
+  "markdown": "# RAG Guide\n\n## Installation\n...",
+  "chunks": [
+    &#123; "text": "...", "heading_path": "RAG Guide &gt; Installation",
+      "source_url": "https://example.com/guide/rag",
+      "published": "2024-06-01", "content_hash": "a1b2c3" &#125;
+  ],
+  "metadata": &#123; "canonical_url": "...", "author": "...", "language": "en" &#125;
+&#125;</code></pre>
+
+<p>The integration win: you're not rebuilding your RAG stack — you're replacing a brittle, high-maintenance ingestion front-end with a single call, and keeping your embeddings, vector DB, and retrieval exactly as they are. The seam is clean because the contract is simple: messy URL in, AI-ready Markdown out.</p>
+
+<h2>17. Troubleshooting Decision Tree</h2>
+
+<p>When extraction goes sideways, the symptom is almost always downstream — bad answers, empty retrievals, ballooning costs — but the cause is usually a specific upstream stage. Work the tree from symptom to stage:</p>
+
+<p><strong>Symptom: The Markdown is empty or suspiciously thin.</strong></p>
+<ul>
+<li>→ Page is JS-rendered and you fetched statically. Fix: switch fetch.mode to rendered or auto (§5).</li>
+<li>→ Main-content extraction scored the wrong container. Fix: check for an unusual layout (SPA shell, paywall, interstitial); confirm the render actually completed before extraction.</li>
+<li>→ You got blocked (challenge page, 403). Fix: enable proxy/residential routing; honor Retry-After (§11).</li>
+</ul>
+
+<p><strong>Symptom: Output is full of nav, footers, cookie banners, "related articles."</strong></p>
+<ul>
+<li>→ Boilerplate stripping under-reached. Fix: tighten extract.strip; verify the site isn't burying content in generic &lt;div&gt; soup that defeats semantic scoring (§6).</li>
+</ul>
+
+<p><strong>Symptom: Tables are mangled or code blocks lost formatting.</strong></p>
+<ul>
+<li>→ Naive conversion. Fix: confirm GFM tables and fenced_with_language; for colspan/rowspan tables, enable the minimal_sanitized_html fallback (§8).</li>
+</ul>
+
+<p><strong>Symptom: Retrieval returns irrelevant or half-thoughts.</strong></p>
+<ul>
+<li>→ Chunking split mid-idea or by raw char count. Fix: switch to semantic chunking on headings; check target_tokens and keep_atomic (§10).</li>
+<li>→ Missing heading context. Fix: enable prepend_heading_path so chunks carry their breadcrumb.</li>
+</ul>
+
+<p><strong>Symptom: Costs are climbing faster than corpus size.</strong></p>
+<ul>
+<li>→ Boilerplate is being embedded. Fix: audit token-per-chunk; clean extraction should cut this 5–10× (§12).</li>
+<li>→ Duplicate content indexed. Fix: dedup on canonical_url + content_hash (§9, §14).</li>
+</ul>
+
+<p><strong>Symptom: Answers cite outdated facts.</strong></p>
+<ul>
+<li>→ Stale index. Fix: shorten TTL for that volatility tier; verify change-detection upserts are replacing, not appending (§14).</li>
+</ul>
+
+<p><strong>Symptom: Model does something it shouldn't (leaks, off-topic obedience).</strong></p>
+<ul>
+<li>→ Prompt injection via scraped text. Fix: confirm hidden-element removal, delimit untrusted context, trace the offending source_url and quarantine (§13).</li>
+</ul>
+
+<p>The pattern: trace the symptom back to its stage, fix the config knob, re-run. Because the pipeline is declarative (§15), most fixes are a setting change — not a code rewrite.</p>
+
+<h2>18. Enterprise and Cloud Considerations</h2>
+
+<p>At team and organization scale, extraction stops being a technical question and becomes a governance, compliance, and operations question. The concerns that surface once real stakeholders are involved:</p>
+
+<p><strong>Data governance and residency.</strong> Where does scraped content live, and where is it processed? Regulated industries need regional processing, data-residency guarantees, and clear retention policies. Decide what you keep (raw HTML? just Markdown + hash?) and for how long — §12's storage decisions become compliance decisions here.</p>
+
+<p><strong>Access control and auditability.</strong> Who can trigger crawls, change configs, and read the index? Enterprise deployments need role-based access, per-request audit logs, and the provenance trail (§9) that lets you answer "where did this answer come from?" during a review or incident.</p>
+
+<p><strong>Legal and ethical crawling.</strong> Respecting robots.txt, honoring rate limits, observing terms of service, and handling copyrighted or personal data appropriately aren't optional at scale — they're legal exposure. Bake politeness and compliance into the fetch layer (§5, §11), not into individual engineers' good intentions.</p>
+
+<p><strong>Reliability and SLAs.</strong> Production RAG needs uptime guarantees, predictable latency, graceful degradation (serve cached content when a source is down), and observability — dashboards for success rates, block rates, freshness lag, and cost per thousand pages.</p>
+
+<p><strong>Deployment model.</strong> The build-vs-buy axis (§19) has an enterprise flavor: managed SaaS endpoint vs. VPC-deployed vs. fully self-hosted. The trade is control and data-locality versus operational burden — the same theme as §3, now with a compliance department in the room.</p>
+
+<p>The shift: a solo prototype optimizes for "does it work?" An enterprise deployment optimizes for "can we prove it works, safely, repeatably, and within policy?" The clean seam of an API (§16) helps here too — it's a single, auditable, governable choke point instead of scraping logic sprawled across a dozen services.</p>
+
+<h2>19. Build vs. Buy: A Decision Framework</h2>
+
+<p>The recurring tension of this whole guide, made explicit. Neither answer is universally right — it depends on where your differentiation and your constraints actually lie.</p>
+
+<p><strong>Lean toward BUILD when:</strong></p>
+<ul>
+<li>Extraction is your product — you're differentiating on scraping quality itself.</li>
+<li>You have unusual targets that no general extractor handles (bespoke internal systems, exotic formats).</li>
+<li>You have the team to staff a platform: browser pools, proxy management, anti-bot cat-and-mouse, converter edge cases, and the perpetual maintenance they demand.</li>
+<li>Data absolutely cannot leave your environment and no self-hosted vendor option fits.</li>
+</ul>
+
+<p><strong>Lean toward BUY (API) when:</strong></p>
+<ul>
+<li>Extraction is infrastructure, not your differentiator — you want to ship RAG features, not maintain scrapers.</li>
+<li>You value speed-to-value and predictable cost over maximal control.</li>
+<li>You don't want to own the adversarial treadmill (§5, §11) — anti-bot, rendering, proxy rotation — as a permanent tax on your roadmap.</li>
+<li>Your targets are the general web, where a good extractor already handles 95% of cases.</li>
+</ul>
+
+<p><strong>The honest cost accounting.</strong> DIY's price isn't the initial build — it's the maintenance. Sites redesign, anti-bot escalates, edge cases accumulate, and each is a ticket forever. The API's price is per-request and visible on a bill. The real question isn't "which is cheaper today?" but "where do I want my engineers spending their time — on scraping plumbing, or on the retrieval quality and product features your users actually see?"</p>
+
+<p>A useful heuristic: build the parts that are your competitive moat; buy the parts that are undifferentiated heavy lifting. For most teams, RAG's value is in retrieval quality, ranking, and UX — while extraction is exactly the kind of hard, thankless plumbing that an API is meant to absorb.</p>
+
+<h2>20. Alternatives and Comparisons</h2>
+
+<p>The extraction-API approach isn't the only way to get web data into RAG. Here's how the honest field of options compares:</p>
+
+<pre><code>Approach	Strengths	Weaknesses	Best for
+DIY scraping stack	Full control; no per-request fees; handles bespoke targets	Heavy build + perpetual maintenance; you own anti-bot/rendering; slow to value	Teams where extraction is the product
+Extraction API (scrape → Markdown)	One call; clean, chunk-ready output; no infra to run; scales on demand	Per-request cost; less low-level control; data leaves your env (unless self-hosted)	Teams shipping RAG features on the general web
+Generic HTML→Markdown libraries	Free; simple; local	No fetching/rendering/anti-bot; naive conversion; no boilerplate removal or metadata	Converting already-clean HTML you control
+Headless-browser frameworks (Playwright/Puppeteer)	Powerful rendering; scriptable	You still build extraction, cleaning, chunking, scaling yourself; high maintenance	Custom crawls needing precise interaction
+Feeding raw HTML straight to the LLM	Zero preprocessing	Token bloat, boilerplate noise, injection risk, poor chunking, high cost	Almost nothing — a false shortcut
+Manual copy-paste	Trivial for tiny corpora	Doesn't scale; no automation, freshness, or provenance	One-off prototypes only</code></pre>
+
+<p>How to read the table. The two viable production paths are DIY stack and extraction API — the rest are components of those, or shortcuts that collapse under real volume. Libraries and headless frameworks aren't competitors to the API so much as pieces of the thing the API assembles for you. And "raw HTML to the model" — while superficially simplest — reintroduces every problem §1 opened with: token bloat, noise, broken chunking, and an open injection surface.</p>
+
+<p>The comparison in one line: the choice that matters is build the pipeline or call the pipeline. Everything else is either a plank you'd use to build it, or a corner you'll regret cutting.</p>
+
+<h2>21. Frequently Asked Questions</h2>
+
+<p><strong>Q: Why Markdown specifically — why not just send the LLM clean HTML or JSON?</strong> Markdown hits the sweet spot: it preserves the structure LLMs use as signal (headings, lists, tables, code) while spending far fewer tokens than HTML and reading more naturally than JSON. It's the highest signal-to-token format for context. (See §2, §7.)</p>
+
+<p><strong>Q: Can one API call really handle JavaScript-heavy sites?</strong> Yes — that's precisely the toil the endpoint absorbs. It fetches statically when possible and falls back to full headless rendering when the page needs it, all behind the same request (§5). You don't manage browsers or wait strategies.</p>
+
+<p><strong>Q: How do you keep the RAG index fresh without re-crawling everything?</strong> Cheap fetch → normalize → content_hash → compare. Only changed pages get reprocessed, and recrawl cadence is tiered by how volatile the content is (§14). Freshness done right is mostly not doing work.</p>
+
+<p><strong>Q: Isn't feeding scraped web content to an LLM a security risk?</strong> It is — every scraped page is untrusted input. The mitigations are removing hidden elements, allowlist sanitization, neutralizing active links, and delimiting scraped context as data-not-instructions (§13). The same pass that cleans for quality also shrinks the attack surface.</p>
+
+<p><strong>Q: Do I have to replace my existing RAG stack?</strong> No. The API replaces only the ingestion front-end — "URL → clean Markdown." Your chunker, embedding model, vector DB, and retriever stay exactly as they are (§16). The seam is deliberately clean.</p>
+
+<p><strong>Q: How does clean extraction save money if I'm paying per request?</strong> Boilerplate removal cuts token volume 5–10×, which lowers embedding, storage, and per-query context cost simultaneously. Caching means most recrawls cost nothing. The request fee is typically dwarfed by the token savings (§12).</p>
+
+<p><strong>Q: When should I build my own instead of using an API?</strong> When extraction is your differentiator, when you have exotic targets no general extractor handles, or when data legally cannot leave your environment and no self-hosted option fits (§19). For most teams, extraction is undifferentiated plumbing worth buying.</p>
+
+<p><strong>Q: What about robots.txt and legal concerns?</strong> A responsible pipeline honors robots.txt, rate limits, and terms of service at the fetch layer (§5, §11, §18). At enterprise scale these are compliance requirements, not courtesies — bake them into infrastructure, not individual judgment.</p>
+
+<p><strong>Q: How big should chunks be?</strong> Target roughly 200–500 tokens, split on semantic boundaries (headings) rather than raw character counts, with light overlap and atomic blocks (code, tables) kept whole. Prepend the heading path so each chunk carries its context (§10).</p>
+
+<p><strong>Q: What metadata actually matters for RAG?</strong> At minimum: source_url and heading_path (citations + context), published/modified (freshness), content_hash (dedup + change detection), and canonical_url (dedup). These enable grounding, freshness ranking, and governance (§9).</p>
+
+<h2>22. Conclusion</h2>
+
+<p>RAG doesn't usually fail at the model. It fails at the front door — where messy, hostile, JavaScript-heavy web pages meet a pipeline that was never designed to clean them. Feed an LLM boilerplate-choked HTML and you get bloated tokens, broken chunks, poor retrieval, runaway cost, and an open injection surface. The quality of your answers is capped by the quality of your context, and the quality of your context is decided at extraction.</p>
+
+<p>This guide's argument is simple: treat "web page in, AI-ready Markdown out" as a single, solvable step. Everything between a URL and a clean chunk — rendering JavaScript, dodging anti-bot walls, finding the main content, converting to faithful Markdown, preserving headings and tables and code, rescuing provenance, sanitizing for safety — is real engineering, but it's undifferentiated engineering. It's the same hard problem for every team, which is exactly why it belongs behind one API call instead of scattered across scrapers you maintain forever.</p>
+
+<p>Do the front door right and everything downstream gets easier at once: fewer tokens, cleaner chunks, better recall, lower cost, safer prompts, and provenance you can cite. Your embeddings, vector DB, and retriever don't change — they just start receiving content worth retrieving.</p>
+</Article>
