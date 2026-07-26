@@ -1,0 +1,790 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What makes live web data different from static datasets?", a: "Live web data changes over time and requires a defined refresh contract, not a one-time crawl. Prices, documentation, and policies can drift quickly, so pipelines must revalidate and update content continuously. Without this, systems return outdated information with high confidence." },
+  { q: "Why do naive scraping pipelines fail in production?", a: "Most failures come from predictable issues like noisy extraction, missing structure, inconsistent templates, and lack of traceability. These problems degrade retrieval quality and make debugging nearly impossible. Production systems need explicit handling for each stage to avoid silent quality collapse." },
+  { q: "How does chunking impact LLM performance?", a: "Chunking determines how information is retrieved and presented to the model at query time. Poor chunking breaks context, mixes unrelated sections, or loses structure like tables and lists. Well-designed chunks preserve meaning, align with document hierarchy, and improve retrieval precision." },
+  { q: "When should you use RAG instead of fine-tuning?", a: "RAG is الأفضل when data changes frequently and you need traceable, up-to-date answers with citations. Fine-tuning is better for stable domains where consistent tone or reasoning matters more than freshness. RAG also allows easier auditing because retrieved evidence is visible at runtime." },
+  { q: "What does a traceable pipeline look like?", a: "A traceable pipeline records the source URL, fetch timestamp, and transformation steps for every chunk. This allows teams to link model outputs back to exact inputs and diagnose errors precisely. Without traceability, debugging becomes guesswork instead of engineering." },
+  { q: "How do you prevent silent failures in scraping systems?", a: "Silent failures are mitigated through monitoring signals like content length, structure checks, and change detection. Systems should flag anomalies such as empty pages, login walls, or unexpected template shifts. Continuous validation ensures issues are detected before they impact downstream model outputs." },
+];
+---
+<Article
+  title="Web Scraping for AI: Building Reliable Live Data Pipelines"
+  description="A practical guide to turning live web data into LLM-ready inputs with traceability, quality controls, and resilience against common pipeline failures."
+  date="2026-07-26"
+  readingTime={22}
+  tags={["web-scraping", "llm", "rag", "data-pipelines", "ai-engineering"]}
+  kind="blog"
+  faqs={faqs}
+>
+<p><strong>EXECUTIVE SUMMARY</strong></p>
+<p>Feeding live web data into LLMs is an end-to-end system with clearly separable stages: discovery, crawling, extraction, cleaning, chunking, enrichment, grounding, and continuous monitoring. Treat any one as an afterthought and the whole system quietly degrades.</p>
+<p>This guide is written as an audit-first playbook. Instead of chasing the newest library, it focuses on three durable properties:</p>
+<ol>
+<li><strong>INFORMATION GAIN</strong> — does each stage preserve the facts that actually matter?</li>
+<li><strong>TECHNICAL CORRECTNESS</strong> — does the output stay faithful to the source page?</li>
+<li><strong>OPERATIONAL SAFETY</strong> — can you detect, explain, and recover when a site changes?</li>
+</ol>
+<p>By the end you will understand how to design a pipeline that produces LLM-ready outputs with traceability, schema alignment, and measurable quality — not just "text that looks fine in a demo."</p>
+
+<h2>1: PROBLEM STATEMENT</h2>
+<p>Most teams approach this with a two-line mental model: "scrape the web, then feed it to an LLM." That model breaks in production for reasons that are boringly predictable — and every one of them is preventable.</p>
+
+<p><strong>SIX PREDICTABLE FAILURE MODES:</strong></p>
+<ol>
+<li><strong>THE EXTRACTED TEXT IS NOISY</strong><br>Raw HTML-to-text dumps drag in navigation menus, cookie banners, sidebars, newsletter popups, and footer link farms. The model can't tell the difference between the actual article and the "Subscribe now" block, so retrieval surfaces junk and answers drift.</li>
+<li><strong>THE CONTENT IS INCOMPLETE</strong><br>Naive extractors silently drop the things that carry the most meaning: data tables, code blocks, nested lists, and heading hierarchy. A pricing table flattened into a run-on sentence is worse than no table at all, because it looks like a fact while being unusable.</li>
+<li><strong>THE DATA IS INCONSISTENT</strong><br>Different templates — or even the same site after a redesign — produce different DOM structures. A pipeline tuned to one layout produces clean output on Monday and garbage on Tuesday, with no error thrown.</li>
+<li><strong>THE PIPELINE IS NOT TRACEABLE</strong><br>When a model gives a wrong or surprising answer, you need to point to the exact chunk, the exact source URL, and the exact fetch time that produced it. If you can't, you can't debug it — you can only guess.</li>
+<li><strong>THE DATA BECOMES STALE</strong><br>Live web data changes. Prices, availability, documentation, policies, and version numbers all move. Without freshness signals, your system confidently returns last quarter's truth.</li>
+<li><strong>THE SYSTEM BREAKS SILENTLY</strong><br>The worst failure mode isn't a crash — it's a 200 OK that returns an empty shell, a soft-blocked page, or a login wall rendered as "content." The pipeline keeps running, quality collapses, and nobody notices until users complain.</li>
+</ol>
+
+<p><strong>THE 2026 LENS</strong></p>
+<p>Google's ranking systems increasingly reward information gain and genuine helpfulness. That same principle is the right north star for your ingestion pipeline: preserve the facts that matter, remove the noise that harms retrieval, and keep evidence that can be audited. A pipeline optimized for information gain is also a pipeline optimized to rank — and to be trusted.</p>
+
+<h2>2: DEFINITIONS</h2>
+<p>Before designing anything, pin down the two phrases in the title, because ambiguity here causes most architecture mistakes.</p>
+
+<p><strong>WHAT IS "LIVE WEB DATA"?</strong></p>
+<p>Live web data means content that <strong>CHANGES OVER TIME</strong> and therefore must be re-collected or re-validated on a schedule. It is the opposite of a one-time static dump. If a fact can go out of date — a stock level, an API reference, a news event, a policy — it is live data, and your pipeline needs a <strong>REFRESH CONTRACT</strong> for it, not just an initial crawl.</p>
+
+<p><strong>WHAT DOES "FEEDING INTO LLMs" MEAN?</strong></p>
+<p>This can mean three architecturally different things, and they have different validation needs:</p>
+
+<ol>
+<li><strong>RAG (Retrieval-Augmented Generation)</strong>
+<ul>
+<li><strong>What it is:</strong> Retrieve relevant chunks at query time and pass them into the prompt as context.</li>
+<li><strong>Best when:</strong> Facts change often; you need citations and freshness.</li>
+<li><strong>Main risk:</strong> Poor chunking or retrieval → irrelevant context.</li>
+</ul>
+</li>
+<li><strong>FINE-TUNING / CONTINUED TRAINING</strong>
+<ul>
+<li><strong>What it is:</strong> Convert web content into a training dataset that reshapes the model's weights.</li>
+<li><strong>Best when:</strong> You need consistent tone, format, or domain reasoning.</li>
+<li><strong>Main risk:</strong> Baked-in staleness; expensive to correct.</li>
+</ul>
+</li>
+<li><strong>TOOL-AUGMENTED AGENTS</strong>
+<ul>
+<li><strong>What it is:</strong> The agent fetches or scrapes pages during task execution.</li>
+<li><strong>Best when:</strong> Tasks need the very latest state (prices, live docs).</li>
+<li><strong>Main risk:</strong> Untrusted content can hijack the agent (prompt injection).</li>
+</ul>
+</li>
+</ol>
+
+<p><strong>EMPHASIS OF THIS GUIDE</strong></p>
+<p>This guide covers all three at the system level, but emphasizes RAG and agent pipelines — they are the most common in production and, crucially, the easiest to validate and audit because the evidence (retrieved chunks) is inspectable at answer time. Fine-tuning bakes web content into weights, which makes traceability and freshness far harder to guarantee.</p>
+
+<h2>3: ARCHITECTURE</h2>
+<p>A robust pipeline is a sequence of stages, each with a single responsibility and a clean contract with the next. Think of it as an assembly line where every station adds value and passes forward exactly what the next station needs.</p>
+
+<p><strong>THE PIPELINE FLOW</strong></p>
+<p>Discovery → Fetch → Extraction → Cleaning → Chunking → Enrichment → Indexing → Retrieval → Grounding → Monitoring</p>
+
+<p><strong>THE 10 STAGES :</strong></p>
+<ol>
+<li><strong>DISCOVERY</strong> — Find URLs and decide what is worth crawling. Sitemaps, internal links, partner feeds, topic filters.</li>
+<li><strong>FETCH</strong> — Download HTML (and optionally assets) with correct headers, rate limits, and render logic for JS-heavy pages.</li>
+<li><strong>EXTRACTION</strong> — Convert HTML into structured text plus metadata (headings, tables, links, author, dates).</li>
+<li><strong>CLEANING</strong> — Remove boilerplate and normalize formatting without deleting meaning.</li>
+<li><strong>CHUNKING</strong> — Segment content into retrieval units with stable, semantic boundaries.</li>
+<li><strong>ENRICHMENT</strong> — Attach entities, timestamps, topic tags, and provenance to each chunk.</li>
+<li><strong>INDEXING</strong> — Store chunks in a vector database and/or a keyword search index.</li>
+<li><strong>RETRIEVAL</strong> — Fetch the most relevant chunks for a given query.</li>
+<li><strong>GROUNDING</strong> — Ensure the model's answer is supported by (and traceable to) retrieved facts.</li>
+<li><strong>MONITORING</strong> — Detect failures, drift, and quality regressions continuously.</li>
+</ol>
+
+<p><strong>THE KEY PRINCIPLE: ALIGNMENT</strong></p>
+<p>Every stage should preserve exactly the meaning the <strong>NEXT</strong> stage needs — no more, no less. Cleaning that strips a heading breaks chunking. Chunking that splits a table breaks retrieval. Extraction that loses the publish date breaks freshness scoring downstream.</p>
+
+<h2>4: PILLAR/CLUSTER STRATEGY</h2>
+<p>This article is a PILLAR PAGE: broad, authoritative, and internally linked to a set of focused cluster articles that each go deep on one subtopic. This structure signals topical authority to search engines and gives readers a clear path from overview to detail.</p>
+<h3>RECOMMENDED CLUSTER ARTICLES</h3>
+<p>(Each links back to this pillar)</p>
+<ul>
+<li>Scraping for RAG: chunking and embeddings — hands-on companion to Section 9.</li>
+<li>HTML-to-Markdown extraction patterns — preserving tables, code, and headings faithfully.</li>
+<li>PDF/DOCX scraping for knowledge bases — handling non-HTML sources at scale.</li>
+<li>Freshness and lastmod auditing — detecting and scoring stale content.</li>
+<li>Citation readiness and schema alignment — making every chunk traceable to its source.</li>
+<li>Observability for scraping pipelines — metrics, alerts, and drift detection.</li>
+<li>Enterprise governance and compliance — robots policy, licensing, and PII handling.</li>
+</ul>
+<h3>INTERNAL LINKING RULE</h3>
+<p>The pillar links DOWN to every cluster with descriptive anchor text (not "click here"), and each cluster links UP to the pillar and SIDEWAYS to 1–2 sibling clusters. This creates a tight semantic graph that both users and crawlers can navigate.</p>
+
+<h2>5: SEARCH INTENT AND CONTENT COVERAGE</h2>
+<p>Ranking under 2026 systems means satisfying the DOMINANT intent while also covering the adjacent questions a genuinely useful page would answer.</p>
+<h3>PRIMARY INTENT</h3>
+<p>"How do I build a pipeline to feed live web data into an LLM?" — an implementation-and-architecture query.</p>
+<h3>SECONDARY INTENTS THIS GUIDE DELIBERATELY COVERS</h3>
+<ol>
+<li>"What tools should I use?"</li>
+</ol>
+<pre><code>Managed RAG API → Fast start, less control (prototypes)
+Open-source frameworks → Full control, self-hosted (production)
+Crawler: Scrapy
+Extractor: Readability, BeautifulSoup
+Vector DB: Pinecone, Weaviate, Qdrant
+Orchestration: Airflow, Prefect, Dagster
+Custom in-house → Tailored, expensive (enterprise)
+Fine-tuning → No retrieval, but stale (not for live data)
+Key settings:
+Render JS: Auto (only when needed)
+Chunk size: 512 tokens
+Extract format: Markdown
+Indexing: Reindex on hash change only
+Retrieval: Use hybrid (vector + keyword) for technical content.</code></pre>
+
+<h3>Q2: HOW DO I AVOID BAD EXTRACTION?</h3>
+<p>What to preserve:</p>
+<ul>
+<li>Heading hierarchy</li>
+<li>Tables (with row/column structure, not prose)</li>
+<li>Links with anchor text</li>
+<li>Metadata (title, author, date, URL)</li>
+<li>Provenance (source URL + fetch time)</li>
+</ul>
+<p>Best practices:</p>
+<ul>
+<li>Use Readability algorithm, not tag stripping</li>
+<li>Output to Markdown format (consistent)</li>
+<li>Validate structure (check headings, tables survived)</li>
+<li>Catch template drift early</li>
+</ul>
+<p>Common mistakes:</p>
+<ul>
+<li>Flattening tables into text ❌</li>
+<li>Losing publish dates ❌</li>
+<li>Inconsistent output format ❌</li>
+</ul>
+
+<h3>Q3: HOW DO I KEEP THE DATA FRESH?</h3>
+<p>Use adaptive scheduling:</p>
+<ul>
+<li>Frequently changing (news, prices) → crawl hourly</li>
+<li>Rarely changing (archived docs) → crawl monthly</li>
+<li>Automatic promotion/demotion based on actual change rate</li>
+</ul>
+<p>Use conditional requests:</p>
+<ul>
+<li>Check ETag / If-Modified-Since before fetching (free)</li>
+<li>Only download if changed</li>
+</ul>
+<p>Capture freshness signals:</p>
+<ul>
+<li>Publish date</li>
+<li>Last-modified date</li>
+<li>Fetch timestamp</li>
+<li>Content hash (for change detection)</li>
+</ul>
+<p>At retrieval time:</p>
+<ul>
+<li>Boost recent chunks, demote stale ones</li>
+<li>Set freshness SLA per source (e.g., "prices ≤ 1 hour old")</li>
+</ul>
+
+<h3>Q4: HOW DO I MEASURE QUALITY?</h3>
+<p>Build an eval harness with these metrics:</p>
+<ul>
+<li>Retrieval: Recall@k, Precision@k (did right chunk get retrieved?)</li>
+<li>Groundedness: % of claims supported by context (90%+ target)</li>
+<li>Relevance: Does answer address the question? (85%+ target)</li>
+<li>Freshness: Does answer use current version? (95%+ for time-sensitive)</li>
+</ul>
+<p>Per-stage monitoring:</p>
+<ul>
+<li>Fetch: success rate, soft-block rate</li>
+<li>Extraction: main-content found %, table preservation %</li>
+<li>Chunking: oversized/undersized chunk counts</li>
+<li>Retrieval: recall@k, latency</li>
+<li>Grounding: groundedness, hallucination rate</li>
+</ul>
+<p>Alert on: Template drift (sudden drop in "main content found")</p>
+<p>Run eval harness on every pipeline change — if quality drops, don't ship</p>
+
+<h3>COVERAGE PRINCIPLE</h3>
+<p>Each intent is answered with something concrete — an architecture decision, a configuration pattern, or a troubleshooting step — not a vague paragraph. Depth on the primary intent plus honest coverage of the secondary intents is what produces INFORMATION GAIN over thinner competitor articles.</p>
+
+<h2>6: DATA ACQUISITION</h2>
+<p>Discovery is where most pipelines quietly waste time and money. Crawling everything is expensive, slow, and often forbidden. Crawling THE RIGHT THINGS ON THE RIGHT CADENCE is the whole game.</p>
+
+<h3>STRATEGY 1: BUILD A URL STRATEGY, NOT A SPIDER</h3>
+<p>Instead of turning a crawler loose, define WHERE URLS COME FROM and WHY EACH ONE QUALIFIES:</p>
+<p><strong>START FROM KNOWN SOURCES</strong></p>
+<p>XML sitemaps, RSS/Atom feeds, internal links, and partner or API feeds. These are the cheapest, most reliable entry points and usually carry lastmod hints.</p>
+<p><strong>USE TOPIC-BASED URL SELECTION</strong></p>
+<p>Only crawl pages relevant to your domain. A URL classifier (rules or a small model over the URL path, title, and breadcrumb) prevents you from indexing the entire internet by accident.</p>
+<p><strong>RESPECT ROBOTS.TXT AND CRAWL POLICIES</strong></p>
+<p>Honor disallow rules, crawl-delay, and any explicit AI/usage terms. This is both an ethical baseline and a legal risk control.</p>
+<p><strong>SET CRAWL FREQUENCY FROM FRESHNESS REQUIREMENTS</strong></p>
+<p>Not habit. A page you re-crawl hourly that changes yearly is pure waste.</p>
+
+<h3>STRATEGY 2: FETCHING CORRECTLY</h3>
+<p><strong>SEND HONEST USER-AGENT HEADERS</strong></p>
+<p>Include a descriptive User-Agent and contact URL. Don't impersonate a browser to evade blocks you've been asked to respect.</p>
+<p><strong>APPLY PER-HOST RATE LIMITS AND CONCURRENCY CAPS</strong></p>
+<p>Never degrade a source site.</p>
+<p><strong>DETECT JAVASCRIPT-RENDERED PAGES</strong></p>
+<p>Route only those through a headless browser — rendering everything is slow and costly.</p>
+<p><strong>TREAT SOFT FAILURES AS FAILURES</strong></p>
+<p>A 200 response with an empty body, a CAPTCHA, or a login wall must be flagged, not ingested.</p>
+
+<h3>STRATEGY 3: ADAPTIVE SCHEDULING</h3>
+<p>Scheduling should be ADAPTIVE, NOT FIXED. Track how often each source actually changes and adjust:</p>
+<p><strong>FREQUENTLY CHANGING PAGES</strong></p>
+<p>News, prices, docs → shorter recrawl intervals.</p>
+<p><strong>RARELY CHANGING PAGES</strong></p>
+<p>Archived references → longer intervals, validated with cheap HEAD / If-Modified-Since / ETag checks before a full fetch.</p>
+<p><strong>AUTOMATIC PROMOTION/DEMOTION</strong></p>
+<p>Use observed change rate to promote or demote a URL's crawl tier automatically.</p>
+<p><strong>RULE OF THUMB</strong></p>
+<p>Spend your crawl budget where change happens. A conditional request that returns 304 Not Modified costs almost nothing and protects both your budget and the source server.</p>
+
+<h2>7: EXTRACTION</h2>
+<p>Extraction is NOT "strip the HTML tags." It is LAYOUT-AWARE TRANSFORMATION — turning a rendered page into structured facts while preserving the relationships that give those facts meaning.</p>
+
+<h3>WHAT HIGH-QUALITY EXTRACTION OUTPUT CONTAINS</h3>
+<ol>
+<li><strong>CLEAN MAIN CONTENT</strong><br>Heading hierarchy, paragraphs, and lists intact.</li>
+<li><strong>TABLES PRESERVED WITH ROW/COLUMN SEMANTICS</strong><br>Not flattened into prose. A price–tier table must remain queryable as structured data or faithful Markdown.</li>
+<li><strong>LINKS PRESERVED WITH ANCHOR TEXT</strong><br>Anchor text carries intent and enables citation and entity resolution later.</li>
+<li><strong>METADATA</strong><br>Title, author (if present), publish date and last-modified (if present), canonical URL, language.</li>
+<li><strong>PROVENANCE</strong><br>The source URL and the fetch timestamp, attached at extraction time so it can never be lost downstream.</li>
+</ol>
+
+<h3>WHY STRUCTURE MATTERS FOR AI</h3>
+<p>For an LLM pipeline, the extraction output should be LLM-READY AND CONSISTENT. Consistency is the point: if every page produces the same shape of output (e.g., normalized Markdown plus a metadata object), then chunking, embedding, and retrieval behave PREDICTABLY. Inconsistent extraction is the root cause of most "why did retrieval get worse?" incidents.</p>
+
+<h2>8: CLEANING</h2>
+<p><strong>Removing Noise Without Losing Meaning</strong></p>
+<p>Cleaning is where you remove the boilerplate that harms retrieval:</p>
+<ul>
+<li>Navigation menus and breadcrumbs used purely for site chrome</li>
+<li>Cookie and consent banners</li>
+<li>Footer link farms and legal micro-links</li>
+<li>Repeated "related articles," "you may also like," and share widgets</li>
+<li>Ad slots and injected promotional blocks</li>
+</ul>
+<p>But cleaning is a double-edged tool. Over-aggressive cleaning strips context that retrieval genuinely needs — a disclaimer that changes the meaning of a fact, a caption that identifies a table, a byline that establishes authority.</p>
+
+<h3>THE AUDIT-FIRST APPROACH</h3>
+<ol>
+<li><strong>DEFINE WHAT "MEANING" MEANS FOR YOUR DOMAIN FIRST</strong><br>Before you write a single rule. For a docs bot, code samples and version notes are sacred. For a news RAG, datelines and bylines are sacred.</li>
+<li><strong>PREFER STRUCTURAL SIGNALS OVER KEYWORD BLOCKLISTS</strong><br>Removing an element because it's in &lt;footer&gt; or a repeated cross-page block is safer than deleting any paragraph containing the word "cookie."</li>
+<li><strong>NORMALIZE, DON'T MUTILATE</strong><br>Collapse whitespace, standardize quotes and dashes, and de-duplicate repeated blocks — without rewriting the author's actual sentences.</li>
+<li><strong>KEEP A BEFORE/AFTER DIFF SAMPLE IN REVIEW</strong><br>So a human can confirm you removed chrome, not substance.</li>
+</ol>
+
+<h3>THE TEST</h3>
+<p>If a knowledgeable reader would say "you deleted something I needed," your cleaning is too aggressive. If they'd say "why is the cookie banner in here," it's too soft. Tune against real samples, not assumptions.</p>
+
+<h2>9: CHUNKING</h2>
+<p><strong>Token-Aware, Citation-Aware Segmentation</strong></p>
+<p>Chunking is the single biggest lever on retrieval quality. Chunk badly and even a perfect model retrieves the wrong context; chunk well and a modest model answers precisely.</p>
+
+<h3>WHAT GOOD CHUNKING DOES</h3>
+<ul>
+<li><strong>USES SEMANTIC BOUNDARIES</strong><br>Split on headings and section breaks, not blindly every N characters. A chunk should be a coherent idea, not an arbitrary slice.</li>
+<li><strong>KEEPS RELATED FACTS TOGETHER</strong><br>A definition and its example, a step and its warning, a metric and its unit — these belong in the same chunk.</li>
+<li><strong>NEVER SPLITS A TABLE MID-ROW</strong><br>Keep a table (or a labeled sub-section of it) whole, so a retrieved chunk is self-contained.</li>
+</ul>
+<p><strong>IS TOKEN-AWARE</strong><br>Size chunks to your embedding model's sweet spot and your prompt budget — large enough to carry context, small enough to stay specific. Add modest overlap only where ideas span boundaries.</p>
+<p><strong>ATTACHES STABLE METADATA TO EVERY CHUNK</strong><br>Source URL, section heading path, position, and IDs.</p>
+
+<h3>CITATION-AWARE CHUNKING</h3>
+<ul>
+<li>Citation-aware means every chunk can be mapped back to a precise source location — URL plus heading path or character offsets. Even if you never show citations to end users, you need this traceability to debug: when an answer is wrong, you follow the chunk ID straight to the source and see whether the failure was extraction, cleaning, or retrieval.</li>
+</ul>
+
+<h3>THE ANTI-PATTERN</h3>
+<p>Fixed-size character chunking with no structure awareness. It's trivial to implement and reliably splits tables, separates headings from their content, and severs facts from their qualifiers.</p>
+<p>Start from structure; fall back to size only within a section.</p>
+
+<h2>10: ENRICHMENT</h2>
+<p><strong>Entities, Metadata, and Freshness Signals</strong></p>
+<p>Enrichment is the stage that turns clean chunks into retrievable, evaluable, trustworthy units. It adds the signals that improve both retrieval precision and downstream evaluation.</p>
+
+<p><strong>WHAT TO ADD</strong></p>
+<p><strong>ENTITIES</strong><br>People, organizations, products, locations, versions. Extracted entities enable filtering ("only chunks about Product X"), disambiguation, and knowledge-graph linking.</p>
+<p><strong>FRESHNESS SIGNALS</strong><br>Publish date and last-modified, normalized to a single timezone and format. This is the most important enrichment for live web data.</p>
+<p><strong>TOPIC TAGS / TAXONOMY</strong><br>A controlled vocabulary so retrieval and analytics can slice by subject.</p>
+<p><strong>PROVENANCE (CARRIED FORWARD)</strong><br>Source URL, fetch timestamp, extractor version, and content hash for change detection.</p>
+
+<h3>WHY FRESHNESS IS NON-NEGOTIABLE</h3>
+<p>For live web data, freshness is a first-class ranking signal inside your own retriever. Without it, two chunks that contradict each other look equally valid, and your system may confidently return the outdated one.</p>
+<p>With it, you can:</p>
+<ul>
+<li>Boost recent chunks and demote stale ones at retrieval time.</li>
+<li>Expire or re-validate content past a domain-specific TTL.</li>
+<li>Surface "last verified on" context to the model so it can hedge appropriately.</li>
+</ul>
+
+<p><strong>CONTENT HASHING TIP</strong></p>
+<p>Store a hash of each chunk's cleaned text. On recrawl, unchanged hashes skip re-embedding (saving cost), while changed hashes trigger re-indexing and a freshness-timestamp update — giving you cheap, precise change detection.</p>
+
+<h2>11: GROUNDING AND EVALUATION</h2>
+<p><strong>Proving the Data Helps</strong></p>
+<p>Grounding is what separates a RAG system from a confident guess. Grounded means the model's answer is supported by, and traceable to, the retrieved chunks — not invented from parametric memory.</p>
+
+<p><strong>DESIGN FOR GROUNDING</strong></p>
+<ul>
+<li><strong>PASS RETRIEVED EVIDENCE EXPLICITLY</strong><br>Instruct the model to answer only from it, flagging when the context is insufficient rather than filling gaps.</li>
+<li><strong>ATTACH CHUNK IDS TO CLAIMS</strong><br>So every sentence in an answer can be traced to a source. Even internal-only citations pay for themselves the first time you debug a hallucination.</li>
+<li><strong>PREFER "I DON'T KNOW" OVER FABRICATION</strong><br>A system that abstains when evidence is missing is more trustworthy than one that always answers.</li>
+</ul>
+
+<p><strong>EVALUATE WITH A REAL HARNESS</strong><br>You cannot improve what you don't measure. Build an evaluation set of representative queries with known-good answers and track:</p>
+<p><strong>RETRIEVAL METRICS</strong><br>Recall@k and precision@k: did the right chunk make it into the context window at all?</p>
+<p><strong>GROUNDEDNESS / FAITHFULNESS</strong><br>Is each claim actually supported by the retrieved text? (LLM-as-judge plus human spot-checks.)</p>
+<p><strong>ANSWER RELEVANCE</strong><br>Does the response address the user's actual question?</p>
+<p><strong>FRESHNESS CORRECTNESS</strong><br>When facts changed, did the answer reflect the current version?</p>
+
+<p><strong>AUDIT-FIRST RULE</strong><br>
+Run the eval harness on every pipeline change — a new extractor, a new chunk size, a new embedding model. If an "improvement" drops groundedness, it isn't an improvement.</p>
+
+<h2>12: SECURITY, COMPLIANCE, AND SAFETY</h2>
+<p><strong>Managing the Legal, Ethical, and Security Boundaries</strong></p>
+<p>Web scraping for AI touches legal, ethical, and security boundaries at once. Treat these as design requirements, not afterthoughts.</p>
+
+<p><strong>LEGAL AND ETHICAL</strong></p>
+<ul>
+<li><strong>RESPECT ROBOTS.TXT, TERMS OF SERVICE, AND RATE LIMITS</strong><br>
+Being technically able to fetch a page does not make it permitted.</li>
+<li><strong>HONOR LICENSING AND COPYRIGHT</strong><br>
+Store provenance so you can prove where every fact came from and remove sources on request.</li>
+<li><strong>HANDLE PERSONAL DATA (PII) LAWFULLY</strong><br>
+Detect and redact or exclude PII where you have no lawful basis to process it; align with GDPR/CCPA and your own data-processing agreements.</li>
+</ul>
+
+<p><strong>SECURITY — THE UNDERRATED RISK</strong></p>
+<p>Scraped content is untrusted input. In agent and RAG systems it becomes a live attack surface:</p>
+<ul>
+<li><strong>PROMPT INJECTION</strong><br>
+A page can contain hidden instructions ("ignore previous instructions and…"). Never let retrieved text be treated as system instructions. Separate data from directives, and constrain what tools an agent can call.</li>
+<li><strong>DATA EXFILTRATION</strong><br>
+Injected content may try to make an agent leak secrets or call attacker URLs. Sandbox tool use and allowlist outbound calls.</li>
+<li><strong>POISONING</strong><br>
+Adversaries can seed misleading content to corrupt your index. Weight sources by trust and monitor for anomalous new claims.</li>
+</ul>
+
+<p><strong>THE PRINCIPLE</strong></p>
+<p>Treat every scraped byte as hostile until proven otherwise. Isolation, least privilege, and output validation are non-negotiable in agent pipelines.</p>
+
+<h2>13: PERFORMANCE AND COST ENGINEERING</h2>
+<p><strong>Optimizing for Scale</strong></p>
+<p>At scale, ingestion cost is dominated by three things: fetching, embedding, and storage. Engineer each deliberately.</p>
+
+<p><strong>FETCH EFFICIENTLY</strong></p>
+<ul>
+<li>Use conditional requests (ETag/If-Modified-Since) to skip unchanged pages</li>
+<li>Cache aggressively</li>
+<li>Render with a headless browser only when a page truly needs JS</li>
+</ul>
+
+<p><strong>EMBED ONLY WHAT CHANGED</strong></p>
+<p>Content hashing (from §10) means you re-embed a fraction of your corpus per cycle instead of all of it — often a 10×+ cost reduction on large sites.</p>
+
+<p><strong>RIGHT-SIZE STORAGE</strong></p>
+<p>Vector dimensions, quantization, and index type (HNSW vs. IVF) trade recall for memory and cost. Measure recall at each setting rather than defaulting to the largest.</p>
+
+<p><strong>BATCH AND PARALLELIZE</strong></p>
+<p>Embedding and indexing, but cap concurrency to respect source sites and downstream rate limits.</p>
+
+<p><strong>TIER YOUR COMPUTE</strong></p>
+<p>Cheap conditional checks first; expensive rendering and embedding only for content that passed the change filter.</p>
+
+<p><strong>THE COST LENS</strong></p>
+<p>The cheapest request is the one you don't make. Most savings come from not re-processing unchanged content, not from a faster model.</p>
+
+<h2>14: OBSERVABILITY</h2>
+<p><strong>Debugging the Pipeline Like an Engineer</strong></p>
+<p>A scraping pipeline that can't be observed will fail silently. Instrument every stage so you can answer "what broke, where, and when?"</p>
+
+<p><strong>METRICS TO TRACK PER STAGE</strong></p>
+
+<p><strong>DISCOVERY/FETCH</strong></p>
+<ul>
+<li>URLs discovered</li>
+<li>Fetch success rate</li>
+<li>Soft-block rate</li>
+<li>Average latency</li>
+<li>304 ratio</li>
+</ul>
+
+<p><strong>EXTRACTION</strong></p>
+<ul>
+<li>% pages with a main-content block found</li>
+<li>Table-preservation rate</li>
+<li>Missing-metadata rate</li>
+</ul>
+
+<p><strong>CLEANING</strong></p>
+<ul>
+<li>Average content-length delta (spikes = over/under-cleaning)</li>
+</ul>
+
+<p><strong>CHUNKING</strong></p>
+<ul>
+<li>Chunks per document</li>
+<li>Oversized/undersized chunk counts</li>
+</ul>
+
+<p><strong>INDEXING/RETRIEVAL</strong></p>
+<ul>
+<li>Index size</li>
+<li>Embedding failures</li>
+<li>Retrieval latency</li>
+<li>Recall@k on the eval set</li>
+</ul>
+
+<p><strong>GROUNDING</strong></p>
+<ul>
+<li>Groundedness score</li>
+<li>Abstain rate</li>
+<li>Hallucination reports</li>
+</ul>
+
+<p><strong>DRIFT DETECTION</strong></p>
+<p>The key failure mode is template drift — a site redesign that quietly breaks extraction. Detect it by alerting on distribution shifts:</p>
+<ul>
+<li>Sudden drop in "main content found"</li>
+<li>Jump in content-length delta</li>
+<li>Spike in empty chunks</li>
+</ul>
+
+<p>These fire before users notice bad answers.</p>
+
+<p><strong>TRACEABILITY PAYOFF</strong></p>
+<p>Because every chunk carries its source URL, fetch time, and extractor version (§10), any bad answer can be traced back through:</p>
+<p>retrieval → chunk → extraction → fetch</p>
+<p>In minutes, not days.</p>
+
+<h2>15: CONFIGURATION PATTERNS</h2>
+<p><strong>Practical Implementation</strong></p>
+<p>You don't need exotic tooling — you need clear contracts between stages. Below is a representative, tool-agnostic configuration shape.</p>
+
+<p><strong>DISCOVERY CONFIGURATION</strong></p>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Sources:
+  - Type: sitemap
+    URL: https://example.com/sitemap.xml
+
+  - Type: feed
+    URL: https://example.com/rss
+
+URL Filter:
+  Include paths: ["/docs/", "/blog/"]
+  Exclude paths: ["/tag/", "/author/"]
+  Respect robots.txt: YES</code></pre>
+
+<p><strong>FETCH CONFIGURATION</strong></p>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+User-Agent: "OllagraphBot/1.0 (+https://ollagraph.com/bot)"
+Max concurrency per host: 2
+Conditional requests: YES (ETag / If-Modified-Since)
+Render JavaScript: Auto (only when needed)</code></pre>
+
+<p><strong>EXTRACTION CONFIGURATION</strong></p>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Main content strategy: Readability
+Preserve: [headings, tables, links, code]
+Output format: Markdown
+Capture metadata: [title, author, published, modified, canonical, lang]</code></pre>
+
+<p><strong>CLEANING CONFIGURATION</strong></p>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Remove: [nav, footer, cookie_banner, related_posts, ads]
+Strategy: Structural (prefer DOM structure over keyword blocklists)
+Normalize whitespace: YES</code></pre>
+
+<p><strong>CHUNKING CONFIGURATION</strong></p>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Strategy: Semantic (split on headings first)
+Max tokens: 512
+Overlap tokens: 64
+Keep tables intact: YES
+Attach metadata: [source_url, heading_path, position, content_hash]</code></pre>
+
+<p><strong>ENRICHMENT CONFIGURATION</strong></p>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Extract entities: YES
+Freshness signals: [published, modified]
+Topic tags: Controlled vocabulary</code></pre>
+
+<p><strong>INDEXING CONFIGURATION</strong></p>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Vector store: [Your vector DB]
+Reindex on: Content hash change (skip unchanged chunks)</code></pre>
+
+<p><strong>SCHEDULING CONFIGURATION</strong></p>
+<pre><code>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Strategy: Adaptive
+Minimum interval: 6 hours
+Maximum interval: 30 days</code></pre>
+
+<p><strong>WHY THIS SHAPE WORKS</strong></p>
+<ul>
+<li>Each block maps 1:1 to a pipeline stage</li>
+<li>Every stage declares what it preserves for the next</li>
+<li>Change detection (content_hash) is wired through indexing and scheduling</li>
+<li>You only pay for what actually changed</li>
+</ul>
+
+<h2>16: TROUBLESHOOTING DECISION TREE</h2>
+<p><strong>When Answer Quality Drops, Diagnose Backward Through the Pipeline</strong></p>
+<pre><code>BAD OR WRONG ANSWER?
+│
+├─ WAS THE CORRECT CHUNK RETRIEVED? (check recall@k)
+│   │
+│   ├─ NO → RETRIEVAL PROBLEM
+│   │       │
+│   │       ├─ Chunk exists in index?
+│   │       │   │
+│   │       │   ├─ NO → EXTRACTION/CLEANING DROPPED IT
+│   │       │   │        → Inspect source document
+│   │       │   │
+│   │       │   └─ YES → EMBEDDING/QUERY MISMATCH
+│   │       │            → Tune model, chunk size, or hybrid search
+│   │
+│   └─ YES → GO TO GROUNDING
+│
+├─ CHUNK RETRIEVED BUT ANSWER IGNORES IT?
+│   → GROUNDING/PROMPT PROBLEM
+│   → Tighten "answer only from context"
+│   → Reduce distractor chunks
+│
+├─ ANSWER IS OUTDATED?
+│   → FRESHNESS PROBLEM
+│   → Check recrawl schedule
+│   → Check TTL
+│   → Check content-hash change detection
+│
+└─ WHOLE SITE RETURNS GARBAGE?
+    → TEMPLATE DRIFT
+    → Check "main content found" + content-length delta alerts
+    → Fix extractor</code></pre>
+
+<h2>17: ENTERPRISE DEPLOYMENT PLAYBOOK</h2>
+<h3>Running This at Organizational Scale</h3>
+<p>Running a pipeline at organizational scale adds governance, reliability, and cross-team concerns.</p>
+
+<h3>DATA GOVERNANCE</h3>
+<p>Central catalog of sources with:</p>
+<ul>
+<li>Owner</li>
+<li>License</li>
+<li>Robots status</li>
+<li>PII classification</li>
+</ul>
+<p>Nothing enters the index without a governance record.</p>
+
+<h3>ACCESS CONTROL</h3>
+<ul>
+<li>Role-based access to the index</li>
+<li>Segment sensitive corpora so a general chatbot can't retrieve restricted content</li>
+</ul>
+
+<h3>REPRODUCIBILITY</h3>
+<ul>
+<li>Version your extractors, chunkers, and embedding models</li>
+<li>Store the pipeline version alongside each chunk</li>
+<li>Reproduce or re-run any past state</li>
+</ul>
+
+<h3>HUMAN-IN-THE-LOOP REVIEW</h3>
+<p>Sample outputs for high-stakes domains before they reach users:</p>
+<ul>
+<li>Legal</li>
+<li>Medical</li>
+<li>Financial</li>
+</ul>
+
+<h3>SLAs AND OWNERSHIP</h3>
+<ul>
+<li>Define freshness SLAs per source</li>
+</ul>
+<p>Example: "pricing pages ≤ 1 hour stale"</p>
+<ul>
+<li>Assign a team that owns each source</li>
+</ul>
+
+<h3>AUDIT TRAIL</h3>
+<p>Retain provenance and eval history so you can answer a compliance question about any past answer.</p>
+
+<h2>18: CLOUD DEPLOYMENT PLAYBOOK</h2>
+<h3>Mapping the Pipeline to Managed, Elastic Components</h3>
+<p>A cloud-native deployment maps the pipeline to managed, elastic components:</p>
+
+<h3>ORCHESTRATION</h3>
+<p>A workflow engine (e.g., a managed DAG/queue service) drives:</p>
+<ul>
+<li>discovery → fetch → extract → index as decoupled, retryable steps</li>
+</ul>
+
+<h3>QUEUES AND WORKERS</h3>
+<p>Decouple stages with message queues so:</p>
+<ul>
+<li>A slow render step never blocks indexing</li>
+<li>Failures retry with backoff</li>
+</ul>
+
+<h3>SERVERLESS FOR BURSTY WORK</h3>
+<p>Run fetch/extraction as scalable functions or containers:</p>
+<ul>
+<li>Scale to zero between crawl cycles</li>
+<li>Pay only for what you use</li>
+</ul>
+
+<h3>MANAGED VECTOR STORE + OBJECT STORAGE</h3>
+<ul>
+<li>Keep raw HTML and intermediate Markdown in object storage (cheap, replayable)</li>
+<li>Keep chunks in a managed vector database</li>
+</ul>
+
+<h3>SECRETS AND NETWORK ISOLATION</h3>
+<ul>
+<li>Store credentials in a secrets manager</li>
+<li>Run agent tool-calls inside a sandboxed, egress-restricted network</li>
+</ul>
+
+<h3>COST CONTROLS</h3>
+<ul>
+<li>Autoscaling caps</li>
+<li>Per-host rate limits</li>
+<li>Conditional fetching keeps spend proportional to actual change</li>
+</ul>
+
+<h3>DESIGN GOAL</h3>
+<p>Every stage is independently scalable, retryable, and replayable from stored raw input — so reprocessing the corpus with a better extractor never requires re-crawling the web.</p>
+
+<h2>19: ALTERNATIVES AND COMPARISONS</h2>
+<h3>Choosing Your Stack</h3>
+<p>There is no single "right" stack — choose based on scale, control, and compliance needs.</p>
+
+<h3>MANAGED SCRAPING/RAG API</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+<li>Fast to start</li>
+<li>Handles rendering &amp; blocks</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+<li>Less control</li>
+<li>Ongoing cost</li>
+<li>Data leaves your perimeter</li>
+</ul>
+<p><strong>Best for:</strong> Prototypes, small teams</p>
+
+<h3>OPEN-SOURCE FRAMEWORKS</h3>
+<p>(Crawler + extractor + vector DB)</p>
+<p><strong>Pros:</strong></p>
+<ul>
+<li>Full control</li>
+<li>Self-hosted</li>
+<li>Auditable</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+<li>You own maintenance and drift handling</li>
+</ul>
+<p><strong>Best for:</strong> Most production systems</p>
+
+<h3>CUSTOM IN-HOUSE PIPELINE</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+<li>Tailored to your domain and compliance</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+<li>Highest build/maintenance cost</li>
+</ul>
+<p><strong>Best for:</strong> Large scale, strict governance</p>
+
+<h3>FINE-TUNING INSTEAD OF RAG</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+<li>No retrieval at query time</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+<li>Stale</li>
+<li>Expensive to update</li>
+<li>Hard to trace</li>
+</ul>
+<p><strong>Best for:</strong> Stable tone/format, not live facts</p>
+
+<h3>RETRIEVAL CHOICES</h3>
+<p>Vector-only search is simple but misses exact-match terms.</p>
+<p>Hybrid (vector + keyword) retrieval is the pragmatic default for technical content where identifiers, versions, and error codes matter.</p>
+
+<h2>20: FAQs</h2>
+<h3>Common Questions Answered</h3>
+
+<h3>1. IS WEB SCRAPING FOR AI LEGAL?</h3>
+<p>It depends on the source's terms, the data type, and jurisdiction.</p>
+<p>Best practices:</p>
+<ul>
+<li>Respect robots.txt and ToS</li>
+<li>Honor copyright and licensing</li>
+<li>Handle PII lawfully</li>
+<li>Keep provenance</li>
+</ul>
+<p>When in doubt: Get legal sign-off per source.</p>
+
+<h3>RAG OR FINE-TUNING FOR LIVE DATA?</h3>
+<p>RAG, almost always.</p>
+<p>Live facts change; RAG lets you:</p>
+<ul>
+<li>Refresh the index without retraining</li>
+<li>Give citations and freshness signals</li>
+</ul>
+<p>Fine-tune for: Style and format, not volatile facts.</p>
+
+<h3>2. WHAT CHUNK SIZE SHOULD I USE?</h3>
+<p>Start around 300–512 tokens with semantic boundaries and small overlap, then tune against your eval harness.</p>
+<p>There is no universal number — it depends on your embedding model and content structure.</p>
+
+<h3>3. HOW DO I STOP HALLUCINATIONS?</h3>
+<p>You reduce them through:</p>
+<ul>
+<li>Strong retrieval (right chunk in context)</li>
+<li>Strict "answer only from provided context" prompting</li>
+<li>An abstain path</li>
+<li>Groundedness evaluation on every change</li>
+<li>Traceable chunks let you diagnose the ones that slip through</li>
+</ul>
+
+<h3>4. HOW OFTEN SHOULD I RE-CRAWL?</h3>
+<p>As often as the content changes — no more.</p>
+<p>Use:</p>
+<ul>
+<li>Adaptive scheduling driven by observed change rate</li>
+<li>Conditional requests</li>
+<li>Freshness SLAs per source</li>
+</ul>
+
+<h3>5. HOW DO I HANDLE JAVASCRIPT-HEAVY SITES?</h3>
+<p>Render only those pages with a headless browser.</p>
+<p>Best approach:</p>
+<ul>
+<li>Detect the need automatically</li>
+<li>Rendering everything is slow and expensive</li>
+<li>Cache rendered output</li>
+</ul>
+
+<h2>21: CONCLUSION</h2>
+<p>Feeding live web data into LLMs is an engineering discipline, not a script. The teams that succeed treat it as an end-to-end system where every stage — discovery, fetch, extraction, cleaning, chunking, enrichment, grounding, and monitoring — preserves the meaning the next stage depends on.</p>
+
+<h3>THREE CORE IDEAS</h3>
+<p><strong>1. INFORMATION GAIN OVER VOLUME</strong> Keep the facts that matter, drop the noise that hurts retrieval.</p>
+<p><strong>2. TRACEABILITY OVER TRUST</strong> Every chunk, and every answer, should be explainable back to a source and a timestamp.</p>
+<p><strong>3. CONTINUOUS EVALUATION OVER ONE-TIME SETUP</strong> Sites drift, facts change, and models update — your quality gate</p>
+</Article>
