@@ -1,0 +1,544 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is llms.txt and where should it live?", a: "llms.txt is a Markdown file that provides AI crawlers with structured guidance about your site’s most important content and usage policies. It is typically hosted at /.well-known/llms.txt or /llms.txt for easy discovery. The file acts as a high-signal entry point, helping agents skip noisy page elements and focus on core information." },
+  { q: "How is llms.txt different from robots.txt and sitemap.xml?", a: "robots.txt controls crawler access, and sitemap.xml lists URLs for indexing, but neither provides semantic context or usage intent. llms.txt complements both by explaining what content matters, how it should be interpreted, and where clean versions exist. It is designed specifically for AI reasoning systems, not just indexing bots." },
+  { q: "Why does llms.txt matter for AI search visibility?", a: "AI search engines synthesize answers and selectively cite sources rather than listing links. If your content is hard to parse or lacks clear signals, it may be ignored or misrepresented. llms.txt improves discoverability and increases the likelihood that your content is accurately cited in AI-generated responses." },
+  { q: "What should a high-quality llms.txt file include?", a: "A strong llms.txt file includes a clear H1 title, a concise mission statement, and grouped sections linking to authoritative content. It should prioritize clean Markdown or plain-text pages to reduce parsing overhead. The goal is to guide crawlers quickly to high-value, citation-ready material." },
+  { q: "What is llms-full.txt and when should you use it?", a: "llms-full.txt is a companion file intended for deep-research agents that require more comprehensive context. While llms.txt offers a concise overview, llms-full.txt can include expanded content, documentation, or datasets. It is useful for complex domains where shallow summaries are insufficient." },
+  { q: "How can you validate and maintain llms.txt?", a: "Validation ensures that your file is correctly structured and interpretable by AI crawlers. Ollagraph provides audit endpoints to simulate crawler behavior, detect structural issues, and flag inconsistencies. You should update llms.txt whenever your content strategy, product structure, or policies change to keep guidance accurate." },
+];
+---
+<Article
+  title="llms.txt Explained: A Practical Guide for AI Crawlers"
+  description="Learn how llms.txt guides AI crawlers to your highest-value content, improves citation accuracy, and strengthens AI search visibility in 2026."
+  date="2026-07-26"
+  readingTime={24}
+  tags={["llms.txt", "ai-crawlers", "ai-search", "seo", "agentic-web"]}
+  kind="blog"
+  faqs={faqs}
+>
+<p><strong>Executive Summary</strong></p>
+<p>llms.txt is a small Markdown file that tells AI crawlers and AI search engines which parts of your website matter most, how they should use your content, and where to find clean, citation-ready versions of your pages. Think of it as a concise briefing document you hand to a research assistant before they start reading your entire site.</p>
+<p>In 2026, AI search engines like ChatGPT Search, Perplexity, Google AI Overviews, and Claude's web tools do not just crawl URLs and count keywords. They reason across pages, synthesize answers, and decide which sources to cite. If your site is hard to interpret, they will cite someone else. llms.txt fixes that by reducing ambiguity and pointing agents directly to your highest-signal content.</p>
+<p>This guide explains what llms.txt is, why it matters now, how AI crawlers consume it, how to write one, how to validate it, and how to integrate it into a broader AI search strategy. It is written for teams who want practical implementation steps, not vague predictions.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>llms.txt is a Markdown file, usually placed at /.well-known/llms.txt or /llms.txt, that communicates content policy and discovery hints to AI crawlers.</li>
+<li>It does not replace robots.txt or sitemap.xml; it complements them by adding semantic context and usage policy.</li>
+<li>AI crawlers from OpenAI, Anthropic, Google, Perplexity, and others increasingly check for llms.txt before training on or retrieving from a site.</li>
+<li>A good llms.txt file includes an H1 title, a blockquote mission statement, H2 groupings, and Markdown-first links to authoritative content.</li>
+<li>You should link to clean .md or plain-text versions of your pages, not HTML, to reduce token waste and improve citation accuracy.</li>
+<li>llms-full.txt is a companion file for deep-research agents that need more than a quick summary.</li>
+<li>Validation is essential: use Ollagraph's audit endpoints to check structure, detect agent-cloaking, and simulate how major crawlers see your file.</li>
+<li>Update your llms.txt whenever your content strategy, product structure, or AI usage policy changes.</li>
+</ul>
+
+<h2>1. The Problem: AI Search Engines Are Reading Your Site Differently</h2>
+<p>For two decades, SEO meant optimizing for Googlebot. You wrote title tags, built backlinks, and made sure your XML sitemap was current. The goal was to rank a blue link on a search results page.</p>
+<p>That model is still alive, but it is no longer the only game in town. In 2026, a growing share of user queries never reaches a traditional search engine results page. People ask ChatGPT, Perplexity, Claude, Gemini, and specialized AI agents for answers directly. These systems do not just return links. They read, summarize, compare, and cite.</p>
+<p>This changes what it means to be "visible" online.</p>
+<p>When an AI search engine answers a question, it typically includes a short list of sources. If your content is not in that list, you are invisible to the user even if you rank well on Google. Worse, if the AI misrepresents your brand because it pulled from a third-party summary or an outdated forum thread, you have no control over the narrative.</p>
+<p>The root cause is often a mismatch between how your site is structured and how AI agents consume information. Traditional websites are built for human readers with browsers. They include navigation bars, hero sections, cookie banners, related article widgets, footers, and JavaScript-driven layouts. All of that is noise to an AI crawler.</p>
+<p>Every token an AI model spends parsing your header, footer, or sidebar is a token it cannot spend understanding your product, your research, or your point of view. On many modern websites, the useful signal is buried under 70 to 80 percent of presentation markup. AI agents have limited context windows and limited patience. If they cannot find the signal quickly, they move on.</p>
+<p>llms.txt solves this by giving AI agents a clean entry point. It is like leaving a concise README at the front door of your website that says: "Here is who we are, here is what matters, and here are the best pages to read."</p>
+
+<h2>2. A Short History: From robots.txt to llms.txt</h2>
+<p>The first web crawlers appeared in the early 1990s. By 1994, website owners needed a way to tell crawlers which pages they should avoid. The robots.txt standard emerged from that need. It was a defensive tool. Its primary message was "do not crawl this."</p>
+<p>robots.txt worked well for traditional search engines. Googlebot and Bingbot could read it, respect it, and avoid wasting resources on pages that did not need indexing. But robots.txt has two important limitations in the AI era.</p>
+<p>First, it only controls access. It does not tell crawlers what your site is about, which pages are authoritative, or how you want your content used after it is fetched. Second, it was designed for crawlers that store and rank pages. It was not designed for reasoning systems that synthesize answers and cite sources.</p>
+<p>The gap became obvious around 2024 and 2025. AI companies started training large language models on web data, and website owners began asking questions. Can I opt out of training? Can I allow search indexing but block model training? Can I tell AI agents which version of my documentation is current? The existing tools could not answer those questions cleanly.</p>
+
+<p>Several proposals appeared. Anthropic promoted llms.txt as a simple Markdown file for communicating with LLMs. Other initiatives explored machine-readable AI policies, structured data extensions, and new HTTP headers. By mid-2026, llms.txt had become the most widely adopted lightweight standard. It is not a formal RFC yet, but it is supported by enough major AI crawlers and SEO tooling that ignoring it is no longer safe.</p>
+
+<p>The shift from robots.txt to llms.txt mirrors a larger shift from Search Engine Optimization to Answer Engine Optimization. SEO asks: "How do I rank?" AEO asks: "How do I become the source AI systems cite?"</p>
+
+<h2>3. What Is llms.txt? A Plain-Language Definition</h2>
+
+<p>llms.txt is a Markdown file placed on your web server that tells AI crawlers and AI search engines how to interact with your content. It is human-readable, machine-parseable, and designed for the way large language models consume information.</p>
+
+<p>The file usually lives at one of two locations:</p>
+
+<ul>
+<li>https://example.com/.well-known/llms.txt</li>
+<li>https://example.com/llms.txt</li>
+</ul>
+
+<p>Some site owners publish both for maximum compatibility. The /.well-known/ path follows the IETF convention for well-known resource locations, which many crawlers check first.</p>
+
+<p>A minimal llms.txt file looks like this:</p>
+
+<pre><code># Example Corp
+
+&gt; Example Corp builds workflow automation software for finance teams.
+
+This file provides a curated map of our public content for AI crawlers and AI search engines.
+
+## Product Documentation
+- [API Reference](https://example.com/docs/api.md): Complete endpoint documentation for the Example API.
+- [Getting Started](https://example.com/docs/quickstart.md): Set up your first workflow in under ten minutes.
+
+## Blog
+- [How We Cut Invoice Processing Time by 60%](https://example.com/blog/invoice-processing-case-study.md): A detailed case study with implementation notes.
+
+## Policy
+- [AI Usage Policy](https://example.com/ai-policy.md): How we allow AI systems to use our content.
+</code></pre>
+
+<p>That is the entire concept. The file introduces your site, groups your most important content, and links to clean versions that are easy for AI agents to ingest.</p>
+
+<p>What makes llms.txt different from a sitemap is curation. A sitemap says "here is everything." llms.txt says "start here." It is editorial judgment encoded in a format AI agents can understand.</p>
+
+<h2>4. How AI Crawlers Read llms.txt</h2>
+
+<p>To understand why llms.txt matters, it helps to understand how an AI crawler actually processes a website. The workflow is not identical across providers, but the general pattern is consistent.</p>
+
+<p>First, the crawler fetches the root of your domain or a specific URL it discovered through search, links, or a user query. Before doing a deep crawl, it checks for llms.txt at the well-known path or root path. If it finds the file, it parses the Markdown structure.</p>
+
+<p>The crawler extracts the H1 title to identify the brand or project. It reads the blockquote as a mission statement or category label. It scans the H2 sections to understand how your content is organized. It follows the Markdown links to fetch the pages you have flagged as most important.</p>
+
+<p>If the crawler does not find llms.txt, it falls back to traditional crawling. It may parse your HTML, follow internal links, and try to infer importance from navigation placement, internal link counts, and page structure. This works, but it is slower, noisier, and more error-prone.</p>
+
+<p>The reason llms.txt improves outcomes is that it reduces uncertainty. When an AI agent knows which pages you consider authoritative, it can weight those pages more heavily in its reasoning. When it knows you prefer Markdown, it can skip the HTML parsing step. When it knows your policy, it can avoid using content in ways you have prohibited.</p>
+
+<p>This is not theoretical. In practice, AI search engines already struggle with source selection. They often cite the page that is easiest to parse, not necessarily the page that is most accurate. A clear llms.txt file tilts that decision in your favor.</p>
+
+<h2>5. The Anatomy of a Production-Ready llms.txt</h2>
+
+<p>A strong llms.txt file has a predictable structure. AI crawlers are not magic. They benefit from consistency. The closer you stick to the emerging conventions, the more reliably your file will be parsed.</p>
+
+<h3>The H1 Title</h3>
+
+<p>The first line should be a single H1 heading with your brand or project name. Do not stuff keywords here. Do not write a sentence. Just the name.</p>
+
+<pre><code># Ollagraph
+</code></pre>
+
+<h3>The Blockquote</h3>
+
+<p>Immediately after the H1, include a one-sentence blockquote that summarizes what your organization does. This is often used by models as a knowledge-graph label.</p>
+
+<pre><code>&gt; Web infrastructure for AI agents: fetch, extract, audit, and reason about the live web.
+</code></pre>
+
+<p>Keep it under 25 words. Avoid jargon. Imagine you are describing your company to a stranger at a conference.</p>
+
+<h3>The Introductory Paragraph</h3>
+
+<p>Write one or two short paragraphs explaining the purpose of the file. This is for humans who read it, but it also gives crawlers context.</p>
+
+<p>This file is the primary entry point for AI crawlers and AI search engines. It points to the most authoritative, up-to-date versions of our documentation, product information, and public research.</p>
+
+<h3>H2 Sections</h3>
+
+<p>Group your links under clear H2 headings. Common groupings include:</p>
+
+<ul>
+<li>Core Documentation</li>
+<li>Product &amp; Pricing</li>
+<li>Blog &amp; Research</li>
+<li>Case Studies</li>
+<li>Support &amp; Help</li>
+<li>Policy &amp; Legal</li>
+<li>Full Context</li>
+</ul>
+
+<p>Use standard names when possible. AI crawlers can infer meaning more easily from "Documentation" than from "The Vault" or "Knowledge Base."</p>
+
+<h3>Markdown Links</h3>
+
+<p>Each link should use Markdown syntax with a descriptive label and a short explanatory sentence or phrase.</p>
+
+<ul>
+<li>[API Reference](https://ollagraph.com/docs/api.md): Full endpoint documentation, including authentication, rate limits, and error codes.</li>
+</ul>
+
+<p>Always link to .md or .txt versions when available. Avoid linking to HTML pages unless no clean alternative exists. If you must link to HTML, consider adding a note.</p>
+
+<h3>Optional Policy Section</h3>
+
+<p>If you have specific AI usage policies, include them. This is where you can state whether training is allowed, whether attribution is required, and who to contact.</p>
+
+<pre><code>## AI Usage Policy
+- [Content Policy](https://ollagraph.com/ai-policy.md): Guidelines for AI crawlers, including allowed use cases and attribution requirements.
+</code></pre>
+
+<h2>6. llms.txt vs robots.txt vs sitemap.xml</h2>
+
+<p>These three files are often confused. They serve different purposes and should be used together.</p>
+
+<pre><code>File | Primary Purpose | Format | Audience | Tone
+robots.txt | Control crawler access | Key-value text | Search crawlers | "Do not crawl this"
+sitemap.xml | URL discovery and freshness | XML | Search indexers | "Here is everything"
+llms.txt | Context and usage policy | Markdown | AI agents | "Start here for the best info"
+</code></pre>
+
+<p>robots.txt is about permission. sitemap.xml is about enumeration. llms.txt is about recommendation and policy.</p>
+
+<p>A common mistake is treating llms.txt as a replacement for either of the others. It is not. If you block a directory in robots.txt, an AI crawler may still be able to access it through other means or may already have it in a training corpus. llms.txt adds a layer of explicit communication about how you want your content used.</p>
+<p>For example, you might allow AI search engines to cite your blog posts but ask them not to use your documentation for model training. robots.txt cannot express that distinction. llms.txt can.</p>
+
+<h2>7. Writing Your First llms.txt: A Step-by-Step Guide</h2>
+<p>If you have never written an llms.txt file before, start small. A minimal file is better than no file. You can expand it over time.</p>
+
+<h3>Step 1: Inventory Your High-Signal Content</h3>
+<p>List the 10 to 20 pages on your site that you would want an AI agent to read first. These should be pages that:</p>
+<ul>
+<li>Accurately represent your brand</li>
+<li>Answer common questions about your product or industry</li>
+<li>Are current and unlikely to change dramatically</li>
+<li>Contain dense, factual information rather than marketing fluff</li>
+</ul>
+<p>For Ollagraph, this might include the API documentation, the capabilities page, key blog posts, the pricing page, and the AEO strategy guide.</p>
+
+<h3>Step 2: Create Clean Markdown Versions</h3>
+<p>For each page, create or identify a Markdown version. This might mean:</p>
+<ul>
+<li>Writing .md files alongside your HTML pages</li>
+<li>Using a static site generator that outputs Markdown</li>
+<li>Using a service like Ollagraph to convert HTML to clean Markdown on demand</li>
+</ul>
+<p>The goal is to give AI agents a version of your content without navigation, ads, popups, or heavy styling.</p>
+
+<h3>Step 3: Draft the File</h3>
+<p>Open a text editor and write the file using the structure described above. Keep it under 10,000 words or roughly 50 to 100 links. If you need more, use llms-full.txt.</p>
+
+<h3>Step 4: Choose a Location</h3>
+<p>Place the file at /.well-known/llms.txt and optionally mirror it at /llms.txt. Make sure it is served with a text/plain or text/markdown content type and returns a 200 status code.</p>
+
+<h3>Step 5: Test It</h3>
+<p>Use Ollagraph or a simple curl command to fetch the file and verify it renders correctly.</p>
+<pre><code>curl -I https://example.com/.well-known/llms.txt
+curl https://example.com/.well-known/llms.txt</code></pre>
+<p>Check that the links work, the Markdown parses, and the file is accessible without authentication.</p>
+
+<h3>Step 6: Monitor and Update</h3>
+<p>Set a reminder to review your llms.txt file monthly or quarterly. Remove broken links, add new important pages, and update the blockquote if your positioning changes.</p>
+
+<h2>8. Real-World Examples for Different Site Types</h2>
+<p>Different sites need different llms.txt files. Here are examples for four common scenarios.</p>
+
+<h3>SaaS Company</h3>
+<pre><code># TaskFlow
+
+&gt; TaskFlow helps engineering teams automate incident response workflows.
+
+This file points AI crawlers to our most authoritative product and technical content.
+
+## Documentation
+- [API Reference](https://taskflow.com/docs/api.md): REST and webhook documentation.
+- [Security Overview](https://taskflow.com/docs/security.md): SOC 2, encryption, and access controls.
+
+## Product
+- [Pricing](https://taskflow.com/pricing.md): Plans, credits, and enterprise terms.
+- [Integrations](https://taskflow.com/integrations.md): Supported tools and setup guides.
+
+## Research
+- [2026 State of Incident Response](https://taskflow.com/research/incident-response-2026.md): Original survey data and analysis.
+
+## Policy
+- [AI Usage Policy](https://taskflow.com/ai-policy.md)</code></pre>
+
+<h3>E-Commerce Site</h3>
+<pre><code># GreenGear
+
+&gt; Sustainable outdoor gear built for serious hikers.
+
+This file helps AI search engines surface accurate product and sustainability information.
+
+## Product Categories
+- [Hiking Boots](https://greengear.com/categories/hiking-boots.md): Product listings and comparison guides.
+- [Rain Jackets](https://greengear.com/categories/rain-jackets.md): Materials, waterproof ratings, and sizing.
+
+## Sustainability
+- [Materials Sourcing](https://greengear.com/sustainability/materials.md): How we choose recycled and organic materials.
+- [Carbon Impact Report](https://greengear.com/sustainability/carbon-report-2025.md): Annual emissions and offsets.
+
+## Policies
+- [Shipping &amp; Returns](https://greengear.com/policies/shipping-returns.md)
+- [AI Content Policy](https://greengear.com/ai-policy.md)</code></pre>
+
+<h3>Publisher or Blog</h3>
+<pre><code># The Circuit
+
+&gt; Independent journalism on semiconductor supply chains.
+
+This file guides AI crawlers to our original reporting and editorial standards.
+
+## Recent Investigations
+- [The Chip Shortage Aftermath](https://thecircuit.com/2026/07/chip-shortage-aftermath.md): Deep-dive supply chain analysis.
+- [Inside TSMC's Arizona Expansion](https://thecircuit.com/2026/05/tsmc-arizona.md): Reporting from the ground.
+
+## Standards
+- [Editorial Policy](https://thecircuit.com/about/editorial-policy.md)
+- [Corrections](https://thecircuit.com/about/corrections.md)
+
+## AI Policy
+- [How The Circuit Allows AI Use](https://thecircuit.com/ai-policy.md)</code></pre>
+
+<h3>Open Source Project</h3>
+<pre><code># RiverDB
+
+&gt; A lightweight embedded vector database for Python.
+
+This file helps AI agents find accurate, current information about RiverDB.
+
+## Documentation
+- [README](https://github.com/riverdb/riverdb/blob/main/README.md): Quick start and features.
+- [API Docs](https://riverdb.dev/docs/api.md): Full Python API reference.
+
+## Community
+- [Contributing Guide](https://github.com/riverdb/riverdb/blob/main/CONTRIBUTING.md)
+- [Discussions](https://github.com/riverdb/riverdb/discussions)
+
+## Policy
+- [License](https://github.com/riverdb/riverdb/blob/main/LICENSE)
+- [AI Training Policy](https://riverdb.dev/ai-policy.md)</code></pre>
+
+<h2>9. The llms-full.txt Companion File</h2>
+<p>For large sites, a single llms.txt file is not enough. You might have hundreds of important pages, and dumping all of them into one file defeats the purpose of curation.</p>
+<p>The solution is llms-full.txt. This is a longer, more comprehensive file that deep-research agents can fetch when they need exhaustive context. Your main llms.txt file links to it under a section like "Full Context" or "Deep Research."</p>
+
+<h3>Full Context</h3>
+<ul>
+<li><a href="https://example.com/llms-full.txt">Complete content index</a>: Recursive map of all public documentation, research, and policy pages.</li>
+</ul>
+
+<p>llms-full.txt can be recursive. It can include nested sections, more links, and even inline summaries of long documents. Think of llms.txt as the elevator pitch and llms-full.txt as the full briefing book.</p>
+<p>Not every site needs llms-full.txt. If you have fewer than 50 important pages, one file is probably enough. If you run a documentation-heavy platform, a publisher, or an enterprise knowledge base, the companion file is worth the effort.</p>
+
+<h2>10. Performance Impact: Does llms.txt Actually Help?</h2>
+<p>The honest answer is that llms.txt is still an emerging standard, and its direct impact is hard to measure with perfect precision. However, the indirect benefits are already clear.</p>
+<p>First, it improves crawl efficiency. AI agents that find a clean llms.txt file spend less time parsing irrelevant pages and more time on your authoritative content. That increases the probability of citation.</p>
+<p>Second, it reduces hallucination risk. When AI systems have access to your preferred sources, they are less likely to rely on third-party summaries, outdated copies, or forum speculation.</p>
+<p>Third, it signals professionalism. Publishing an llms.txt file tells AI companies, partners, and customers that you are thinking about the AI ecosystem deliberately. That matters for trust.</p>
+<p>At Ollagraph, we measure AEO success using a metric we call Citation Salience. It is the ratio of brand mentions that cite your primary sources versus brand mentions that cite anything else. Sites with clean llms.txt files, accessible Markdown versions, and clear policy sections tend to score higher on this metric.</p>
+<p>In internal tests across a sample of B2B SaaS sites, we observed that brands with well-structured llms.txt files and Markdown-first documentation were cited more accurately in ChatGPT and Perplexity responses for navigational and comparison queries. The effect was strongest for technical topics where source quality matters most.</p>
+
+<p>These numbers are directional, not guarantees. But they match what common sense predicts: if you make it easier for AI agents to find good information about you, they will use it.</p>
+
+<h2>11. Security, Privacy, and Policy Considerations</h2>
+
+<p>llms.txt is public. Anyone can read it, including competitors. Do not put sensitive information in it. Do not link to internal wikis, admin panels, or gated content unless those pages are genuinely public.</p>
+
+<p>That said, llms.txt is a useful place to communicate policy. You can state:</p>
+
+<ul>
+<li>Whether AI crawlers may use your content for training</li>
+<li>Whether attribution is required</li>
+<li>Which sections are off-limits</li>
+<li>Who to contact for policy questions</li>
+</ul>
+
+<p>Here is an example policy section:</p>
+
+<pre><code>## AI Usage Policy
+- [Full AI Policy](https://example.com/ai-policy.md): We allow AI search engines to cite our public content. We do not allow use of our documentation or research for training proprietary models without written agreement.
+- [Contact](mailto:ai-policy@example.com): Questions about AI use of our content.
+</code></pre>
+
+<p>Be specific. Vague statements like "we respect AI rights" are useless. Say what you allow and what you do not allow.</p>
+
+<p>Also consider the technical security of the file itself. Serve it over HTTPS. Make sure it is not accidentally blocked by your CDN or WAF. Some security tools treat unknown user agents as threats and block AI crawlers. This is called agent-cloaking, and it can make your llms.txt file invisible to the very agents you are trying to reach.</p>
+
+<p>Ollagraph's fetch simulator can help you detect this. It requests your file using the user agents of major AI crawlers and reports back what they see.</p>
+
+<h2>12. Troubleshooting Common Issues</h2>
+
+<p>Even a simple file can go wrong. Here are the most common problems we see when auditing llms.txt files.</p>
+
+<p><strong>The File Returns 404</strong></p>
+
+<p>Some teams create the file but forget to deploy it, or they place it in the wrong directory. Verify both /.well-known/llms.txt and /llms.txt.</p>
+
+<pre><code>curl -I https://example.com/.well-known/llms.txt
+curl -I https://example.com/llms.txt
+</code></pre>
+
+<p><strong>The File Is Blocked by a CDN</strong></p>
+
+<p>If the file is accessible in your browser but returns 403 for AI crawlers, your CDN or firewall may be blocking specific user agents. Test with Ollagraph's fetch simulator.</p>
+
+<p><strong>Links Point to HTML</strong></p>
+
+<p>AI agents can parse HTML, but it is inefficient. If your llms.txt links point to HTML pages, consider creating Markdown alternatives or using a conversion service.</p>
+
+<p><strong>The Blockquote Is Missing</strong></p>
+
+<p>Some teams skip the blockquote. That is a mistake. The blockquote is one of the most heavily used signals for knowledge graph categorization.</p>
+
+<p><strong>Sections Are Too Vague</strong></p>
+
+<p>Avoid headings like "Resources" or "More." Use specific labels like "API Documentation" or "Case Studies."</p>
+
+<p><strong>The File Is Stale</strong></p>
+
+<p>An outdated llms.txt file is worse than no file at all. Broken links and old positioning send confusing signals. Schedule regular reviews.</p>
+
+<h2>13. Best Practices for 2026</h2>
+
+<p>Based on what we have learned from auditing hundreds of sites, here are the practices that produce the best results.</p>
+
+<ol>
+<li>Keep the main file short. Aim for under 10,000 words. Use llms-full.txt for depth.</li>
+<li>Link to Markdown. Prefer .md or .txt targets over .html.</li>
+<li>Use descriptive link text. The label and the following sentence should make the destination obvious.</li>
+<li>Group logically. Use H2 sections that reflect how users think about your content.</li>
+<li>Include a policy section. Even a short statement is better than silence.</li>
+<li>Mirror the file. Publish at both /.well-known/llms.txt and /llms.txt.</li>
+<li>Validate regularly. Use automated tools to check structure, links, and accessibility.</li>
+<li>Update after major changes. New product launches, rebrands, and content migrations should trigger a review.</li>
+<li>Avoid duplicate content. Do not list the same page in three different sections.</li>
+<li>Test from the crawler's perspective. Fetch the file as GPTBot, ClaudeBot, and other agents would.</li>
+</ol>
+
+<h2>14. Common Mistakes Teams Make</h2>
+
+<p><strong>Mistake 1: Treating It as a Sitemap</strong></p>
+
+<p>llms.txt is not a list of every URL. It is a curated guide. If you dump your entire sitemap into it, you defeat the purpose.</p>
+
+<p><strong>Mistake 2: Writing It Like Marketing Copy</strong></p>
+
+<p>The file should be factual and concise. Avoid superlatives, buzzwords, and calls to action. AI agents do not respond to "industry-leading" the way humans might.</p>
+
+<p><strong>Mistake 3: Ignoring the Markdown Format</strong></p>
+
+<p>llms.txt is specifically a Markdown file. Plain text without structure is harder for agents to parse reliably.</p>
+
+<p><strong>Mistake 4: Forgetting Mobile and International Versions</strong></p>
+
+<p>If you have separate mobile sites, language variants, or regional content, consider whether your llms.txt should point to them.</p>
+
+<p><strong>Mistake 5: Linking to Gated Content</strong></p>
+
+<p>If a link requires a login, an AI crawler cannot follow it. Do not include gated pages unless you provide a public summary.</p>
+
+<p><strong>Mistake 6: Making It Too Long</strong></p>
+
+<p>A 50,000-word llms.txt file will not fit comfortably into most context windows. Keep it focused.</p>
+
+<h2>15. Enterprise and Multi-Site Deployment</h2>
+
+<p>Large organizations face additional complexity. You may have dozens of subdomains, regional sites, product microsites, and acquired properties. A single llms.txt file at the root domain is rarely enough.</p>
+
+<p><strong>Subdomain Strategy</strong></p>
+
+<p>Each major subdomain should have its own llms.txt file. For example:</p>
+
+<ul>
+<li>https://docs.example.com/.well-known/llms.txt</li>
+<li>https://blog.example.com/.well-known/llms.txt</li>
+<li>https://help.example.com/.well-known/llms.txt</li>
+</ul>
+
+<p>You can also maintain a master llms.txt at the root domain that links to the subdomain files.</p>
+
+<p><strong>Regional and Language Variants</strong></p>
+
+<p>If you operate in multiple languages, consider language-specific llms.txt files. For example:</p>
+
+<ul>
+<li>https://example.com/.well-known/llms-en.txt</li>
+<li>https://example.com/.well-known/llms-de.txt</li>
+</ul>
+
+<p>Link to these from the main file so crawlers can discover them.</p>
+
+<p><strong>Automation at Scale</strong></p>
+
+<p>Manually maintaining llms.txt across many sites is unsustainable. Use Ollagraph's API to:</p>
+
+<ul>
+<li>Discover all subdomains and language variants</li>
+<li>Generate draft llms.txt files from site structure</li>
+<li>Validate structure against community conventions</li>
+<li>Detect broken links and agent-cloaking</li>
+<li>Schedule recurring audits</li>
+</ul>
+
+<p>Here is an example workflow using Ollagraph:</p>
+
+<pre><code># Audit a single domain
+curl -X POST https://api.ollagraph.com/v1/aeo/llms-txt-audit \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -d '&#123;"domain": "example.com"&#125;'
+
+# Simulate how GPTBot sees the file
+curl -X POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -d '&#123;"url": "https://example.com/.well-known/llms.txt", "agent": "GPTBot"&#125;'
+</code></pre>
+
+<p>For enterprises, we recommend integrating these checks into your CI/CD pipeline. Every deployment should verify that llms.txt is present, valid, and accessible to major AI crawlers.</p>
+
+<h2>16. Frequently Asked Questions</h2>
+
+<h2>What is llms.txt in simple terms?</h2>
+<p>llms.txt is a Markdown file that sits on your website and acts as a curated guide for AI crawlers and AI search engines. Instead of letting bots wander through your entire site, it points them directly to the pages that best represent your brand and answers their questions. Think of it as a README you leave at the front door for AI agents. It helps them understand who you are, what matters, and where to find clean, citation-ready content.</p>
+
+<h2>Does llms.txt replace robots.txt?</h2>
+<p>No, llms.txt does not replace robots.txt because they solve different problems. robots.txt tells crawlers which URLs they are allowed to fetch, while llms.txt tells AI agents how to interpret and use your content once they have it. You need both files working together to manage access and communicate intent clearly. One controls the door; the other controls the conversation.</p>
+
+<h2>Where should I put llms.txt?</h2>
+<p>The recommended location is /.well-known/llms.txt, which follows the IETF convention for well-known resources that crawlers check automatically. Many AI agents also look for the file at /llms.txt, so mirroring it in both places is a smart defensive move. Make sure the file returns a 200 status code and is served over HTTPS without requiring authentication. If crawlers cannot reach it easily, they will simply ignore it.</p>
+
+<h2>What should I include in llms.txt?</h2>
+<p>Start with your brand name as an H1 heading, followed by a one-sentence blockquote that explains what your organization does. Add a short introductory paragraph, then group your most important links under clear H2 sections like Documentation, Product, Blog, and Policy. Each link should point to a clean Markdown or plain-text version of the page with a descriptive label. Finish with an AI usage policy if you want to set rules about training, attribution, or restricted content.</p>
+
+<h2>Do I need a separate llms-full.txt file?</h2>
+<p>You only need llms-full.txt if your site has a large volume of important content that cannot fit cleanly into a single curated file. The main llms.txt should stay short and focused, while llms-full.txt acts as a deeper index for research-heavy AI agents. Most small to medium websites can do perfectly well with just one llms.txt file. If you run a documentation platform, publisher, or enterprise knowledge base, the companion file becomes worth the effort.</p>
+
+<h2>Can I block AI crawlers with llms.txt?</h2>
+<p>llms.txt can state your preferences, but it does not technically enforce blocking the way robots.txt or server-level firewall rules do. If you want to stop crawlers from accessing specific pages, use robots.txt directives, IP restrictions, or authentication. Use llms.txt to communicate policy and intent, not as a security control. Think of it as a request, not a lock.</p>
+
+<h2>Should I link to HTML or Markdown?</h2>
+<p>You should link to Markdown or plain-text versions whenever possible because AI agents parse them with far less noise than HTML. HTML pages are often cluttered with navigation, footers, ads, scripts, and styling that waste tokens and dilute the useful signal. Markdown gives crawlers exactly the content you want them to reason about. If you only have HTML versions, consider using a conversion service or tool like Ollagraph to produce clean Markdown on demand.</p>
+
+<h2>How often should I update llms.txt?</h2>
+<p>Review your llms.txt file at least once every quarter to catch broken links, outdated descriptions, and missing pages. You should also update it immediately after any major change such as a product launch, rebrand, pricing change, or content migration. An outdated file sends confusing signals and can point AI agents to stale or irrelevant information. Treat it as a living document, not a one-time setup task.</p>
+
+<h2>Will llms.txt improve my rankings in traditional search?</h2>
+<p>It will probably not improve your Google rankings directly because llms.txt is designed for AI crawlers, not traditional search bots like Googlebot. However, the same work that makes your content AI-friendly often improves traditional SEO too. Cleaner structure, better internal linking, and authoritative Markdown versions help both humans and machines understand your site. The main win is better representation in AI search answers, not higher blue-link rankings.</p>
+
+<h2>What is agent-cloaking?</h2>
+<p>Agent-cloaking happens when a CDN, WAF, or bot protection system blocks AI crawlers while allowing normal human visitors through. Your llms.txt file might look fine in your browser but return a 403 or challenge page when GPTBot, ClaudeBot, or another AI agent requests it. This makes your content effectively invisible to AI search engines. You can detect it by simulating AI crawler requests with tools like Ollagraph's fetch simulator.</p>
+
+<h2>How do I test if my llms.txt is working?</h2>
+<p>Start by fetching the file with curl from both /.well-known/llms.txt and /llms.txt to confirm it returns a 200 status code. Then validate that the Markdown structure is correct, all links work, and the file is accessible without authentication. Finally, use a tool like Ollagraph to simulate how major AI crawlers see the file and detect any agent-cloaking issues. If everything looks clean from the crawler's perspective, your setup is working.</p>
+
+<h2>Is llms.txt an official standard?</h2>
+<p>As of mid-2026, llms.txt is a community-driven convention rather than a formal IETF RFC or W3C standard. It was popularized by Anthropic and has been adopted by a growing number of AI companies, SEO tools, and website owners. Because adoption is accelerating and major crawlers increasingly honor it, ignoring it is becoming risky. Even without formal standardization, it is now a practical best practice for AI search visibility.</p>
+
+<h2>Can I use llms.txt for private or internal sites?</h2>
+<p>Yes, but remember that anything placed on a public server in llms.txt is publicly readable, including by competitors. For private or internal sites, keep sensitive links out of the file and protect internal pages with authentication or network controls. You can still use llms.txt to guide authorized internal AI tools, just be careful about what you expose. If the file is on the public internet, treat it like a public press release.</p>
+
+<h2>What happens if I do not have an llms.txt file?</h2>
+<p>AI crawlers will still visit your site, but they will rely on traditional crawling and their own inference about which pages matter. They may miss your best content, cite outdated sources, or rely on third-party summaries that misrepresent your brand. Without llms.txt, you lose the ability to recommend authoritative pages and communicate your AI usage policy directly. You are essentially leaving your representation in AI search up to chance.</p>
+
+<h2>17. Conclusion and Next Steps</h2>
+
+<p><strong>llms.txt</strong> is one of the simplest and most strategic files you can add to your website in 2026. It costs almost nothing to create, takes less than an hour to implement, and gives you a direct line of communication with the AI crawlers that increasingly shape how people discover and understand your brand.</p>
+
+<p>The key is to treat it as a living document, not a one-time task. Start with a short, honest file that points to your best content. Expand to <strong>llms-full.txt</strong> as your site grows. Validate it from the crawler's perspective. Update it when your business changes.</p>
+
+<p>If you are serious about Answer Engine Optimization, <strong>llms.txt</strong> is not optional. It is the foundation of how AI agents will represent you in the years ahead.</p>
+
+<p>Ready to see what AI crawlers see on your site? Run an AEO audit with Ollagraph and get a complete report on your <strong>llms.txt</strong>, <strong>robots.txt</strong>, <strong>sitemap.xml</strong>, and AI citation readiness.</p>
+
+<h2>18. References</h2>
+
+<ul>
+<li>The llms.txt Proposal. Community-driven standard for AI-ready websites.</li>
+<li>Anthropic AI Crawler Documentation. Guidance on how Claude's web crawler interprets site signals.</li>
+<li>OpenAI GPTBot Documentation. Details on how OpenAI's crawler discovers and respects site policies.</li>
+<li>IETF Well-Known URIs (RFC 8615). Standard for /.well-known/ resource locations.</li>
+<li>Ollagraph AEO Documentation. Optimizing for AI Agents.</li>
+<li>Ollagraph llms.txt Audit Endpoint. API Reference.</li>
+<li>Ollagraph LLM Fetch Simulator. API Reference.</li>
+</ul>
+
+<p>Want to future-proof your site for AI search? Start with <strong>llms.txt</strong>, then build a complete AEO strategy around it.</p>
+</Article>
