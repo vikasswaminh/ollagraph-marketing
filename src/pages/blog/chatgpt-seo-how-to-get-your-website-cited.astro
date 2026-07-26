@@ -1,0 +1,432 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is ChatGPT SEO and how is it different from traditional SEO?", a: "ChatGPT SEO focuses on making your pages easy for AI systems to find, read, and quote. Unlike traditional SEO, rankings are not the goal; citation is. The work centers on crawl access, server-rendered content, and precise answers rather than keyword coverage alone." },
+  { q: "What are the three gates a page must pass to be cited?", a: "First, the correct crawlers must be allowed and receive a successful response from your edge. Second, the crawler must see real content in the initial HTML without relying on JavaScript. Third, the page must provide a direct, specific, and current answer that can be quoted." },
+  { q: "Which crawlers matter for ChatGPT citations?", a: "Two user-agents drive citation behavior: OAI-SearchBot and ChatGPT-User. They need clear access and consistent 200 responses across your stack. The training crawler can be restricted without affecting whether your pages are cited in answers." },
+  { q: "Do AI crawlers execute JavaScript when reading pages?", a: "In most cases they fetch raw HTML and do little or no client-side execution. If your content renders only in the browser, the crawler may see an empty shell. Use server-side rendering or pre-rendering so the primary answer is present in the initial HTML." },
+  { q: "How should content be written to increase the chance of being quoted?", a: "Lead with a direct answer in the first paragraph, then expand with specifics like numbers, dates, and constraints. Use clear headings and concise sections so a quote can be extracted cleanly. Show freshness and authorship to signal reliability." },
+  { q: "How can a team track ChatGPT citations without a console?", a: "Maintain a query set aligned to your topics and test it on a fixed cadence. Record whether your pages are cited, which snippets are used, and how results change after updates. Ollagraph uses this disciplined loop to connect fixes in crawl and rendering to observable citation gains." },
+];
+---
+<Article
+  title="ChatGPT SEO Playbook: Crawl-Render-Quote That Wins"
+  description="A practical playbook for getting cited in ChatGPT. Learn the crawl-render-quote workflow, common pitfalls, and how Ollagraph tracks AI citations."
+  date="2026-07-26"
+  readingTime={23}
+  tags={["chatgpt-seo", "aeo", "ai-crawlers", "technical-seo", "content-strategy"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Why We Wrote This Playbook</h2>
+<p>A year ago, we started getting the same question from customers: "Can you help us show up in ChatGPT?" We build tools that convert documents and web pages into clean Markdown for LLM pipelines, so the question made sense. If ChatGPT is going to cite sources, those sources need to be readable. We figured we should be good at this ourselves before we told anyone else how to do it.</p>
+<p>We were not good at it. Our site was technically crawlable, but our content was written like traditional SEO pages: broad, keyword-optimized, and slow to get to the point. When we asked ChatGPT questions in our own topic area, our site rarely appeared. Worse, we could not figure out why. There was no Search Console, no ranking report, no clear feedback loop.</p>
+<p>So we built one. We started auditing our pages the same way an AI crawler would: fetch the HTML, extract the visible text, score how directly each page answered likely questions, and track which pages got cited over time. That process became the Ollagraph AEO toolkit. This playbook is the operational manual that came out of it.</p>
+<p>We are sharing it because ChatGPT SEO is still early enough that a disciplined team can build a real advantage. Most competitors are either ignoring it or applying old Google SEO tactics and hoping they transfer. They do not, at least not fully. The teams that win will be the ones that treat ChatGPT as a separate channel with its own rules.</p>
+
+<h2>What ChatGPT SEO Actually Means</h2>
+<p>ChatGPT SEO is the practice of optimizing your website so that ChatGPT cites it when answering user questions. It sits inside the broader fields of Answer Engine Optimization (AEO) and Generative Engine Optimization (GEO), but it is specifically about ChatGPT's search and browsing behavior.</p>
+<p>Traditional SEO optimizes for a ranked list of links. You want position one, or at least the top half of page one, because users scan and click. ChatGPT SEO optimizes for inclusion in the small set of sources the model names while it writes a single synthesized response. There is no position six. There is cited, or not cited.</p>
+<p>That changes the strategy in three ways.</p>
+<p>First, you stop writing for broad relevance and start writing for precise questions. A page that is generally about "web scraping" will lose to a page that directly answers "What is the best way to scrape a website for LLM training?" The second page is easier to quote.</p>
+
+<p>Second, you start thinking about how an automated system reads your page. A human visitor might scroll past a slow chart or skim a long intro. A crawler that fetches raw HTML and extracts passages will not. The page has to deliver the answer in plain text immediately.</p>
+
+<p>Third, you accept that freshness matters more. ChatGPT can search the live web, so users ask about current pricing, recent releases, and version compatibility. A page with a visible updated date and current examples has an edge over a stale but authoritative page.</p>
+
+<h2>The Three Gates of ChatGPT SEO</h2>
+
+<p>We organize ChatGPT SEO into three gates. Each gate must be open before the next one matters.</p>
+
+<ol>
+<li><strong>Access.</strong> The right crawlers must be allowed to reach your site.</li>
+<li><strong>Rendering.</strong> Those crawlers must receive real content in the initial HTML.</li>
+<li><strong>Quotability.</strong> Your page must be the best direct answer to a specific question.</li>
+</ol>
+
+<p>A failure at gate one makes gates two and three irrelevant. A failure at gate two means your great content is invisible. A failure at gate three means you are in the index but never selected. Most teams we audit fail at gate one or two and then spend their time arguing about keywords.</p>
+
+<p>The rest of this playbook walks through each gate, then shows how we turned the process into a repeating workflow.</p>
+
+<h2>Gate 1: Let the Right Crawlers In</h2>
+
+<p>The first gate is access. If ChatGPT's crawlers cannot reach your site, nothing else matters. This is also the gate most sites fail, usually by accident.</p>
+
+<h3>The three OpenAI bots</h3>
+
+<p>ChatGPT uses three bots with different jobs. Understanding the difference is the single most important technical fact in ChatGPT SEO.</p>
+
+<p><strong>Bot / user-agent</strong> | <strong>What it does</strong> | <strong>Should you allow it?</strong><br>
+OAI-SearchBot | Builds ChatGPT's search index, the pool of pages it can cite | Yes, if you want citations<br>
+ChatGPT-User | Fetches pages live during a conversation when browsing is triggered | Yes, if you want real-time access<br>
+GPTBot | Crawls content to train future models | Optional; affects training, not citations</p>
+
+<p>You can block GPTBot and still be cited. Many companies do exactly that. But if you block OAI-SearchBot or ChatGPT-User, you are out of the game.</p>
+
+<h3>Check your robots.txt</h3>
+
+<p>Your robots.txt file lives at the root of your domain. A ChatGPT-friendly configuration explicitly allows the search and browsing bots:</p>
+
+<pre><code>User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /</code></pre>
+
+<p>If you want to allow training crawling, add:</p>
+
+<pre><code>User-agent: GPTBot
+Allow: /</code></pre>
+
+<p>If you prefer to opt out of training but still be cited, use:</p>
+
+<pre><code>User-agent: GPTBot
+Disallow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /</code></pre>
+
+<h3>Watch out for precedence problems</h3>
+
+<p>robots.txt follows a simple rule: the most specific user-agent block wins. But many files have a catch-all rule near the top:</p>
+
+<pre><code>User-agent: *
+Disallow: /</code></pre>
+
+<p>If that comes before your OpenAI-specific rules, some parsers may honor it. The safest approach is to put your specific allow rules clearly and avoid relying on a catch-all to block other bots unless you understand the precedence behavior of every crawler that matters to you.</p>
+
+<h3>Check your CDN and firewall</h3>
+
+<p>This is the hidden failure mode. Your robots.txt can be perfect, but a Cloudflare bot fight mode, AWS WAF rule, or custom firewall can return a 403 to any user-agent containing "bot" before the request ever reaches your server. The crawler sees a block, not your content.</p>
+
+<p>Verify the real response with curl:</p>
+
+<pre><code>curl -A "OAI-SearchBot/1.0" -I https://yourdomain.com</code></pre>
+
+<p>You should see a 200 OK, not a 403 Forbidden.</p>
+
+<h3>Audit all major AI bots at once</h3>
+
+<p>Checking each bot manually is tedious. We use a single API call to test every major AI crawler:</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/ai-bot-allowlist \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"domain":"yourdomain.com"&#125;'</code></pre>
+
+<p>The response tells you, per bot, whether your site currently allows or blocks it. This turns a vague "I think our robots.txt is fine" into a concrete list of fixes.</p>
+
+<h2>Gate 2: Make Sure the Crawler Can Read the Page</h2>
+
+<p>Being allowed in is not the same as being understood. The second gate is rendering: does the crawler receive the content a human sees?</p>
+
+<h3>The JavaScript problem</h3>
+
+<p>Many modern websites render their main content with JavaScript. That works fine for human visitors with full browsers. It often fails for AI crawlers, which typically fetch the initial HTML without executing JavaScript. If your article body is injected client-side, the crawler gets a nearly empty page.</p>
+
+<p>Test this yourself. Fetch a URL with a simple HTTP client and look at the body:</p>
+
+<pre><code>curl -A "OAI-SearchBot/1.0" https://yourdomain.com/your-page | wc -c</code></pre>
+
+<p>Then compare it to what a browser sees. If the curl response is tiny, your content is not in the initial HTML.</p>
+
+<h3>The fix</h3>
+
+<p>The most reliable fix is server-side rendering or static generation. With server-side rendering, the full article HTML is delivered on the first request. With static generation, the page is pre-built as HTML at deploy time. Both ensure that an AI crawler receives real text immediately.</p>
+
+<p>If you cannot re-architect the site, a partial fix is to put the most important answer content inside a &lt;noscript&gt; block or in the initial HTML payload. The goal is to make the core answer extractable even if the fancy interactive parts are not.</p>
+
+<h3>Interstitials, cookie walls, and cloaking</h3>
+
+<p>Anything that puts a barrier between the crawler and your content is a risk. Cookie consent walls, age gates, subscription overlays, and region blocks can all prevent an AI crawler from reading the page. Even if the crawler technically could bypass them, it often will not.</p>
+
+<p>Cloaking — serving different content to bots than to humans — is also dangerous. It can get your site distrusted or excluded. The safest rule is: serve the same essential content to bots and humans, even if the presentation differs slightly.</p>
+
+<h3>Simulate an AI fetch</h3>
+
+<p>We built an LLM fetch simulator to see exactly what each major AI crawler receives when it visits a URL:</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"url":"https://yourdomain.com/your-page"&#125;'</code></pre>
+
+<p>It returns the status code, content length, a visible-text preview, and flags for JavaScript-only content or cloaking. If the browser baseline is rich and the AI-crawler preview is thin, you have found your rendering problem.</p>
+
+<h2>Gate 3: Write Content ChatGPT Wants to Cite</h2>
+
+<p>Once your site is reachable and readable, the real competition begins. ChatGPT only cites a few sources per answer. Your page has to be the best answer to the question.</p>
+
+<p>Lead with the answer</p>
+
+<p>Put a clear, standalone answer near the top of the page. Do not bury it under a long introduction. Models extract self-contained passages, and a direct answer at the top is the easiest to quote.</p>
+
+<p>For example, if your page targets "What is the best way to scrape a website for LLM training?", the first paragraph after the introduction should answer it directly:</p>
+
+<p>"The best approach is to use a scraping API that returns clean Markdown with source attribution, because Markdown preserves structure for LLMs while keeping token counts low."</p>
+
+<p>That sentence is quotable. A paragraph that wanders through definitions and history first is not.</p>
+
+<h2>Be specific</h2>
+
+<p>Generative engines cite sources that contain specifics. Numbers, dates, named entities, and direct claims are far more likely to be quoted than vague generalities.</p>
+
+<p>Compare these two sentences:</p>
+
+<ul>
+<li>Weak: "Our API is fast and reliable."</li>
+<li>Strong: "Our API returns parsed Markdown in a median of 1.2 seconds and handles 10,000 pages per hour at the Pro tier."</li>
+</ul>
+
+<p>The second sentence gives the model something concrete to say. Research on generative engine optimization has found that citations, quotations, and statistics measurably increase citation rates.</p>
+
+<h2>Structure for extraction</h2>
+
+<p>Use descriptive H2 and H3 headings, short paragraphs, lists, and tables. These formats give the model clean units to extract and attribute. A wall of text is hard to quote accurately.</p>
+
+<p>A good structure for a ChatGPT-friendly page looks like this:</p>
+
+<ol>
+<li>Direct answer near the top.</li>
+<li>Short explanation of why the answer is true.</li>
+<li>A comparison table or list of options.</li>
+<li>Practical examples or code snippets.</li>
+<li>A FAQ section with question-and-answer pairs.</li>
+</ol>
+
+<h2>Show freshness</h2>
+
+<p>For current topics, freshness is a ranking signal. Include a visible "last updated" date, keep examples current, and use dateModified schema markup. A page that says "updated July 2026" beats a page that looks abandoned, even if the older page has more backlinks.</p>
+
+<h2>Demonstrate expertise</h2>
+
+<p>ChatGPT, like Google, prefers sources that show expertise, experience, authoritativeness, and trust. Include author bylines with credentials, link to credible external sources, and share first-hand experience. If you ran a test, say how. If you measured something, give the numbers.</p>
+
+<h2>Use question-and-answer format</h2>
+
+<p>FAQ sections are especially powerful for ChatGPT SEO because they match how users ask questions. Each H3 question is a direct query target, and the following paragraph is a ready-made answer. We aim for at least twelve question-and-answer pairs per article, with each answer written as a short, self-contained paragraph.</p>
+
+<h2>Our Internal ChatGPT SEO Workflow</h2>
+
+<p>Knowing the gates is useful only if you act on them. Here is the workflow we run for every page we want to optimize.</p>
+
+<h3>Step 1: Audit crawler access</h3>
+
+<p>Run the AI-bot allowlist audit on your domain. Fix any blocks for OAI-SearchBot and ChatGPT-User. Do not assume your robots.txt is enough; verify the real response from your CDN.</p>
+
+<h3>Step 2: Audit rendering</h3>
+
+<p>Run the LLM fetch simulator on the specific page you want to optimize. If the AI-crawler preview is thin, fix the rendering before doing anything else. No amount of keyword optimization will help if the crawler cannot read the page.</p>
+
+<h3>Step 3: Score citation-readiness</h3>
+
+<p>Use a citation-readiness audit to score the page against the signals ChatGPT favors: direct answer, specifics, structure, freshness, authorship, and outbound authority links.</p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/citation-readiness \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"url":"https://yourdomain.com/your-page"&#125;'</code></pre>
+
+<h3>Step 4: Rewrite top-down</h3>
+
+<p>Work the audit from the highest-impact items first. Usually that means:</p>
+
+<ol>
+<li>Add a direct answer near the top.</li>
+<li>Inject specific numbers, dates, and named entities.</li>
+<li>Improve headings and add a FAQ section.</li>
+<li>Add or update the author byline and last-updated date.</li>
+<li>Link to credible external sources.</li>
+</ol>
+
+<h3>Step 5: Re-audit and iterate</h3>
+
+<p>ChatGPT's index and answers change over time. We re-audit after major edits and on a quarterly schedule. We track which pages get cited and double down on the formats that work.</p>
+
+<h2>Real Mistakes We Made</h2>
+
+<p>We made most of the common mistakes. Here are the ones that cost us real time.</p>
+
+<ol>
+<li><strong>We blocked all AI bots indiscriminately</strong><br>Our CMS had a toggle labeled "block AI bots." We turned it on because we were worried about training scraping. The result was no ChatGPT citations. We fixed it by being precise: allow OAI-SearchBot and ChatGPT-User, block GPTBot if we wanted to opt out of training.</li>
+
+<li><strong>We confused GPTBot with OAI-SearchBot</strong><br>Early on, we allowed GPTBot because we heard "OpenAI crawler" and assumed that covered everything. It did not. OAI-SearchBot is the one that matters for citations.</li>
+
+<li><strong>We had client-side rendering without a fallback</strong><br>Our blog was built in a JavaScript framework that delivered an empty shell to crawlers. The pages looked great in a browser but were nearly blank to OAI-SearchBot. We moved to static generation for content pages.</li>
+
+<li><strong>We wrote generically</strong><br>Our early pages were full of phrases like "best-in-class solution" and "seamless integration." They told ChatGPT nothing specific. When we rewrote with numbers, dates, and direct claims, citations started appearing.</li>
+
+<li><strong>We hid the answer under long introductions</strong><br>We used to write 800 words of background before getting to the point. The model often never reached the point. We flipped the structure: answer first, explanation second.</li>
+
+<li><strong>We ignored freshness</strong><br>Several of our pages had not been updated in two years. For technical topics, that made them look stale. We added visible updated dates and refreshed examples.</li>
+
+<li><strong>We treated it as a one-time task</strong><br>We optimized a page, saw a citation, and moved on. Three months later, the citation was gone. ChatGPT's answers evolve. We now re-audit quarterly.</li>
+</ol>
+
+<h2>How We Track ChatGPT Citations</h2>
+
+<p>There is no public Search Console for ChatGPT, so we built a manual tracking system. It is low-tech but effective.</p>
+
+<h3>Direct signals</h3>
+
+<ul>
+<li>Cited in answers. We ask ChatGPT questions in our topic area and see if our site appears in the citations. We track which pages and which queries.</li>
+<li>Crawler hits. We check server logs for requests from OAI-SearchBot and ChatGPT-User. If they never visit, we have an access problem.</li>
+<li>Fetch simulator results. We use the LLM fetch simulator to confirm rendering.</li>
+</ul>
+
+<h3>Indirect signals</h3>
+
+<ul>
+<li>Organic traffic to target pages. If a page starts getting cited, we sometimes see referral traffic from ChatGPT or increased direct traffic.</li>
+<li>Brand mentions. ChatGPT citations often include our brand name, which shows up in brand monitoring tools.</li>
+<li>Citation-readiness score. A rising score from the audit indicates the page is becoming more quotable.</li>
+</ul>
+
+<h3>Our tracking sheet</h3>
+
+<p>We use a simple spreadsheet with these columns:</p>
+
+<p>Query | Page | Date checked | Cited? | Position in citations | Notes<br>
+What is the best HTML to Markdown API? | /html-to-markdown-api | 2026-07-20 | Yes | 2 | After adding comparison table<br>
+How to audit AI bot access? | /aeo/ai-bot-allowlist | 2026-07-20 | No | — | Need to add direct answer</p>
+
+<p>We update it monthly. Over time, we see which content formats and topics win citations.</p>
+
+<h2>Scaling ChatGPT SEO Across a Team</h2>
+
+<p>Once the ChatGPT SEO workflow works for one page, the real challenge becomes running it across a site without turning your content team into an audit team or your engineering team into a full-time crawler-response desk. The mistake most organizations make is treating ChatGPT SEO as a side project assigned to one person. It touches infrastructure, content quality, measurement, and publishing process. That means it has to be embedded into how the team already works, not bolted on top.</p>
+
+<p>We learned this the hard way. For the first three months, one person on our team owned "ChatGPT SEO." They would run audits, file tickets, chase engineers, and rewrite content. It was slow, and it created a bottleneck. Pages sat in queues. Engineers got context-free requests like "make this crawlable." Content writers were asked to "add AI-friendly answers" without knowing what that meant. The process broke down because the work was not mapped to the people who already controlled those decisions.</p>
+
+<p>We fixed it by splitting ownership three ways and giving each team one clear metric.</p>
+
+<h3>Engineering owns access and rendering</h3>
+
+<p>Engineering is responsible for whether AI crawlers can reach the site and what they see when they get there. Their metric is simple: every target page returns a 200 with meaningful HTML to OAI-SearchBot and ChatGPT-User. That sounds obvious, but it covers a surprising amount of surface area.</p>
+
+<p>Engineering maintains the robots.txt rules, the CDN and WAF configuration, server-side rendering or static generation for content pages, and the exclusion of interstitials and cookie walls for bot traffic. They also own the LLM fetch simulator integration, which we run automatically after every deploy. If a deploy changes how pages are rendered, the simulator catches it before the content team notices a drop in citations.</p>
+
+<p>The key was making ChatGPT SEO part of existing engineering workflows. We added an AI-crawler check to our CI pipeline. If a content page returns less than a threshold of visible text to OAI-SearchBot, the build fails. That turned an abstract SEO concern into a deploy-blocking quality gate, which is exactly where it belongs.</p>
+
+<h3>Content owns quotability and freshness</h3>
+
+<p>Content owns whether the page is worth citing once the crawler reads it. Their metric is citation-readiness score, which we break into sub-scores: direct answer, specificity, structure, freshness, authorship, and authority links. Every target page gets a score, and the content team prioritizes rewrites based on the lowest scores.</p>
+
+<p>We also changed how briefs are written. Every new content brief now includes a ChatGPT SEO section with five fields:</p>
+
+<ul>
+<li>Target question the page should answer</li>
+<li>Direct answer sentence, written as a standalone quote</li>
+<li>Specific facts or numbers to include</li>
+<li>Related FAQ questions that match conversational queries</li>
+<li>Last-updated date plan and ownership</li>
+</ul>
+
+<p>This front-loads the work. Writers know the question before they write the first paragraph, and editors can check whether the direct answer is actually at the top. It also prevents the common failure mode where a page is optimized after publication, which is always more expensive than building it in from the start.</p>
+
+<p>Freshness is a separate sub-process. We maintain a content calendar that schedules updates for every target page at least once per quarter. Pages with dates, pricing, version numbers, or product comparisons get priority because they go stale fastest. Each update is logged, and the last-updated date on the page is changed only when the content actually changes, not as a cheap freshness trick.</p>
+
+<h3>SEO owns measurement and prioritization</h3>
+
+<p>SEO owns the feedback loop. Their metric is citation rate: the percentage of target queries for which our site appears in ChatGPT citations over time. They maintain the query tracking spreadsheet, run the manual ChatGPT checks, analyze server logs for crawler hits, and report trends to engineering and content.</p>
+
+<p>Prioritization is where SEO adds the most value. Not every page deserves a ChatGPT SEO pass. We score pages by three factors:</p>
+
+<ul>
+<li>Business impact: does the page target a question our buyers ask during research or purchase decisions?</li>
+<li>Win probability: is the query conversational, specific, and currently poorly answered?</li>
+<li>Effort: how much rendering or content work is required?</li>
+</ul>
+
+<p>Pages with high impact and high win probability get optimized first. Pages with high impact but low win probability go into a longer-term authority-building queue. Pages with low impact stay out of scope. This prevents the team from spreading effort across hundreds of pages and producing thin, repetitive content.</p>
+
+<h3>Building a repeatable operating rhythm</h3>
+
+<p>We run ChatGPT SEO on a weekly and quarterly rhythm.</p>
+
+<p>Every week, the SEO lead reviews the automated audit dashboard. Any page with a new rendering issue, a blocked crawler response, or a dropped citation gets flagged. Engineering and content each get a short list of fixes. We keep the meeting to thirty minutes. The goal is not to debate strategy; it is to clear blockers.</p>
+
+<p>Every quarter, we run a full re-audit of every target page. We update the query tracking sheet, refresh stale content, and re-score citation-readiness. We also review which content formats won citations and which did not, then adjust the brief template accordingly. This is where we learn.</p>
+
+<h3>Tools and automation</h3>
+
+<p>We automate as much as possible through the Ollagraph API. The AI-bot allowlist, LLM fetch simulator, and citation-readiness audits run on a schedule. Results feed a Notion dashboard that engineering, content, and SEO review weekly. We also pipe crawler-hit data from our CDN logs into the same dashboard so we can correlate crawler activity with citation changes.</p>
+
+<p>Automation does not replace judgment. It removes the manual work of checking whether pages are crawlable so the team can focus on whether they are worth citing. That is the right division of labor.</p>
+
+<h3>Common scaling mistakes</h3>
+
+<p>The first mistake is assigning ChatGPT SEO to one person without cross-team authority. One person cannot change robots.txt, rewrite content, and fix rendering. The second mistake is optimizing every page. Most sites have hundreds of pages but only a few dozen that matter for high-intent questions. The third mistake is treating audits as one-time events. ChatGPT's index, answers, and your own site all change, so the process has to repeat.</p>
+
+<p><strong>The outcome</strong><br>After we split ownership and built the rhythm, our citation rate improved steadily. More importantly, the work became sustainable. New pages launch with ChatGPT SEO built in. Stale pages get refreshed before they lose citations. Rendering issues get caught in CI rather than in a monthly report. That is what scaling looks like: not more effort, but better process.</p>
+
+<h2>FAQs</h2>
+
+<h3>What is ChatGPT SEO?</h3>
+<p>ChatGPT SEO is the practice of optimizing your website so that ChatGPT can find, read, and cite it when answering user questions. It combines technical SEO — crawler access and rendering — with a new editorial standard: writing direct, specific, quotable answers. Unlike traditional SEO, the goal is not a ranking position but inclusion in the small set of sources ChatGPT references. Teams that treat it as a crawl-render-quote workflow tend to see results faster than those that only rewrite copy.</p>
+
+<h3>How is ChatGPT SEO different from traditional SEO?</h3>
+<p>Traditional SEO optimizes for a ranked list of links on Google, where page one still brings traffic even if you are not first. ChatGPT SEO optimizes for inclusion in the small set of sources cited inside a synthesized AI answer. The competition is sharper because there is no position six; you are either cited or ignored. Precise answers to specific questions matter more than broad relevance, and conversational long-tail queries are often the fastest wins.</p>
+
+<h3>Which bots does ChatGPT use to crawl websites?</h3>
+<p>ChatGPT uses OAI-SearchBot to build its searchable index and ChatGPT-User to fetch pages live during conversations. GPTBot is used only for training future models and does not affect whether your site is cited. This distinction matters because many sites block all OpenAI bots indiscriminately and accidentally remove themselves from citations. Allowing OAI-SearchBot and ChatGPT-User while blocking GPTBot is a common and safe configuration.</p>
+
+<h3>Does blocking GPTBot hurt my ChatGPT SEO?</h3>
+<p>No, blocking GPTBot only opts your content out of training future models. You can block it and still appear in ChatGPT answers as long as OAI-SearchBot and ChatGPT-User are allowed. Many companies choose this path to protect their intellectual property while keeping their content discoverable. The mistake to avoid is using a broad rule that also blocks the search and browsing bots.</p>
+
+<h3>How do I check if ChatGPT can crawl my site?</h3>
+<p>Check your robots.txt for explicit rules targeting OAI-SearchBot and ChatGPT-User, then verify the real server response using a curl command or an AI-bot allowlist audit. Also inspect your CDN and firewall, which may block bot user-agents before robots.txt is ever consulted. A perfect robots.txt means nothing if Cloudflare or AWS WAF returns a 403 to anything containing "bot." Always test from the crawler's perspective, not just from a browser.</p>
+
+<h3>Why is my site not showing up in ChatGPT?</h3>
+<p>The most common reasons are that the search bots are blocked, the page content is rendered with JavaScript and invisible to crawlers, or the page does not directly answer the question being asked. Audit access first, then rendering, then citation-readiness, because fixing content quality will not help if the crawler cannot reach or read the page. Most teams we audit fail at gate one or two and then waste time optimizing keywords.</p>
+
+<h3>Does ChatGPT SEO require special schema markup?</h3>
+<p>Schema markup helps but is not required for ChatGPT citations. Useful schema includes dateModified, author information, and organization markup, all of which reinforce trust and freshness signals. The most important factor is still content that directly answers the question in plain text. Schema without quotable content is like a polished sign on an empty building.</p>
+
+<h3>What is the role of llms.txt in ChatGPT SEO?</h3>
+<p>llms.txt is a simple file at your domain root that maps your most important content for AI systems. It is a helpful, forward-looking convention, but it is not required and will not by itself make you appear in ChatGPT. Fix crawler access, rendering, and content quality first, then add llms.txt as a finishing touch. Think of it as a sitemap for AI crawlers, not a substitute for good answers.</p>
+
+<h3>How long does it take to get cited by ChatGPT?</h3>
+<p>It depends on how quickly the crawler discovers and indexes your page, and how competitive the query is. After fixing technical issues, you may see citations within days for low-competition long-tail queries, or weeks for competitive head terms. Fresh, specific pages on niche topics tend to win fastest because fewer competitors have written clean answers. Competitive commercial queries require sustained authority and repeated re-audits.</p>
+
+<h3>Can I pay to appear in ChatGPT?</h3>
+<p>No, ChatGPT citations are organic and there is no paid placement program for being cited in answers. The only path is to earn it through crawlability, relevance, and authority. Anyone promising guaranteed ChatGPT placement is selling something that does not exist. Treat citations as an earned channel, not an ad buy.</p>
+
+<h3>What content format does ChatGPT cite most often?</h3>
+<p>ChatGPT tends to cite pages with a clear direct answer near the top, specific facts like numbers and dates, descriptive headings, lists or tables, and a visible author and update date. FAQ sections are especially effective because they match conversational queries and provide self-contained answer units. A wall of generic marketing copy is unlikely to be quoted, no matter how well optimized.</p>
+
+<h3>Should I optimize every page for ChatGPT?</h3>
+<p>No, focus on pages that answer questions your target audience asks during research or buying decisions. Product pages, comparison articles, how-to guides, and explainers are usually the highest-impact targets. Optimizing every page spreads effort too thin and often produces thin, repetitive content. Start with the pages that already drive or should drive high-intent traffic.</p>
+
+<h3>How do I scale ChatGPT SEO across a large site?</h3>
+<p>Split ownership between engineering, content, and SEO so each team has one clear metric. Prioritize high-impact pages, build a content brief template that includes a target question and direct answer, automate audits through an API, and re-audit quarterly. Scaling works best when ChatGPT SEO becomes part of the standard publishing workflow rather than a retrofit project.</p>
+
+<h3>What is the fastest way to win a ChatGPT citation?</h3>
+<p>Find a long-tail, conversational question in your niche that is poorly answered and create a page that leads with a direct answer. Include specific facts, a visible updated date, and clear headings, and make sure the page is crawlable and rendered server-side. These queries have less competition and are easier to win than broad head terms. A single well-answered niche question can become your first citation within days.</p>
+
+<h2>Conclusion</h2>
+
+<p>ChatGPT SEO is not a mystery, and it is not a replacement for Google SEO. It is a parallel discipline with the same foundation — a crawlable, high-quality website — and a different finish line: being cited inside an AI-generated answer.</p>
+
+<p>The path is three gates in order. Let the right crawlers in. Make sure they can read your pages. Then write content so direct, specific, and current that ChatGPT has no reason to cite anyone else. Most competitors will skip the first two gates and argue about keywords. If you run the full workflow, you will be ahead.</p>
+
+<p>Start with an audit. Check which AI bots can reach your domain, simulate what they see, and score your pages for citation-readiness. Fix the highest-impact issues first, re-audit after edits, and track which queries start citing you. ChatGPT SEO rewards the teams that treat it as a measured, repeating practice — not a one-time trick.</p>
+
+<p>Ready to see where your site stands? Run the Ollagraph AEO toolkit (/aeo) and turn ChatGPT visibility into a fixable checklist.</p>
+
+<h2>References</h2>
+
+<ul>
+<li>OpenAI. "Bots &amp; Crawler Documentation." platform.openai.com/docs/bots — authoritative list of OpenAI user-agents and behavior.</li>
+<li>Aggarwal et al. "GEO: Generative Engine Optimization." arXiv:2311.09735, 2023 — peer-reviewed research showing that citations, quotations, and statistics increase AI citation rates.</li>
+<li>IETF. "RFC 9309 — Robots Exclusion Protocol." datatracker.ietf.org/doc/html/rfc9309 — the robots.txt standard.</li>
+<li>Google Search Central. "Creating Helpful, Reliable, People-First Content." developers.google.com/search/docs/fundamentals/creating-helpful-content — E-E-A-T guidance that applies to AI citation signals.</li>
+<li>Ollagraph. "Answer Engine Optimization: The Complete 2026 Guide." /blog/answer-engine-optimization — pillar page for AEO and GEO strategy.</li>
+<li>Ollagraph. "ChatGPT SEO: How to Get Your Website Cited in AI Answers." /blog/chatgpt-seo-how-to-get-your-website-cited-in-ai-answers — related cluster article on ChatGPT visibility.</li>
+</ul>
+</Article>
