@@ -1,0 +1,483 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is a web scraping API and why use one?", a: "A web scraping API wraps fetching, rendering, anti-bot handling, and parsing behind a single HTTP request. Instead of managing browsers, proxies, and retries yourself, you send a URL and receive structured data. This reduces operational overhead and speeds up development. It is especially useful when scraping is not your core product." },
+  { q: "When should I enable JavaScript rendering?", a: "Only enable rendering when the content you need is not present in the initial HTML response. Static pages are faster and cheaper to fetch, while rendering requires spinning up a browser instance. Start with a simple fetch and escalate if the page returns an empty shell. This approach keeps costs and latency under control." },
+  { q: "How do I handle blocking and CAPTCHAs effectively?", a: "Treat blocking as a gradual escalation problem rather than an all-or-nothing switch. Begin with default requests, then add stealth headers, stronger IP strategies, and CAPTCHA solving only when needed. This minimizes cost and complexity. Overusing heavy measures from the start often wastes resources." },
+  { q: "What is the best way to scale scraping beyond a few URLs?", a: "Move from synchronous calls to batch and asynchronous workflows as soon as volume increases. Fan-out jobs with webhooks let you process many URLs without blocking your application. This improves throughput and reliability. Synchronous scraping should be limited to small or user-triggered tasks." },
+  { q: "How does a scraping API support AI and RAG pipelines?", a: "Some APIs return content pre-processed into token-sized chunks with byte offsets. This makes it easier to feed data into language models and cite exact positions in the source. It eliminates the need to build custom chunking logic. The result is faster integration and more accurate retrieval." },
+  { q: "What are the trade-offs of using an API like Ollagraph?", a: "You trade some low-level control and pay per request in exchange for removing infrastructure complexity. This includes browser management, proxy rotation, and retry logic. For most teams, the reduced maintenance and faster iteration outweigh the cost. Building in-house only makes sense for highly specialized, large-scale crawling." },
+];
+---
+<Article
+  title="Scrape Any Website with One API Call"
+  description="Learn how a web scraping API turns fetching, rendering, and unblocking into a single request, and how to scale it into a resilient data pipeline."
+  date="2026-07-26"
+  readingTime={26}
+  tags={["web-scraping", "api-design", "data-extraction", "automation", "rag"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Most scraping projects don't fail because the target site is hard to parse. They fail because of everything around the parse: rotating proxies that get you blocked by lunchtime, headless browsers that eat 700 MB of RAM per tab, a CAPTCHA that appears only in production, and a retry loop that quietly double-charges you for pages that never returned. A web scraping API exists to absorb all of that operational pain behind a single HTTP request, so the only thing you own is the URL you care about and the shape of the data you want back.</p>
+<p>This guide shows you how to fetch any public web page — static HTML, a JavaScript-heavy single-page app, or a page hiding behind an anti-bot wall — with one API call, and then how to grow that single call into a resilient pipeline: batch jobs, async webhooks, browser actions (click, scroll, type), CAPTCHA solving, and LLM-ready chunking for RAG. Every code sample is runnable. Every parameter is explained with the why, not just the what. We use the Ollagraph API (https://api.ollagraph.com) for concrete examples because it exposes all of these behaviors through one endpoint family, but the architecture lessons apply to any provider you choose.</p>
+<p>If you read nothing else: start with a single POST /v1/scrape call, ask for markdown output, turn on stealth only when you actually get blocked, and move to the async/batch endpoints the moment you're fetching more than a few dozen URLs. That progression will save you weeks.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>A web scraping API turns fetch + render + unblock + parse into one HTTP request. You send a URL; you get structured content back.</li>
+<li>One call is enough to start. POST /v1/scrape with &#123;"url": "..."&#125; returns clean Markdown by default — no browser to install, no proxy to lease.</li>
+<li>Rendering is the real cost. Static fetches are milliseconds and cheap; JS rendering spins up a real browser and costs more time and money. Only pay for it when the page needs it.</li>
+<li>Blocking is a spectrum, not a switch. Escalate deliberately: default fetch → stealth headers → residential proxy → CAPTCHA solving. Don't start at maximum.</li>
+<li>Batch and async are not optional at scale. Synchronous calls are for prototypes and user-facing lookups; everything else should be fan-out with webhooks.</li>
+<li>For AI/RAG, skip the DIY chunker. A llm-ready endpoint returns token-sized chunks with byte offsets so you can cite sources back to exact positions.</li>
+<li>Refund-on-failure changes your math. If you only pay for successful responses, aggressive retries stop being financially scary.</li>
+</ul>
+
+<h2>1. The Problem: Why "Just Fetch the Page" Is a Lie</h2>
+<p>Every engineer's first scraper is four lines long and works:</p>
+<pre><code>import requests
+html = requests.get("https://example.com").text
+print(html)</code></pre>
+<p>Then you point it at a real target — a product page, a news site, a SaaS dashboard's public docs — and one of five things happens.</p>
+<ul>
+<li>you get an empty shell. The HTML comes back, but the content you wanted isn't in it. The page is a React or Vue app; the server sent a skeleton and a bundle of JavaScript, and the actual text only appears after that JavaScript runs in a browser. requests doesn't run JavaScript. You're holding an empty &lt;div id="root"&gt;&lt;/div&gt; and a lot of confusion.</li>
+<li>you get a 403 on the second request. The first call worked. The eleventh didn't. The site fingerprinted your TLS handshake, noticed you have no cookies and a Python user-agent, saw eleven requests from one datacenter IP in ten seconds, and decided you're a bot. Now you're reading blog posts about "rotating proxies" at 11pm.</li>
+<li>you get a CAPTCHA. Not an error — a 200 response whose body is a Cloudflare or hCaptcha challenge page. Your parser happily extracts nothing useful from it and your data quietly goes missing. Nobody alerts you. You find out three days later when someone asks why the dashboard is empty.</li>
+<li>it works in dev and dies in prod. Your laptop's residential IP is trusted. Your cloud function's datacenter IP is on a dozen blocklists. The exact same code, moved 300 miles into an AWS region, gets a different internet.</li>
+<li>it works, but it's slow and expensive. You bolt on Playwright to handle the JavaScript. Now each page launches a Chromium instance. Memory balloons. Your concurrency drops from hundreds to a handful. Your $5 scraper is now a fleet of browser workers with a babysitting problem.</li>
+</ul>
+<p>None of these are parsing problems. They're infrastructure problems — networking, browser automation, fingerprinting, proxy management, concurrency, retries, and cost accounting. A web scraping API is the decision to not build and operate that infrastructure yourself, and instead rent it behind one endpoint.</p>
+<p>Here's the honest trade-off, stated plainly so you can disagree with it: you give up some control and pay per request, and in exchange you delete an entire category of on-call pain. For most teams — especially teams whose actual product is not scraping — that trade is a bargain. If your core business is large-scale crawling of a handful of known domains, rolling your own may still win. This guide assumes the former.</p>
+
+<h2>2. A Short, Useful History of Web Scraping</h2>
+<p>You don't need a museum tour, but the history explains why today's tools look the way they do.</p>
+<p>The static era (late 1990s–2000s). The web was mostly server-rendered HTML. Scraping meant wget or curl, then regex or an HTML parser. Libraries like Beautiful Soup (2004) and lxml made DOM traversal pleasant. Blocking was crude: an IP ban or a robots.txt you were trusted to honor. If you could fetch it, you could parse it.</p>
+<p>The framework era (2008–2015). Scrapy (2008) turned scraping into a real engineering discipline — spiders, pipelines, middlewares, concurrency. This is also when sites started fighting back with rate limits and basic bot detection, and when commercial proxy networks appeared to answer them.</p>
+<p>The JavaScript era (2015–2020). Single-page apps changed the rules. The HTML you fetched was no longer the page a human saw. Selenium, then Puppeteer (2017), then Playwright (2020) let you drive a real browser so the JavaScript would execute. Scraping got dramatically more powerful and dramatically more expensive — every page now potentially cost you a browser.</p>
+<p>The anti-bot arms race (2018–present). Cloudflare, Akamai, DataDome, and PerimeterX turned bot detection into a product category. TLS fingerprinting (JA3/JA4), canvas fingerprinting, behavioral analysis, and managed challenge pages made naive scraping unreliable at scale. "Stealth" browser patches and residential proxy pools became table stakes.</p>
+<p>The API era (2019–present). Providers realized nobody actually wants to operate proxies and browser farms — they want the data. So they wrapped the whole stack behind an HTTP endpoint. Send a URL, get content. The provider owns the browsers, the proxies, the fingerprints, and the retries.</p>
+<p>The AI era (2023–present). LLMs created a new consumer of scraped data: retrieval-augmented generation. Suddenly the desired output wasn't a CSV row — it was clean Markdown, chunked to fit an embedding model's context window, with offsets so a chatbot could cite its source. Scraping APIs grew llm-ready endpoints and, more recently, MCP (Model Context Protocol) servers so AI agents could call them as native tools.</p>
+<p>The through-line: each era pushed more operational complexity into shared infrastructure so the caller could stay focused on the data. A modern web scraping API is the current endpoint of that thirty-year trend.</p>
+
+<h2>3. What a Web Scraping API Actually Is (Definition)</h2>
+<p><strong>Definition.</strong> A web scraping API is an HTTP service that fetches a target URL on your behalf — handling rendering, proxying, anti-bot evasion, and retries internally — and returns the page's content in a structured, ready-to-use format (HTML, Markdown, plain text, or JSON) through a single authenticated request.</p>
+<p>Break that down, because each clause is doing work:</p>
+<ul>
+<li><strong>"HTTP service"</strong> — you call it like any other API: a POST with a JSON body and a Bearer token. No SDK is required, though typed SDKs are nice.</li>
+<li><strong>"fetches a target URL on your behalf"</strong> — the request leaves their network, from their IP pool, wearing their browser fingerprint. Your server's identity never touches the target site.</li>
+<li><strong>"handling rendering, proxying, anti-bot evasion, and retries internally"</strong> — this is the entire value proposition. The messy parts are the provider's problem.</li>
+<li><strong>"structured, ready-to-use format"</strong> — you don't get a raw socket dump. You get Markdown you can feed an LLM, or JSON you can insert into a database.</li>
+<li><strong>"single authenticated request"</strong> — the complexity is collapsed into one call. That's the promise in the title of this article, and it's literally true for the common case.</li>
+</ul>
+<p>What it is not: a web scraping API is not a magic legal exemption (you're still responsible for what you scrape and why), not a guarantee against every anti-bot system (nothing is), and not a full ETL platform (it hands you clean content; transforming and storing it is still yours to design). Being precise about the boundaries keeps your expectations calibrated.</p>
+<p>A quick vocabulary note, because these get muddled:</p>
+<ul>
+<li>Scraping = extracting content from a known page.</li>
+<li>Crawling = discovering pages by following links, then scraping them.</li>
+<li>A scraping API usually does the first natively and offers a crawl endpoint for the second.</li>
+</ul>
+
+<h2>4. Architecture: What Happens Inside the Black Box</h2>
+<p>When you send one innocent-looking request, a surprising amount of machinery moves. Here's the internal architecture of a modern scraping API, drawn as a flow you can actually reason about.</p>
+<pre><code>YOUR APP
+│  POST /v1/scrape  &#123; "url": "...", "format": "markdown" &#125;
+▼
+┌─────────────────┐
+│   API Gateway   │  auth (Bearer key), rate limit, request validation
+└───────┬─────────┘
+▼
+┌─────────────────┐
+│   Orchestrator  │  decides the cheapest path that will work
+└───────┬─────────┘
+│
+┌─────┴───────────────────────────────┐
+▼                                       ▼
+┌──────────────┐                     ┌──────────────────┐
+│  Direct fetch│  (fast, cheap)      │  Render backend  │  (browser, costly)
+│  HTTP client │                     │  headless Chrome │
+└──────┬───────┘                     └────────┬─────────┘
+│  blocked / JS-only?                   │
+└──────────────► escalate ──────────────┘
+│
+▼
+┌────────────────────┐
+│   Proxy manager    │  datacenter → residential pool
+└─────────┬──────────┘
+▼
+┌────────────────────┐
+│  Anti-bot / CAPTCHA│  stealth headers, challenge solver
+└─────────┬──────────┘
+▼
+┌────────────────────┐
+│   Content pipeline │  clean → convert (MD/text/JSON) → chunk
+└─────────┬──────────┘
+▼
+┌────────────────────┐
+│  Billing / metering│  charge on success, refund on failure
+└─────────┬──────────┘
+▼
+RESPONSE
+&#123; status, content, format, time_ms, rendered_via, ... &#125;
+headers: x-credits-cost, x-credits-charged, x-credits-balance
+</code></pre>
+<p>The single most important idea in that diagram is the orchestrator's job: try the cheapest path first, escalate only on failure. A well-built scraping API does not launch a browser and a residential proxy for a page that a plain HTTP GET would have returned in 140 ms. It attempts the cheap path, detects that the result is empty or blocked, and then climbs the cost ladder. You benefit twice: lower latency on easy pages, and you're not paying browser prices for static content.</p>
+<p>The second important idea is metering with refund-on-failure. Notice billing sits after the content pipeline and explicitly refunds failures. This is not a minor detail — it fundamentally changes how aggressively you can retry. If failed fetches are free, a retry is a free extra chance at success. If failed fetches cost the same as successes, every retry is a gamble with your budget. Check this behavior on any provider you evaluate; it's one of the highest-leverage line items in the whole contract.</p>
+
+<h2>5. The Request Lifecycle, Step by Step</h2>
+<p>Let's trace one real call from keypress to parsed result, so the abstract diagram becomes concrete.</p>
+
+<p><strong>Step 0 — You send the request.</strong></p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+-H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+-H "Content-Type: application/json" \
+-d '&#123;"url": "https://example.com", "format": "markdown"&#125;'</code></pre>
+
+<p><strong>Step 1 — Authentication and validation.</strong> The gateway checks your Bearer token, confirms you have credits, and validates the JSON body (is url present and well-formed?). A bad key returns 401 immediately, before any expensive work happens. This fail-fast ordering is deliberate: you should never burn a proxy request to discover your key was wrong.</p>
+
+<p><strong>Step 2 — Orchestration decision.</strong> The orchestrator inspects the URL and any hints you gave it (stealth, proxy, wait_until). With no hints, it defaults to the cheap path: a direct HTTP fetch with a realistic browser user-agent.</p>
+
+<p><strong>Step 3 — Direct fetch attempt.</strong> A fast HTTP client requests the page. If the response is a healthy 200 with substantive HTML, and you didn't force rendering, the orchestrator can skip the browser entirely. For static sites this is where the story ends — milliseconds, one credit.</p>
+
+<p><strong>Step 4 — Detection and escalation.</strong> If the direct fetch returns an empty body, a JS-only shell (&lt;div id="root"&gt;&lt;/div&gt; and little else), a challenge page, or a block status, the orchestrator escalates. It routes the request to the render backend: a real headless browser that loads the page, executes JavaScript, and waits for the DOM to settle.</p>
+
+<p><strong>Step 5 — Proxy selection.</strong> If the target is IP-sensitive, the proxy manager routes through a datacenter proxy first, then a residential pool if needed. Residential IPs look like ordinary home connections, so they clear anti-bot checks that datacenter IPs fail — at higher cost, which is why they're not the default.</p>
+
+<p><strong>Step 6 — Anti-bot handling.</strong> Stealth patches mask the tell-tale signs of automation (the navigator.webdriver flag, headless-specific quirks, canvas fingerprints). If a solvable CAPTCHA appears and you opted in, a solver clears it.</p>
+
+<p><strong>Step 7 — Content pipeline.</strong> Raw HTML is cleaned (scripts, styles, nav chrome, cookie banners stripped), then converted to your requested format. For markdown, semantic structure — headings, lists, tables, links — is preserved while presentational noise is discarded. For llm-ready, the article body is additionally chunked to a token budget.</p>
+
+<p><strong>Step 8 — Metering.</strong> On success, the exact cost is charged and reported back in headers: x-credits-cost (what the call cost), x-credits-charged (what you actually paid), x-credits-balance (what remains). On upstream failure, the charge is refunded before the response returns.</p>
+
+<p><strong>Step 9 — Response.</strong> You receive JSON:</p>
+<pre><code>&#123;
+"status": "success",
+"url": "https://example.com",
+"content": "# Example Domain\n\nThis domain is for use in documentation examples...",
+"format": "markdown",
+"time_ms": 146,
+"rendered_via": "direct",
+"fallback": false
+&#125;</code></pre>
+
+<h2>6. Core Components You Should Understand</h2>
+<p>You can use a scraping API without knowing its internals, the same way you can drive without understanding a transmission. But the moment something breaks, this vocabulary is the difference between a five-minute fix and a five-hour one.</p>
+
+<p><strong>The fetcher (direct HTTP client).</strong> The cheap, fast path. It speaks HTTP/2, follows redirects, and carries a believable browser user-agent, but it does not run JavaScript. It handles the majority of the real web — documentation, blogs, news, most server-rendered pages — in tens of milliseconds.</p>
+
+<p><strong>The render backend (headless browser).</strong> A real Chromium instance. It downloads the HTML, executes the JavaScript bundle, fires network requests the page makes, and produces the DOM a human would see. This is what makes single-page apps scrapable. It is also 10–50× slower and more expensive than a direct fetch, which is exactly why a good API avoids it unless the page demands it.</p>
+
+<p><strong>The proxy manager.</strong> A pool of IP addresses the request can exit from. Datacenter proxies are fast and cheap but easy to fingerprint as "not a home user." Residential proxies route through real consumer ISPs, so they look like ordinary visitors and clear stricter anti-bot checks — at meaningfully higher cost. The manager's job is to pick the cheapest IP class that will actually succeed.</p>
+
+<p><strong>The stealth layer.</strong> A set of patches and header strategies that hide automation signals: the navigator.webdriver property, headless-Chrome quirks, TLS/JA4 fingerprints, and consistent Accept-Language/sec-ch-ua client hints. Stealth is what lets a browser look like a browser rather than a robot's browser.</p>
+
+<p><strong>The CAPTCHA solver.</strong> An opt-in subsystem that detects and clears interactive challenges. It costs extra and adds latency, so you enable it only for targets that genuinely gate content behind a challenge.</p>
+
+<p><strong>The content pipeline.</strong> Everything after a successful fetch: boilerplate removal (nav, footer, cookie banners), main-content detection, and conversion to your chosen format. For AI use cases it also chunks text to a token budget and records byte offsets.</p>
+
+<p><strong>The metering system.</strong> Tracks cost per call, enforces your balance, and — critically — decides what happens on failure. Refund-on-failure means you're insulated from paying for upstream errors.</p>
+
+<p><strong>The job system (async/batch).</strong> For volume, a queue accepts many URLs, fans them out across workers with a concurrency limit, and delivers results via polling or webhook. This is the difference between a prototype and a pipeline.</p>
+
+<p>Keep this list nearby. When you file a support ticket or read a trace, these are the nouns that matter.</p>
+
+<h2>7. The End-to-End Workflow</h2>
+<p>Here's how the pieces come together in a project that grows from "one page" to "a million pages," with the decision points called out.</p>
+<ol>
+<li>(1) Prototype → single POST /v1/scrape, format=markdown works? ship the prototype.</li>
+<li>(2) Getting blocked? → add "stealth": true still blocked? add "proxy": "residential"</li>
+<li>(3) JS-only content? → add "wait_until": "networkidle" (+ actions if interaction needed)</li>
+<li>(4) Many URLs? → switch to POST /v1/scrape/batch (set concurrency)</li>
+<li>(5) Long-running / don't want to wait → switch to POST /v1/scrape/async or /batch/async deliver results to a webhook_url</li>
+<li>(6) Feeding an LLM? → use POST /v1/scrape/llm-ready (chunks + offsets)</li>
+<li>(7) Production → log rendered_via + x-credits-cost, alert on status!=success, add idempotency, respect robots + rate limits</li>
+</ol>
+<p>The golden rule embedded here: change one variable at a time, in order of cost. When a page fails, don't reach for the residential-proxy-plus-CAPTCHA-plus-browser sledgehammer immediately. Add stealth. Re-test. Add a proxy. Re-test. Each rung you climb costs more, so climb deliberately and stop at the first rung that works.</p>
+
+<h2>8. Quickstart: Scrape Any Website in One API Call</h2>
+<p>Enough theory. Here is the entire "hello world," and it genuinely is one call.</p>
+<p>Step 1 — Get a key. Sign up (Ollagraph gives 1,000 free credits, no card) and export it:</p>
+<pre><code>export OLLAGRAPH_API_KEY="osk_..."</code></pre>
+<p>Step 2 — Make the call.</p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+-H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+-H "Content-Type: application/json" \
+-d '&#123;"url": "https://example.com"&#125;'</code></pre>
+<p>Step 3 — Read the response.</p>
+<pre><code>&#123;
+  "status": "success",
+  "url": "https://example.com",
+  "content": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)",
+  "format": "markdown",
+  "time_ms": 146,
+  "fallback": false
+&#125;</code></pre>
+<p>That's it. No browser installed, no proxy leased, no robots.txt parser written, no retry loop. You sent a URL and got clean Markdown. The default format is markdown precisely because it's the format you most often want next — for an LLM, a search index, or a diff.</p>
+<p>The same call in Python:</p>
+<pre><code>import os, requests
+
+resp = requests.post(
+  "https://api.ollagraph.com/v1/scrape",
+  headers=&#123;"Authorization": f"Bearer &#123;os.environ['OLLAGRAPH_API_KEY']&#125;"&#125;,
+  json=&#123;"url": "https://example.com"&#125;,
+  timeout=30,
+)
+resp.raise_for_status()
+data = resp.json()
+print(data["content"])
+print("cost:", resp.headers.get("x-credits-cost"))</code></pre>
+<p>And in TypeScript:</p>
+<pre><code>const res = await fetch("https://api.ollagraph.com/v1/scrape", &#123;
+  method: "POST",
+  headers: &#123;
+    Authorization: `Bearer $&#123;process.env.OLLAGRAPH_API_KEY&#125;`,
+    "Content-Type": "application/json",
+  &#125;,
+  body: JSON.stringify(&#123; url: "https://example.com" &#125;),
+&#125;);</code></pre>
+
+<p><pre><code>const data = await res.json();
+console.log(data.content);
+console.log("cost:", res.headers.get("x-credits-cost"));</code></pre></p>
+
+<p>Three languages, same request shape, same answer. That consistency is not cosmetic — it means your mental model transfers, and so does your error handling.</p>
+
+<h2>9. Configuration: Every Parameter and When to Use It</h2>
+
+<p>One call gets you started. The parameters below get you through the hard targets. This is the reference you'll keep coming back to. Each entry explains not just what the knob does, but the failure it exists to solve.</p>
+
+<ul>
+<li><strong>Parameter:</strong> url | <strong>Type:</strong> string (required) What it does: The page to fetch Reach for it when: Always</li>
+<li><strong>Parameter:</strong> format | <strong>Type:</strong> string What it does: Output shape: markdown, html, text Reach for it when: You want raw HTML for your own parser, or plain text for embeddings</li>
+<li><strong>Parameter:</strong> stealth | <strong>Type:</strong> boolean What it does: Enables anti-fingerprinting Reach for it when: You get 403s or challenge pages on a default fetch</li>
+<li><strong>Parameter:</strong> proxy | <strong>Type:</strong> string What it does: Proxy class, e.g. residential Reach for it when: Stealth alone still gets blocked; the target is IP-sensitive</li>
+<li><strong>Parameter:</strong> wait_until | <strong>Type:</strong> string What it does: When to consider the page "loaded" (load, domcontentloaded, networkidle) Reach for it when: JS content appears late; you're getting a half-rendered DOM</li>
+<li><strong>Parameter:</strong> timeout | <strong>Type:</strong> integer (ms) What it does: Max time before giving up Reach for it when: Slow targets; you'd rather fail fast and retry</li>
+<li><strong>Parameter:</strong> js_eval | <strong>Type:</strong> string What it does: Run custom JS in page context, return its result Reach for it when: You need a computed value or must trigger client-side logic</li>
+<li><strong>Parameter:</strong> actions | <strong>Type:</strong> object[] What it does: Scripted interactions: click, scroll, type, wait Reach for it when: Content is behind a click, infinite scroll, or a form</li>
+<li><strong>Parameter:</strong> user_agent | <strong>Type:</strong> string What it does: Override the UA string Reach for it when: A target serves different HTML to specific UAs</li>
+<li><strong>Parameter:</strong> solve_captcha | <strong>Type:</strong> boolean What it does: Turn on CAPTCHA solving Reach for it when: Content is gated behind a solvable challenge</li>
+<li><strong>Parameter:</strong> captcha_action | <strong>Type:</strong> string What it does: How to handle a detected CAPTCHA Reach for it when: You need explicit control over challenge flow</li>
+</ul>
+
+<p>A word on wait_until. This one causes more confusion than any other parameter, so here's the mental model. domcontentloaded fires when the HTML is parsed but before images and late XHRs finish — fast, but you may miss content that loads via JavaScript afterward. load waits for the full page including sub-resources. networkidle waits until the network goes quiet, which is the safest choice for SPAs that fetch their data after the shell renders, but also the slowest. Rule of thumb: start without it; if you're getting a skeleton, add "wait_until": "networkidle".</p>
+
+<h2>10. Worked Examples (Static, JS-Rendered, Actions, Batch, Async, LLM-Ready)</h2>
+
+<p>These are the patterns you'll copy into real code. Each one maps to a situation from Section 1.</p>
+
+<h3>10.1 Static Page → Markdown (The 90% Case)</h3>
+
+<p><pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+-H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+-H "Content-Type: application/json" \
+-d '&#123;"url": "https://en.wikipedia.org/wiki/Web_scraping", "format": "markdown"&#125;'</code></pre></p>
+
+<p>Most documentation, blogs, and news sites resolve on the direct path. Check rendered_via: "direct" in the response to confirm you didn't pay for a browser you didn't need.</p>
+
+<h3>10.2 JavaScript-Rendered SPA</h3>
+
+<p>When the content is injected client-side, tell the API to wait for the network to settle:</p>
+
+<p><pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+-H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+-H "Content-Type: application/json" \
+-d '&#123;
+  "url": "https://example-spa.com/dashboard",
+  "wait_until": "networkidle",
+  "stealth": true
+&#125;'</code></pre></p>
+
+<h3>10.3 Content Behind an Interaction (actions)</h3>
+
+<p>Some content only exists after a click or a scroll. The actions array scripts those steps in the page before extraction:</p>
+
+<p><pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+-H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+-H "Content-Type: application/json" \
+-d '&#123;
+  "url": "https://example.com/listings",
+  "wait_until": "networkidle",
+  "actions": [
+    &#123; "type": "click", "selector": "#load-more" &#125;,
+    &#123; "type": "scroll", "direction": "down", "times": 3 &#125;,
+    &#123; "type": "wait", "ms": 1000 &#125;
+  ]
+&#125;'</code></pre></p>
+
+<h3>10.4  Async: Don't Hold the Connection Open</h3>
+
+<p>For large jobs, or anything user-facing that shouldn't block, fire and forget with a webhook:</p>
+
+<p><pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/async \
+-H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+-H "Content-Type: application/json" \
+-d '&#123;
+  "url": "https://example.com/big-report",
+  "webhook_url": "https://your-app.com/hooks/scrape-done"
+&#125;'</code></pre></p>
+
+<h3>10.5 LLM-Ready: Scrape and Chunk for RAG</h3>
+
+<p>If the destination is a vector database, don't scrape and then write your own splitter. Ask for chunks directly:</p>
+
+<p><pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/llm-ready \
+-H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+-H "Content-Type: application/json" \
+-d '&#123;
+  "url": "https://en.wikipedia.org/wiki/Web_scraping",
+  "max_tokens": 512,
+  "overlap_tokens": 64
+&#125;'</code></pre></p>
+
+<p>The response hands back token-sized chunks, each with byte_start/byte_end offsets into the source page:</p>
+
+<p><pre><code>&#123;
+  "status": "success",
+  "title": "Web scraping - Wikipedia",
+  "rendered_via": "direct",
+  "chunks": [
+    &#123;
+      "text": "Web scraping is the process of automatically extracting data...",
+      "token_count": 498,
+      "byte_start": 0,
+      "byte_end": 2196
+    &#125;
+  ],
+  "chunk_count": 5,
+  "total_tokens": 2400
+&#125;</code></pre></p>
+
+<h2>11. Performance: A Benchmarking Method You Can Reproduce</h2>
+
+<p>Every vendor quotes numbers that flatter them. Rather than ask you to trust a table you can't verify, here is a benchmarking harness you can run yourself against any provider, plus the metrics that actually matter. The point is method, not marketing.</p>
+
+<p>The metrics that matter:</p>
+
+<ul>
+<li>Success rate — the percentage of requests that returned usable content, not just HTTP 200. A challenge page is a 200 with no data; count it as a failure. This is the single most important number and the one vendors most often obscure.</li>
+<li>p50 / p95 / p99 latency — averages lie. A provider with a great median and a terrible p99 will still blow up your job's tail. Watch the p95 especially.</li>
+<li>Cost per successful page — not cost per request. With refund-on-failure, these differ, and the successful-page number is what hits your budget.</li>
+<li>Render rate — the fraction of your pages that escalated to a browser (rendered_via == "render_backend"). This drives both cost and latency, and it's specific to your target mix.</li>
+</ul>
+
+<p>A reproducible harness:</p>
+
+<p><pre><code>import os, time, statistics, requests
+
+API = "https://api.ollagraph.com/v1/scrape"
+KEY = os.environ["OLLAGRAPH_API_KEY"]
+URLS = [ ... ]  # a representative sample of YOUR targets, not example.com
+
+latencies, successes, rendered, cost = [], 0, 0, 0.0
+
+for url in URLS:
+  t0 = time.perf_counter()
+  r = requests.post(API,
+    headers=&#123;"Authorization": f"Bearer &#123;KEY&#125;"&#125;,
+    json=&#123;"url": url, "format": "markdown"&#125;,
+    timeout=60
+  )
+  latencies.append((time.perf_counter() - t0) * 1000)
+  body = r.json()
+  ok = body.get("status") == "success" and len(body.get("content", "")) > 200
+  successes += 1 if ok else 0
+  rendered += 1 if body.get("rendered_via") == "render_backend" else 0
+  cost += float(r.headers.get("x-credits-charged", 0))
+
+n = len(URLS)
+latencies.sort()</code></pre></p>
+
+<pre><code>print(f"success rate : &#123;successes/n:.1%&#125;")
+print(f"render rate  : &#123;rendered/n:.1%&#125;")
+print(f"p50 latency  : &#123;statistics.median(latencies):.0f&#125; ms")
+print(f"p95 latency  : &#123;latencies[int(n*0.95)-1]:.0f&#125; ms")
+print(f"cost / ok    : &#123;cost/max(successes,1):.2f&#125; credits")</code></pre>
+
+<p>Run it against your real target list, not a toy URL. A provider that aces example.com tells you nothing; the web you care about is your web. Run the same list against two or three providers on the same afternoon (network conditions vary by hour) and compare success-rate-adjusted cost. That single experiment is worth more than any vendor benchmark, including ours.</p>
+
+<p><strong>Illustrative shape of results (not a promise):</strong></p>
+
+<p>To set expectations, here's the pattern you'll typically observe — treat these as orders of magnitude to sanity-check your own run, not as guaranteed figures:</p>
+
+<p><strong>Target type:</strong> Static docs / blog<br>
+<strong>Typical path:</strong> direct fetch<br>
+<strong>Typical p50:</strong> ~100–300 ms<br>
+<strong>Relative cost:</strong> 1× (baseline)</p>
+
+<p><strong>Target type:</strong> Server-rendered site with mild bot defense<br>
+<strong>Typical path:</strong> direct + stealth<br>
+<strong>Typical p50:</strong> ~300–800 ms<br>
+<strong>Relative cost:</strong> 1×</p>
+
+<p><strong>Target type:</strong> SPA needing JS render<br>
+<strong>Typical path:</strong> render backend<br>
+<strong>Typical p50:</strong> ~2–6 s<br>
+<strong>Relative cost:</strong> higher (browser)</p>
+
+<p><strong>Target type:</strong> Hardened anti-bot + residential proxy<br>
+<strong>Typical path:</strong> render + residential<br>
+<strong>Typical p50:</strong> ~4–10 s<br>
+<strong>Relative cost:</strong> highest</p>
+
+<p>The shape is the lesson: cost and latency are dominated by how far up the escalation ladder your targets force you. Optimize your target selection and your wait_until/stealth usage before you worry about anything else.</p>
+
+<h2>12. Security, Legality, and Ethics</h2>
+<p>A guide that teaches you to fetch any page and stays silent on the responsibility that comes with it would be doing you a disservice. This section is not legal advice — laws vary by jurisdiction and change — but it's the operational baseline responsible teams follow.</p>
+<p>Scrape public data, not private data. Fetching a publicly reachable page is generally treated very differently from accessing content behind a login you're not authorized to use. If a page requires authentication that isn't yours, that's not scraping — that's unauthorized access, and no API changes that.</p>
+<p>Respect robots.txt and Terms of Service as inputs to your decision. robots.txt is a machine-readable statement of a site's crawling preferences. It isn't a law, but ignoring it is a signal of bad faith and can strengthen a claim against you. Read the ToS of high-value targets. When in doubt, ask permission — it's cheaper than litigation.</p>
+<p>Handle personal data carefully. If scraped content contains personal information, regimes like GDPR and CCPA may apply regardless of where the data was "public." Minimize what you collect, define a retention policy, and have a lawful basis. A useful architectural note: some scraping APIs (Ollagraph among them) contractually do not persist scraped content — it passes through and is returned, not stored. That reduces your exposure surface, but the obligations on your copy of the data remain yours.</p>
+<p>Rate-limit yourself out of courtesy, not just fear. Hammering a small site with hundreds of concurrent requests can degrade it for real users. Set a sane concurrency, add jitter, and back off on 429/503. Being a polite client keeps you unblocked and keeps you on the right side of the ethics line.</p>
+<p>Secure your API key like a password. It's a Bearer credential; anyone holding it can spend your credits. Keep it in a secrets manager, never in client-side code or a committed .env, and rotate it from your dashboard if it leaks. Scope keys per environment so a compromised staging key can't touch production.</p>
+<p>Prefer providers that don't retain content and that expose cost transparently. Per-response cost headers (x-credits-cost, x-credits-charged) aren't just convenient — they're an auditability feature. You can reconcile spend to the request, which matters for both finance and security reviews.</p>
+
+<h2>13. FAQs</h2>
+<p><strong>Q: What is a web scraping API in one sentence?</strong><br>
+A: It's an HTTP service that fetches any web page for you — running JavaScript, rotating proxies, and beating anti-bot systems internally — and returns clean, structured content (usually Markdown or JSON) from a single authenticated request.</p>
+
+<p><strong>Q: Can I really scrape any website with one API call?</strong><br>
+A: For the common case, yes: POST /v1/scrape with a URL returns the page's content. "Any" has honest limits — content behind your-unauthorized login, or the most aggressively defended targets, may need extra parameters (stealth, proxy, solve_captcha) or may be off-limits ethically and legally. But the mechanics of one call cover the large majority of the public web.</p>
+
+<p><strong>Q: Do I need a headless browser?</strong><br>
+A: Not on your side — that's the point. If a page needs JavaScript rendering, the API runs the browser for you. You just set wait_until (or use /scrape/smart) and get the rendered result.</p>
+
+<p><strong>Q: How is this different from Playwright or Puppeteer?</strong><br>
+A: Those are libraries you host and operate — you run the browsers, manage memory, and handle proxies and blocks yourself. A scraping API runs all of that as a service. You trade some low-level control for zero operational burden.</p>
+
+<p><strong>Q: Markdown, HTML, or plain text — which should I request?</strong><br>
+A: Markdown for LLMs and human-readable storage (it keeps structure without noise). Plain text for embeddings where you don't need structure. HTML when you have your own parser or need a specific element the converters don't expose.</p>
+
+<p><strong>Q: How do I keep costs down?</strong><br>
+A: Don't pay for rendering you don't need. Start with a default fetch, add stealth/residential only when a target actually blocks you, cache repeat URLs, and log rendered_via to catch targets that silently start requiring a browser.</p>
+
+<p><strong>Q: What happens when a scrape fails — do I still pay?</strong><br>
+A: With a refund-on-failure provider, no: failed upstream fetches are refunded before the response returns, and the cost headers show x-credits-charged: 0. This is why bounded retries are cheap insurance rather than a budget risk. Confirm this behavior with any provider you evaluate.</p>
+
+<p><strong>Q: How do I scrape thousands of pages?</strong><br>
+A: Use /scrape/batch (with concurrency) for parallel fetches in one call, or /scrape/batch/async with a webhook_url for large jobs that deliver results as they complete. Don't loop single synchronous calls.</p>
+
+<p><strong>Q: Is web scraping legal?</strong><br>
+A: Scraping publicly available data is broadly permitted in many jurisdictions, but it's fact- and location-specific. Respect robots.txt and Terms of Service, avoid authenticated/private data you're not authorized to access, and handle any personal data under the relevant privacy laws (GDPR/CCPA). This article isn't legal advice — when a target is high-value or ambiguous, consult counsel.</p>
+
+<p><strong>Q: How does this help with AI and RAG specifically?</strong><br>
+A: Use /scrape/llm-ready to get token-sized chunks with byte offsets in one call, so your content is ready to embed and your chatbot can cite the exact source span. Run the provider's MCP server to let agents call scraping as a native tool.</p>
+
+<p><strong>Q: Can one API replace several tools?</strong><br>
+A: Sometimes. If a provider bundles scraping with conversion (PDF/DOCX → Markdown), OCR, and site auditing under one key, you can retire a few point solutions and consolidate billing and auth — which is often worth more than a marginal per-call price difference.</p>
+
+<h2>14. References</h2>
+<ul>
+<li>Ollagraph API documentation — endpoint reference for /v1/scrape, /scrape/async, /scrape/batch, /scrape/smart, /scrape/llm-ready (https://ollagraph.com/docs/).</li>
+<li>MDN Web Docs — HTTP semantics, status codes, and headers.</li>
+<li>Playwright and Puppeteer documentation — headless browser automation concepts referenced in the rendering discussion.</li>
+<li>Model Context Protocol (MCP) specification — for the agent-tool integration pattern.</li>
+<li>robots.txt standard (RFC 9309, Robots Exclusion Protocol) — for the crawling-preferences discussion.</li>
+<li>GDPR (Regulation (EU) 2016/679) and CCPA — for the personal-data handling notes.</li>
+</ul>
+<p>(Validate all endpoint names and parameters against the live docs before shipping; APIs evolve, and this article states the version and date it was tested against in the front matter.)</p>
+
+<h2>15. Conclusion</h2>
+<p>The title promised you could scrape any website in one API call, and for the everyday case that's the literal truth: one POST, a URL, clean Markdown back. But the more useful takeaway is the shape of the journey after that first call. You start cheap. You escalate — stealth, then residential, then CAPTCHA — only when a specific target forces you to, and only one rung at a time. You move to batch and async the moment volume shows up. You reach for llm-ready when the destination is a model instead of a database. And through all of it, you keep two fields in view — rendered_via and the cost headers — because measurement is what turns guesswork into a system.</p>
+<p>The reason a web scraping API is worth it isn't that scraping is impossible without one. It's that the interesting part of your project was never the proxy rotation or the browser babysitting — it was the data, and what you build on top of it. Renting the boring, brittle infrastructure buys back the time and attention to focus on that. Send the one call, read the response, and go build the thing that actually needed the data.</p>
+</Article>
