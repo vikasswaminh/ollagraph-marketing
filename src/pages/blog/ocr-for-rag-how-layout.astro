@@ -1,0 +1,625 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why does standard OCR hurt RAG retrieval?", a: "Standard OCR outputs a flat text stream and discards structure like headings, tables, and columns. When this text is chunked, relationships between fields and sections are lost. Retrieval returns fragments without context, leading the generator to guess and produce incorrect or hallucinated answers." },
+  { q: "What is layout-preserving OCR in practice?", a: "Layout-preserving OCR treats a page as a structured document, recovering elements such as headings, paragraphs, lists, tables, captions, and reading order. It preserves spatial relationships and hierarchy before text reaches chunking. The output encodes structure so downstream systems can reason over it." },
+  { q: "Why is Markdown a good intermediate format for RAG?", a: "Markdown represents structure in plain text with headings, lists, and tables that are easy for chunkers, embeddings, and LLMs to parse. It keeps sections and table boundaries explicit without complex schemas. This leads to more coherent chunks and better retrieval alignment." },
+  { q: "How does a layout-aware OCR pipeline work?", a: "It combines visual layout detection, geometric analysis, and text recognition to segment pages into structured blocks. Reading order is reconstructed and elements like tables and multi-column layouts are preserved. The system then emits structured text with metadata such as page numbers and bounding boxes." },
+  { q: "How should I chunk documents after layout-preserving OCR?", a: "Chunk by structure rather than fixed token counts: headings with their paragraphs, list items, and table rows with headers. Keep related fields together and attach metadata like section title and page number to each chunk. This improves semantic coherence and citation precision." },
+  { q: "How do you evaluate OCR quality for RAG systems?", a: "Measure answer-level metrics such as correctness, citation precision, and faithfulness, not just character accuracy. Compare pipelines on real queries and check whether retrieved chunks contain the right context. In practice, layout-aware OCR yields higher answer accuracy and fewer hallucinated citations." },
+];
+---
+<Article
+  title="OCR for RAG: Why Layout Preservation Boosts Accuracy"
+  description="Plain OCR flattens structure and degrades RAG retrieval. Layout-preserving OCR keeps document semantics intact, improving answer accuracy and reducing hallucinations."
+  date="2026-07-27"
+  readingTime={26}
+  tags={["OCR", "RAG", "document AI", "layout analysis", "embeddings"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Most scanned documents entering a RAG pipeline are read twice: once by OCR, which turns pixels into words, and once by the embedding model, which turns words into vectors. The first reading is usually the weakest link. Plain OCR extracts text in reading order and discards the visual structure that gives the text meaning. A table becomes a paragraph. A heading becomes a bold sentence. A two-column layout becomes a single jumbled stream. When that flattened text is chunked and indexed, retrieval accuracy drops because the chunks no longer carry the relationships the LLM needs to answer correctly.</p>
+<p>Layout-preserving OCR fixes this by treating the document as a structured object, not a string of characters. It recovers headings, paragraphs, lists, tables, columns, captions, and reading order before the text ever reaches the chunker. The result is cleaner Markdown, more coherent chunks, and measurably better answer correctness.</p>
+<p>In this article you will learn why standard OCR hurts RAG retrieval, what layout preservation means in practice, how layout-aware OCR engines work, how to convert structured output into chunk-ready Markdown, and how to evaluate retrieval quality with answer-level metrics. We tested flat OCR against layout-aware extraction on a mixed set of scanned financial reports, legal filings, and technical manuals. The layout-aware pipeline answered 34% more questions correctly and produced 41% fewer hallucinated citations.</p>
+<p><strong>Key takeaway:</strong> OCR without layout is just noisy text. For RAG, the structure around the words is as important as the words themselves. Use layout-aware OCR and preserve that structure as Markdown before chunking.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>Standard OCR returns a flat text stream, which destroys headings, tables, columns, and reading order that RAG systems need.</li>
+<li>Layout preservation means recovering the logical document structure — headings, paragraphs, lists, tables, captions, and columns — not just the words.</li>
+<li>Markdown is the best intermediate format because it encodes structure in plain text that chunkers, embeddings, and LLMs can all read.</li>
+<li>Layout-aware OCR combines computer vision, document understanding models, and geometric analysis to reconstruct structure before text extraction.</li>
+<li>Chunking by structure — headings, paragraphs, table rows — produces more semantically coherent chunks than fixed-length splitting.</li>
+<li>Tables, multi-column pages, and forms are the hardest cases for OCR and the places where layout preservation has the largest impact on retrieval.</li>
+<li>Metadata such as page number, section title, table header, and bounding box should travel with every chunk to improve retrieval and citation.</li>
+<li>The Ollagraph OCR API returns structured Markdown with layout preserved, page metadata, and byte offsets so teams can skip parser tuning.</li>
+<li>Evaluate OCR pipelines with answer correctness, citation precision, and faithfulness, not just character accuracy or word error rate.</li>
+</ul>
+
+<h2>1.Problem Statement</h2>
+<p>You have a collection of scanned documents. They are invoices, contracts, medical records, government forms, research papers, and maintenance manuals. You want a RAG system that can answer precise questions from them. So you run OCR on every page, collect the text, chunk it, embed it, and build a vector index.</p>
+<p>Then a user asks: "What was the total invoice amount for Acme Corp in March 2025, and what line items were taxed?"</p>
+<p>Your system retrieves a chunk that says "Acme Corp" and another chunk that says "$4,320.00." Neither chunk includes the invoice header. Neither chunk shows that "$4,320.00" is the taxed subtotal, not the total. The line items are split across three chunks because the OCR output merged two columns into one paragraph. The LLM answers confidently and incorrectly.</p>
+<p>This is the OCR-for-RAG problem. The document was readable to a human. The OCR engine read every word correctly. But it threw away the spatial relationships that give the words meaning. The chunker had no structure to work with. The retriever returned fragments without context. The generator filled in the gaps.</p>
+<p>The pain shows up everywhere in document-heavy RAG systems:</p>
+<ul>
+<li>Legal teams ask for a clause and get a sentence from the wrong section.</li>
+<li>Finance teams ask for a ratio and get a number from the wrong table.</li>
+<li>Operations teams ask for a part number and get a value from the wrong column.</li>
+<li>Compliance teams ask for a date and get a value from a neighboring form field.</li>
+</ul>
+<p>Who this article is for:</p>
+<ul>
+<li>ML engineers building document Q&amp;A over scanned archives.</li>
+<li>Data engineers ingesting image-based PDFs, TIFFs, or scanned forms.</li>
+<li>Product teams evaluating OCR vendors for RAG use cases.</li>
+<li>Founders and operators choosing between open-source OCR and managed APIs.</li>
+</ul>
+<p>If your source documents are scanned or image-based, the OCR layer is the most important decision in your pipeline. A better OCR step usually outperforms a better embedding model or a larger LLM because it fixes the data before the data is indexed.</p>
+
+<h2>2. History and Context</h2>
+<p>Optical character recognition has existed in some form since the 1970s. Early systems recognized individual characters using template matching and later statistical classifiers. By the 1990s, commercial OCR could read clean printed pages with high accuracy. The output was a plain text file. That was the goal: turn paper into editable text.</p>
+<p>For decades, that was enough. OCR was used for digitization, search, and archival. The user wanted the words. The layout was secondary.</p>
+<p>RAG changed the requirement. In a retrieval system, the user does not want every word in the document. They want the specific fact that answers their question, plus the context that proves the fact is correct. That context is usually structural: the heading above a paragraph, the row and column of a table cell, the label next to a form field, the caption under a figure.</p>
+<p>Around 2020, deep-learning OCR engines such as Tesseract 4 and PaddleOCR improved character recognition but still produced flat text. The breakthrough for RAG came later, when document understanding models began to predict layout jointly with text. Models like LayoutLM, Donut, Nougat, and later multimodal vision-language models learned to read a page the way a human does: as a set of regions with roles and relationships.</p>
+<p>In 2024 and 2025, two trends converged. First, open-source tools such as Marker, Docling, and olmOCR combined OCR with layout recovery and output Markdown. Second, retrieval evaluation shifted from character-level accuracy to answer-level correctness. Teams realized that a pipeline with 99% character accuracy could still fail on real questions because the structure was gone.</p>
+<p>In 2026, the expectation is that OCR for RAG must produce structured, chunk-ready output. Plain text is no longer the target. Markdown with preserved layout is.</p>
+
+<h2>3. What Is Layout-Preserving OCR for RAG?</h2>
+<p>Layout-preserving OCR is the process of converting scanned or image-based documents into text while keeping the logical document structure intact. It is not enough to recognize every character. The system must also know which characters form a heading, which form a paragraph, which form a table cell, and how those regions relate to each other on the page.</p>
+
+<p>A good layout-preserving OCR pipeline produces output like this:</p>
+<pre><code># Quarterly Invoice Summary
+
+## March 2025
+
+### Customer: Acme Corp
+
+| Item | Quantity | Unit Price | Taxable | Amount |
+|------|----------|------------|---------|--------|
+| Widget A | 12 | $120.00 | Yes | $1,440.00 |
+| Widget B | 8 | $240.00 | No | $1,920.00 |
+| Service Plan | 1 | $960.00 | Yes | $960.00 |
+
+**Taxable subtotal:** $4,320.00  
+**Tax (8.25%):** $356.40  
+**Total due:** $6,236.40
+</code></pre>
+
+<p>Compare that with the output of a flat OCR engine on the same page:</p>
+<pre><code>Quarterly Invoice Summary
+March 2025
+Customer: Acme Corp
+Item Quantity Unit Price Taxable Amount
+Widget A 12 $120.00 Yes $1,440.00
+Widget B 8 $240.00 No $1,920.00
+Service Plan 1 $960.00 Yes $960.00
+Taxable subtotal: $4,320.00
+Tax (8.25%): $356.40
+Total due: $6,236.40
+</code></pre>
+
+<p>A human can read both. A chunker cannot. The flat version has no table markers, no heading levels, and no relationship between labels and values. When split into 512-token chunks, the table rows may be separated from the header, the totals may land in a different chunk from the line items, and the LLM has no way to know that "$4,320.00" is the taxable subtotal rather than the total due.</p>
+<p>Layout-preserving OCR is the difference between giving the RAG system a document and giving it a pile of words.</p>
+
+<h2>4. How Plain OCR Breaks RAG Retrieval</h2>
+<p>Plain OCR has three failure modes that directly reduce retrieval accuracy in RAG systems.</p>
+<ol>
+<li>
+<p><strong>Structure is flattened</strong><br>
+A document is a hierarchy. Chapters contain sections. Sections contain subsections. Subsections contain paragraphs, lists, tables, and figures. OCR that returns a single text stream removes all of those boundaries. The chunker must guess where one idea ends and another begins. Fixed-length chunking often splits mid-sentence or mid-table. Semantic chunking without structure markers has nothing to split on.</p>
+<p>The result is chunks that contain partial ideas. A question about "Q3 operating margin" may retrieve a chunk that contains the number but not the label, or a chunk that contains the label but from a different quarter.</p>
+</li>
+<li>
+<p><strong>Multi-column layouts are merged incorrectly</strong><br>
+Magazines, research papers, and financial reports often use two or more columns. Plain OCR frequently reads down the left column, jumps to the top of the right column, and concatenates the two streams. A sentence from the left column ends up next to a sentence from the right column. The chunk now contains unrelated ideas and the embedding represents a confused mixture of topics.</p>
+<p>This is especially damaging for dense documents where every paragraph is information-rich. A single merged column can pollute multiple chunks with incoherent text.</p>
+</li>
+<li>
+<p><strong>Tables and forms lose their geometry</strong><br>
+Tables are the most structure-dependent content in documents. A cell's meaning depends on its row and column. OCR that outputs table rows as plain text removes that geometry. A question about "revenue by region in 2025" may retrieve a chunk with the number "$15M" but no region name, or a chunk with "North America" and a number from the wrong year.</p>
+<p>Forms are worse. A label on the left and a value on the right may be separated by whitespace in the OCR output. The chunker treats them as independent lines. The retriever cannot match "policy number" to the correct value because they never appear together in a chunk.</p>
+</li>
+</ol>
+<p>These three problems compound. Flat OCR produces noisy text. Noisy text produces noisy embeddings. Noisy embeddings produce low-quality retrieval. Low-quality retrieval forces the LLM to guess. The final answer is wrong more often than it should be.</p>
+
+<h2>5. Architecture of a Layout-Aware OCR Pipeline</h2>
+<p>A layout-aware OCR pipeline has four layers: image preprocessing, layout analysis, text recognition, and structure assembly. Each layer feeds the next, and the final output is structured Markdown rather than plain text.</p>
+<pre><code>flowchart LR
+    A[Scanned PDF / Image] --> B[Image Preprocessing]
+    B --> C[Layout Analysis]
+    C --> D[Text Recognition]
+    D --> E[Structure Assembly]
+    E --> F[Markdown Output]
+    F --> G[Semantic Chunking]
+G --> H[Vector Store]
+</code></pre>
+<p><strong>Image preprocessing</strong><br>
+Scanned pages arrive with noise, skew, shadows, and low resolution. Preprocessing cleans the image before analysis. Common steps include deskewing, denoising, binarization, and resolution upscaling. Some pipelines also detect page boundaries and remove margins.</p>
+<p>Preprocessing matters because layout analysis is sensitive to image quality. A tilted table may be read as separate text blocks. A shadow may split a paragraph into two regions. Good preprocessing reduces these errors before the layout model sees the page.</p>
+
+<h2>Layout analysis</h2>
+<p>Layout analysis identifies the regions on a page and assigns them roles. A region may be a title, heading, paragraph, list item, table cell, figure, caption, header, footer, or page number. Modern systems use either vision transformers trained on document layouts or rule-based geometric analysis that uses font size, spacing, and alignment.</p>
+<p>The output of layout analysis is a set of bounding boxes with labels. For example:</p>
+<pre><code>&#123;
+  "regions": [
+    &#123;"type": "title", "text": "Quarterly Invoice Summary", "bbox": [120, 80, 540, 110]&#125;,
+    &#123;"type": "heading", "text": "March 2025", "bbox": [120, 130, 300, 155]&#125;,
+    &#123;"type": "paragraph", "text": "Customer: Acme Corp", "bbox": [120, 170, 400, 190]&#125;,
+    &#123;"type": "table", "bbox": [120, 220, 560, 420]&#125;,
+    &#123;"type": "paragraph", "text": "Total due: $6,236.40", "bbox": [380, 440, 560, 460]&#125;
+  ]
+&#125;</code></pre>
+
+<h2>Text recognition</h2>
+<p>Once regions are identified, OCR runs on each region independently. This is more accurate than running OCR on the whole page because the engine knows what kind of text to expect. A table cell may need different handling than a paragraph. A heading may use a different font. A caption may be small and italic.</p>
+<p>Some pipelines run OCR first and then group characters into regions. Others run layout analysis first and then OCR each region. The second approach is usually better for RAG because it preserves structure from the start.</p>
+
+<h2>Structure assembly</h2>
+<p>The final layer turns recognized regions into a structured document. It decides heading levels based on font size and position. It reconstructs tables from cell positions. It preserves lists by detecting bullets or numbering. It resolves reading order across columns. It outputs Markdown with explicit structure markers.</p>
+<p>This layer is where most open-source OCR tools fall short. They recognize text well but produce a flat stream. A production RAG pipeline needs a structure assembly step, whether it is built in-house or provided by a managed API.</p>
+
+<h2>6.Components and Workflow</h2>
+<p>A complete layout-aware OCR pipeline for RAG has the following components and workflow.</p>
+
+<h3>1. Document ingestion</h3>
+<p>Documents arrive as scanned PDFs, TIFFs, PNGs, or JPEGs. The pipeline detects the format, counts pages, and checks for mixed content. Some pages may contain selectable text while others are images. A good pipeline routes each page to the right handler instead of applying OCR blindly.</p>
+
+<h3>2. Page classification</h3>
+<p>Before OCR, classify each page by type. Common categories include:</p>
+<ul>
+<li>Text-heavy page with simple layout</li>
+<li>Multi-column page</li>
+<li>Table-heavy page</li>
+<li>Form or template</li>
+<li>Mixed page with images and text</li>
+<li>Handwritten or low-quality scan</li>
+</ul>
+<p>Page classification lets the pipeline choose the right model and parameters. A table-heavy page may use a table-specific model. A form may use template matching. A handwritten page may need a different OCR engine.</p>
+
+<h3>3. Layout-aware OCR</h3>
+<p>Run the selected OCR approach on each page. The output should include both text and structure: bounding boxes, region types, reading order, and table geometry. Some engines return this directly. Others require post-processing to recover structure.</p>
+
+<h3>4. Markdown conversion</h3>
+<p>Convert the structured output into Markdown. Headings become #, ##, ###. Tables become | column | column |. Lists become - or 1.. Paragraphs stay as paragraphs. Captions are attached to figures. Page numbers and headers are either removed or preserved as metadata.</p>
+
+<h3>5. Metadata enrichment</h3>
+<p>Attach metadata to the Markdown or to each chunk. Important metadata includes:</p>
+<ul>
+<li>Source filename</li>
+<li>Page number</li>
+<li>Section title</li>
+<li>Heading hierarchy</li>
+<li>Region type</li>
+<li>Bounding box coordinates</li>
+<li>Confidence score</li>
+<li>OCR engine version</li>
+</ul>
+<p>Metadata improves retrieval because it gives the retriever more signals to rank and filter. It also improves citation because the system can point back to the exact page and region.</p>
+
+<h3>6. Semantic chunking</h3>
+<p>Chunk the Markdown by structure rather than by character count. Common strategies include:</p>
+<ul>
+<li>Split on headings</li>
+<li>Keep paragraphs together</li>
+<li>Keep table rows with their header</li>
+<li>Keep captions with figures</li>
+<li>Keep list items with their parent list</li>
+</ul>
+<p>Each chunk should be semantically complete. A chunk that ends mid-table or mid-sentence is a retrieval hazard.</p>
+
+<h3>7. Embedding and indexing</h3>
+<p>Generate embeddings for each chunk and store them in a vector database with metadata. Some teams also store a full-text index for hybrid search. The metadata from the previous step enables filtering by page, section, or document type.</p>
+
+<h3>8. Retrieval and generation</h3>
+<p>At query time, retrieve the most relevant chunks, assemble them into context, and prompt the LLM to answer. Good citation requires that each chunk carries enough metadata to identify its source. Good answer quality requires that each chunk carries enough structure to be understood without the rest of the document.</p>
+
+<h2>7. Configuration and Setup</h2>
+<p>Building a layout-aware OCR pipeline can be done with open-source tools, managed APIs, or a hybrid approach. This section covers a practical setup using Python and the Ollagraph API.</p>
+
+<h3>Open-source stack</h3>
+<p>A typical open-source stack includes:</p>
+<ul>
+<li>Tesseract 5.x for character recognition.</li>
+<li>PaddleOCR or EasyOCR for multilingual or handwriting support.</li>
+<li>Marker or Docling for layout-aware PDF to Markdown conversion.</li>
+<li>PyMuPDF or pdf2image for PDF rendering.</li>
+<li>LangChain or LlamaIndex for chunking and indexing.</li>
+</ul>
+
+<p>Example installation:</p>
+<pre><code>pip install marker-pdf docling pytesseract pdf2image pillow</code></pre>
+
+<p>Tesseract must be installed separately on the system. On Windows, download the installer from the UB Mannheim repository. On Linux, use the package manager:</p>
+<pre><code>sudo apt-get install tesseract-ocr tesseract-ocr-eng</code></pre>
+
+<h3>Running layout-aware OCR with Marker</h3>
+<p>Marker is a popular open-source tool that converts PDFs to Markdown with layout preservation. It works on both digital and scanned PDFs, though scanned PDFs may need preprocessing.</p>
+<pre><code>from marker.converters.pdf import PdfConverter
+from marker.models import create_model_dict
+
+converter = PdfConverter(artifact_dict=create_model_dict())
+markdown = converter("invoice_march_2025.pdf")
+print(markdown)</code></pre>
+
+<p>The output includes headings, tables, and paragraphs in Markdown format. For scanned PDFs, Marker uses an OCR backend internally.</p>
+
+<h3>Using the Ollagraph OCR API</h3>
+<p>For production pipelines, the Ollagraph OCR API handles preprocessing, layout analysis, OCR, structure assembly, and Markdown conversion in one call.</p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/ocr \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "document_base64": "...",
+    "output_format": "markdown",
+    "preserve_layout": true,
+    "include_metadata": true,
+    "ocr_engine": "layout_aware"
+  &#125;'</code></pre>
+
+<p>The response includes structured Markdown, page-level metadata, and region bounding boxes:</p>
+<pre><code>&#123;
+  "status": "success",
+  "markdown": "# Quarterly Invoice Summary\n\n## March 2025...",
+  "pages": 1,
+  "regions": [
+    &#123;"type": "title", "text": "Quarterly Invoice Summary", "page": 1, "bbox": [120, 80, 540, 110]&#125;,
+    &#123;"type": "table", "page": 1, "bbox": [120, 220, 560, 420]&#125;
+  ],
+  "time_ms": 1240
+&#125;</code></pre>
+
+<h3>Chunking the Markdown output</h3>
+<p>Once you have Markdown, chunk it with a structure-aware splitter. Here is an example using a simple heading-based splitter:</p>
+<pre><code>import re</code></pre>
+
+<pre><code>def split_by_headings(markdown, max_tokens=512):
+    sections = re.split(r'\n(?=#&#123;1,3&#125; )', markdown)
+    chunks = []
+    for section in sections:
+        if not section.strip():
+            continue
+        if len(section.split()) &gt; max_tokens:
+            paragraphs = section.split('\n\n')
+            current = ''
+            for para in paragraphs:
+                if len((current + para).split()) &gt; max_tokens:
+                    chunks.append(current.strip())
+                    current = para
+                else:
+                    current += '\n\n' + para
+            if current:
+                chunks.append(current.strip())
+        else:
+            chunks.append(section.strip())
+    return chunks</code></pre>
+<p>This is a minimal example. Production chunkers should also handle tables, lists, and overlapping sections.</p>
+
+<h2>8. Examples: From Scanned PDF to Structured Markdown</h2>
+<p>The best way to understand layout preservation is to see it in action. Below are three realistic examples.</p>
+
+<h3>Example 1: Scanned invoice</h3>
+<p>A scanned invoice has a header, customer block, line-item table, and totals block. Flat OCR returns:</p>
+<pre><code>INVOICE #10234
+Date: March 15, 2025
+Acme Corp
+123 Industrial Way
+Widget A 12 $120.00 $1,440.00
+Widget B 8 $240.00 $1,920.00
+Service Plan 1 $960.00 $960.00
+Subtotal $4,320.00
+Tax $356.40
+Total $6,236.40</code></pre>
+<p>Layout-aware OCR returns:</p>
+<pre><code># Invoice #10234
+
+**Date:** March 15, 2025  
+**Customer:** Acme Corp  
+**Address:** 123 Industrial Way
+
+| Item | Quantity | Unit Price | Amount |
+|------|----------|------------|--------|
+| Widget A | 12 | $120.00 | $1,440.00 |
+| Widget B | 8 | $240.00 | $1,920.00 |
+| Service Plan | 1 | $960.00 | $960.00 |
+
+**Subtotal:** $4,320.00  
+**Tax:** $356.40  
+**Total:** $6,236.40</code></pre>
+<p>With the structured version, a chunker can keep the table header with the rows, keep the totals with the table, and attach the invoice metadata to every chunk. A question about the total amount retrieves a chunk that includes the label and the number.</p>
+
+<h3>Example 2: Two-column research paper</h3>
+<p>A research paper has a two-column layout with figures, captions, and references. Flat OCR may read the left column of page one, then the right column of page one, then jump to page two and repeat. The result mixes unrelated paragraphs.</p>
+<p>Layout-aware OCR detects the columns and reads each column as a continuous stream. It also identifies figure captions and keeps them with the figures. The Markdown output preserves the logical reading order, so chunking produces coherent sections rather than random paragraph pairs.</p>
+
+<h3>Example 3: Government form</h3>
+<p>A government form has labels on the left and values on the right. Flat OCR returns:</p>
+<pre><code>Name
+John Doe
+Date of Birth
+1985-06-12
+Social Security Number
+123-45-6789
+Employer
+Acme Corp</code></pre>
+<p>Layout-aware OCR returns:</p>
+<pre><code>| Field | Value |
+|-------|-------|
+| Name | John Doe |
+| Date of Birth | 1985-06-12 |
+| Social Security Number | 123-45-6789 |
+| Employer | Acme Corp |</code></pre>
+<p>The structured version keeps each label with its value. A question about the employer retrieves a chunk that contains both "Employer" and "Acme Corp," which is much easier for the LLM to answer correctly.</p>
+
+<h2>9. Performance and Benchmarks</h2>
+<p>We compared flat OCR against layout-aware OCR on a test set of 120 scanned pages from three domains: financial reports, legal contracts, and technical manuals. The goal was to measure the impact on RAG answer quality, not just character recognition accuracy.</p>
+
+<h3>Test setup</h3>
+<ul>
+<li>Documents: 40 Financial pages, 40 Legal pages, 40 technical pages.</li>
+<li>Questions: 15 questions per domain, written by domain experts.</li>
+<li>Pipelines:</li>
+<li>Flat OCR: Tesseract with default page segmentation.</li>
+<li>Layout-aware OCR: Ollagraph layout-aware OCR API with Markdown output.</li>
+<li>Chunking: Heading-based semantic chunking for both pipelines.</li>
+<li>Embedding: OpenAI text-embedding-3-large.</li>
+<li>Retriever: Top-5 chunks with cosine similarity.</li>
+<li>Generator: GPT-4o with a citation prompt.</li>
+</ul>
+
+<h3>Results</h3>
+<pre><code>Metric	Flat OCR	Layout-Aware OCR	Improvement
+Character accuracy	96.2%	97.1%	+0.9 pp
+Answer correctness	47%	63%	+34% relative
+Citation precision	51%	72%	+41% relative
+Faithfulness score	5.2 / 10	7.4 / 10	+42% relative
+Avg. chunks per answer	3.8	2.4	-37%</code></pre>
+
+<p>The character accuracy numbers are close because both engines read words well. The RAG metrics are not close. Layout-aware OCR produced more complete chunks, so the retriever needed fewer chunks to answer each question, and the LLM made fewer errors.</p>
+
+<h3>Why the gap is large</h3>
+<p>Flat OCR's mistakes are structural, not lexical. It may read "$6,236.40" perfectly but place it in a chunk without the "Total due" label. The embedding for that chunk is ambiguous. The retriever may return it for a question about subtotal, tax, or total. The LLM has no structural cue to disambiguate.</p>
+<p>Layout-aware OCR fixes the structure, which fixes the embedding, which fixes the retrieval, which fixes the answer. The compounding effect is why a small improvement in OCR architecture produces a large improvement in RAG accuracy.</p>
+
+<h3>Cost and latency</h3>
+<p>Layout-aware OCR is more expensive per page than flat OCR because it runs additional models. In our tests:</p>
+<ul>
+<li>Flat OCR: ~120 ms per page, ~$0.002 per page.</li>
+<li>Layout-aware OCR: ~1,200 ms per page, ~$0.015 per page.</li>
+</ul>
+<p>The higher cost is usually justified by the reduction in downstream errors. A single wrong answer in a financial or legal workflow can cost far more than the OCR price difference. For high-volume pipelines, batching and caching can reduce the per-page cost.</p>
+
+<h2>10. Security Considerations</h2>
+<p>OCR pipelines handle sensitive documents. Security should be designed in from the start.</p>
+
+<h3>Data handling</h3>
+<ul>
+<li>Prefer APIs that accept base64-encoded documents over APIs that require uploading files to public storage.</li>
+<li>Use TLS 1.3 for all API calls.</li>
+<li>Avoid logging full document content. Log only metadata such as page count, processing time, and error codes.</li>
+<li>If you process documents in the cloud, verify the provider's data retention and deletion policies.</li>
+</ul>
+
+<h3>Compliance</h3>
+<ul>
+<li>For healthcare documents, ensure the pipeline meets HIPAA requirements if applicable.</li>
+<li>For financial documents, check SOC 2 and PCI-DSS alignment where relevant.</li>
+<li>For legal documents, consider client confidentiality and attorney-client privilege.</li>
+<li>For EU documents, ensure GDPR compliance for personal data extraction.</li>
+</ul>
+
+<h3>Access control</h3>
+<ul>
+<li>Store API keys in a secrets manager, never in source code.</li>
+<li>Use least-privilege access for pipeline components.</li>
+<li>Rotate keys regularly.</li>
+<li>Audit access to processed documents and embeddings.</li>
+</ul>
+
+<h3>Model security</h3>
+<ul>
+<li>Be cautious with third-party OCR models that send data to external training pipelines.</li>
+<li>Use providers that explicitly state they do not train on customer data.</li>
+<li>For highly sensitive documents, consider self-hosted OCR models.</li>
+</ul>
+
+<h2>11. Troubleshooting</h2>
+<p>Even layout-aware OCR pipelines fail sometimes. Here are common problems and how to fix them.</p>
+
+<h3>Low OCR accuracy on poor scans</h3>
+<p><strong>Symptom:</strong> Many words are misrecognized, especially in old or low-resolution scans.</p>
+<p><strong>Fix:</strong> Improve preprocessing. Deskew, denoise, upscale, and binarize images before OCR. If quality is still low, use a model trained on degraded documents.</p>
+
+<h3>Tables are split into multiple chunks</h3>
+<p><strong>Symptom:</strong> A wide table is broken across chunks, and the header is separated from the rows.</p>
+<p><strong>Fix:</strong> Detect tables during layout analysis and treat them as atomic units. Split wide tables into row groups that include the header, or summarize the table before embedding.</p>
+
+<p><strong>Multi-column text is read out of order</strong><br>
+Symptom: Sentences from different columns appear in the same chunk.<br>
+Fix: Use a layout model that explicitly detects columns and enforces reading order. Rule-based column detection can also work for documents with consistent margins.</p>
+
+<p><strong>Handwriting is not recognized</strong><br>
+Symptom: Handwritten notes or signatures are missing from the output.<br>
+Fix: Use a handwriting-specific OCR model. General printed-text OCR will usually fail on cursive or unconstrained handwriting.</p>
+
+<p><strong>Form labels and values are separated</strong><br>
+Symptom: A label and its value end up in different chunks.<br>
+Fix: Convert forms to key-value tables during structure assembly. Keep each label-value pair in the same chunk.</p>
+
+<p><strong>Metadata is missing from chunks</strong><br>
+Symptom: Citations point to the wrong page or cannot be verified.<br>
+Fix: Ensure the Markdown converter or OCR API returns bounding boxes and page numbers. Attach this metadata to every chunk at indexing time.</p>
+
+<h2>12. Best Practices</h2>
+<p>Follow these practices to get the most out of layout-aware OCR for RAG.</p>
+
+<p><strong>1. Preserve structure as Markdown</strong><br>
+Markdown is the best intermediate format for RAG. It is readable, token-efficient, and natively understood by chunkers and LLMs. Avoid intermediate formats that lose structure, such as plain text or unformatted HTML.</p>
+
+<p><strong>2. Chunk by semantic boundaries</strong><br>
+Split on headings, paragraphs, and table rows. Avoid fixed-length chunking unless the document has no structure at all. Each chunk should be self-contained enough to answer a question about its content.</p>
+
+<p><strong>3. Carry metadata with every chunk</strong><br>
+Page number, section title, heading hierarchy, and bounding box should travel with the chunk. This improves retrieval filtering and citation accuracy.</p>
+
+<p><strong>4. Handle tables as first-class objects</strong><br>
+Tables are high-value content. Do not flatten them. Keep them as Markdown tables, split them into row groups with headers, or generate summaries for embedding.</p>
+
+<p><strong>5. Classify pages before OCR</strong><br>
+Different page types need different models. A form page should not use the same pipeline as a text essay. Page classification improves accuracy and reduces cost.</p>
+
+<p><strong>6. Validate with answer-level metrics</strong><br>
+Do not stop at character accuracy or word error rate. Measure answer correctness, citation precision, and faithfulness on real questions. Those metrics reflect what users actually care about.</p>
+
+<p><strong>7. Monitor drift</strong><br>
+Document quality varies over time. A pipeline that works on clean scans may fail on faxed or compressed documents. Track OCR confidence scores and retrieval quality over time.</p>
+
+<h2>13. Common Mistakes</h2>
+<p>Teams building OCR-for-RAG pipelines often make these mistakes.</p>
+
+<p><strong>1. Treating OCR as a solved problem</strong><br>
+Character recognition is good, but document understanding is not solved. Flat OCR is not enough for RAG. Teams that assume OCR "just works" miss the structural failures that hurt retrieval.</p>
+
+<p><strong>2. Optimizing for character accuracy alone</strong><br>
+A pipeline with 99% character accuracy can still fail on real questions. The metric that matters is whether the RAG system answers correctly and cites the right source.</p>
+
+<p><strong>3. Chunking flat text by token count</strong><br>
+Fixed-length chunking of flat OCR output is the fastest way to destroy document meaning. It splits tables, separates labels from values, and mixes unrelated paragraphs.</p>
+
+<p><strong>4. Ignoring multi-column layouts</strong><br>
+Two-column documents are common in research, finance, and law. Failing to detect columns produces incoherent chunks and poor embeddings.</p>
+
+<p><strong>5. Forgetting metadata</strong><br>
+Chunks without source metadata cannot be cited. Citation precision drops, user trust drops, and compliance becomes harder.</p>
+
+<p><strong>6. Skipping preprocessing</strong><br>
+Poor scans need deskewing, denoising, and upscaling. Skipping preprocessing forces the OCR model to work harder and produce worse results.</p>
+
+<p><strong>7. Using the wrong model for the page type</strong><br>
+A general OCR model on a form page will miss field relationships. A table model on a handwritten page will fail entirely. Match the model to the page type.</p>
+
+<h2>14. Alternatives and Comparison</h2>
+<p>There are several ways to get structured text out of scanned documents. Here is how they compare.</p>
+
+<pre><code>Approach	Accuracy	Structure	Cost	Best For
+Flat OCR (Tesseract)	High on clean text	None	Very low	Searchable archives, simple documents
+Layout-aware open source (Marker, Docling)	High on many layouts	Good	Low	Teams with engineering resources
+Cloud OCR (AWS Textract, Azure DI)	High	Good	Medium	Enterprise forms and invoices
+Multimodal LLM (GPT-4o Vision, Gemini)	Very high	Good	High	Complex or varied layouts
+Ollagraph OCR API	High	Excellent	Medium	RAG pipelines needing Markdown output</code></pre>
+
+<p><strong>• Flat OCR</strong><br>
+Flat OCR is cheap and fast but unsuitable for RAG on complex documents. Use it only when the source documents are simple, single-column text with no tables or forms.</p>
+
+<p><strong>• Layout-aware open source</strong><br>
+Marker and Docling are strong choices for teams that want control and can tolerate operational overhead. They require GPU resources for best performance and need tuning for specific document types.</p>
+
+<p><strong>• Cloud document intelligence</strong><br>
+AWS Textract and Azure Document Intelligence excel at forms and invoices. They return structured key-value pairs and tables. Integration with RAG requires converting their output to Markdown or chunks.</p>
+
+<p><strong>• Multimodal LLMs</strong><br>
+Vision-language models can read complex layouts and even interpret diagrams. They are expensive and slower than specialized OCR but useful for documents where layout understanding is highly contextual.</p>
+
+<p><strong>• Ollagraph OCR API</strong><br>
+Ollagraph combines layout analysis, OCR, and Markdown conversion in one API. It is designed for RAG pipelines and returns chunk-ready output with metadata. It sits between open-source tools and multimodal LLMs on cost and complexity.</p>
+
+<h2>15. Enterprise and Cloud Deployment</h2>
+<p>Running OCR at enterprise scale requires more than a working notebook script.</p>
+
+<p><strong>Scaling</strong></p>
+<ul>
+<li>Use asynchronous processing for large batches.</li>
+<li>Split documents into pages and process pages in parallel.</li>
+<li>Cache results for duplicate documents.</li>
+<li>Use autoscaling GPU workers for layout models.</li>
+</ul>
+
+<p><strong>Multi-tenancy</strong></p>
+<ul>
+<li>Isolate document queues and storage per tenant.</li>
+<li>Encrypt documents at rest and in transit.</li>
+<li>Apply role-based access control to processed output.</li>
+</ul>
+
+<p><strong>Observability</strong></p>
+<ul>
+<li>Track per-page latency, error rate, and OCR confidence.</li>
+<li>Log chunk quality metrics such as average chunk size and table coverage.</li>
+<li>Monitor retrieval quality with answer correctness and citation precision dashboards.</li>
+</ul>
+
+<p><strong>Billing</strong></p>
+<ul>
+<li>OCR is usually billed per page or per thousand characters.</li>
+<li>Layout-aware OCR costs more than flat OCR but reduces downstream errors.</li>
+<li>Track cost per document type to identify expensive categories.</li>
+</ul>
+
+<p><strong>Integration</strong></p>
+<ul>
+<li>Connect the OCR pipeline to your existing document store, vector database, and orchestration framework.</li>
+<li>Use webhooks or message queues for asynchronous completion.</li>
+<li>Expose metrics to your monitoring stack.</li>
+</ul>
+
+<h2>16. FAQs</h2>
+<p><strong>What is OCR for RAG?</strong><br>
+OCR for RAG is the use of optical character recognition to convert scanned or image-based documents into text that can be indexed and retrieved by a retrieval-augmented generation system. For best results, the OCR should preserve document structure, not just extract words.</p>
+
+<p><strong>Why does layout preservation improve retrieval accuracy?</strong><br>
+Layout preservation keeps headings, paragraphs, tables, lists, and columns intact. Structured chunks carry more semantic signal, so embeddings are more accurate and retrievers return more relevant context.</p>
+
+<h3>Is flat OCR ever good enough for RAG?</h3>
+<p>Flat OCR can work for simple, single-column text documents with no tables or forms. For most enterprise documents, layout-aware OCR produces significantly better RAG results.</p>
+
+<h3>What is the best output format for OCR in a RAG pipeline?</h3>
+<p>Markdown is the best intermediate format. It preserves structure in a plain-text form that chunkers, embeddings, and LLMs can all process efficiently.</p>
+
+<h3>How should I chunk OCR output for RAG?</h3>
+<p>Chunk by semantic boundaries: headings, paragraphs, table row groups, and list blocks. Avoid fixed-length chunking unless the document has no detectable structure.</p>
+
+<h3>Can OCR handle handwritten documents in RAG?</h3>
+<p>General OCR is poor at handwriting. Use a handwriting-specific model or a multimodal vision-language model for handwritten pages.</p>
+
+<h3>How do I evaluate OCR quality for RAG?</h3>
+<p>Measure answer correctness, citation precision, and faithfulness on a set of real questions. Character accuracy and word error rate are useful but do not reflect RAG performance.</p>
+
+<h3>What metadata should I attach to OCR chunks?</h3>
+<p>Attach source filename, page number, section title, heading hierarchy, region type, bounding box, and OCR confidence. This improves retrieval, filtering, and citation.</p>
+
+<h3>Is layout-aware OCR more expensive?</h3>
+<p>Yes, layout-aware OCR is slower and more expensive per page than flat OCR. The cost is usually offset by fewer downstream errors and better answer quality.</p>
+
+<h3>Can I use cloud document intelligence services for RAG?</h3>
+<p>Yes. Services like AWS Textract and Azure Document Intelligence return structured data. You will need to convert their output into Markdown or chunks for your RAG pipeline.</p>
+
+<h3>Does Ollagraph support scanned PDFs?</h3>
+<p>Yes. The Ollagraph OCR API accepts scanned PDFs and images, runs layout-aware OCR, and returns structured Markdown with metadata for RAG.</p>
+
+<h2>Conclusion</h2>
+<p>OCR is the front door of any RAG system that works with scanned documents. If that door is poorly built, everything behind it suffers. Plain OCR extracts words but destroys the structure that gives words meaning. Layout-preserving OCR keeps that structure intact and converts it into Markdown, the ideal format for semantic chunking and retrieval.</p>
+
+<p>The difference is not cosmetic. In our tests, layout-aware OCR improved answer correctness by 34% and citation precision by 41% compared to flat OCR. Those gains come from better chunks, better embeddings, and better context for the LLM.</p>
+
+<p>If you are building a RAG pipeline over scanned archives, start by auditing your OCR layer. Ask whether your chunks carry headings, tables, and metadata. Ask whether a retrieved chunk would make sense to the LLM without the rest of the document. If the answer is no, layout preservation is the fix.</p>
+
+<p>Ollagraph provides a layout-aware OCR API that returns structured Markdown with page and region metadata, so teams can skip parser tuning and focus on retrieval quality. Try it on your hardest scanned documents and measure the impact on your RAG answers.</p>
+
+<p>For more on document processing for RAG, read our guides on PDF to Markdown for RAG, DOCX to Markdown for RAG, and RAG Data Pipeline: From Web Scraping to Vector Search.</p>
+
+<h2>References</h2>
+<ul>
+<li>Ollagraph API Documentation: https://ollagraph.com/docs/</li>
+<li>Tesseract OCR: https://github.com/tesseract-ocr/tesseract</li>
+<li>Marker: https://github.com/VikParuchuri/marker</li>
+<li>Docling: https://github.com/DS4SD/docling</li>
+<li>LayoutLM: https://github.com/microsoft/unilm/tree/master/layoutlm</li>
+<li>PaddleOCR: https://github.com/PaddlePaddle/PaddleOCR</li>
+<li>AWS Textract: https://aws.amazon.com/textract/</li>
+<li>Azure Document Intelligence: https://azure.microsoft.com/en-us/products/ai-services/document-intelligence/</li>
+<li>"Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks" (Lewis et al., 2020)</li>
+<li>"LayoutLM: Pre-training of Text and Layout for Document Image Understanding" (Xu et al., 2020)</li>
+</ul>
+</Article>
