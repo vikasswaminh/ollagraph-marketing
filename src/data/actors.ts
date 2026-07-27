@@ -20,38 +20,6 @@ export interface Actor {
 
 export const actors: Actor[] = [
   {
-    slug: "amazon",
-    name: "Amazon product",
-    category: "E-commerce",
-    endpoint: "POST /v1/actors/amazon",
-    short: "Title, price, rating, review count, ASIN, availability, and image — from any Amazon product page.",
-    long: "Send an Amazon product URL and get back the structured fields a price-intelligence pipeline cares about. The actor handles US, UK, DE, JP and most other Amazon storefronts. For consistent results at production volume, enable the residential-proxy option — Amazon's bot defenses target datacenter IP ranges aggressively.",
-    fields: [
-      { name: "title", type: "string", example: "Echo Dot (5th Gen) Smart speaker" },
-      { name: "price", type: "string", example: "$49.99" },
-      { name: "rating", type: "number", example: "4.7" },
-      { name: "review_count", type: "number", example: "184523" },
-      { name: "asin", type: "string", example: "B08N5WRWNW" },
-      { name: "availability", type: "string", example: "In Stock" },
-      { name: "image_url", type: "string", example: "https://m.media-amazon.com/..." },
-    ],
-    sample: `{
-  "status": "success",
-  "url": "https://www.amazon.com/dp/B08N5WRWNW",
-  "time_ms": 1240,
-  "data": {
-    "title": "Echo Dot (5th Gen) Smart speaker",
-    "price": "$49.99",
-    "rating": 4.7,
-    "review_count": 184523,
-    "asin": "B08N5WRWNW",
-    "availability": "In Stock"
-  }
-}`,
-    proxyNote: "Amazon's bot wall blocks most datacenter IPs. Enable the residential-proxy option for production workloads.",
-    recipe: "scrape-amazon-product-data",
-  },
-  {
     slug: "zillow",
     name: "Zillow property",
     category: "Real estate",
