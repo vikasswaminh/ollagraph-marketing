@@ -96,10 +96,10 @@ const faqs = [
 
 <pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
 
-  <h3>Step 3. Pull a single Amazon competitor</h3>
-  <p>Start with one URL to confirm the pipeline. For Amazon competitors, use the Amazon actor — it returns clean structured fields without you having to write a parser.</p>
+  <h3>Step 3. Pull a single competitor</h3>
+  <p>Start with one URL to confirm the pipeline. Use the structured extract endpoint on any product page — it returns clean structured fields without you having to write a parser.</p>
 
-<pre><code>curl -X POST https://api.ollagraph.com/v1/actors/amazon \
+<pre><code>curl -X POST https://api.ollagraph.com/v1/extract/structured \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
@@ -107,7 +107,6 @@ const faqs = [
   &#125;'</code></pre>
 
 <pre><code>&#123;
-  "asin": "B08N5WRWNW",
   "title": "Echo Dot (4th Gen)",
   "price": 49.99,
   "currency": "USD",
@@ -132,7 +131,7 @@ const faqs = [
     "concurrency": 10
   &#125;'</code></pre>
 
-  <p>For the structured Amazon fields, fan out per-URL calls to <code>/v1/actors/amazon</code> from your worker pool. For Shopify and D2C URLs that don't have a dedicated actor, swap to the generic extract endpoint. The structured extractor pulls JSON-LD, Open Graph, Twitter card, and microdata metadata, which is where most modern e-commerce platforms publish price and availability.</p>
+  <p>For structured price and availability fields, fan out per-URL calls to <code>/v1/extract/structured</code> from your worker pool, the same across Amazon, Shopify, and D2C storefronts. The structured extractor pulls JSON-LD, Open Graph, Twitter card, and microdata metadata, which is where most modern e-commerce platforms publish price and availability.</p>
 
 <pre><code>curl -X POST https://api.ollagraph.com/v1/extract/structured \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
@@ -183,7 +182,7 @@ const faqs = [
   <p>For the legal posture around competitive pricing observation, the long-running US case law on public-web access — summarized accessibly at <a href="https://en.wikipedia.org/wiki/HiQ_Labs_v._LinkedIn">en.wikipedia.org/wiki/HiQ_Labs_v._LinkedIn</a> — is the foundational reading. Talk to counsel before commercial deployment but the general direction is favorable for public-page observation.</p>
 
   <h2>Pairing pricing with the rest of your data layer</h2>
-  <p>Competitive pricing is one feed in a larger commercial intelligence pipeline. Most teams pair it with a catalog refresh from the <a href="/recipes/scrape-amazon-product-data">Amazon recipe</a>, a review-sentiment feed from the same actor's review fields, and occasionally a local-store data feed from the <a href="/actors">Google Maps actor</a> for retailers with physical footprints.</p>
+  <p>Competitive pricing is one feed in a larger commercial intelligence pipeline. Most teams pair it with a catalog and review feed pulled via the generic <a href="/docs">extract endpoint</a>, and occasionally a local-store data feed from the <a href="/actors">Google Maps actor</a> for retailers with physical footprints.</p>
 
   <p>The pipeline gets more powerful as it gets more sources. Pricing alone tells you what competitors are doing. Pricing plus review velocity tells you whether their move is working. Pricing plus inventory plus reviews tells you whether you should respond at all.</p>
 

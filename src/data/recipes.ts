@@ -10,7 +10,6 @@ export interface RecipeMeta {
 }
 
 export const recipes: RecipeMeta[] = [
-  { slug: "scrape-amazon-product-data", title: "How to scrape Amazon product data in 2026", description: "A working playbook for pulling titles, prices, ratings, reviews, and ASINs from Amazon at scale — without writing a single line of scraping code.", category: "ecommerce", readingTime: 13, date: "2026-05-16" },
   { slug: "monitor-competitor-pricing", title: "How to monitor competitor pricing across e-commerce in 2026", description: "Build a real-time pricing intelligence pipeline that tracks competitor SKUs across Amazon, Shopify, and direct-to-consumer sites — the stack, the cadence, the cost.", category: "ecommerce", readingTime: 14, date: "2026-05-16" },
   { slug: "scrape-zillow-listings", title: "How to scrape Zillow listings at scale in 2026", description: "The honest guide to extracting Zestimate, price, beds, baths, and lot details from Zillow — what works, what fails, and how proptech teams ship in production.", category: "real-estate", readingTime: 13, date: "2026-05-16" },
   { slug: "scrape-google-maps-businesses", title: "How to scrape Google Maps businesses in 2026", description: "Pull places, ratings, reviews, hours, addresses, and coordinates from Google Maps at scale — the architecture local SEO, sales prospecting, and market research teams actually use.", category: "local", readingTime: 13, date: "2026-05-16" },
