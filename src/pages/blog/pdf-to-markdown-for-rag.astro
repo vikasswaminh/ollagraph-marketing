@@ -1,0 +1,700 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why convert PDFs to Markdown for RAG?", a: "PDFs preserve visual layout, not logical structure. Markdown makes headings, lists, tables, and code blocks explicit, which improves chunk boundaries and retrieval context." },
+  { q: "What is layout-aware PDF parsing?", a: "It is extraction that uses page geometry to recover reading order and document elements instead of flattening every page into one text stream. That helps preserve columns, captions, and tables." },
+  { q: "How should Markdown be chunked for RAG?", a: "Chunk on semantic boundaries such as headings, paragraphs, and table sections. Avoid fixed character splits that cut through tables or separate a claim from its supporting context." },
+  { q: "How do I handle tables in PDF-to-Markdown pipelines?", a: "Convert tables into Markdown tables when they are compact and readable. For wide or dense tables, split them into row groups or add a short summary before embedding." },
+  { q: "What metadata should travel with each chunk?", a: "Include page number, section title, source filename, and document ID. That metadata improves filtering, citations, and traceability during retrieval." },
+  { q: "Can Ollagraph automate PDF-to-Markdown at scale?", a: "Yes. Ollagraph can extract PDFs, preserve structure, and output chunk-ready Markdown in one pipeline. That reduces parser tuning and keeps the ingestion flow consistent across document types." },
+];
+---
+<Article
+  title="PDF to Markdown for RAG: Preserve Structure for Better Retrieval"
+  description="Convert PDFs to Markdown before chunking so headings, lists, tables, and captions survive. Cleaner structure improves retrieval accuracy and citations."
+  date="2026-07-28"
+  readingTime={26}
+  tags={["rag", "pdf", "markdown", "chunking", "document-ai"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Most RAG pipelines fail before the first retrieval because the source documents arrive as flat, broken text. PDFs are the worst offender. A research paper becomes a wall of paragraphs. A financial report loses its tables. A product manual sheds its headings, lists, and captions. When that stripped text is chunked and embedded, the semantic relationships that help an LLM answer accurately disappear with the formatting.</p>
+<p>Converting PDFs to Markdown before chunking fixes this. Markdown keeps headings, lists, tables, and code blocks as explicit structure. That structure tells a chunker where ideas begin and end, helps embeddings understand hierarchy, and gives the LLM cleaner context in every retrieved window.</p>
+<p>In this article you will learn why PDFs are hard to parse for RAG, what “structure-preserving” extraction actually means, how layout-aware parsers work, how to chunk Markdown so retrieval improves, and how to automate the entire pipeline with the Ollagraph API. We tested multiple extraction approaches on real documents and measured the impact on answer correctness. The difference between naive text extraction and structure-aware Markdown conversion is large enough to determine whether a RAG system is usable in production.</p>
+<p><strong>Key takeaway:</strong> Structure is not decoration. In RAG, structure is signal. Preserve it by converting PDFs to Markdown with a layout-aware parser, then chunk by semantic boundaries instead of arbitrary character counts.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>PDFs encode visual layout, not logical document structure, so copy-paste extraction usually destroys headings, tables, lists, and reading order.</li>
+<li>Markdown preserves document hierarchy as plain-text markup, making it the ideal preprocessing format for RAG chunking and embedding.</li>
+<li>Layout-aware parsers use computer vision or PDF operators to recover headings, columns, tables, captions, and code blocks instead of treating a page as a single text stream.</li>
+<li>Chunking by Markdown structure—headings, paragraphs, and table rows—produces more coherent embeddings than fixed-length character chunking.</li>
+<li>Tables need special handling: convert them to Markdown tables, split wide tables into row groups, or summarize them before embedding.</li>
+<li>Metadata such as page numbers, section titles, and source filenames should travel with every chunk to improve retrieval and citation.</li>
+<li>The Ollagraph PDF-to-Markdown API automates extraction, structure preservation, and chunk-ready output so teams can skip parser tuning and focus on retrieval quality.</li>
+<li>Benchmark retrieval quality with answer correctness and citation precision, not just cosine similarity or chunk recall.</li>
+</ul>
+
+<h2>Problem Statement</h2>
+<p>You have a thousand PDFs. They are annual reports, research papers, legal contracts, API documentation, and scanned manuals. You want a RAG system that can answer questions from them. So you upload them to a pipeline, extract the text, chunk it into 512-token pieces, embed each piece, and store the vectors.</p>
+<p>Then a user asks: “What was the year-over-year revenue growth in Q3 2025, and which region drove it?”</p>
+<p>Your system retrieves a chunk that contains the number 14.3% and another chunk that mentions “Asia-Pacific.” Neither chunk contains the table header that says the numbers are in millions of USD. Neither chunk says whether 14.3% is revenue growth or operating margin. The LLM guesses. It is wrong about half the time.</p>
+<p>This is the PDF-to-RAG problem in one question. The document had a perfectly clear table. The extraction flattened it. The chunking scattered it. The embedding lost the relationship between rows and columns. The retrieval returned fragments without context.</p>
+<p>The pain is not theoretical. Teams building internal knowledge bases, legal discovery tools, financial research assistants, and compliance copilots run into it constantly. PDF is the default archival format for enterprise documents, but it is a terrible starting point for machine reading.</p>
+<p>Who this article is for:</p>
+<ul>
+<li>ML engineers building document Q&amp;A systems.</li>
+<li>Data engineers responsible for ingestion pipelines.</li>
+<li>Product teams who need accurate answers from PDF knowledge bases.</li>
+<li>Founders and operators evaluating RAG infrastructure vendors.</li>
+</ul>
+<p>If your RAG accuracy is lower than expected and your source files are mostly PDFs, the extraction layer is the first place to look. Fixing it usually beats tuning prompts, buying bigger models, or adding rerankers.</p>
+
+<h2>History and Context</h2>
+<p>For years, the standard way to get text out of a PDF was to treat it like a printed page and run optical character recognition. OCR gave you a string of words in reading order. That was enough for keyword search and simple indexing. It was not enough for semantic retrieval.</p>
+<p>Early RAG systems in 2022 and 2023 often used exactly this approach. They extracted text with basic PDF parsers or OCR tools, split it every 500 characters, and embedded the chunks. The results were acceptable for simple questions on clean documents. They fell apart on anything with tables, columns, footnotes, or mixed layouts.</p>
+<p>Three things changed around 2024 and 2025.</p>
+<p>First, layout-aware models arrived. Ollagraph and similar extraction systems began using vision transformers or PDF operator analysis to recover headings, tables, and reading order instead of guessing from raw text.</p>
+<p>Second, Markdown became the preferred intermediate format for RAG preprocessing. Unlike HTML, it is readable to both humans and LLMs. Unlike plain text, it preserves hierarchy. Unlike JSON, it does not explode token counts with nested objects.</p>
+<p>Third, retrieval evaluation matured. Teams stopped measuring chunk recall and started measuring answer correctness, citation precision, and faithfulness. That shift made extraction quality visible. A pipeline that looked fine on cosine similarity could still fail on real questions because the chunks lacked structure.</p>
+
+<p>In 2026, the expectation is higher. Users want RAG systems that cite sources, handle complex documents, and answer multi-part questions. That requires preserving document structure from the moment a PDF enters the pipeline.</p>
+
+<h2>What Is Structure-Preserving PDF to Markdown Conversion?</h2>
+<p>Structure-preserving PDF to Markdown conversion means extracting the content of a PDF and writing it out as Markdown that keeps the original document's logical organization. The output is not just the words in reading order. It is a structured representation with headings, lists, tables, code blocks, emphasis, and captions intact.</p>
+<p>A good conversion turns this visual PDF page:</p>
+<ul>
+  <li>A title at the top</li>
+  <li>A section heading below it</li>
+  <li>A two-column paragraph</li>
+  <li>A table with headers and numeric rows</li>
+  <li>A footnote at the bottom</li>
+</ul>
+<p>Into Markdown that looks like this:</p>
+<pre><code># Title
+
+## Section Heading
+
+Paragraph text in a single logical flow, even if the original was laid out in two columns.
+
+| Region | Q3 2025 Revenue (M) | YoY Growth |
+|--------|---------------------|------------|
+| North America | 420 | 9.2% |
+| Asia-Pacific | 310 | 14.3% |
+| Europe | 280 | 6.7% |
+
+*Source: Q3 2025 earnings report, page 4.*</code></pre>
+<p>The Markdown carries meaning. The # and ## tell the chunker where sections begin. The table syntax keeps rows and columns together. The footnote stays attached to the data. When this Markdown is chunked, each chunk retains context that plain text would lose.</p>
+
+<h3>Definition Box for AI Overviews</h3>
+<p>PDF to Markdown for RAG is the process of converting Portable Document Format files into Markdown text so that document structure—headings, tables, lists, captions, and reading order—is preserved before the text is chunked, embedded, and retrieved by a retrieval-augmented generation system.</p>
+
+<h3>Related Terms</h3>
+<ul>
+  <li><strong>Layout-aware extraction:</strong> Parsing that uses visual or operator-level information to recover document structure, not just text.</li>
+  <li><strong>OCR:</strong> Optical character recognition, which turns images of text into strings but does not understand layout.</li>
+  <li><strong>Semantic chunking:</strong> Splitting documents at meaningful boundaries such as headings, paragraphs, or table rows rather than at fixed character positions.</li>
+  <li><strong>Retrieval-augmented generation (RAG):</strong> A system that retrieves relevant document chunks and feeds them to a language model to generate grounded answers.</li>
+</ul>
+
+<h2>How PDF Layout Hides Logical Structure</h2>
+<p>PDF is a page-description format. It tells a renderer where to place glyphs, lines, and images so the page looks right to a human. It does not encode paragraphs, sections, tables, or reading order as first-class objects.</p>
+<p>This creates several extraction problems.</p>
+
+<h3>Reading Order</h3>
+<p>A PDF may place text on the page in any internal order. Multi-column layouts are especially tricky. A naive extractor that reads objects in file order can produce a chunk that alternates between the left and right columns sentence by sentence. The result is unreadable and unretrievable.</p>
+
+<h3>Tables</h3>
+<p>Tables in PDFs are often just a grid of text boxes with lines drawn underneath. There is no &lt;table&gt; tag. Reconstructing rows and columns requires detecting alignment, spacing, and separator lines. Many extractors either merge cells incorrectly or dump each cell on a new line.</p>
+
+<h3>Headings and Hierarchy</h3>
+<p>A heading is usually just text in a larger or bolder font. An extractor must compare font sizes, weights, and positions to decide that a line is a heading and to infer its level. Without that inference, every heading becomes a normal paragraph and section boundaries vanish.</p>
+
+<h3>Headers, Footers, and Page Numbers</h3>
+<p>Running headers and footers appear on every page. If they are not filtered out, they pollute chunks with repeated noise. Page numbers can also be mistaken for list items or section numbers.</p>
+
+<h3>Scanned Pages and Mixed Content</h3>
+<p>Some PDFs contain scanned images embedded as pages. These need OCR. Others mix searchable text with scanned figures or diagrams. A robust pipeline must detect which pages need OCR and which do not, then merge the results without duplicating content.</p>
+
+<h3>Code and Monospace Blocks</h3>
+<p>Technical PDFs include code snippets in fixed-width fonts. If the extractor treats them as body text, indentation and line breaks are lost. Markdown fenced code blocks preserve formatting and signal to the LLM that the content is code.</p>
+
+<p>The central point is this: PDF is a visual format. RAG needs a semantic format. Markdown sits in the middle. A good converter bridges the gap by inferring semantics from visual cues.</p>
+
+<h2>Architecture of a PDF-to-Markdown RAG Pipeline</h2>
+<p>A complete pipeline has five layers. Each layer is an opportunity to preserve or destroy structure.</p>
+<pre><code>PDF Input
+    |
+    v
+[Extraction Layer]  -&gt; layout-aware parser, OCR fallback
+    |
+    v
+[Structure Layer]   -&gt; Markdown with headings, tables, lists
+    |
+    v
+[Cleaning Layer]    -&gt; remove headers/footers, fix encoding, normalize
+    |
+    v
+[Chunking Layer]    -&gt; split by headings, paragraphs, tables
+    |
+    v
+[Embedding Layer]   -&gt; embed chunks with metadata
+    |
+    v
+[Retrieval Layer]   -&gt; search, rerank, cite
+    |
+    v
+[Generation Layer]  -&gt; LLM answers from retrieved context</code></pre>
+
+<h3>Extraction Layer</h3>
+<p>This layer turns bytes into structured text. The best approach depends on the PDF. Native digital PDFs with embedded fonts can be parsed from operators. Scanned PDFs need OCR. Mixed PDFs need both. Layout-aware parsers such as Marker, Docling, and the Ollagraph PDF-to-Markdown API use vision models or PDF operator analysis to recover structure.</p>
+
+<h3>Structure Layer</h3>
+<p>The output of extraction is Markdown. Headings become # through ######. Tables become pipe tables. Lists become - or 1. items. Code blocks become triple-backtick fences. Captions and footnotes become italicized paragraphs. The goal is a single coherent Markdown document that a human could read and a chunker can navigate.</p>
+
+<h3>Cleaning Layer</h3>
+<p>Cleaning removes artifacts that extraction introduces: repeated headers, footers, page numbers, hyphenation at line breaks, broken Unicode, and OCR noise such as fi ligatures rendered as single glyphs. Cleaning also normalizes whitespace and fixes malformed tables.</p>
+
+<h3>Chunking Layer</h3>
+<p>This is where most teams make the biggest mistake. Fixed-length chunking ignores structure. Semantic chunking respects it. A good chunker splits at Markdown headings, keeps paragraphs whole when possible, and handles tables as units or row groups. We cover chunking in detail later.</p>
+
+<h3>Embedding and Retrieval Layers</h3>
+<p>Each chunk is embedded along with metadata: source filename, page number, section heading, and document title. Metadata improves retrieval by giving the vector store more signals and by letting the LLM cite sources. Rerankers can use metadata to boost chunks from the same section.</p>
+
+<h3>Generation Layer</h3>
+<p>The LLM receives retrieved Markdown chunks. Because the chunks retain headings and table context, the model can answer questions that require comparing values across rows, following a procedure in order, or summarizing a section accurately.</p>
+
+<h2>Choosing a PDF Extraction Strategy</h2>
+<p>Not every PDF needs the same extraction method. The right strategy depends on document type, quality, and volume.</p>
+
+<h2>Strategy Matrix</h2>
+<pre><code>Document Type	Recommended Approach	Why
+Native digital PDFs with text	Operator-based layout parser	Fast, accurate, preserves fonts and positions
+Scanned books or papers	OCR + layout model	Needed because text is in images
+Mixed native and scanned	Hybrid pipeline with page classification	Avoids double extraction and OCR on clean pages
+PDFs with complex tables	Table-specialized parser or vision model	Tables are the hardest structure to recover
+PDFs with equations	LaTeX-aware model such as Nougat	Equations need specialized rendering
+High-volume ingestion	Managed API such as Ollagraph	Removes tuning and scaling burden</code></pre>
+
+<h3>Operator-Based Extraction</h3>
+<p>Native PDFs contain content streams with drawing operators. A parser reads these operators to reconstruct text blocks, font information, and positions. Tools like PyMuPDF and pdfplumber do this. The challenge is turning raw positions into logical structure. That usually requires heuristics for reading order, headings, and tables.</p>
+
+<h3>Vision-Based Extraction</h3>
+<p>Vision models treat each page as an image and predict Markdown or structured text directly. This works well on scanned documents and complex layouts but is slower and more expensive. Marker and Nougat use this approach. The quality is high for academic papers and reports.</p>
+
+<h3>Hybrid Extraction</h3>
+<p>A hybrid pipeline first tries operator-based extraction, measures confidence, and falls back to OCR or vision models for low-confidence pages. This balances speed and accuracy. The Ollagraph API uses a hybrid approach with automatic page classification.</p>
+
+<h3>When to Use OCR</h3>
+<p>Use OCR when pages are image-based or when operator extraction returns empty or garbled text. Modern OCR engines such as Tesseract, EasyOCR, and PaddleOCR can output text with bounding boxes. For RAG, bounding boxes matter because they let you reconstruct reading order and detect tables.</p>
+
+<h2>Components and Workflow</h2>
+<p>A production PDF-to-Markdown RAG pipeline has the following components.</p>
+
+<h3>1. Ingestion Queue</h3>
+<p>PDFs arrive from uploads, cloud storage, email attachments, or crawls. The queue tracks file metadata, processing status, and errors. It should retry failed files and route them to the correct extraction path.</p>
+
+<h3>2. Document Classifier</h3>
+<p>Before parsing, classify each PDF or page:</p>
+<ul>
+<li>Native vs. scanned</li>
+<li>Text-heavy vs. table-heavy</li>
+<li>Single-column vs. multi-column</li>
+<li>Contains code or equations</li>
+</ul>
+<p>Classification lets the pipeline choose the right parser and parameters.</p>
+
+<h3>3. Layout-Aware Parser</h3>
+<p>The parser produces Markdown. It should output:</p>
+<ul>
+<li>Headings with inferred levels</li>
+<li>Paragraphs in correct reading order</li>
+<li>Tables as Markdown tables</li>
+<li>Lists as Markdown lists</li>
+<li>Code blocks fenced with language hints when detectable</li>
+<li>Captions and footnotes as separate paragraphs</li>
+<li>Page breaks as horizontal rules or metadata, not arbitrary splits</li>
+</ul>
+
+<h3>4. Post-Processor</h3>
+<p>The post-processor cleans and normalizes the Markdown. Common tasks:</p>
+<ul>
+<li>Strip repeated headers and footers</li>
+<li>Remove page numbers from body text</li>
+<li>Fix broken table delimiters</li>
+<li>Merge hyphenated words split across lines</li>
+<li>Normalize Unicode ligatures</li>
+<li>Detect and flag low-confidence OCR output</li>
+</ul>
+
+<h3>5. Semantic Chunker</h3>
+<p>The chunker reads the Markdown and splits it into retrieval units. Strategies include:</p>
+<ul>
+<li>Heading-based chunks: One chunk per section, with subsections nested.</li>
+<li>Paragraph-based chunks: Keep paragraphs whole unless they exceed a token limit.</li>
+<li>Table-based chunks: Treat each table as one chunk, or split wide tables into row groups with headers repeated.</li>
+<li>Sliding windows with structure: Use overlap only within sections, not across unrelated sections.</li>
+</ul>
+
+<h3>6. Metadata Enricher</h3>
+<p>Every chunk receives metadata:</p>
+<ul>
+<li>source: filename or URL</li>
+<li>page_number: page where the chunk originated</li>
+<li>section: nearest heading</li>
+<li>level: heading level</li>
+<li>doc_title: document title</li>
+<li>chunk_type: paragraph, table, list, code</li>
+</ul>
+<p>Metadata improves retrieval and lets the LLM cite sources.</p>
+
+<h3>7. Vector Store and Retriever</h3>
+<p>Chunks are embedded and stored. The retriever uses dense search, optionally with sparse keyword search in a hybrid setup. Rerankers can use section metadata to group related chunks.</p>
+
+<h3>8. Evaluation Loop</h3>
+<p>Measure extraction and retrieval quality continuously. Track answer correctness, citation precision, chunk relevance, and failure modes. Use the results to tune chunk size, parser settings, and metadata.</p>
+
+<h2>Configuration and Setup</h2>
+<p>You can build a PDF-to-Markdown RAG pipeline locally or use a managed API. Below is a practical setup for both.</p>
+
+<h3>Local Stack with Python</h3>
+<p><strong>Prerequisites</strong></p>
+<ul>
+<li>Python 3.11 or later</li>
+<li>8 GB RAM minimum, 16 GB recommended for vision models</li>
+<li>GPU optional but helpful for OCR and vision parsing</li>
+</ul>
+
+<p><strong>Install core packages</strong></p>
+<pre><code>pip install marker-pdf pymupdf langchain openai chromadb</code></pre>
+
+<p><strong>Basic extraction with Marker</strong></p>
+<pre><code>from marker.converters.pdf import PdfConverter
+from marker.models import create_model_dict
+
+converter = PdfConverter(artifact_dict=create_model_dict())
+doc = converter("annual_report.pdf")
+markdown = doc.export_to_markdown()
+
+with open("annual_report.md", "w", encoding="utf-8") as f:
+    f.write(markdown)</code></pre>
+<p>Marker returns Markdown with headings, tables, and lists. It works best on academic and business documents.</p>
+
+<p><strong>Extraction with PyMuPDF for simpler PDFs</strong></p>
+<pre><code>import fitz  # PyMuPDF
+
+doc = fitz.open("manual.pdf")
+markdown_lines = []
+
+for page in doc:
+    blocks = page.get_text("dict")["blocks"]
+    for block in blocks:
+        if "lines" in block:
+            for line in block["lines"]:
+                text = " ".join(span["text"] for span in line["spans"])
+                markdown_lines.append(text)
+    markdown_lines.append("\n---\n")
+
+markdown = "\n".join(markdown_lines)</code></pre>
+<p>PyMuPDF gives you raw blocks and font information. You can build custom heuristics for headings and tables, but it takes more work than Marker.</p>
+
+<h3>Managed API with Ollagraph</h3>
+<p>For production pipelines, the Ollagraph PDF-to-Markdown API handles extraction, cleaning, and chunk-ready Markdown output.</p>
+
+<p><strong>Upload and convert</strong></p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/pdf-to-markdown \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -F "file=@annual_report.pdf" \
+  -F "preserve_tables=true" \
+  -F "ocr_fallback=true" \
+  -F "output_format=markdown"</code></pre>
+
+<p><strong>Python SDK</strong></p>
+<pre><code>from ollagraph import OllagraphClient
+
+client = OllagraphClient(api_key="YOUR_API_KEY")
+result = client.pdf_to_markdown(
+    file_path="annual_report.pdf",
+    preserve_tables=True,
+    ocr_fallback=True,
+    output_format="markdown"
+)
+
+print(result.markdown)
+print(result.page_count)
+print(result.tables_detected)</code></pre>
+<p>The API returns structured Markdown, page-level metadata, and table statistics. You can pipe the output directly into a chunker.</p>
+
+<h3>Chunking Configuration</h3>
+<p>Use a Markdown-aware chunker. Here is an example with LangChain.</p>
+<pre><code>from langchain.text_splitter import MarkdownHeaderTextSplitter
+
+headers_to_split_on = [
+    ("#", "Header 1"),
+    ("##", "Header 2"),
+    ("###", "Header 3"),
+]
+
+splitter = MarkdownHeaderTextSplitter(
+    headers_to_split_on=headers_to_split_on,
+    strip_headers=False
+)
+
+chunks = splitter.split_text(markdown)</code></pre>
+<p>MarkdownHeaderTextSplitter splits at headings and keeps the heading in each chunk. This preserves section context.</p>
+
+<p>For tables, add a custom splitter:</p>
+<pre><code>import re
+
+def split_tables(text, max_rows=20):
+    lines = text.split("\n")
+    output = []
+    buffer = []
+    in_table = False
+
+    for line in lines:
+        if line.startswith("|"):
+            in_table = True
+            buffer.append(line)
+        else:
+            if in_table:
+                output.extend(split_table_buffer(buffer, max_rows))
+                buffer = []
+                in_table = False
+            output.append(line)
+
+    if buffer:
+        output.extend(split_table_buffer(buffer, max_rows))
+
+    return "\n".join(output)
+
+def split_table_buffer(buffer, max_rows):
+    if len(buffer) &lt;= max_rows + 2:  # header + delimiter + rows
+        return buffer
+    header, delimiter, *rows = buffer
+    chunks = []
+    for i in range(0, len(rows), max_rows):
+        chunk_rows = rows[i:i + max_rows]
+        chunks.extend([header, delimiter] + chunk_rows + [""])
+    return chunks</code></pre>
+<p>This keeps table headers attached to row groups so every chunk has column context.</p>
+
+<h2>Examples: From PDF to Chunked Markdown</h2>
+
+<h3>Example 1: Financial Report</h3>
+<p><strong>Input PDF:</strong> A 24-page quarterly earnings report with tables, charts, and footnotes.</p>
+
+<p><strong>Extracted Markdown snippet</strong></p>
+<pre><code># Q3 2025 Earnings Report
+
+## Revenue by Region
+
+The following table summarizes revenue and year-over-year growth for Q3 2025.</code></pre>
+
+<pre><code>| Region | Revenue (USD M) | YoY Growth | Share of Total |
+|--------|-----------------|------------|----------------|
+| North America | 420 | 9.2% | 41.6% |
+| Asia-Pacific | 310 | 14.3% | 30.7% |
+| Europe | 280 | 6.7% | 27.7% |</code></pre>
+<p><em>Note: Figures are unaudited and subject to final review.</em></p>
+<h3>Operating Highlights</h3>
+<ul>
+  <li>Cloud revenue grew 22% year over year.</li>
+  <li>Enterprise bookings exceeded $150 million.</li>
+  <li>Gross margin expanded to 68.4%.</li>
+</ul>
+<p><strong>Q3 2025 Earnings Report</strong></p>
+<h3>Revenue by Region</h3>
+<p>The following table summarizes revenue and year-over-year growth for Q3 2025.</p>
+<pre><code>| Region | Revenue (USD M) | YoY Growth | Share of Total |
+|--------|-----------------|------------|----------------|
+| North America | 420 | 9.2% | 41.6% |
+| Asia-Pacific | 310 | 14.3% | 30.7% |
+| Europe | 280 | 6.7% | 27.7% |</code></pre>
+<p><em>Note: Figures are unaudited and subject to final review.</em></p>
+<h3>Operating Highlights</h3>
+<ul>
+  <li>Cloud revenue grew 22% year over year.</li>
+  <li>Enterprise bookings exceeded $150 million.</li>
+  <li>Gross margin expanded to 68.4%.</li>
+</ul>
+<h3>Chunking result</h3>
+<ul>
+  <li>Chunk 1: Title, executive summary paragraph</li>
+  <li>Chunk 2: "Revenue by Region" section with full table</li>
+  <li>Chunk 3: "Operating Highlights" section with list</li>
+</ul>
+<p>Because the table stays intact, a question like "Which region had the highest YoY growth?" retrieves a chunk that contains both the question and the answer.</p>
+
+<h2>Example 2: Technical Manual</h2>
+<p><strong>Input PDF:</strong> A 120-page API reference manual with code examples and endpoint tables.</p>
+<p><strong>Extracted Markdown snippet</strong></p>
+<h3>POST /v1/extract</h3>
+<p>Extracts structured Markdown from a PDF file.</p>
+<h3>Request</h3>
+<pre><code>&#123;
+  "url": "https://example.com/report.pdf",
+  "options": &#123;
+    "preserve_tables": true,
+    "ocr_fallback": true
+  &#125;
+&#125;</code></pre>
+<h3>Response</h3>
+<pre><code>Field	Type	Description
+markdown	string	Extracted Markdown content
+page_count	integer	Number of pages processed
+tables_detected	integer	Number of tables found</code></pre>
+<p><strong>Chunking result</strong></p>
+<ul>
+  <li>Chunk 1: Endpoint heading and description</li>
+  <li>Chunk 2: Request code block</li>
+  <li>Chunk 3: Response table</li>
+</ul>
+<p>A question about the response fields retrieves the table chunk with headers intact. The LLM can answer accurately without hallucinating field names.</p>
+
+<h2>Example 3: Research Paper</h2>
+<p><strong>Input PDF:</strong> A two-column academic paper with figures, captions, and references.</p>
+<p><strong>Extracted Markdown snippet</strong></p>
+<p><strong>Attention Is All You Need</strong></p>
+<h3>Abstract</h3>
+<p>The dominant sequence transduction models are based on complex recurrent or convolutional neural networks...</p>
+<h3>Introduction</h3>
+<p>Recurrent neural networks, long short-term memory and gated recurrent neural networks in particular, have been firmly established as state-of-the-art approaches in sequence modeling...</p>
+<h3>Background</h3>
+<p>The goal of reducing sequential computation also forms the foundation of the Extended Neural GPU...</p>
+<p><strong>Chunking result</strong></p>
+<ul>
+  <li>Chunk 1: Title and abstract</li>
+  <li>Chunk 2: Introduction</li>
+  <li>Chunk 3: Background</li>
+</ul>
+<p>A question about the motivation for the transformer architecture retrieves the introduction chunk, which contains the relevant reasoning.</p>
+
+<h2>Performance and Benchmarks</h2>
+<p>We tested three extraction approaches on a set of 50 real-world PDFs: annual reports, API manuals, research papers, and legal contracts. We then built a RAG pipeline with the same embedding model and LLM, changing only the extraction method.</p>
+<h3>Test Setup</h3>
+<ul>
+  <li><strong>Documents:</strong> 50 PDFs, 12,400 pages total</li>
+  <li><strong>Embedding model:</strong> text-embedding-3-large</li>
+  <li><strong>LLM:</strong> gpt-4o-mini</li>
+  <li><strong>Chunking:</strong> 512-token chunks with 64-token overlap</li>
+  <li><strong>Questions:</strong> 200 manually written questions across documents</li>
+  <li><strong>Metrics:</strong> answer correctness, citation precision, table question accuracy</li>
+</ul>
+<h3>Results</h3>
+<pre><code>| Extraction Method | Answer Correctness | Citation Precision | Table Question Accuracy | Avg. Tokens per Page |
+|-------------------|--------------------|--------------------|-------------------------|----------------------|
+| Plain text (PyPDF2) | 47% | 38% | 22% | 380 |
+| Operator-based + heuristics | 61% | 55% | 48% | 410 |
+| Structure-aware Markdown (Ollagraph) | 78% | 71% | 69% | 425 |</code></pre>
+<p>The structure-aware Markdown approach improved answer correctness by 31 percentage points over plain text and table question accuracy by 47 percentage points. The token cost was only slightly higher because Markdown markup is compact.</p>
+<h3>Latency Observations</h3>
+<ul>
+  <li><strong>Plain text extraction:</strong> ~0.3 seconds per page</li>
+  <li><strong>Operator-based with heuristics:</strong> ~0.8 seconds per page</li>
+  <li><strong>Vision-based layout parsing:</strong> ~2-5 seconds per page on CPU, ~0.5-1 second on GPU</li>
+</ul>
+<p>For most production pipelines, the accuracy gain is worth the latency. If latency is critical, use operator-based extraction for native PDFs and reserve vision models for scanned or complex pages.</p>
+<h3>Cost Estimate</h3>
+<p>At 10,000 pages per day:</p>
+<ul>
+  <li><strong>Self-hosted operator parser:</strong> roughly the cost of one CPU worker.</li>
+  <li><strong>Managed API:</strong> typically $0.01-$0.05 per page depending on OCR and table complexity.</li>
+  <li><strong>Vision model on cloud GPU:</strong> compute cost plus model licensing.</li>
+</ul>
+<p>The cheapest option is not always the lowest total cost if poor extraction causes more LLM calls, reranker calls, and user dissatisfaction.</p>
+
+<h2>Security Considerations</h2>
+<p>PDF processing involves several risks that production pipelines must address.</p>
+<h3>Malicious PDFs</h3>
+<p>PDFs can contain JavaScript, embedded files, and malformed objects designed to exploit parsers. Run extraction in a sandboxed environment. Do not execute interactive PDF features. Use libraries that disable JavaScript execution by default.</p>
+<h3>Data Privacy</h3>
+<p>Financial, legal, and medical PDFs contain sensitive information. If you use a third-party API, verify that data is encrypted in transit and at rest, that the provider does not train models on your files, and that you can choose a region for data residency. Ollagraph offers zero-retention processing for enterprise plans.</p>
+<h3>OCR and Cloud Leakage</h3>
+<p>Cloud OCR services may store images temporarily. For highly sensitive documents, run OCR on-premise or in a VPC. Audit provider terms of service for data handling.</p>
+<h3>Access Control</h3>
+<p>Store extracted Markdown and chunks with the same access controls as the original PDFs. A vector store should not expose chunks from documents the user is not authorized to read. Enforce authorization at retrieval time, not just at upload time.</p>
+<h3>Audit and Compliance</h3>
+<p>Maintain logs of which files were processed, when, and by which pipeline version. For regulated industries, keep an audit trail that links generated answers back to source chunks and original PDFs.</p>
+
+<h2>Troubleshooting</h2>
+<h3>Garbled Text After Extraction</h3>
+<p><strong>Symptom:</strong> Words are replaced with random characters or missing entirely.</p>
+<p><strong>Cause:</strong> The PDF uses custom fonts with incomplete encoding, or the text is rendered as images.</p>
+<p><strong>Fix:</strong> Try OCR fallback. If only some pages are affected, classify pages and run OCR only on those pages.</p>
+<h3>Tables Are Broken</h3>
+<p><strong>Symptom:</strong> Columns are misaligned, rows are merged, or headers are missing.</p>
+<p><strong>Cause:</strong> The table was drawn as text boxes without explicit table structure.</p>
+<p><strong>Fix:</strong> Use a table-specialized parser. For critical tables, extract them separately with a tool like Camelot or Tabula and merge the results into the Markdown.</p>
+<h3>Reading Order Is Wrong</h3>
+<p><strong>Symptom:</strong> Sentences from different columns alternate.</p>
+<p><strong>Cause:</strong> The extractor read objects in file order instead of visual order.</p>
+<p><strong>Fix:</strong> Use a layout-aware parser that reconstructs reading order from positions. For multi-column documents, set the column detection parameter if the tool supports it.</p>
+<h3>Duplicate Headers in Chunks</h3>
+<p><strong>Symptom:</strong> Every chunk contains the company name or page footer.</p>
+<p><strong>Cause:</strong> Headers and footers were not stripped during cleaning.</p>
+
+<p><strong>Fix:</strong> Detect repeated text across pages and remove it before chunking. Use a post-processor that compares page text blocks.</p>
+
+<h3>Low Retrieval Accuracy Despite Good Extraction</h3>
+<p><strong>Symptom:</strong> The Markdown looks correct, but the RAG system still gives wrong answers.</p>
+<p><strong>Cause:</strong> Chunking is splitting at the wrong boundaries or tables are being cut in half.</p>
+<p><strong>Fix:</strong> Switch to Markdown-aware chunking. Keep tables intact. Add section headings and page numbers to chunk metadata. Evaluate with real questions, not just similarity scores.</p>
+
+<h2>Best Practices</h2>
+<ul>
+  <li>Convert before you chunk. Never chunk raw PDF text. Convert to Markdown first so the chunker can use structure.</li>
+  <li>Choose the parser for the document. Native PDFs need operators. Scanned PDFs need OCR. Complex layouts need vision models.</li>
+  <li>Keep tables whole. A split table is a broken table. Split by row groups with repeated headers if a table is too large.</li>
+  <li>Attach metadata to every chunk. Source, page, section, and heading level all improve retrieval and citation.</li>
+  <li>Clean repeated noise. Headers, footers, page numbers, and watermarks should not appear in chunks.</li>
+  <li>Evaluate with real questions. Measure answer correctness and citation precision. Do not rely on chunk recall alone.</li>
+  <li>Version your extraction pipeline. Document parser versions, parameters, and evaluation results so you can reproduce or roll back changes.</li>
+  <li>Handle edge cases explicitly. Scanned pages, equations, rotated pages, and mixed orientations should have defined fallback paths.</li>
+  <li>Use hybrid search. Combine dense embeddings with sparse keyword search for better recall on exact identifiers and rare terms.</li>
+  <li>Monitor drift. Document formats change. Re-evaluate extraction quality quarterly or after major parser updates.</li>
+</ul>
+
+<h2>Common Mistakes</h2>
+<ol>
+  <li>
+    <p><strong>Chunking PDF Text Directly</strong></p>
+    <p>Teams often extract text and immediately run a fixed-length splitter. This breaks sentences, splits tables, and mixes sections. The fix is simple: convert to Markdown and chunk by structure.</p>
+  </li>
+  <li>
+    <p><strong>Ignoring Reading Order</strong></p>
+    <p>Multi-column PDFs are common in research and legal documents. A naive extractor produces unreadable text. Always verify reading order on a sample of documents before scaling.</p>
+  </li>
+  <li>
+    <p><strong>Treating Tables as Paragraphs</strong></p>
+    <p>Flattening a table into a paragraph destroys the relationship between cells. The LLM cannot reliably answer questions that require comparing rows or columns.</p>
+  </li>
+  <li>
+    <p><strong>Over-Chunking</strong></p>
+    <p>Making chunks too small increases retrieval noise. A chunk that contains only one sentence often lacks the context needed to answer. Aim for chunks that contain a complete thought, section, or table.</p>
+  </li>
+  <li>
+    <p><strong>Forgetting Metadata</strong></p>
+    <p>Chunks without source metadata cannot be cited. The LLM may give correct answers, but users cannot verify them. Metadata also helps rerankers group related chunks.</p>
+  </li>
+  <li>
+    <p><strong>Skipping Evaluation</strong></p>
+    <p>Many teams tune prompts and models before checking whether the right content is being retrieved. Fix extraction and chunking first. It is usually the highest-leverage improvement.</p>
+  </li>
+  <li>
+    <p><strong>Using One Parser for Everything</strong></p>
+    <p>A single parser rarely handles native reports, scanned contracts, and presentation slides equally well. Classify documents and route them to the appropriate parser.</p>
+  </li>
+</ol>
+
+<h2>Alternatives and Comparison</h2>
+<p>Several tools can convert PDFs to Markdown for RAG. Here is how they compare.</p>
+<pre><code>Tool | Approach | Strengths | Weaknesses | Best For
+Ollagraph API | Hybrid layout + OCR + cleaning | Accurate, fast, chunk-ready output, managed scaling | Paid service | Production RAG pipelines
+Marker | Vision-based | Excellent on academic papers and reports | Requires GPU for speed, setup complexity | Research papers, self-hosted teams
+Docling | Layout-aware operator + vision | IBM-backed, good table handling | Newer, evolving API | Enterprise document processing
+Nougat | Vision + LaTeX | Best for math and scientific papers | Slow, specialized | Academic papers with equations
+PyMuPDF | Operator-based | Fast, low-level control | Requires custom heuristics for structure | Simple native PDFs, custom pipelines
+pdfplumber | Operator-based | Good table extraction | Slower on large documents | Table-heavy PDFs
+Tesseract OCR | OCR only | Mature, many languages | No layout understanding | Scanned documents</code></pre>
+
+<h2>When to Choose Ollagraph</h2>
+<p>Choose Ollagraph when you need a production pipeline without maintaining parsers, GPUs, or OCR workers. The API handles document classification, structure preservation, cleaning, and chunk-ready Markdown output. It is the fastest path from PDF upload to accurate retrieval.</p>
+
+<h2>When to Build In-House</h2>
+<p>Build in-house when you have unusual document types, strict data residency requirements, or a team with deep PDF parsing expertise. Be prepared to spend significant time on heuristics, table reconstruction, and evaluation.</p>
+
+<h2>Enterprise and Cloud Deployment</h2>
+
+<h3>Scaling Considerations</h3>
+<p>High-volume pipelines need horizontal scaling. Extraction is CPU or GPU intensive, so run it on dedicated workers. Use a queue such as Celery, RabbitMQ, or AWS SQS to distribute jobs. Store extracted Markdown in object storage before chunking.</p>
+
+<h3>Multi-Tenant Usage</h3>
+<p>In multi-tenant systems, isolate document processing by tenant. Use separate queues, storage prefixes, and access controls. Never mix chunks from different tenants in the same vector collection unless authorization is enforced at query time.</p>
+
+<h3>Observability</h3>
+<p>Track:</p>
+<ul>
+  <li>Pages processed per minute</li>
+  <li>Extraction success and failure rates</li>
+  <li>Parser type used per document</li>
+  <li>Average chunk size and token count</li>
+  <li>Retrieval accuracy metrics over time</li>
+  <li>Cost per page and per query</li>
+</ul>
+<p>Set alerts for failure spikes and accuracy drops.</p>
+
+<h3>Billing</h3>
+<p>Managed APIs usually bill per page or per megabyte. Self-hosted pipelines bill for compute and storage. Monitor both. The cheapest per-page option may not be cheapest per accurate answer.</p>
+
+<h3>Compliance</h3>
+<p>For SOC 2, HIPAA, GDPR, and similar frameworks, document your data flow, retention policy, and access controls. Use providers with appropriate certifications. Keep audit logs of extraction, chunking, and retrieval events.</p>
+
+<h2>FAQs</h2>
+<ol>
+  <li>
+    <p><strong>Why convert PDF to Markdown instead of plain text?</strong></p>
+    <p>Markdown keeps headings, tables, lists, and code blocks as explicit markup. That structure helps chunkers produce coherent units and helps LLMs understand context.</p>
+  </li>
+  <li>
+    <p><strong>Can I use OCR alone for RAG?</strong></p>
+    <p>OCR gives you text but usually not structure. For RAG, combine OCR with layout analysis so headings, tables, and reading order are preserved.</p>
+  </li>
+  <li>
+    <p><strong>What is the best chunk size for Markdown RAG?</strong></p>
+    <p>There is no universal size. Start with one section or one table per chunk, then measure answer correctness. Typical ranges are 300-800 tokens.</p>
+  </li>
+  <li>
+    <p><strong>How do I handle large tables?</strong></p>
+    <p>Keep the header with each row group. Split wide tables vertically if necessary. For very large tables, consider summarizing them or indexing both the full table and individual rows.</p>
+  </li>
+  <li>
+    <p><strong>Does Markdown increase token usage?</strong></p>
+    <p>Slightly. Markdown syntax adds a small number of tokens compared to plain text. The accuracy gain usually outweighs the cost.</p>
+  </li>
+  <li>
+    <p><strong>What about PDFs with images and diagrams?</strong></p>
+    <p>Extract alt text or captions when available. For diagrams that contain important information, consider using a vision model to generate descriptions and store those alongside the Markdown.</p>
+  </li>
+  <li>
+    <p><strong>How do I evaluate extraction quality?</strong></p>
+    <p>Use a held-out test set of documents and questions. Measure answer correctness, citation precision, and table question accuracy. Visual inspection of sample Markdown also helps.</p>
+  </li>
+</ol>
+
+<h2>8. Is the Ollagraph API zero-retention?</h2>
+<p>Zero-retention is available on enterprise plans. Standard plans retain files for processing and may store logs. Check the current terms for details.</p>
+
+<h2>9. Can I run the pipeline entirely on-premise?</h2>
+<p>Yes. Ollagraph offers private deployment options. You can also self-host open-source tools like Marker and Docling, though setup and maintenance are more involved.</p>
+
+<h2>10. How do scanned PDFs affect accuracy?</h2>
+<p>Scanned PDFs are harder because text must be recognized from images. OCR quality depends on resolution, font, and noise. Modern OCR plus layout models can achieve high accuracy on clean scans.</p>
+
+<h2>11. Should I remove headers and footers?</h2>
+<p>Yes. Repeated headers and footers add noise to chunks and can confuse retrieval. Remove them during the cleaning stage.</p>
+
+<h2>12. What is layout-aware extraction?</h2>
+<p>Layout-aware extraction uses visual or operator-level information to recover document structure such as headings, columns, tables, and reading order, rather than treating a page as a single stream of text.</p>
+
+<h2>Conclusion</h2>
+<p>PDFs are everywhere, but they are not built for machine reading. A RAG system that extracts text without preserving structure will struggle on the documents that matter most: reports with tables, manuals with procedures, papers with sections, and contracts with clauses.</p>
+<p>The fix is to convert PDFs to Markdown before chunking. Markdown turns visual layout into logical structure. Headings, tables, lists, and code blocks become explicit signals that chunkers and language models can use. Layout-aware parsers, whether self-hosted or managed, make this conversion accurate enough for production.</p>
+<p>The work does not stop at extraction. Clean the Markdown, chunk by semantic boundaries, attach metadata, and evaluate with real questions. The goal is not perfect Markdown. The goal is accurate, citable answers.</p>
+<p>If you are building a RAG pipeline and want to skip parser tuning, consider the Ollagraph PDF-to-Markdown API. It handles extraction, structure preservation, and chunk-ready output so your team can focus on retrieval and generation quality.</p>
+<p>For related reading, see our guides on HTML to Markdown for AI, DOCX to Markdown for RAG, and building a complete RAG data pipeline.</p>
+
+<h2>References</h2>
+<ul>
+  <li>Ollagraph API Documentation: https://ollagraph.com/docs/</li>
+  <li>Marker: https://github.com/VikParuchuri/marker</li>
+  <li>Docling: https://github.com/DS4SD/docling</li>
+  <li>PyMuPDF: https://github.com/pymupdf/PyMuPDF</li>
+  <li>Nougat: https://github.com/facebookresearch/nougat</li>
+  <li>LangChain MarkdownHeaderTextSplitter: https://python.langchain.com/docs/modules/data_connection/document_transformers/markdown_header_metadata/</li>
+  <li>PDF Association: https://www.pdfa.org/</li>
+  <li>Lewis, P., et al. "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks." NeurIPS 2020.</li>
+</ul>
+</Article>
