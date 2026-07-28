@@ -1,0 +1,642 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why does scraping at scale need a queue-first design?", a: "At scale, pending URLs are not just work items; they are durable state. A queue-first design lets you track what is pending, in flight, failed, and retried without losing progress on crashes. It also makes idempotency and recovery much easier." },
+  { q: "What is the right way to rotate proxies at scale?", a: "Rotate proxies based on the target and the session, not blindly per request. Keep browser signals, cookies, and network behavior consistent so a session looks coherent. Random IP churn without consistency is easier to detect than a stable pattern." },
+  { q: "What is an anti-bot escalation ladder?", a: "It is a tiered approach that starts with the cheapest, most polite request pattern and only adds heavier measures when evidence shows they are needed. For example, you might begin with stable sessions and bounded rates, then move to rendering or other costly steps only for difficult targets. This keeps cost and detection risk under control." },
+  { q: "How do you stop one slow site from stalling the whole pipeline?", a: "Use per-domain concurrency limits and separate worker pools so a slow target cannot consume every worker. Add bounded retries and circuit-breaker logic so bad domains back off instead of blocking progress. This keeps the rest of the frontier moving." },
+  { q: "Which metrics matter most for large scraping jobs?", a: "Track success rate, render rate, cost per success, queue depth, and latency by domain. You should also measure challenge-page rate and retry counts because many failures look successful at first glance. These signals tell you when to change strategy before costs spike." },
+  { q: "How should scraped data be prepared for AI or RAG use?", a: "Normalize output at ingestion so downstream retrieval is deterministic. Clean the text, preserve structured fields, and chunk content in a way that supports citations and stable references. That makes the pipeline easier to trust and much easier to debug." },
+];
+---
+<Article
+  title="Web Scraping at Scale: Reliable Architecture for Tough Targets"
+  description="Build scraping systems that survive failures, changing defenses, and rising costs. Learn the queue-first architecture, proxy strategy, and escalation ladder."
+  date="2026-07-28"
+  readingTime={23}
+  tags={["scraping", "proxies", "anti-bot", "queues", "observability"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive summary</h2>
+<p>Scraping a hundred pages is a script. Scraping a hundred million pages is an infrastructure discipline. The gap isn’t just “more servers” or “more proxies.” It’s a different way of designing for failure, controlling cost, and staying observable when upstream sites change their defenses mid-week.</p>
+<p>This guide explains the architecture patterns that make large-scale scraping reliable: durable queues (the frontier), specialized worker pools, proxy management that preserves session consistency, and an anti-bot “escalation ladder” that climbs only when evidence says you must. You’ll also get practical troubleshooting guidance for the failure modes that show up only at scale—like head-of-line blocking, burned proxy pools, and “challenge pages that look like success.”</p>
+<p>If you’re building for AI/RAG ingestion, the last mile matters too: you need deterministic output (clean Markdown, structured fields, and chunking that supports citations). The goal is simple: turn a messy set of URLs into a reliable, economically sane pipeline.</p>
+
+<h2>Key takeaways</h2>
+<ul>
+  <li>Scale is a queue design problem first, not a proxy problem.</li>
+  <li>Proxy rotation is a strategy: choose the right proxy class and rotation model per target.</li>
+  <li>Anti-bot defenses should be handled as an escalation ladder, not a one-size-fits-all bypass.</li>
+  <li>Consistency beats randomness: stable browser profiles and session continuity reduce detection.</li>
+  <li>Observability is non-negotiable: success rate, render rate, cost per success, and per-domain health.</li>
+  <li>Idempotency and bounded retries turn flaky upstreams into dependable pipelines.</li>
+  <li>Respect rate limits and crawl policies; polite scraping lasts longer.</li>
+  <li>For AI/RAG, structure output at ingestion so downstream retrieval stays clean and citable.</li>
+</ul>
+
+<h2>The problem: why scale breaks everything</h2>
+<p>A small scraper is deceptively simple: fetch a URL, parse HTML, store results. If the site blocks you, you wait, tweak headers, and try again. At small volume, the web is forgiving.</p>
+<p>At scale, the web stops being forgiving and starts being dynamic.</p>
+<p>Here are the failure patterns that show up once you cross the “prototype” threshold:</p>
+<ol>
+  <li>
+    <p>The queue becomes the database.</p>
+    <p>When a single process loops over URLs, a crash loses in-memory state. At scale, “pending work” is a durable dataset. You need to know what’s queued, what’s in-flight, what failed, and why—then resume without reprocessing everything.</p>
+  </li>
+  <li>
+    <p>One slow target stalls the whole pipeline.</p>
+    <p>Without per-domain concurrency limits, a single domain that takes 10 seconds per page can occupy every worker. Meanwhile, the rest of your targets sit idle. This is head-of-line blocking, and it gets worse as your target mix becomes more diverse.</p>
+  </li>
+  <li>
+    <p>Proxy rotation becomes detectable rotation.</p>
+    <p>A naive rotator that changes IPs per request while keeping inconsistent browser signals (cookies, TLS behavior, canvas/WebGL outputs, timing patterns) is easy to flag. The target doesn’t see “a rotating proxy.” It sees “automation wearing a different hat every request.”</p>
+  </li>
+  <li>
+    <p>Failures compound silently.</p>
+    <p>A 5% failure rate sounds manageable until you multiply it. On a thousand pages, it’s 50 bad results. On a million pages, it’s 50,000. Worse, many failures don’t throw exceptions—they return challenge pages, empty shells, or stale cached content that looks “successful” until someone audits.</p>
+  </li>
+  <li>
+    <p>Cost becomes unpredictable.</p>
+    <p>Rendering, residential proxies, and CAPTCHA solving can multiply per-page cost by 10× or 50×. If your architecture escalates to expensive paths too easily, your monthly bill becomes a surprise rather than a forecast.</p>
+  </li>
+  <li>
+    <p>The target fights back dynamically.</p>
+    <p>Anti-bot systems A/B test rules, rotate challenge providers, and fingerprint new automation tools. A configuration that worked last month can degrade this week. Without telemetry, you won’t even know what changed.</p>
+  </li>
+</ol>
+<p>The common thread: scale turns small imperfections into systemic failures. The fix isn’t “more hardware.” It’s a different architecture.</p>
+
+<h2>A short history of scraping at scale</h2>
+<p>Understanding the evolution helps explain why modern best practices look the way they do.</p>
+<p>The single-server era (1990s–2000s).</p>
+<p>A machine ran wget or a cron script. Blocking was rare; when it happened, you waited.</p>
+<p>The framework era (2008–2015).</p>
+<p>Scraping frameworks introduced spiders, pipelines, and concurrency. Proxy middleware appeared, but many teams still ran one or a few servers and managed proxies manually.</p>
+<p>The cloud era (2015–2020).</p>
+<p>Compute and storage got cheaper, so teams fanned out across many workers. But JavaScript-heavy sites made headless browsers mandatory, and browser farms became part of the cost.</p>
+<p>The anti-bot arms race (2018–present).</p>
+<p>Providers like Cloudflare and others productized bot detection. They fingerprint TLS behavior, canvas/WebGL outputs, request timing, and header consistency. Scraping at scale now requires session coherence, not just plausible user-agents.</p>
+<p>The API era (2019–present).</p>
+<p>Managed providers wrapped proxies, browsers, anti-bot handling, retries, and content cleaning behind HTTP endpoints. Teams stopped operating infrastructure and started buying outcomes: successful fetches per dollar.</p>
+<p>The AI era (2023–present).</p>
+<p>The consumer changed. Scraped data isn’t just indexed—it’s retrieved and cited by LLMs. Output structure (clean Markdown, chunking with citation support, provenance) matters as much as fetch success.</p>
+
+<h2>What “web scraping at scale” actually means</h2>
+<p><strong>Definition.</strong> Web scraping at scale is the practice of fetching, rendering, extracting, and storing content from a large or rapidly changing set of public web pages using a distributed, observable, and cost-controlled pipeline that can recover from partial failures without reprocessing the entire workload.</p>
+<p>Scale isn’t “more URLs.” It’s a set of properties:</p>
+<ul>
+  <li>Volume: thousands to millions of pages per day, across many domains.</li>
+  <li>Diversity: static pages, SPAs, login-gated content, and defended targets.</li>
+  <li>Reliability: partial failures are expected and must be handled automatically.</li>
+  <li>Cost control: per-page spend must be predictable and justifiable.</li>
+  <li>Freshness: re-scrape schedules match how fast sources change.</li>
+  <li>Observability: you can answer “what happened to URL X at time Y?” without grepping logs for an hour.</li>
+</ul>
+<p>If a pipeline lacks any of these, it’s not scraping at scale—it’s a large scraper.</p>
+
+<h2>Architecture: the production scraping stack</h2>
+<p>A production scraping stack has seven layers. Each layer has one job, and each layer can scale or be replaced independently.</p>
+
+<pre><code>┌─────────────────────────────────────────────┐
+│  Scheduler / Trigger                          │  cron, event-driven, or on-demand
+├─────────────────────────────────────────────┤
+│  Frontier (URL queue + state)                 │  Redis, RabbitMQ, SQS, Postgres
+├─────────────────────────────────────────────┤
+│  Worker pool                                  │  fetch + render + extract
+├─────────────────────────────────────────────┤
+│  Proxy manager                                │  datacenter / residential / ISP / mobile
+├─────────────────────────────────────────────┤
+│  Anti-bot layer                               │  stealth, fingerprints, CAPTCHA solver
+├─────────────────────────────────────────────┤
+│  Content pipeline                             │  clean, convert, chunk, validate
+├─────────────────────────────────────────────┤
+│  Storage + observability                      │  S3, database, metrics, logs
+└─────────────────────────────────────────────┘</code></pre>
+
+<p>Scheduler. Decides when to run. It should only enqueue work, not know how pages are fetched.</p>
+<p>Frontier. The brain of the operation. It holds the queue, deduplicates, tracks state, and enforces politeness delays per domain.</p>
+<p>Worker pool. Executes fetch/render/extract. Workers should be specialized so expensive browser work doesn’t starve cheap HTTP work.</p>
+<p>Proxy manager. Assigns exit IPs per request or per session. It’s not just rotation—it’s matching proxy class and tracking health/burn.</p>
+<p>Anti-bot layer. Maintains consistent browser profiles and decides when to escalate to rendering or CAPTCHA solving.</p>
+<p>Content pipeline. Converts raw HTML into deterministic output: clean Markdown, structured fields, and chunking for RAG.</p>
+<p>Storage + observability. Persists results and exposes metrics so you can debug and forecast.</p>
+
+<h2>The data flow: one URL from enqueue to result</h2>
+<p>Follow one URL through the system to see how the pieces fit.</p>
+<p>Imagine a price-monitoring pipeline. A scheduler enqueues product URLs every six hours. One URL is:</p>
+<p>https://retailer.example.com/product/12345</p>
+
+<ol>
+  <li><strong>Step 1 — Enqueue.</strong> The scheduler writes the URL with metadata: priority, domain, last fetched time, expected freshness.</li>
+  <li><strong>Step 2 — Deduplication.</strong> The frontier checks whether the URL is already pending or in-flight. Duplicates are dropped.</li>
+  <li><strong>Step 3 — Politeness delay.</strong> The frontier enforces per-domain crawl delays so you don’t hammer a target.</li>
+  <li><strong>Step 4 — Worker pickup.</strong> A worker pulls the job and applies domain-specific configuration: concurrency limits, proxy class, render policy.</li>
+  <li><strong>Step 5 — Fetch attempt.</strong> The worker tries a direct HTTP fetch with a realistic browser profile. If content is substantive, extraction proceeds.</li>
+  <li><strong>Step 6 — Escalation.</strong> If the response is a 403, challenge page, or empty JS shell, the worker escalates: render backend, switch proxy class, and only then consider CAPTCHA solving.</li>
+  <li><strong>Step 7 — Content processing.</strong> Raw HTML is cleaned: navigation/ads/cookie banners removed. Extracted fields are normalized.</li>
+  <li><strong>Step 8 — Validation.</strong> Validation checks prevent “fake success.” If extracted fields fail schema checks, the job is retried or sent to a dead-letter queue.</li>
+  <li><strong>Step 9 — Storage.</strong> Results are written to storage and a content hash is recorded so unchanged pages can be skipped later.</li>
+  <li><strong>Step 10 — Observability.</strong> Metrics are emitted: success, latency, proxy class, render rate, and cost/credits consumed.</li>
+</ol>
+
+<p>The architecture’s job is to make variance tolerable for the rest of your system.</p>
+
+<h2>Core components and their responsibilities</h2>
+
+<h3>The frontier</h3>
+<p>A production frontier should:</p>
+<ul>
+  <li>Store state durably (not in memory).</li>
+  <li>Track per-domain last-fetch time and enforce crawl delays.</li>
+  <li>Support priority queues.</li>
+  <li>Re-queue with backoff counters for retries.</li>
+  <li>Expose metrics: queue depth, in-flight count, per-domain lag.</li>
+</ul>
+<p>Redis sorted sets and Postgres row-level locking are common patterns. The key is durability and recovery.</p>
+
+<h3>Workers</h3>
+<p>Workers should be stateless and idempotent. They receive a job, do the work, emit results, and die. If a worker crashes mid-job, the frontier returns the job to pending after a timeout.</p>
+<p>Specialization matters:</p>
+<ul>
+  <li>Static-fetch workers handle high concurrency.</li>
+  <li>Browser workers handle fewer jobs but with heavier cost.</li>
+</ul>
+<p>Mixing them in one pool often causes underutilization or overload.</p>
+
+<h3>Proxy manager</h3>
+<p>The proxy manager answers:</p>
+<ul>
+  <li>Which proxy class should this request use?</li>
+  <li>Should the IP rotate or stay sticky?</li>
+  <li>Is this IP burned on this target?</li>
+</ul>
+<p>A practical model:</p>
+<ul>
+  <li>Assign sticky sessions per domain for a crawl window.</li>
+  <li>Rotate only on failure.</li>
+  <li>Track burn state in a cache.</li>
+</ul>
+
+<h3>Anti-bot layer</h3>
+<p>The anti-bot layer maintains profiles. A profile includes:</p>
+<ul>
+  <li>User-Agent and client hints.</li>
+  <li>TLS fingerprint behavior.</li>
+  <li>Screen/device characteristics.</li>
+  <li>Canvas/WebGL outputs.</li>
+  <li>Cookies/local storage state.</li>
+  <li>Interaction patterns (timing, scroll/click behavior).</li>
+</ul>
+<p>The goal isn’t “look random.” It’s “look coherent.”</p>
+
+<h3>Content pipeline</h3>
+<p>After fetch, the content pipeline decides what downstream consumers receive. At scale, output should be deterministic:</p>
+<ul>
+  <li>Clean Markdown with preserved structure.</li>
+  <li>Token-aware chunks with citation support.</li>
+  <li>Metadata: URL, fetched time, title, source hash.</li>
+</ul>
+
+<h2>Proxy rotation: types, strategies, and when to use each</h2>
+
+<h3>Proxy classes</h3>
+<p>Datacenter proxies: fast/cheap, easier to detect. Good for friendly targets and internal monitoring.</p>
+<p>Residential proxies: harder to detect, slower and more expensive. Use when datacenter IPs are blocked.</p>
+<p>ISP proxies: middle ground with better stability than residential in some cases.</p>
+<p>Mobile proxies: most trusted but expensive. Use for the hardest targets.</p>
+
+<h3>Rotation strategies</h3>
+<ul>
+  <li>Per-request rotation: changes IP every request. Useful for IP-based rate limiting, but breaks session continuity.</li>
+  <li>Sticky sessions: keep the same IP for a domain or user session. Better for stateful targets.</li>
+  <li>Geo-targeting: route through specific countries/cities when content is geo-gated.</li>
+  <li>Failure-driven rotation: keep IP until it fails, then swap. Often the most cost-efficient.</li>
+</ul>
+
+<h3>A practical proxy decision tree</h3>
+<pre><code>Is the target blocking you?
+├─ No → datacenter proxy, default
+├─ Yes, by IP reputation → switch to residential
+├─ Yes, by aggressive fingerprinting → residential + consistent browser profile
+├─ Yes, and it requires login/session → sticky residential or ISP proxy
+└─ Yes, and nothing else works → mobile proxy, last resort</code></pre>
+
+<p>The most expensive mistake is using residential/mobile proxies for every request. Start cheap, escalate on evidence, and log proxy class distribution.</p>
+
+<h2>Anti-bot strategies: the escalation ladder</h2>
+<p>Anti-bot systems look for automation signals. Your job is to remove those signals or present a profile consistent enough to be classified as human.</p>
+
+<h3>The ladder</h3>
+<ol>
+  <li><strong>Rung 1 — Polite defaults.</strong> Realistic headers, reasonable timing, HTTP/2, and correct content negotiation.</li>
+  <li><strong>Rung 2 — Stealth headers and client hints.</strong> Keep Accept-Language, sec-ch-ua, and platform hints consistent with the user-agent.</li>
+  <li><strong>Rung 3 — Fingerprint consistency.</strong> Automation leaks through TLS and browser behavior. A patched headless browser that matches real browser behavior is harder to flag than a default headless setup.</li>
+  <li><strong>Rung 4 — Browser profile consistency.</strong> Don’t mix a mobile user-agent with a desktop screen profile. Coherence matters.</li>
+  <li><strong>Rung 5 — Behavioral mimicry.</strong> Human-like scroll/click timing beats perfectly regular interactions.</li>
+  <li><strong>Rung 6 — Proxy escalation.</strong> If the target blocks by IP reputation, move to residential/ISP.</li>
+  <li><strong>Rung 7 — Rendering.</strong> If content is JavaScript-dependent, use a real headless browser and wait for the DOM to settle.</li>
+  <li><strong>Rung 8 — CAPTCHA solving.</strong> Use only when content is genuinely gated. This is expensive and slow.</li>
+</ol>
+
+<h3>The golden rule</h3>
+<p>Climb one rung at a time.</p>
+<p>Don’t start at the top. Each rung costs more latency and money. Measure, then escalate.</p>
+
+<h2>Consistency beats randomness</h2>
+<p>Rotating everything doesn’t make you stealthy. Real users are consistent. They use one browser identity per session. The most detectable scraper is the one that changes user-agent, IP, and fingerprint on every request while clicking at perfectly regular intervals.</p>
+<p>Build profiles. Assign a profile to a session or domain. Rotate only what the target is actually checking.</p>
+
+<h2>Configuration: building a resilient scraping job</h2>
+<p>A resilient scraping job has five configuration areas: fetch, proxy, anti-bot, retry, and output.</p>
+
+<h3>Fetch configuration</h3>
+<ul>
+  <li><strong>timeout:</strong> fail fast.</li>
+  <li><strong>wait_until:</strong> domcontentloaded for fast pages, networkidle for SPAs.</li>
+  <li><strong>actions:</strong> scripted clicks/scrolls when content requires interaction.</li>
+  <li><strong>headers:</strong> override only when necessary.</li>
+</ul>
+
+<h3>Proxy configuration</h3>
+<ul>
+  <li><strong>proxy_class:</strong> datacenter/residential/ISP/mobile.</li>
+  <li><strong>rotation:</strong> per_request, sticky_per_domain, sticky_per_session.</li>
+  <li><strong>geo:</strong> country/city routing if needed.</li>
+  <li><strong>max_burn_retries:</strong> how many times to retry a burned IP before marking it unhealthy.</li>
+</ul>
+
+<h3>Anti-bot configuration</h3>
+<ul>
+  <li><strong>stealth:</strong> enable anti-fingerprinting patches.</li>
+  <li><strong>profile_id:</strong> stable browser profile for session consistency.</li>
+  <li><strong>solve_captcha:</strong> only when needed.</li>
+  <li><strong>humanize:</strong> small delays between actions.</li>
+</ul>
+
+<h3>Retry configuration</h3>
+<ul>
+  <li><strong>max_attempts:</strong> 3 is a common default.</li>
+  <li><strong>backoff:</strong> exponential with jitter.</li>
+  <li><strong>retry_on:</strong> 429/503/timeouts/empty content.</li>
+  <li><strong>dead_letter_after:</strong> send to manual review after max attempts.</li>
+</ul>
+
+<h3>Output configuration</h3>
+<ul>
+  <li><strong>format:</strong> markdown/html/text/json.</li>
+  <li><strong>schema:</strong> JSON schema for structured extraction.</li>
+  <li><strong>chunking:</strong> max tokens and overlap for RAG.</li>
+  <li><strong>include_metadata:</strong> URL, fetched_at, source_hash, proxy_class, render_method.</li>
+</ul>
+
+<h2>Worked examples: batch, async, crawl, and smart rendering</h2>
+
+<h3>Example 1: Batch scrape with domain-aware concurrency</h3>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/batch \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "urls": [
+      "https://site-a.com/products/1",
+      "https://site-a.com/products/2",
+      "https://site-b.com/products/1",
+      "https://site-b.com/products/2"
+    ],
+    "concurrency": 4,
+    "format": "markdown",
+    "stealth": true,
+    "proxy": "residential"
+  &#125;'</code></pre>
+<p>Batch endpoints are ideal when you have a known list of URLs and want controlled parallelism.</p>
+
+<h3>Example 2: Async scrape with webhook for long jobs</h3>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/batch/async \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "urls": ["https://example.com/big-report-1", "https://example.com/big-report-2"],
+    "webhook_url": "https://your-app.com/hooks/scrape-done",
+    "format": "markdown"
+  &#125;'</code></pre>
+<p>Async is the pattern that makes scale feel manageable: enqueue, receive job id, get results as they complete.</p>
+
+<h3>Example 3: Crawl a site with depth and budget limits</h3>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/crawl \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://docs.example.com",
+    "max_pages": 500,
+    "depth": 3,
+    "concurrency": 10,
+    "respect_robots": true,
+    "webhook_url": "https://your-app.com/hooks/crawl-page"
+  &#125;'</code></pre>
+<p>Crawl endpoints handle discovery and can enforce budgets. respect_robots should be treated as a default, not an option.</p>
+
+<h3>Example 4: Smart rendering that auto-escalates</h3>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/smart \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://mixed-content.example.com/page",
+    "format": "markdown"
+  &#125;'</code></pre>
+<p>Smart endpoints reduce overpaying for browser time by detecting when rendering is actually needed.</p>
+
+<h3>Example 5: Persistent session for login or multi-step flows</h3>
+<pre><code># Create a session
+curl -X POST https://api.ollagraph.com/v1/session \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123; "stealth": true, "proxy": "residential" &#125;'</code></pre>
+<pre><code># Use the session_id in subsequent calls
+curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/dashboard",
+    "session_id": "sess_abc123",
+    "wait_until": "networkidle"
+  &#125;'</code></pre>
+<p>Persistent sessions keep cookies/local storage and preserve session continuity.</p>
+
+<h2>Performance and benchmarks you can reproduce</h2>
+<p>At scale, you optimize what you measure. The metrics that matter are:</p>
+<ul>
+  <li>Success rate: usable content returned (challenge pages don’t count).</li>
+  <li>Cost per successful page: total credits spent divided by successful pages.</li>
+  <li>Render rate: share of pages that required a browser.</li>
+  <li>Latency percentiles: p50/p95/p99; tail latency kills batch jobs.</li>
+  <li>Proxy class distribution: where money goes.</li>
+  <li>Per-domain success rate: identifies budget-burning targets.</li>
+  <li>Queue depth and lag: whether workers keep up.</li>
+</ul>
+
+<h3>A reproducible harness</h3>
+<pre><code>import os, time, statistics, requests
+
+API = "https://api.ollagraph.com/v1/scrape"
+KEY = os.environ["OLLAGRAPH_API_KEY"]
+URLS = [ ... ]  # your real target mix
+
+latencies, successes, rendered, cost = [], 0, 0, 0.0
+for url in URLS:
+    t0 = time.perf_counter()
+    r = requests.post(
+        API,
+        headers=&#123;"Authorization": f"Bearer &#123;KEY&#125;"&#125;,
+        json=&#123;"url": url, "format": "markdown"&#125;,
+        timeout=60
+    )
+    latencies.append((time.perf_counter() - t0) * 1000)
+    body = r.json()
+
+    ok = body.get("status") == "success" and len(body.get("content", "")) > 200
+    successes += 1 if ok else 0
+
+    rendered += 1 if body.get("rendered_via") == "ollagraph" else 0
+    cost += float(r.headers.get("x-credits-charged", 0))
+
+n = len(URLS)
+latencies.sort()
+print(f"success rate : &#123;successes/n:.1%&#125;")
+print(f"render rate  : &#123;rendered/n:.1%&#125;")
+print(f"p50 latency  : &#123;statistics.median(latencies):.0f&#125; ms")
+print(f"p95 latency  : &#123;latencies[int(n*0.95)-1]:.0f&#125; ms")
+print(f"cost / ok    : &#123;cost/max(successes,1):.2f&#125; credits")</code></pre>
+
+<h3>Typical patterns (rule-of-thumb)</h3>
+<pre><code>Target type	Typical path	p50 latency	Relative cost
+Static docs/blog	direct fetch	100–300 ms	1×
+Mild bot defense	direct + stealth	300–800 ms	1×
+SPA needing render	Ollagraph	2–6 s	5–15×
+Hardened anti-bot	Ollagraph + residential	4–10 s	15–50×
+CAPTCHA-gated	Ollagraph + residential + solver	8–20 s	50–200×</code></pre>
+<p>The lesson: cost and latency are dominated by how far up the escalation ladder your targets force you.</p>
+
+<h2>Security, legality, and ethics at scale</h2>
+<p>Scale amplifies every ethical and legal decision. A small scraper that oversteps is a nuisance. A large scraper that oversteps is a ban, a lawsuit, or both.</p>
+<ul>
+  <li><strong>Scrape public data only.</strong> If content is behind authentication you’re not authorized to bypass, proxies and CAPTCHA solving don’t change that.</li>
+  <li><strong>Respect robots.txt and terms of service.</strong> Robots.txt isn’t a law, but ignoring it weakens your position in disputes. Treat it as an operational input.</li>
+  <li><strong>Handle personal data carefully.</strong> GDPR/CCPA may apply depending on what you collect and how you use it. Minimize collection and define retention.</li>
+  <li><strong>Rate-limit yourself.</strong> A polite scraper with backoff often outlasts an aggressive one that triggers defenses.</li>
+  <li><strong>Secure credentials.</strong> API keys are bearer tokens. Store them in a secrets manager and rotate on suspicion of leak.</li>
+  <li><strong>Choose providers with clear data handling.</strong> If a provider retains scraped content, your exposure surface grows. Pair provider behavior with your own retention policy.</li>
+</ul>
+
+<h2>Troubleshooting the failures that appear at scale</h2>
+<p>At scale, failures are rarely “one bug.” They’re usually a pattern.</p>
+
+<h3>Symptom: success rate drops across many domains at once</h3>
+<p>Likely cause: shared proxy pool burned, fingerprint flagged, or provider patch outdated.</p>
+<p>Fix: check proxy class distribution, switch proxy pool/class, and test with a fresh browser profile.</p>
+
+<h3>Symptom: one domain dominates failures</h3>
+<p>Likely cause: target changed anti-bot rules or your configuration is wrong for that domain.</p>
+<p>Fix: isolate the domain in a test harness, climb the escalation ladder one rung at a time, and tune per-domain settings.</p>
+
+<h3>Symptom: queue depth grows but workers are idle</h3>
+<p>Likely cause: head-of-line blocking from a slow domain or a frontier deadlock.</p>
+<p>Fix: add per-domain concurrency limits and worker timeouts; isolate slow domains.</p>
+
+<h3>Symptom: costs spike week over week</h3>
+<p>Likely cause: render rate increased or default escalation became too aggressive.</p>
+<p>Fix: group spend by domain and render method; revert to cheaper defaults where possible.</p>
+
+<h3>Symptom: results look correct but are stale</h3>
+<p>Likely cause: target serves cached pages to your IP class or session continuity is wrong.</p>
+<p>Fix: rotate session, vary headers slightly, and ensure you’re not reusing stale session state.</p>
+
+<p><strong>Symptom:</strong> CAPTCHA rate increases</p>
+<p><strong>Likely cause:</strong> you’re moving too fast, fingerprint consistency degraded, or the target tightened rules.</p>
+<p><strong>Fix:</strong> slow down, use sticky sessions, and invoke CAPTCHA solving only when necessary.</p>
+
+<h2>Quick troubleshooting decision tree</h2>
+<pre><code>Is the failure widespread?
+├─ Yes → proxy pool / fingerprint / provider-side change
+└─ No  → domain-specific config / target rule change
+
+Is render rate higher than usual?
+├─ Yes → rendering policy too aggressive or target changed delivery
+└─ No  → proxy class / session consistency / headers
+
+Are challenges IP-based?
+├─ Yes → switch proxy class + reduce concurrency
+└─ No  → session continuity + profile coherence</code></pre>
+
+<h2>Best practices from real pipelines</h2>
+<ul>
+<li>Start cheap and escalate on evidence.</li>
+<li>Build profiles, not randomness.</li>
+<li>Use sticky sessions for stateful targets.</li>
+<li>Make every job idempotent (URL + hash or idempotency key).</li>
+<li>Log the full escalation path: proxy class, render method, profile id, cost.</li>
+<li>Enforce per-domain concurrency and politeness delays.</li>
+<li>Cache when freshness allows; skip unchanged pages.</li>
+<li>Audit output quality periodically to catch silent regressions.</li>
+<li>Plan for provider changes: keep configuration-driven behavior.</li>
+<li>Treat webhooks as untrusted input; validate signatures.</li>
+</ul>
+
+<h2>Common mistakes (and the cheaper alternative)</h2>
+<p><strong>Mistake</strong> — <strong>Why it hurts</strong> — <strong>Do this instead</strong></p>
+<ul>
+<li>
+<p><strong>Using residential proxies for every request</strong></p>
+<p>Wastes money on friendly targets</p>
+<p><strong>Do this instead:</strong> Start with datacenter; escalate on failure</p>
+</li>
+<li>
+<p><strong>Rotating IP on every request</strong></p>
+<p>Breaks sessions; looks robotic</p>
+<p><strong>Do this instead:</strong> Use sticky sessions; rotate only when burned</p>
+</li>
+<li>
+<p><strong>Enabling stealth + render + CAPTCHA by default</strong></p>
+<p>Pays premium prices unnecessarily</p>
+<p><strong>Do this instead:</strong> Climb the escalation ladder one rung at a time</p>
+</li>
+<li>
+<p><strong>No per-domain rate limits</strong></p>
+<p>One slow domain blocks everything</p>
+<p><strong>Do this instead:</strong> Add domain-specific concurrency and politeness</p>
+</li>
+<li>
+<p><strong>Ignoring render/cost headers</strong></p>
+<p>Cannot explain cost spikes</p>
+<p><strong>Do this instead:</strong> Log and dashboard these fields</p>
+</li>
+<li>
+<p><strong>Custom chunkers for RAG</strong></p>
+<p>Inconsistent chunks; weak citations</p>
+<p><strong>Do this instead:</strong> Use llm-ready output with citation support</p>
+</li>
+<li>
+<p><strong>No idempotency</strong></p>
+<p>Retries duplicate data</p>
+<p><strong>Do this instead:</strong> Hash on URL + content or use idempotency keys</p>
+</li>
+<li>
+<p><strong>Storing API keys in code</strong></p>
+<p>Credential leak risk</p>
+<p><strong>Do this instead:</strong> Use secrets manager and scoped keys</p>
+</li>
+<li>
+<p><strong>Skipping robots.txt checks</strong></p>
+<p>Ethical/legal exposure</p>
+<p><strong>Do this instead:</strong> Check and respect crawling policies</p>
+</li>
+<li>
+<p><strong>Optimizing before measuring</strong></p>
+<p>Changes based on guesses</p>
+<p><strong>Do this instead:</strong> Instrument first, then optimize</p>
+</li>
+</ul>
+
+<h2>Alternatives and an honest comparison</h2>
+<p>There are three broad ways to scrape at scale:</p>
+<ol>
+<li>
+<p><strong>Build your own stack.</strong> You operate frontier, workers, proxy vendor relationships, browser farms, and anti-bot patches. Best when scraping is your core product. Highest operational cost.</p>
+</li>
+<li>
+<p><strong>Use a proxy vendor plus self-hosted browsers.</strong> You own workers and browsers, but rent IPs. Better control over extraction logic, still heavy operations.</p>
+</li>
+<li>
+<p><strong>Use a managed scraping API.</strong> You send URLs and receive structured content. The provider owns proxies, browsers, fingerprints, retries, and content cleaning. Best when scraping is a means to an end (AI, monitoring, analytics).</p>
+</li>
+</ol>
+<p>When comparing managed APIs, score them on:</p>
+<ul>
+<li>Success rate on your targets</li>
+<li>Escalation transparency (render method, cost headers)</li>
+<li>Output formats (Markdown/JSON/chunks with offsets)</li>
+<li>Async/batch and webhook support</li>
+<li>Billing model and failure handling</li>
+<li>Adjacent capabilities (conversion, OCR, MCP integration, audit tools)</li>
+</ul>
+<p>Ollagraph’s advantage is aligning scraping output with AI/RAG needs: Markdown-by-default, llm-ready chunking, and web-infrastructure primitives behind one surface.</p>
+
+<h2>Enterprise and cloud deployment</h2>
+<h3>Key management.</h3>
+<p>Issue separate keys per environment and team. Store in a secrets manager and rotate on suspicion of leak.</p>
+
+<h3>Cost governance.</h3>
+<p>Stream cost headers into your metrics system. Alert on render-rate spikes and per-domain cost anomalies.</p>
+
+<h3>Internal gateway.</h3>
+<p>Front the provider with an internal service that enforces allowed domains, injects keys, adds tracing, and writes audit logs. This gives security and procurement a single control point.</p>
+
+<h3>Reliability.</h3>
+<p>Use circuit breakers for sustained upstream failures. Degrade gracefully rather than retrying into a wall.</p>
+
+<h3>Data handling.</h3>
+<p>Confirm provider retention behavior. Define your own retention and minimization policy. Route audit logs to your SIEM.</p>
+
+<h3>Cloud patterns.</h3>
+<p>Serverless fan-out from a queue works well because heavy work happens on the provider side. Async webhooks avoid serverless timeout limits. Scheduled crawls keep knowledge bases fresh.</p>
+
+<h2>FAQs</h2>
+
+<h3>1) What is web scraping at scale?</h3>
+<p>Web scraping at scale is the disciplined practice of collecting, rendering, and structuring content from thousands to millions of public web pages through a distributed pipeline that can survive partial failures without starting over. It introduces durable queues, specialized workers, proxy management, anti-bot orchestration, and cost controls that treat the web as dynamic and sometimes hostile. The goal is to turn heterogeneous URLs into a reliable, observable, and economically sane feed of structured data.</p>
+
+<h3>2) How is scraping at scale different from small-scale scraping?</h3>
+<p>Small-scale scraping is usually a single script that loops over URLs and writes results to a local file, where a crash or a blocked IP is an inconvenience you fix manually. At scale, crashes and blocks are expected events that the system must handle automatically through retries, idempotency, and backoff. You also need per-domain politeness, proxy rotation that preserves session continuity, and dashboards that expose cost and success rate by target. In short: scale turns scraping from a script into an infrastructure service.</p>
+
+<h3>3) What is the most important component of a scalable scraper?</h3>
+<p>The frontier is often the most important component because it controls fairness, recovery, and efficiency. A good frontier deduplicates URLs, enforces per-domain crawl delays, re-queues failed jobs with exponential backoff, and keeps in-flight state so worker crashes don’t lose work. Without a well-designed frontier, even strong proxy pools and browser farms get undermined by duplicate work, blocked domains, and unrecoverable partial failures.</p>
+
+<h3>4) What is proxy rotation, and why does it matter?</h3>
+<p>Proxy rotation changes the exit IP used to make requests. It matters because many anti-bot systems rate-limit or block based on IP reputation when they detect automation. The strategy isn’t just “use many IPs.” It’s choosing the right proxy class and rotation model for each target—datacenter for friendly sites, residential for defended sites, and sticky sessions when state matters. Done well, rotation keeps traffic flowing; done poorly, it becomes a detectable automation signature.</p>
+
+<h3>5) Should I rotate the proxy on every request?</h3>
+<p>Usually no. Per-request rotation breaks session continuity and can make traffic look robotic to targets that track behavior or require login state. Sticky sessions—keeping the same IP and coherent browser profile for a domain or user journey—are often more believable and more cost-efficient. Rotate only when an IP is burned, when the target explicitly rate-limits by IP, or when you’re doing stateless scanning where session continuity isn’t required.</p>
+
+<h2>6) What are the main proxy classes?</h2>
+<p>Datacenter proxies are fast and cheap but easier to detect because they exit from cloud provider ranges. Residential proxies route through real consumer ISP connections, making them harder to detect but slower and more expensive. ISP proxies sit in the middle: hosted in datacenters but registered under ISP ASN ranges. Mobile proxies exit from cellular networks and are typically the most trusted but also the most expensive, so they’re reserved for the hardest targets.</p>
+
+<h2>7) What is the anti-bot escalation ladder?</h2>
+<p>The escalation ladder is an ordered set of techniques you apply only when the previous step fails. It starts with polite defaults (realistic headers and timing), then adds stealth and fingerprint consistency, then escalates proxy class, then uses rendering, and finally CAPTCHA solving. The ladder prevents you from paying premium prices for browser time and residential IPs on pages that a simple fetch would have handled. Each rung adds latency and cost, so you climb based on evidence, not assumptions.</p>
+
+<h2>8) Why is consistency more important than randomness for anti-bot evasion?</h2>
+<p>Real users are consistent: they use one browser identity per session, with stable language, screen characteristics, and session state. Anti-bot systems are trained to notice deviations from that pattern. A scraper that randomizes user-agent, IP, and fingerprint on every request while clicking at perfectly regular intervals looks like automation trying to hide. Stable browser profiles and coherent session state make traffic resemble a real person far more effectively than randomness.</p>
+
+<h2>9) How do I keep scraping costs predictable?</h2>
+<p>Start with the cheapest configuration that might work, escalate only when requests fail, and cache unchanged pages so you don’t pay to re-scrape static content. Log render method and cost headers on every response so you can see exactly where credits are going. Set per-domain concurrency so one expensive target can’t dominate spend. Monitoring render rate and proxy class distribution weekly catches cost drift before it becomes a surprise bill.</p>
+
+<h2>10) What metrics should I track at scale?</h2>
+<p>Track success rate, cost per successful page, render rate, p50/p95 latency, proxy class distribution, per-domain success rate, queue depth, and worker lag. Success rate tells you whether output is usable. Cost per success tells you the real economics. Render rate explains why latency and spend change. Per-domain metrics matter because a single target can hide inside an aggregate average and burn your budget for days.</p>
+
+<h2>11) How do I handle JavaScript-rendered pages at scale?</h2>
+<p>Use a smart endpoint that auto-detects whether rendering is needed, or explicitly request headless rendering with a suitable wait condition for SPAs. The key is to avoid rendering by default because browser workers cost far more than direct HTTP fetches and take longer. Only pay for rendering when the target genuinely requires it, and log render rate so you can detect when a domain changes its delivery method.</p>
+
+<h2>12) What is the best way to scrape thousands of pages?</h2>
+<p>Use batch or async patterns with webhooks. Synchronous single-page loops create brittle error handling, poor retry behavior, and long-lived connections. Batch endpoints give controlled parallelism and predictable politeness. Async endpoints let you enqueue large lists and receive results as they complete without holding your own workers open. Always include idempotency keys or URL-based hashes so retries don’t duplicate data.</p>
+
+<h2>13) How do I avoid getting blocked?</h2>
+<p>Behave like a polite, consistent user: keep request timing reasonable with jitter, use sticky sessions with coherent browser profiles, enforce per-domain rate limits, and respect robots.txt and crawl-delay directives. Escalate to proxies and rendering only when a target proves it needs them, and back off immediately on 429/503 responses. The scrapers that last don’t treat every target as an adversary to be overwhelmed.</p>
+
+<h2>14) Is web scraping legal?</h2>
+<p>Scraping publicly available data is broadly permitted in many jurisdictions, but legality depends on what you collect, how you collect it, and what you do afterward. Respect robots.txt and terms of service, avoid bypassing authentication to access non-public data, and handle personal information under GDPR/CCPA where applicable. For high-value or ambiguous use cases, consult legal counsel before scaling.</p>
+
+<h2>15) How does scraping at scale fit with AI and RAG?</h2>
+<p>Scraping at scale feeds AI/RAG systems by providing web content for retrieval and citations. But the quality of that feed depends on how you structure output at ingestion. Use llm-ready output to return clean Markdown and chunking that supports citations, so your retrieval pipeline gets consistent, traceable content without custom cleanup. This reduces downstream engineering and makes citations more reliable.</p>
+
+<h2>References</h2>
+<ul>
+  <li>RFC 9309 — Robots Exclusion Protocol</li>
+  <li>MDN Web Docs — HTTP headers and client hints concepts</li>
+  <li>Playwright and Puppeteer documentation — headless browser automation</li>
+  <li>GDPR (Regulation (EU) 2016/679) and CCPA — personal data handling</li>
+  <li>Ollagraph API documentation — scrape, batch, async, smart, crawl, session, and CAPTCHA-related endpoints (as applicable)</li>
+</ul>
+
+<h2>Conclusion</h2>
+<p>Web scraping at scale isn’t a bigger version of a small scraper. It’s a different engineering problem centered on durable queues, retries, observability, and deliberate escalation. The teams that succeed treat scale as an infrastructure discipline: they design for failure, measure cost per successful page, rotate proxies with strategy rather than desperation, and climb the anti-bot ladder one rung at a time.</p>
+<p>The practical upside is that you don’t have to build every layer yourself. Managed scraping APIs can absorb the hardest parts—proxy pools, browser farms, fingerprint maintenance, and retry logic—behind simple endpoints. Whether you rent infrastructure or operate it, the principles stay the same: start cheap, escalate on evidence, stay consistent, and measure everything.</p>
+</Article>
