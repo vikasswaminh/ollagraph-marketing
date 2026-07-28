@@ -10,6 +10,7 @@ export interface PostMeta {
 }
 
 export const posts: PostMeta[] = [
+  { slug: "ai-crawler-fetch-simulator-see-what-chatgpt", title: "AI Crawler Fetch Simulator: See What Answer Engines Can Access", description: "Model fetch, render, extract, and score to see why answer engines miss your content. Find blocked fetches, timing issues, and noisy extraction fast.", date: "2026-07-28", readingTime: 25, tags: ["ai-crawling", "content-extraction", "rendering", "citations", "technical-seo"] },
   { slug: "how-javascript-rendering", title: "How JavaScript Rendering Impacts AI Search Citations", description: "Modern SPA pages can hide content from answer engines. Learn how rendering, hydration, and extraction affect citations and what to fix.", date: "2026-07-28", readingTime: 25, tags: ["javascript", "seo", "rendering", "hydration", "crawling"] },
   { slug: "html-to-markdown-for-ai", title: "HTML to Markdown for AI: Clean, LLM-Ready Web Context", description: "Convert noisy web pages into clean Markdown for AI systems. Keep structure, drop chrome, and scale extraction with Ollagraph.", date: "2026-07-28", readingTime: 25, tags: ["html-to-markdown", "llm-context", "web-scraping", "markdown", "ai"] },
   { slug: "docx-to-markdown-for-rag", title: "DOCX to Markdown for RAG: Turn Word Files into AI-Ready Knowledge", description: "Clean DOCX conversion preserves structure, cuts noise, and improves RAG retrieval. Learn how to turn Word files into AI-ready Markdown.", date: "2026-07-28", readingTime: 27, tags: ["RAG", "DOCX", "Markdown", "chunking", "ingestion"] },
