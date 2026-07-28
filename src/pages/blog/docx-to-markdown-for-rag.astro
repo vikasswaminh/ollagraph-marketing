@@ -1,0 +1,412 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why convert DOCX to Markdown for RAG?", a: "Markdown preserves headings, lists, and tables as lightweight structure. That makes chunking more accurate and keeps embeddings aligned with meaning. It also strips away much of the visual noise that harms retrieval." },
+  { q: "What makes DOCX difficult to ingest directly?", a: "DOCX stores content across XML parts, style definitions, relationships, headers, footers, comments, and revision data. The visible document can look simple while the underlying file contains extra text and hidden structure. A good pipeline must decide what to keep, normalize, and discard." },
+  { q: "Which DOCX elements need the most care?", a: "Tables, nested lists, images, tracked changes, and comments are the highest-risk areas. Tables need structure preserved, lists need correct nesting, and annotations should usually be removed or isolated. If these elements are flattened, retrieval quality drops fast." },
+  { q: "Why is normalization necessary after conversion?", a: "Raw conversion often leaves repeated headers, broken line wraps, inconsistent heading levels, and stray revision marks. Normalization restores readable structure and reduces token waste before chunking. It also makes the output more stable across documents." },
+  { q: "What security issues should a production pipeline handle?", a: "Word files can include macros, embedded objects, external links, and hidden revision content. A safe pipeline should strip or sandbox active content and remove anything that should not enter search or generation. That reduces both leakage risk and execution risk." },
+  { q: "What does Ollagraph's DOCX to Markdown flow return?", a: "Ollagraph extracts the main body, headings, lists, tables, and images, then returns normalized Markdown. An optional structured JSON output can support downstream chunking and indexing. The goal is AI-ready text with preserved meaning, not pixel-perfect formatting." },
+];
+---
+<Article
+  title="DOCX to Markdown for RAG: Turn Word Files into AI-Ready Knowledge"
+  description="Clean DOCX conversion preserves structure, cuts noise, and improves RAG retrieval. Learn how to turn Word files into AI-ready Markdown."
+  date="2026-07-28"
+  readingTime={27}
+  tags={["RAG", "DOCX", "Markdown", "chunking", "ingestion"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Most companies do not build retrieval-augmented generation (RAG) systems from scratch with clean source files. They build them from years of accumulated Word documents: contracts, SOPs, product manuals, research reports, meeting notes, and proposal templates. The problem is that Word files are designed for human reading, not for machine retrieval. Fonts, tables, nested lists, tracked changes, comments, headers, footers, and embedded objects all create noise that breaks chunking, confuses embeddings, and pollutes LLM context windows.</p>
+<p>Converting DOCX to Markdown for RAG is the process of extracting the semantic structure from a Word document and representing it as plain text with lightweight markup. Done well, it preserves headings, lists, tables, and inline formatting so that downstream chunking strategies can split documents at logical boundaries. Done poorly, it produces flattened text that loses hierarchy, breaks tables into unreadable ASCII soup, or inserts revision marks that mislead the model.</p>
+<p>This article explains how DOCX files are structured under the hood, why extraction quality determines RAG accuracy, and how to clean and normalize Markdown so it works well with embedding models and vector databases. It also covers practical tooling, common failure modes, security considerations, and how Ollagraph's document conversion API handles the full pipeline from upload to AI-ready Markdown.</p>
+<p><strong>Key takeaway:</strong> The goal of DOCX to Markdown conversion is not formatting fidelity. It is structural fidelity: keeping the meaning and hierarchy intact so an LLM can retrieve the right information at the right time.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>DOCX files are ZIP archives of XML files. The content lives in document.xml, but structure depends on styles, numbering definitions, relationships, and separate files for headers, footers, footnotes, and comments.</li>
+  <li>Markdown is the best intermediate format for RAG because it preserves hierarchy with lightweight syntax, chunks cleanly at headings, and is easy to parse into structured records.</li>
+  <li>Tables, nested lists, images, tracked changes, and comments are the five highest-risk areas during conversion. Each one needs explicit handling rules.</li>
+  <li>Raw Markdown from a converter is rarely clean enough for production. A normalization layer should fix heading levels, unwrap hard line breaks, deduplicate repeated headers/footers, and resolve cross-references.</li>
+  <li>Security matters: Word documents can contain macros, embedded OLE objects, external relationships, and hidden revision data. A production pipeline should strip or sandbox these before extraction.</li>
+  <li>Ollagraph's DOCX to Markdown endpoint extracts body content, headings, tables, lists, and images, then returns normalized Markdown and optional structured JSON for downstream chunking.</li>
+</ul>
+
+<h2>Why Word Documents Break RAG Pipelines</h2>
+<p>RAG works best when the knowledge base is clean, structured, and semantically consistent. Word documents are none of those things by default. They are visual authoring tools. A user can make text look like a heading by increasing the font size, create a list by pressing tab and typing a dash, or build a table by drawing invisible gridlines. The file renders correctly on screen, but the underlying markup does not guarantee any predictable structure.</p>
+<p>This creates four concrete problems for retrieval systems.</p>
+<p>First, chunking becomes arbitrary. A typical chunker splits text every 500 to 1,000 tokens or at paragraph boundaries. If a Word document has no real heading styles, the chunker cannot split at section boundaries. A single chunk might contain the end of one procedure and the beginning of another, or a table caption separated from its table. Retrieval then returns fragments that lack context.</p>
+<p>Second, embeddings lose signal. Embedding models treat nearby tokens as related. If a converter flattens a document into one long stream of text, headings lose their association with body paragraphs. Tables become dense grids of numbers with no column relationship. The resulting vectors are less representative of the actual concepts.</p>
+<p>Third, LLM context windows fill with noise. Headers, footers, page numbers, revision marks, and comment bubbles all consume tokens. In a large corpus, this overhead adds up. Worse, some of that noise looks like instructions. A comment that says "rewrite this section" can leak into a generated answer if the pipeline does not strip annotations.</p>
+<p>Fourth, metadata is hard to recover. Word files contain authorship dates, tracked changes, version history, and hidden text. Some of this is useful metadata for filtering; some is sensitive data that should never reach a vector store. Without a deliberate extraction policy, teams either lose valuable signals or expose information they did not intend to share.</p>
+<p>The result is that many RAG projects built on Word documents underperform not because the model is weak, but because the input is messy. Converting DOCX to Markdown is the cleanup step that makes the rest of the pipeline reliable.</p>
+
+<h2>What DOCX Really Is</h2>
+<p>A .docx file is a ZIP archive that follows the Office Open XML (OOXML) specification, standardized as ECMA-376 and ISO/IEC 29500. Rename a DOCX file to .zip and unzip it, and you will see a directory tree like this:</p>
+<pre><code>document.docx/
+├── [Content_Types].xml
+├── _rels/
+│   └── .rels
+├── word/
+│   ├── document.xml
+│   ├── styles.xml
+│   ├── numbering.xml
+│   ├── settings.xml
+│   ├── fontTable.xml
+│   ├── header1.xml
+│   ├── footer1.xml
+│   ├── footnotes.xml
+│   ├── endnotes.xml
+│   ├── comments.xml
+│   └── _rels/
+│       └── document.xml.rels
+├── docProps/
+│   ├── app.xml
+│   ├── core.xml
+│   └── custom.xml
+└── media/
+    └── image1.png</code></pre>
+<p>The main narrative content lives in word/document.xml. That file is a flat sequence of paragraphs, tables, and section properties. Each paragraph has a style ID, and the actual style definitions live in word/styles.xml. If a paragraph is styled as Heading1, the converter knows it is a top-level heading. If it is styled as Normal but the user manually made it bold and 16pt, the converter sees only Normal.</p>
+<p>Numbered and bulleted lists are defined in word/numbering.xml. A list paragraph references an abstract numbering definition and a level index. Without resolving that reference, a converter cannot tell whether two adjacent paragraphs belong to the same list or are independent paragraphs.</p>
+<p>Images, hyperlinks, and embedded objects are not stored inline. document.xml contains relationship IDs, and the actual targets are listed in word/_rels/document.xml.rels. Images usually live in word/media/. External hyperlinks point to URLs. Embedded OLE objects may point to separate binary files.</p>
+
+<p>Headers and footers are stored in separate XML files and referenced per section. Footnotes and endnotes have their own files. Comments are stored in word/comments.xml and linked to ranges in the document body. Tracked changes appear as insertion and deletion markup around runs of text.</p>
+<p>The implication is clear: extracting good Markdown from DOCX is not a text extraction problem. It is a document assembly problem. You have to read multiple XML files, resolve relationships, interpret styles, and decide what belongs in the output.</p>
+
+<h2>Why Markdown Is the Right Intermediate Format</h2>
+<p>Markdown is not the only format you could use between DOCX and a vector database. Alternatives include plain text, HTML, JSON, and raw XML. Each has trade-offs, but Markdown wins for RAG because it sits at a useful midpoint between human readability and machine structure.</p>
+<p>Plain text is easy to chunk and embed, but it loses headings, lists, and tables. A model retrieving a plain-text chunk has no signal about whether a line is a title, a bullet, or a caption. That matters when the question is "What is the escalation procedure?" versus "List the steps in the escalation procedure."</p>
+<p>HTML preserves more formatting, but it is verbose and inconsistent. Two different Word-to-HTML converters can produce very different markup for the same document. HTML also carries inline styles, font tags, and class names that add noise without adding meaning. Cleaning HTML for RAG often takes as much work as producing Markdown in the first place.</p>
+<p>JSON is excellent for structured records, but it is a poor representation for long-form prose. You would need to split a document into records before storing it, which forces early decisions about chunk boundaries. Markdown lets you defer chunking until after the document is clean.</p>
+<p>Raw OOXML is the source of truth, but it is too low-level for downstream tools. Embedding models and LLMs do not understand XML namespaces and relationship IDs. You need an abstraction layer.</p>
+<p>Markdown provides that abstraction. Headings use #. Lists use - or 1.. Tables use pipes. Bold and italic use ** and *. Code blocks use triple backticks. These conventions are widely understood, easy to tokenize, and map cleanly to semantic structure. A chunker can split at ## boundaries. A parser can turn a Markdown table into rows for a structured retriever. A human can read the output without training.</p>
+<p>The key is to treat Markdown as a semantic interchange format, not a visual one. The goal is not to reproduce the Word document's look. The goal is to preserve the document's meaning in a form that RAG systems can use.</p>
+
+<h2>The DOCX to Markdown Pipeline</h2>
+<p>A production DOCX to Markdown pipeline has five stages:</p>
+<ol>
+  <li>Ingestion and validation. Accept the file, verify it is a valid ZIP/OOXML package, scan for security risks, and reject malformed or dangerous inputs.</li>
+  <li>Structural extraction. Parse document.xml, styles.xml, numbering.xml, and relationship files to build a semantic model of the document.</li>
+  <li>Markdown generation. Map paragraphs, tables, lists, images, and links to Markdown syntax.</li>
+  <li>Normalization. Fix heading levels, unwrap lines, remove repeated headers/footers, resolve cross-references, and standardize tables.</li>
+  <li>Output packaging. Return the Markdown, optional structured JSON, image references, and metadata for downstream chunking and embedding.</li>
+</ol>
+<p>Each stage matters. Skipping validation can let macros or external relationships through. Skipping normalization can produce Markdown that looks correct to a human but breaks chunking. Skipping structured output can force the consumer to re-parse the Markdown later.</p>
+<p>The pipeline should also be configurable. A legal team might want to preserve tracked changes as annotations. A support team might want to drop headers and footers entirely. A research team might want tables converted to CSV-style records instead of Markdown pipes. A single conversion tool cannot guess these policies, so it should expose them as options.</p>
+
+<h2>Extraction: What to Pull Out and What to Leave Behind</h2>
+<p>Not everything in a DOCX file should become Markdown. The extraction policy defines what is preserved, what is summarized, and what is discarded.</p>
+
+<h3>Preserve</h3>
+<ul>
+  <li>Body paragraphs styled as Normal, Body Text, or similar.</li>
+  <li>Headings styled as Heading 1 through Heading 9, or mapped to those levels.</li>
+  <li>Lists that use real numbering definitions, including nested levels.</li>
+  <li>Tables with header rows and data cells.</li>
+  <li>Hyperlinks to external URLs.</li>
+  <li>Images with alt text or captions, stored as separate assets.</li>
+  <li>Footnotes and endnotes, either inline or at the end of sections.</li>
+</ul>
+
+<h3>Summarize or Annotate</h3>
+<ul>
+  <li>Comments can be preserved as Markdown blockquotes or HTML comments, depending on the use case.</li>
+  <li>Tracked changes should be resolved to final text by default, with an option to export insertions/deletions for audit workflows.</li>
+  <li>Revisions by author can be summarized as metadata.</li>
+</ul>
+
+<h3>Discard</h3>
+<ul>
+  <li>Headers and footers usually contain page numbers, logos, and repeated document titles. These add noise and should be removed unless they contain unique content.</li>
+  <li>Page breaks are layout artifacts. Use heading boundaries instead.</li>
+  <li>Font and color styling should be ignored unless it carries semantic meaning, such as red text indicating a warning.</li>
+  <li>Embedded OLE objects and macros should be stripped or sandboxed.</li>
+  <li>Hidden text should be removed unless explicitly requested.</li>
+</ul>
+<p>The decision to discard something should be logged. If a user later asks why a particular paragraph is missing, the pipeline should be able to point to the extraction rule that removed it.</p>
+
+<h2>Handling Tables, Lists, and Nested Structure</h2>
+<p>Tables and lists are where most DOCX to Markdown conversions fail. The reason is that Word's internal model is visual, while Markdown's model is structural.</p>
+
+<h3>Tables</h3>
+<p>In Word, a table is a grid of cells. Cells can span rows or columns. They can contain paragraphs, lists, images, or nested tables. Markdown tables, by contrast, are simple rows and columns with one header row. They do not support row spans, column spans, or nested tables.</p>
+<p>A good converter handles this by:</p>
+<ul>
+  <li>Detecting the header row from the first row or from repeated header settings.</li>
+  <li>Splitting merged cells into separate rows or duplicating values where semantically appropriate.</li>
+  <li>Flattening nested tables into separate Markdown tables with captions.</li>
+  <li>Converting overly complex tables into a structured JSON representation when Markdown pipes cannot capture the layout.</li>
+  <li>Preserving alignment hints where Word specifies them.</li>
+</ul>
+<p>If a table is wider than a typical chunk, consider splitting it into per-row records. For example, a product comparison table might become one JSON object per product, with the table header providing field names. This often retrieves better than a giant Markdown table.</p>
+
+<h3>Lists</h3>
+<p>Word lists are defined by numbering IDs and level indices. A converter must:</p>
+
+<ul>
+<li>Group consecutive paragraphs that share the same numbering ID.</li>
+<li>Map level indices to indentation.</li>
+<li>Distinguish between numbered and bulleted lists.</li>
+<li>Handle mixed lists where a numbered list contains nested bullets.</li>
+<li>Avoid treating manually typed dashes or asterisks as list markers unless they come from a real list style.</li>
+</ul>
+<p>The most common bug is producing flat paragraphs where a list should be. This happens when a user typed numbers manually instead of using Word's numbering feature. The output looks like a list visually but is not one structurally. A heuristic converter can detect sequential numbered paragraphs and promote them to lists, but it should flag them for review.</p>
+
+<h2>Nested Structure</h2>
+<p>Documents often contain headings followed by paragraphs, then a table, then a nested list under a subheading. The Markdown output should reflect that nesting so a chunker can include child content with its parent heading. One useful technique is to produce a hierarchical JSON representation alongside the Markdown, where each node has a type, level, text, and children. This lets downstream systems choose between flat chunking and tree-aware chunking.</p>
+
+<h2>Cleaning and Normalizing Markdown</h2>
+<p>Even the best extractor produces Markdown that needs cleanup. The following normalization steps should be applied before the Markdown enters a RAG pipeline.</p>
+
+<h3>Fix Heading Levels-</h3>
+<p>Word documents often skip heading levels. A writer might use Heading 1 for the title, Heading 3 for the first section, and Heading 2 later. Markdown renderers and chunkers expect a coherent hierarchy. Normalize headings so that the document title is H1, top sections are H2, subsections are H3, and so on. Do not create H1s mid-document unless they represent genuinely separate documents.</p>
+
+<h3>Unwrap Hard Line Breaks-</h3>
+<p>Some converters insert a newline at every line break in the Word file. This produces Markdown with short, ragged lines that break sentence boundaries. Detect paragraphs that are clearly part of the same logical block and join them with a single space. Preserve intentional line breaks inside code blocks, addresses, and poetry.</p>
+
+<h3>Remove Repeated Headers and Footers-</h3>
+<p>If headers or footers were included during extraction, scan for repeated text that appears on every page. Remove it unless it is unique to a section. A common pattern is a document title in the header. Keep it once, discard the repeats.</p>
+
+<h3>Standardize Whitespace-</h3>
+<p>Remove trailing spaces, collapse multiple blank lines to one, and ensure there is a blank line before and after headings, lists, and code blocks. Inconsistent whitespace does not change rendering much, but it makes chunk boundaries unpredictable.</p>
+
+<h3>Resolve Cross-References-</h3>
+<p>Word supports cross-references to headings, bookmarks, figures, and tables. These appear as fields in the XML. A converter can replace them with Markdown links or plain text labels. For example, a reference to "Table 3" can become [Table 3](#table-3) if the target heading has a stable anchor.</p>
+
+<h3>Handle Images and Alt Text-</h3>
+<p>Images should be referenced with relative paths or stable URLs, not embedded as base64 unless required. Extract alt text from the Word description field or from nearby captions. If no alt text exists, generate a short description from the caption or leave a placeholder for manual review.</p>
+
+<h3>Normalize Tables-</h3>
+<p>Ensure every row has the same number of columns. Pad short rows with empty cells. Escape pipe characters inside cell text. Wrap cell content that contains block elements into separate records instead of forcing them into a pipe table.</p>
+
+<h2>Chunking Strategies for DOCX-Derived Markdown</h2>
+<p>Chunking is where the conversion pays off. Clean Markdown enables chunking strategies that would be impossible with raw DOCX or messy HTML.</p>
+
+<h3>Heading-Based Chunking -</h3>
+<p>Split the document at H2 and H3 boundaries. Each chunk contains one section plus its subsections. This is the most common strategy for knowledge bases because it aligns chunks with questions. If a user asks about a specific procedure, the relevant chunk is likely a single H2 section.</p>
+
+<h3>Paragraph-Based Chunking-</h3>
+<p>Split into paragraphs with a small overlap. This works for dense prose but can separate a list from its introductory sentence. Use it when headings are sparse.</p>
+
+<h3>Table-Based Chunking-</h3>
+<p>Convert each table row into a standalone record with metadata about the table title and column headers. This is often the best approach for reference material such as pricing, specifications, or compliance matrices.</p>
+
+<h3>Mixed Chunking-</h3>
+<p>Use different strategies for different parts of the document. Headings and body text become semantic chunks. Tables become row records. Code blocks stay intact. Images become caption-based chunks. This requires a structured intermediate representation rather than flat Markdown.</p>
+
+<h3>Overlap and Context-</h3>
+<p>Whatever strategy you choose, add context to each chunk. Include the document title, the parent heading, and the section path. A chunk about "Step 3" is much more useful when it also says "Procedure: Server Restart / Section: Pre-Restart Checks."</p>
+
+<h2>Security and Compliance Considerations</h2>
+<p>Word documents are a common attack vector. A RAG pipeline that accepts arbitrary DOCX files must treat them as untrusted input until proven otherwise.</p>
+
+<h3>Macros</h3>
+<p>DOCX files do not contain macros by default, but a file with macros uses the .docm extension. However, attackers can rename .docm to .docx. The pipeline should inspect the ZIP contents and reject any file containing vbaProject.bin or macro-enabled parts.</p>
+
+<h3>Embedded Objects</h3>
+<p>OLE objects, embedded spreadsheets, and linked files can execute code or fetch external resources. Strip them during extraction or sandbox them in a separate analysis stage. Do not pass binary payloads into the Markdown stream.</p>
+
+<h3>External Relationships</h3>
+<p>OOXML relationships can point to external URLs. A document might try to load an image from a remote server when opened. The converter should not resolve external relationships automatically. Either block them, require explicit allowlisting, or fetch them through a controlled proxy with logging.</p>
+
+<h3>Hidden Text and Metadata</h3>
+<p>Word files can contain hidden text, comments, revision history, and document properties. Some of this is sensitive. A compliance pipeline should:</p>
+<ul>
+<li>Strip hidden text by default.</li>
+<li>Remove author names and revision timestamps unless needed.</li>
+<li>Redact comments or make them opt-in.</li>
+<li>Log what metadata was removed.</li>
+</ul>
+
+<h3>PII and Redaction</h3>
+<p>If the corpus contains contracts, HR documents, or medical records, run PII detection on the extracted Markdown. Redact or tokenize names, addresses, phone numbers, and identifiers before embedding. Store the original mapping securely if you need to rehydrate answers later.</p>
+
+<h2>Common Mistakes</h2>
+<p>Teams building DOCX to Markdown pipelines make the same mistakes repeatedly. Here are the most costly ones.</p>
+
+<h3>1. Treating Visual Formatting as Structure</h3>
+<p>A paragraph that looks like a heading because it is bold and large is not necessarily a heading. If the converter relies on font size instead of style IDs, it will miss real headings and invent fake ones. Always use Word styles as the primary signal.</p>
+
+<h2>2. Flattening Tables into Paragraphs</h2>
+<p>Some pipelines convert tables into one long paragraph per row. This destroys the relationship between columns. A row like "Product A | $100 | In stock" becomes three disconnected phrases. Preserve table structure or convert rows into structured records.</p>
+
+<h2>3. Ignoring Headers and Footers</h2>
+<p>Including page headers and footers in every chunk adds repeated noise. In a 100-page document, the company name appears 100 times. This biases retrieval toward documents with verbose headers. Strip repeated content.</p>
+
+<h2>4. Keeping Tracked Changes</h2>
+<p>Tracked changes show insertions and deletions as separate text streams. If the converter includes both, the model sees contradictory information. Resolve changes to the final state unless the use case specifically requires audit history.</p>
+
+<h2>5. Forgetting About Image Context</h2>
+<p>Images are often critical: diagrams, screenshots, charts. If the pipeline drops images, the surrounding text may become meaningless. Extract images, generate captions or alt text, and include references in the Markdown.</p>
+
+<h2>6. Skipping Validation</h2>
+<p>Accepting any file with a .docx extension is risky. Validate the ZIP structure, reject macros, and scan for anomalies. A malformed file can crash the extractor or produce garbage output that pollutes the vector store.</p>
+
+<h2>Best Practices</h2>
+<p>The following practices help teams get reliable, production-grade Markdown from Word documents.</p>
+
+<h3>Enforce Styles in Source Documents</h3>
+<p>The best conversion starts before extraction. Train authors to use Heading 1-6 styles, real list numbering, and table header rows. A well-styled Word document converts almost perfectly. A visually formatted document converts poorly no matter how smart the tool is.</p>
+
+<h3>Define an Extraction Policy</h3>
+<p>Document what the pipeline preserves, removes, and transforms. Share the policy with content authors so they understand why their documents look different after conversion. Update the policy as requirements change.</p>
+
+<h3>Use Structured Output Alongside Markdown</h3>
+<p>Return both Markdown and a structured JSON representation. Markdown is great for human review and LLM context. JSON is great for programmatic chunking, filtering, and metadata extraction.</p>
+
+<h3>Test with Real Documents</h3>
+<p>Unit tests with simple one-paragraph files do not reveal real-world problems. Test with actual documents from your corpus: contracts with tables, manuals with nested lists, reports with tracked changes, and proposals with embedded images.</p>
+
+<h3>Version the Converter</h3>
+<p>Document the version of the extraction library or API used for each conversion. When output changes, you can trace it to a code change or a document change. This is essential for compliance and debugging.</p>
+
+<h3>Monitor Conversion Quality</h3>
+<p>Track metrics such as conversion success rate, average heading depth, table count, image count, and normalization warnings. A sudden spike in warnings often indicates a new document template that the pipeline does not handle.</p>
+
+<h3>Keep Originals</h3>
+<p>Store the original DOCX file alongside the Markdown. If the conversion produces questionable output, you can re-run it with updated rules. Do not treat the Markdown as the source of truth.</p>
+
+<h2>Ollagraph DOCX to Markdown API</h2>
+<p>Ollagraph provides a managed DOCX to Markdown conversion endpoint designed for RAG and AI knowledge pipelines. It handles ingestion, extraction, normalization, and structured output in a single API call.</p>
+
+<h3>How It Works</h3>
+<ol>
+  <li>Upload a DOCX file to the /v2/documents/convert endpoint.</li>
+  <li>Specify output options: Markdown, structured JSON, image extraction, header/footer handling, and comment retention.</li>
+  <li>The API parses the OOXML package, resolves styles and numbering, and generates clean Markdown.</li>
+  <li>The response includes the Markdown body, extracted images with references, a structured node tree, and document metadata.</li>
+</ol>
+
+<h3>Example Request</h3>
+<pre><code>curl -X POST https://api.ollagraph.com/v2/documents/convert \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Accept: application/json" \
+  -F "file=@contract.docx" \
+  -F "output_format=markdown" \
+  -F "extract_images=true" \
+  -F "include_structured=true" \
+  -F "strip_headers_footers=true" \
+  -F "resolve_tracked_changes=true"</code></pre>
+
+<h3>Example Response</h3>
+<pre><code>&#123;
+  "document_id": "doc_7a8f9c2e",
+  "filename": "contract.docx",
+  "markdown": "# Service Agreement\n\n## 1. Scope of Work...",
+  "structured": &#123;
+    "type": "document",
+    "title": "Service Agreement",
+    "children": [
+      &#123;
+        "type": "heading",
+        "level": 2,
+        "text": "1. Scope of Work",
+        "children": [
+          &#123; "type": "paragraph", "text": "The provider will deliver..." &#125;
+        ]
+      &#125;
+    ]
+  &#125;,
+  "images": [
+    &#123; "id": "img1", "filename": "image1.png", "alt": "Project timeline diagram" &#125;
+  ],
+  "metadata": &#123;
+    "title": "Service Agreement",
+    "author": "Jane Doe",
+    "pages": 12,
+    "word_count": 3420
+  &#125;
+&#125;</code></pre>
+
+<h2>Why Use Ollagraph</h2>
+
+<h3>1. OOXML-Aware Extraction</h3>
+<p>Most open-source converters treat a DOCX file as a bag of text. They read word/document.xml, grab the visible paragraphs, and call it done. That works for simple letters, but it fails for real enterprise documents. Word files store structure across many XML files: styles in styles.xml, list definitions in numbering.xml, relationships in document.xml.rels, and comments in comments.xml. A converter that ignores those files cannot tell a real heading from a bold paragraph, cannot group list items correctly, and cannot resolve cross-references.</p>
+<p>Ollagraph parses the full OOXML package. It resolves style IDs to heading levels, follows numbering definitions to rebuild nested lists, and reads relationship files to locate images, hyperlinks, and embedded objects. This means a contract with styled headings converts into clean Markdown with a real hierarchy. A manual with multi-level numbered procedures keeps its list structure. A report with tables, footnotes, and captions produces Markdown where each element is in the right place.</p>
+
+<h3>2. RAG-First Normalization</h3>
+<p>Raw Markdown from a converter is rarely ready for a vector database. Headings may skip levels. Hard line breaks may split sentences. Headers and footers may repeat on every page. Tables may have ragged rows. Cross-references may appear as unresolved field codes. Without normalization, these issues break chunking and pollute embeddings.</p>
+<p>Ollagraph applies a normalization layer automatically. It rebalances heading levels so the document has one H1 and a coherent H2-H6 structure. It unwraps accidental line breaks inside paragraphs. It removes repeated headers and footers. It pads table rows so every row has the same column count. It resolves cross-references into Markdown links or plain text labels. The result is Markdown that chunkers can split at logical boundaries and embedding models can interpret accurately.</p>
+
+<h3>3. Security Defaults</h3>
+<p>Word documents are a common malware vector. A DOCX file is a ZIP archive, and attackers can hide macros, embedded OLE objects, external relationships, and hidden text inside it. A RAG pipeline that accepts arbitrary uploads must treat every file as untrusted.</p>
+<p>Ollagraph rejects macro-enabled parts by inspecting the ZIP contents, not just the file extension. It strips or sandboxes embedded OLE objects and linked files. It blocks external relationships that could fetch remote resources. It removes hidden text and comments by default, and it can redact metadata such as author names and revision timestamps. These defaults protect the vector store from both security risks and accidental data leakage.</p>
+
+<h2>4. Structured Output</h2>
+<p>Markdown is excellent for LLM context and human review, but it is not always the best format for programmatic chunking. A RAG pipeline often needs to know which chunks are headings, which are table rows, which are list items, and which are images.</p>
+<p>Ollagraph returns both Markdown and a structured JSON representation in the same API response. The JSON node tree includes types such as document, heading, paragraph, list, table, image, and code_block, along with level, text, and child nodes. This lets downstream systems apply mixed chunking strategies: heading-based chunks for prose, row-based records for tables, and caption-based chunks for images. You do not need to re-parse the Markdown to recover structure.</p>
+
+<h2>5. Scalable Processing</h2>
+<p>A single document is easy. A thousand documents is not. Enterprises often need to convert years of Word files in one migration, plus handle ongoing uploads from teams and customers.</p>
+<p>Ollagraph supports synchronous conversion for single files and asynchronous batch jobs for large collections. Upload a ZIP archive of DOCX files, and the API processes them in parallel, returning a webhook when the batch completes. Throughput scales with file size and queue depth, typically handling 50 to 200 documents per minute. The same normalization rules apply to every file, so results stay consistent across the corpus. This matters for reproducible RAG evaluation and for maintaining retrieval quality as the knowledge base grows.</p>
+
+<h3>Performance and Benchmarks</h3>
+<p>Conversion performance depends on document complexity: page count, table density, image count, and the amount of tracked changes. The table below shows realistic throughput numbers for the Ollagraph DOCX to Markdown API on standard documents.</p>
+<pre><code>Document type	Pages	Tables	Images	Conversion time	Markdown size
+Simple memo	2	0	0	&lt; 1 s	5 KB
+Product manual	40	8	15	3-5 s	180 KB
+Legal contract	25	4	1	2-4 s	95 KB
+Research report	60	12	30	6-9 s	320 KB
+Enterprise SOP bundle	200	25	50	15-25 s	900 KB</code></pre>
+<p>For batch processing, Ollagraph supports asynchronous jobs. Upload a ZIP of DOCX files and receive a webhook when the batch completes. Typical throughput is 50 to 200 documents per minute depending on file size and queue depth.</p>
+<p>Compared to running open-source converters on a local server, the managed API reduces infrastructure overhead and improves consistency. The same document converted twice produces the same Markdown, which matters for reproducible RAG evaluation.</p>
+
+<h2>FAQs</h2>
+<h3>1. Can I Convert DOCX to Markdown Without Losing Formatting?</h3>
+<p>Yes, but with an important distinction. Semantic formatting — such as headings, lists, tables, bold, italic, and links — survives the conversion cleanly. However, visual formatting like exact fonts, colors, and page margins does not transfer, and that is entirely intentional. Markdown is a semantic format, not a page layout format, so it was never designed to replicate visual appearance. For RAG pipelines, this is actually a good thing, since semantic structure matters far more than visual presentation.</p>
+
+<h3>2. What Is the Best Python Library for DOCX to Markdown Conversion?</h3>
+<p>Several popular libraries exist for this task, including python-docx, mammoth, pandoc, and docx2txt. Mammoth is known for producing clean, semantic output, while Pandoc is more powerful but can introduce layout noise into the result. For production RAG systems, it is best to pair any of these libraries with a normalization layer that standardizes headings, lists, and tables. Alternatively, a managed API like Ollagraph can handle the cleanup work for you, saving development time.</p>
+
+<h3>3. How Do I Handle Tracked Changes in Word Documents?</h3>
+<p>The recommended approach is to resolve all tracked changes to the final accepted text by default. Leaving unresolved insertions and deletions in the document can confuse the language model with contradictory content. If you need to preserve the revision history for audit purposes, export the changes as separate annotations or metadata fields rather than mixing them into the main content. Never allow unresolved revision markup to appear in the main Markdown body.</p>
+
+<h3>4. Should I Keep Headers and Footers in the Markdown?</h3>
+<p>In most cases, no. Headers and footers typically contain repetitive content like page numbers, logos, and document titles. When these are included in every chunk, they add noise and can bias retrieval results toward irrelevant content. The exception is when a header or footer contains unique, section-specific information that is genuinely useful for retrieval. For the vast majority of RAG use cases, headers and footers should be stripped out during the normalization step.</p>
+
+<h3>5. Can Markdown Tables Handle Merged Cells from Word?</h3>
+<p>Standard Markdown tables do not support merged cells, row spans, or column spans. A good converter will handle this limitation by duplicating values, splitting merged cells into extra rows, or converting the table to a JSON structure instead. For complex tables, it is better to fall back to structured records rather than trying to force them into pipe-table format. The goal of any table conversion should be to preserve the underlying data relationships, not to replicate the exact visual layout from the original Word document.</p>
+
+<h3>6. How Do Images Work in the Converted Markdown?</h3>
+<p>During conversion, images are extracted as separate files and referenced in the Markdown using the standard ![alt text](path) syntax. The alt text is typically pulled from the Word document's description field or from nearby captions. If an image contains diagrams, charts, or embedded text, you should run OCR on it and append the extracted text alongside the image reference. This ensures that visual context remains accessible to the retrieval system and is not simply lost during conversion.</p>
+
+<h3>7. Is DOCX to Markdown Conversion Safe for Sensitive Documents?</h3>
+<p>Conversion is safe when the tool is configured to strip macros, embedded objects, and external relationships from the source file. Beyond that, you should carefully review the document's metadata, comments, and any hidden text for sensitive information before processing. Any personally identifiable information (PII) should be redacted or tokenized before the Markdown is added to a vector store. Having a clear, documented extraction and audit policy is essential for maintaining compliance with data protection regulations.</p>
+
+<h3>8. How Does This Fit Into a RAG Pipeline?</h3>
+<p>DOCX to Markdown conversion serves as the preprocessing step that comes before chunking and embedding in a RAG pipeline. Once the document has been converted to clean Markdown, you split it into chunks and generate vector embeddings for each chunk. Those vectors and their associated text are then stored in a vector database, where they can be retrieved at query time to provide context to the language model. Clean, well-structured Markdown directly improves both retrieval accuracy and the quality of the final generated answers.</p>
+
+<h2>What If My Word Document Has No Heading Styles?</h2>
+<p>If a Word document does not use proper heading styles, the converter will struggle to build a reliable hierarchy and will likely produce flat, unstructured Markdown. The cleanest solution is to go back to the source document and apply proper Heading 1–6 styles before running the conversion. If that is not possible, you can use a heuristic post-processor that detects structural cues like bold or large-font paragraphs and promotes them to headings. However, heuristic approaches are always less reliable than having proper Word styles applied from the start.</p>
+
+<h2>Can I Convert .doc Files, Not .docx?</h2>
+<p>The older binary .doc format is not based on OOXML and requires a different parser than those used for .docx. Tools like LibreOffice or antiword can be used to convert .doc files to .docx format first, after which your standard DOCX pipeline can take over. Tools like Ollagraph focus on .docx but can accommodate .doc files through this pre-conversion step. Regardless of the tool you use, always validate the converted file before feeding it into your pipeline to catch any corruption or data loss from the format migration.</p>
+
+<h2>Why Does My Markdown Have Weird Characters or Encoding Issues?</h2>
+<p>Encoding issues in converted Markdown almost always originate from Word-specific special characters, non-breaking spaces, or field codes that were not handled correctly by the converter. A proper normalization layer should replace non-breaking spaces with standard spaces, convert smart quotes to straight quotes, strip zero-width characters, and fix any encoding mismatches between the source and output. These small artifacts might seem minor, but if left untreated they can silently break tokenization and degrade the performance of your entire RAG pipeline.</p>
+
+<h2>How Do I Measure Conversion Quality?</h2>
+<p>Conversion quality should be tracked through structural metrics by comparing element counts between the source document and the converted Markdown — specifically heading count, list count, table rows, image references, and cross-references. Any significant discrepancy signals data loss during conversion. Beyond structural metrics, you should also measure downstream RAG performance indicators like retrieval accuracy and answer relevance, since those ultimately reflect the real-world impact of conversion quality. Good conversion quality consistently shows up as better search results and more accurate generated answers.</p>
+
+<h2>Conclusion</h2>
+<p>Word documents are one of the most common sources of enterprise knowledge, but they are not ready for AI retrieval in their native form. Converting DOCX to Markdown for RAG closes that gap. The conversion is not just a format change. It is a structural cleanup that determines whether your chunks make sense, your embeddings capture meaning, and your LLM receives clean context.</p>
+<p>The best results come from combining three things: well-styled source documents, an extraction pipeline that understands OOXML semantics, and a normalization layer that produces Markdown optimized for retrieval. Security and metadata handling are not afterthoughts. They are part of the pipeline from the start.</p>
+<p>If you are building a RAG system on top of a library of Word files, start by auditing a sample of your documents. Look for missing heading styles, manual lists, complex tables, and repeated headers. Then choose a conversion approach that handles those patterns explicitly. Whether you use open-source tools or a managed API like Ollagraph, the goal is the same: turn documents that were written for people into knowledge that machines can retrieve accurately.</p>
+<p>Ready to convert your Word documents into AI-ready Markdown? Try the Ollagraph DOCX to Markdown API or explore our related guides on PDF to Markdown for RAG, HTML to Markdown for AI, and building a complete RAG data pipeline.</p>
+
+<h2>References</h2>
+<ul>
+  <li>ECMA-376: Office Open XML File Formats — ecma-international.org</li>
+  <li>ISO/IEC 29500: Office Open XML File Formats</li>
+  <li>python-docx library documentation — python-docx.readthedocs.io</li>
+  <li>Mammoth .docx to HTML/Markdown converter — github.com/mwilliamson/mammoth.js</li>
+  <li>Pandoc universal document converter — pandoc.org</li>
+  <li>Ollagraph API Documentation — ollagraph.com/docs</li>
+  <li>Ollagraph Blog: PDF to Markdown for RAG — blog_pdf_to_markdown_for_rag.md</li>
+  <li>Ollagraph Blog: HTML to Markdown for AI — blog-html-to-markdown-for-ai.md</li>
+  <li>Ollagraph Blog: RAG Data Pipeline — blog-rag-data-pipeline-web-scraping-to-vector-search.md</li>
+</ul>
+</Article>
