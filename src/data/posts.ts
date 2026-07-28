@@ -10,6 +10,7 @@ export interface PostMeta {
 }
 
 export const posts: PostMeta[] = [
+  { slug: "web-scraping-for-llms", title: "Web Scraping for LLMs: Build AI-Ready Data Pipelines", description: "Turn public web pages into structured, chunked data for RAG, fine-tuning, and agents with a production-grade scraping pipeline.", date: "2026-07-28", readingTime: 23, tags: ["web-scraping", "llm", "rag", "markdown", "data-pipelines"] },
   { slug: "javascript-rendering-for-web-scraping", title: "JavaScript Rendering for Web Scraping: A Production Guide", description: "Render only when needed, extract what users actually see, and avoid expensive browser farms with a practical JavaScript scraping workflow.", date: "2026-07-28", readingTime: 24, tags: ["javascript", "scraping", "rendering", "headless-browser", "extraction"] },
   { slug: "how-ai-crawlers-read-your", title: "How AI Crawlers Read Websites (and How to Prepare)", description: "AI crawlers extract and rank raw text, not design. Learn how to structure content so LLMs can read, retrieve, and cite your pages.", date: "2026-07-27", readingTime: 25, tags: ["ai-crawlers", "technical-seo", "llm-optimization", "content-structure", "semantic-html"] },
   { slug: "extract-structured-data", title: "Extract Structured Data from Any Website with an API", description: "Learn how schema-first extraction turns any URL into reliable, typed JSON and replaces brittle parsers with scalable pipelines using Ollagraph.", date: "2026-07-27", readingTime: 28, tags: ["web-scraping", "data-extraction", "json-schema", "api", "data-pipelines"] },

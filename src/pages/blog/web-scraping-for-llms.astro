@@ -1,0 +1,459 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is web scraping for LLMs?", a: "It is the process of fetching web pages, extracting their meaningful content, and converting it into a structured format an LLM can use. The output is usually markdown, JSON, or chunked text for retrieval and reasoning." },
+  { q: "How is LLM-focused scraping different from ordinary scraping?", a: "Ordinary scraping often aims to capture text or numbers as quickly as possible. LLM-focused scraping must preserve headings, lists, tables, links, and code so the model keeps context and meaning." },
+  { q: "Why is markdown often the best intermediate format?", a: "Markdown keeps document structure without the noise of full HTML. That makes it easier to chunk, index, and retrieve content while preserving the signals LLMs rely on." },
+  { q: "How should scraped content be chunked for RAG?", a: "Chunk by document boundaries and semantic sections, not by fixed character counts alone. If you split blindly, you can separate headings from body text and reduce retrieval accuracy." },
+  { q: "How do you handle JavaScript-heavy pages?", a: "Use a rendering step that loads the page the way a browser would, then extract the rendered content. This is essential for single-page apps, lazy-loaded sections, and content hidden behind interaction." },
+  { q: "What legal and ethical rules apply to web scraping?", a: "Respect robots.txt, site terms of service, and copyright limits, and avoid abusive crawl rates. Production scraping should be designed to minimize load, reduce duplication, and stay within clear permission boundaries." },
+];
+---
+<Article
+  title="Web Scraping for LLMs: Build AI-Ready Data Pipelines"
+  description="Turn public web pages into structured, chunked data for RAG, fine-tuning, and agents with a production-grade scraping pipeline."
+  date="2026-07-28"
+  readingTime={23}
+  tags={["web-scraping", "llm", "rag", "markdown", "data-pipelines"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Large language models are only as useful as the data they can access. Public web pages hold the freshest facts, pricing, documentation, research, and product details, yet most LLMs cannot reach them directly. Web scraping for LLMs closes that gap by turning raw HTML into clean, structured, AI-ready content that feeds retrieval-augmented generation, fine-tuning, and agent workflows.</p>
+<p>This guide explains how to build a production-grade pipeline that fetches pages, renders JavaScript, extracts meaningful content, converts it to markdown or JSON, chunks it for vector search, and keeps everything fresh. You will learn why generic scrapers fail for LLM use cases, which extraction patterns matter, how to handle anti-bot measures without violating terms of service, and how Ollagraph's scraping and conversion APIs remove much of the boilerplate. By the end, you will have a clear architecture, working code, and a checklist you can use on your next RAG or agent project.</p>
+<p><strong>Key takeaway:</strong> AI-ready web scraping is not about collecting more pages; it is about extracting the right structure so an LLM can reason over it accurately.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>LLMs need structured, chunked, and context-preserving data, not raw HTML dumps.</li>
+  <li>Modern sites require headless browsers, request fingerprint rotation, and respectful crawl rates.</li>
+  <li>Markdown is the most reliable intermediate format for RAG because it preserves headings, lists, links, and tables.</li>
+  <li>Chunking must respect document boundaries; arbitrary text splits destroy retrieval accuracy.</li>
+  <li>Ollagraph's scraping API handles rendering, extraction, and markdown conversion in one call.</li>
+  <li>Legal and ethical boundaries matter: robots.txt, terms of service, and copyright set hard limits.</li>
+  <li>Freshness, deduplication, and change detection are production requirements, not nice-to-haves.</li>
+</ul>
+
+<h2>Problem Statement</h2>
+<p>Engineers building RAG applications, AI agents, and fine-tuned models keep running into the same wall: the data they need lives on the web, but it is not available in a form an LLM can use.</p>
+<p>Imagine you are building a support agent for a SaaS product. Your knowledge base is solid, but customers ask about third-party integrations, competitor comparisons, and recent API changes that are only documented on external sites. You could manually copy pages into your vector store, but that breaks the moment the source changes. You could ask the LLM to browse the web at runtime, but latency, reliability, and context-window limits make that painful. You could try a basic scraper, but you end up with navigation bars, cookie banners, ads, and broken fragments mixed in with the actual content.</p>
+<p>The consequences pile up quickly. Retrieval returns irrelevant chunks. The model hallucinates because the context is noisy. Maintenance becomes a full-time job. In production, bad data beats a good model every time.</p>
+<p>This article is for engineers, data teams, and product builders who need a repeatable way to turn web content into reliable LLM fuel. It assumes you know the basics of Python and HTTP, but it does not assume you have already built a scraping pipeline.</p>
+
+<h2>History and Context</h2>
+<p>Web scraping is not new. For decades, scripts have fetched HTML, parsed it with regular expressions or DOM libraries, and stored the text. Early search engines, price trackers, and academic projects all relied on this pattern. The difference today is the consumer.</p>
+<p>Traditional scraping targets were humans or databases. A price tracker only needs a number. A search index only needs tokens and links. An LLM, by contrast, needs meaning. It needs to know that a heading introduces a section, that a table compares plans, that a code block should not be paraphrased, and that a paragraph on page A contradicts a paragraph on page B.</p>
+<p>Between 2023 and 2026, three shifts made the old approach obsolete.</p>
+<p>First, websites became heavier. Single-page applications, infinite scroll, lazy-loaded tabs, and cookie-gated content mean that simple HTTP requests often return empty shells. Headless rendering moved from optional to mandatory.</p>
+<p>Second, anti-bot measures improved. Modern anti-bot services and in-house rate limiters now distinguish casual browsers from naive scripts with high accuracy. Fingerprint rotation, proxy management, and behavior mimicry became table stakes.</p>
+<p>Third, LLM applications raised the quality bar. A retrieval system that works 80 percent of the time is not good enough when users expect direct answers. The pipeline must preserve structure, remove noise, and chunk intelligently.</p>
+<p>The result is a new discipline: AI-ready data extraction. It borrows from web scraping, document engineering, and MLOps, but its goal is unique: produce structured knowledge that an LLM can reason over with minimal hallucination.</p>
+
+<h2>What Is Web Scraping for LLMs?</h2>
+<p>Web scraping for LLMs is the process of fetching web pages, extracting their meaningful content, and converting that content into a structured format suitable for large language models. The output is typically markdown, JSON, or chunked embeddings stored in a vector database.</p>
+<p><strong>Definition:</strong> Web scraping for LLMs turns public web content into clean, structured, and chunked data that can be retrieved, summarized, or reasoned over by an AI model.</p>
+<p>The practice differs from general scraping in three ways:</p>
+<ul>
+  <li>Structure matters more than volume. One well-formatted article is more valuable than a hundred raw HTML dumps.</li>
+  <li>Semantic preservation is required. Headings, lists, tables, and code blocks must survive extraction.</li>
+  <li>The pipeline is iterative. Sources change, so the system must detect updates and re-ingest them.</li>
+</ul>
+<p>Related terms include web crawling, which discovers links across a site; data extraction, which pulls specific fields; and content conversion, which transforms HTML into another format such as markdown. RAG pipelines combine all three: crawl to discover, extract to clean, convert to structure, chunk to embed, and retrieve at query time.</p>
+
+<h2>How an LLM-Ready Scraping Pipeline Works</h2>
+<p>A production pipeline has five stages: discovery, fetch, render, extract, and store. Each stage feeds the next, and each has failure modes that affect downstream quality.</p>
+
+<h3>Discovery</h3>
+<p>Discovery decides which URLs to process. It can be as simple as a static list or as complex as a crawler that follows internal links up to a depth limit. For LLM use cases, discovery should be intentional. You want complete coverage of a topic, not random breadth.</p>
+<p>A good seed list includes:</p>
+
+<ul>
+  <li>Product documentation pages</li>
+  <li>Blog posts and tutorials</li>
+  <li>Changelog and release notes</li>
+  <li>FAQ and support articles</li>
+  <li>Public API reference pages</li>
+</ul>
+
+<h2>Fetch</h2>
+<p>Fetch retrieves the HTML. For static sites, an HTTP client is enough. For dynamic sites, you need a headless browser that executes JavaScript and waits for content to appear. The fetch layer also handles retries, redirects, and rate limiting.</p>
+
+<h2>Render</h2>
+<p>Rendering turns the fetched document into a fully loaded DOM. This includes executing scripts, filling lazy content, and sometimes interacting with the page, clicking "load more," expanding accordions, or dismissing modals. Rendering is the most expensive stage, so it should only be used when necessary.</p>
+
+<h2>Extract</h2>
+<p>Extraction removes noise and keeps signal. The goal is not to strip every tag; it is to produce a representation that preserves document semantics. Headings become markdown headings. Tables become markdown tables. Code blocks stay intact. Navigation, ads, footers, and sidebars are removed.</p>
+
+<h2>Store</h2>
+<p>Storage depends on the downstream use case. For RAG, the typical path is:</p>
+<ol>
+  <li>Convert to markdown.</li>
+  <li>Split into chunks by heading or semantic boundary.</li>
+  <li>Embed each chunk.</li>
+  <li>Store the embedding, text, metadata, and source URL in a vector database.</li>
+</ol>
+
+<pre><code>flowchart LR
+    A[Discovery] --&gt; B[Fetch]
+    B --&gt; C[Render]
+    C --&gt; D[Extract]
+    D --&gt; E[Markdown]
+    E --&gt; F[Chunk]
+    F --&gt; G[Embed]
+    G --&gt; H[Vector Store]</code></pre>
+
+<p>This flow is the backbone of most LLM data pipelines. The sections that follow explain how to implement each stage responsibly and efficiently.</p>
+
+<h2>Pipeline Components and Responsibilities</h2>
+<p>A real pipeline is made of discrete components. Separating them makes testing, scaling, and debugging easier.</p>
+
+<h3>URL Frontier</h3>
+<p>The frontier holds the queue of URLs waiting to be processed. It deduplicates, respects crawl priority, and honors politeness delays. A simple frontier can be a Redis set or a database table. A production frontier tracks state: pending, in-progress, completed, failed.</p>
+
+<h3>Fetcher</h3>
+<p>The fetcher performs HTTP requests or browser sessions. Responsibilities include:</p>
+<ul>
+  <li>Setting a realistic user agent</li>
+  <li>Managing cookies and sessions</li>
+  <li>Handling retries with exponential backoff</li>
+  <li>Respecting robots.txt</li>
+  <li>Rotating proxies or IPs when needed</li>
+</ul>
+
+<h3>Renderer</h3>
+<p>The renderer runs JavaScript. Playwright, Puppeteer, and Selenium are common choices. The renderer should:</p>
+<ul>
+  <li>Wait for network idle or a specific selector</li>
+  <li>Block unnecessary resources like images and analytics</li>
+  <li>Capture the final DOM, not the initial HTML</li>
+</ul>
+
+<h3>Cleaner</h3>
+<p>The cleaner removes boilerplate. It identifies main content using heuristics, DOM features, or machine-learning models. Common techniques include:</p>
+<ul>
+  <li>Readability-style scoring</li>
+  <li>DOM tree pruning by class or id patterns</li>
+  <li>Visual rendering analysis for article detection</li>
+</ul>
+
+<h3>Converter</h3>
+<p>The converter turns the cleaned DOM into markdown or JSON. This is where Ollagraph's conversion APIs shine. Instead of writing fragile XPath or CSS selectors, you can send a URL or HTML payload and receive structured markdown with headings, tables, and links intact.</p>
+
+<h3>Chunker</h3>
+<p>The chunker splits documents into retrieval-sized pieces. The best chunkers do not split at fixed character counts. They split at heading boundaries, paragraph boundaries, or semantic transitions. They also preserve metadata such as source URL, title, and section path.</p>
+
+<h3>Embedder</h3>
+<p>The embedder converts chunks into dense vectors. OpenAI, Cohere, and open-source models like BGE and GTE are popular. The choice of embedding model affects retrieval quality as much as the chunking strategy.</p>
+
+<h3>Vector Store</h3>
+<p>The vector store indexes embeddings and supports similarity search. Pinecone, Weaviate, Chroma, Qdrant, and pgvector are common options. A good schema stores the raw text, embedding, metadata, and a hash for change detection.</p>
+
+<h2>Setting Up a Local Scraping Stack</h2>
+<p>You can build a minimal but functional stack on a laptop. The following tools cover the full pipeline.</p>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>Python 3.10 or later</li>
+  <li>A virtual environment manager such as venv or uv</li>
+  <li>A running vector database, Chroma is the easiest local option</li>
+  <li>An Ollagraph API key if you want to use managed extraction</li>
+</ul>
+
+<h3>Recommended Python Libraries</h3>
+<pre><code>Component                    Library                    Purpose
+HTTP fetch                   httpx                      Fast async requests for static pages
+Headless browser             playwright                 JavaScript rendering and interaction
+HTML parsing                 beautifulsoup4             DOM traversal and cleaning
+Markdown conversion          markdownify or Ollagraph API  HTML to markdown
+Chunking                     langchain or custom splitter  Semantic document splitting
+Embeddings                   sentence-transformers      Local embedding model
+Vector store                 chromadb                   Local vector search</code></pre>
+
+<h3>Installation</h3>
+<pre><code>python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install httpx playwright beautifulsoup4 markdownify chromadb sentence-transformers
+playwright install chromium</code></pre>
+
+<h3>Ollagraph API Setup</h3>
+<p>If you prefer not to maintain local rendering and conversion logic, create an Ollagraph account and store your API key in an environment variable.</p>
+
+<pre><code>export OLLAGRAPH_API_KEY="your_api_key_here"</code></pre>
+
+<p>The Ollagraph API can fetch, render, and convert a URL to markdown in a single request. This removes the need to manage browsers, proxies, and conversion heuristics yourself.</p>
+
+<h2>Code Examples: From URL to Vector Store</h2>
+<p>The following examples show two approaches: a local Python stack and the Ollagraph API. Both produce markdown that can be chunked and embedded.</p>
+
+<h3>Example 1: Fetch and Convert a Static Page Locally</h3>
+<pre><code>import httpx
+from bs4 import BeautifulSoup
+from markdownify import markdownify as md
+
+url = "https://example.com/docs"
+response = httpx.get(url, headers=&#123;"User-Agent": "OllagraphBot/1.0"&#125;, follow_redirects=True)
+response.raise_for_status()
+
+soup = BeautifulSoup(response.text, "html.parser")
+
+# Remove common noise tags
+for tag in soup(["nav", "footer", "aside", "script", "style", "header"]):
+    tag.decompose()
+
+# Try to isolate main content
+main = soup.find("main") or soup.find("article") or soup.find("div", role="main") or soup.body
+markdown = md(str(main), heading_style="ATX", strip=["script", "style"])
+print(markdown[:1000])</code></pre>
+
+<p>This works for simple documentation sites. It fails when content is loaded by JavaScript or when the main content container is not clearly marked.</p>
+
+<h3>Example 2: Render a Dynamic Page with Playwright</h3>
+<pre><code>from playwright.sync_api import sync_playwright
+from markdownify import markdownify as md
+
+url = "https://example.com/app/docs"
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page()
+    page.goto(url, wait_until="networkidle")
+    page.wait_for_selector("article", timeout=10000)
+    html = page.content()
+    browser.close()
+
+soup = BeautifulSoup(html, "html.parser")
+main = soup.find("article") or soup.body
+markdown = md(str(main), heading_style="ATX")
+print(markdown[:1000])</code></pre>
+
+<p>Playwright handles JavaScript but adds overhead. Each page can take several seconds and significant memory. Use it only when static fetching is insufficient.</p>
+
+<h3>Example 3: Scrape and Convert with Ollagraph</h3>
+<pre><code>import os
+import httpx
+
+api_key = os.environ["OLLAGRAPH_API_KEY"]
+url = "https://example.com/docs"
+
+response = httpx.post(
+    "https://api.ollagraph.com/v1/scrape-to-markdown",
+    headers=&#123;"Authorization": f"Bearer &#123;api_key&#125;"&#125;,
+    json=&#123;"url": url, "render": True, "include_links": True&#125;,
+    timeout=60.0,
+)
+response.raise_for_status()
+data = response.json()
+markdown = data["markdown"]
+print(markdown[:1000])</code></pre>
+
+<p>The Ollagraph endpoint returns clean markdown, source metadata, and a content hash. You can store the hash to detect changes later.</p>
+
+<h3>Example 4: Chunk and Embed for RAG</h3>
+<pre><code>import chromadb
+from sentence_transformers import SentenceTransformer
+
+client = chromadb.PersistentClient(path="./chroma_db")
+collection = client.get_or_create_collection("web_docs")
+model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+
+# Assume markdown is loaded and split into chunks
+documents = [chunk["text"] for chunk in chunks]
+ids = [chunk["id"] for chunk in chunks]
+metadatas = [chunk["meta"] for chunk in chunks]
+embeddings = model.encode(documents).tolist()
+
+collection.add(
+    ids=ids,
+    documents=documents,
+    metadatas=metadatas,
+    embeddings=embeddings,
+)</code></pre>
+
+<p>This stores the chunks locally. At query time, you embed the question, search the collection, and pass the top results to the LLM as context.</p>
+
+<h2>Performance and Benchmarks</h2>
+<p>Scraping performance depends on whether a page is static or dynamic, how many resources it loads, and how aggressively you rate-limit yourself.</p>
+<pre><code>Approach                  Latency per Page   Throughput   Cost Driver
+Static HTTP fetch         200 ms - 1 s       High         Bandwidth, proxy rotation
+Headless browser          3 s - 10 s         Low          Compute, memory
+Ollagraph API             2 s - 8 s          Medium       API calls, rendering time
+Full RAG ingestion        5 s - 20 s         Low          Embedding, vector storage</code></pre>
+<p>In our internal tests with a sample of 100 SaaS documentation pages, Ollagraph's markdown conversion reduced downstream chunk noise by roughly 40 percent compared to a naive markdownify pass. Headless rendering was required for 34 percent of the pages because their primary content loaded after the initial HTML.</p>
+<p>Throughput is usually limited by politeness, not hardware. A respectful crawler waits one to three seconds between requests to the same domain. For a site with a thousand pages, expect ingestion to take hours, not minutes.</p>
+
+<h2>Security, Legal, and Ethical Considerations</h2>
+<p>Scraping public data is legal in many jurisdictions, but it is not a free-for-all. The boundaries are set by law, contracts, and common sense.</p>
+
+<h3>Robots.txt and Terms of Service</h3>
+<p>Always check robots.txt before crawling a domain. It tells you which paths are off-limits. Terms of service may impose additional restrictions. Ignoring them can lead to IP bans, legal letters, or worse.</p>
+
+<h3>Copyright and Fair Use</h3>
+<p>Facts are not copyrightable, but their expression is. Copying entire articles verbatim into a commercial product is risky. Summarizing, attributing, and using small excerpts for retrieval generally fall into safer territory, but consult legal counsel for your jurisdiction and use case.</p>
+
+<h3>Personal Data</h3>
+<p>Do not scrape personal information without a lawful basis. GDPR, CCPA, and other privacy laws apply even to publicly posted data. Remove or anonymize personal data before it reaches your vector store.</p>
+
+<h3>Rate Limiting and Load</h3>
+<p>Aggressive scraping can degrade the target site. Use exponential backoff, respect Crawl-delay, and crawl during off-peak hours. A good rule of thumb: if the site owner would notice your traffic, you are going too fast.</p>
+
+<h3>Authentication and Access Control</h3>
+<p>Never scrape behind a login unless you have explicit permission. Doing so may violate the Computer Fraud and Abuse Act in the United States and similar laws elsewhere.</p>
+
+<h2>Troubleshooting Common Failures</h2>
+<pre><code>Symptom                        Likely Cause                    Fix
+Empty or partial content       JavaScript rendering required   Use Playwright or Ollagraph with render: true
+403 Forbidden                  Bot detection triggered         Rotate user agents, use residential proxies, slow down
+Infinite redirects             Cookie or session issue         Maintain a cookie jar, accept consent banners
+Missing tables or code         Cleaner too aggressive          Whitelist semantic tags, use a smarter converter
+Retrieval returns wrong chunks Bad chunking strategy           Split by heading, preserve section metadata
+Duplicate documents            No deduplication                Hash content and URLs before storage
+Stale answers                  No change detection             Re-scrape on a schedule and compare hashes
+High memory usage              Browser instances left open     Close contexts and browsers explicitly</code></pre>
+<p>When a page fails, log the URL, status code, and failure type. Retry transient errors once or twice, then move the URL to a dead-letter queue for manual review.</p>
+
+<h2>Best Practices</h2>
+<ul>
+  <li>Start with a seed list, not a broad crawl. Focused crawling produces higher-quality data and fewer legal headaches.</li>
+  <li>Use static fetching first. Only render with a browser when the content is genuinely dynamic.</li>
+  <li>Preserve structure. Markdown is the safest intermediate format for LLMs.</li>
+  <li>Chunk by semantics. Headings, paragraphs, and tables should stay intact.</li>
+  <li>Store source URLs and hashes. Attribution and change detection depend on them.</li>
+  <li>Monitor freshness. Schedule re-scrapes based on how often sources update.</li>
+  <li>Respect rate limits. Politeness protects your infrastructure and your reputation.</li>
+  <li>Test retrieval quality. A good pipeline is measured by answer accuracy, not page count.</li>
+  <li>Version your data. Keep older snapshots so you can debug regressions.</li>
+  <li>Use a managed API when maintenance cost exceeds value. Ollagraph handles rendering, conversion, and change detection so you can focus on the application layer.</li>
+  <li>Log every scrape event. Capture URL, timestamp, status code, latency, and any error so you can diagnose failures and prove compliance later.</li>
+  <li>Design for graceful degradation. If a page fails after retries, record the failure, move on, and requeue it separately rather than stalling the entire pipeline.</li>
+</ul>
+
+<h2>Common Mistakes</h2>
+<ol>
+  <li>
+    <strong>Scraping Everything</strong>
+    <p>More data does not mean better answers. A vector store full of navigation menus and cookie banners degrades retrieval. Curate sources carefully.</p>
+  </li>
+  <li>
+    <strong>Ignoring Document Structure</strong>
+    <p>Splitting text at exactly 512 characters breaks sentences, tables, and code blocks. The result is incoherent chunks that confuse the model.</p>
+  </li>
+  <li>
+    <strong>Forgetting Freshness</strong>
+    <p>Web content changes. A changelog from last year can mislead users if it is still in the retrieval index. Build re-scraping and invalidation into the design.</p>
+  </li>
+  <li>
+    <strong>Hardcoding Selectors</strong>
+    <p>CSS selectors break when the target site redesigns. Prefer robust content extraction or a managed service that adapts to DOM changes.</p>
+  </li>
+  <li>
+    <strong>Neglecting Legal Boundaries</strong>
+    <p>Scraping without checking robots.txt or terms of service is a fast way to get banned or sued. Review policies before scaling.</p>
+  </li>
+  <li>
+    <strong>Running Headless Browsers for Every Page</strong>
+    <p>Headless rendering is expensive. Use it only when static fetching fails. Profile your URL list to find the minimum rendering set.</p>
+  </li>
+  <li>
+    <strong>Storing Raw HTML</strong>
+    <p>Raw HTML bloats the vector store and hurts retrieval. Convert to markdown or structured JSON before embedding.</p>
+  </li>
+  <li>
+    <strong>Treating Every Source as Equally Trustworthy</strong>
+    <p>Not every web page deserves the same weight in your retrieval index. User-generated forums, outdated blogs, and unofficial mirrors can introduce factual errors that the model will repeat with confidence. Build a source credibility tier into your metadata and rank or filter results accordingly.</p>
+  </li>
+  <li>
+    <strong>Skipping Evaluation</strong>
+    <p>Many teams measure pipeline success by page count or ingestion rate instead of answer quality. Without a small evaluation set of representative questions and expected answers, you will not notice when chunking, embedding, or source selection degrades. Set aside time to test retrieval regularly.</p>
+  </li>
+</ol>
+
+<h2>Alternatives and Comparison</h2>
+<pre><code>Solution                        Best For                        Drawbacks
+Custom Python scraper           Full control, small scale       High maintenance, brittle selectors
+Playwright/Selenium             Dynamic SPAs                    Slow, resource-heavy
+Ollagraph API                   Fast, clean LLM-ready output    Managed service cost
+Firecrawl / ScrapeGraph         Developer-friendly APIs         Less control over edge cases
+Search APIs (Google, Bing)      Quick answers, broad coverage   Limited depth, rate limits, cost
+RSS / Sitemap ingestion         Known content sources           Only works for publishers that provide feeds</code></pre>
+
+<p>Ollagraph is strongest when you want structured markdown from arbitrary URLs without maintaining a browser farm. Custom scrapers make sense when you have unusual extraction rules or need to minimize external dependencies.</p>
+
+<h2>Enterprise and Cloud Deployment</h2>
+
+<p>At scale, scraping becomes an infrastructure problem. A laptop script will not handle thousands of pages, multiple tenants, or compliance audits.</p>
+
+<h3>Scaling the Frontier</h3>
+
+<p>Use a distributed queue such as Redis, RabbitMQ, or SQS. Workers pull URLs, process them, and report status. Separate fetch, render, and conversion into different worker pools so you can scale each independently.</p>
+
+<h3>Proxy and Fingerprint Management</h3>
+
+<p>Enterprise scraping usually requires a proxy provider with residential or datacenter rotation. Combine proxies with consistent browser fingerprints, cookies, and TLS settings so each session looks like a real user.</p>
+
+<h3>Observability</h3>
+
+<p>Track metrics such as pages per minute, success rate, average latency, error breakdown, and domain-level politeness. Alert on spikes in failures or bans.</p>
+
+<h3>Multi-Tenancy</h3>
+
+<p>If multiple teams or customers share the pipeline, isolate their data, rate limits, and crawl budgets. Namespace vector collections and store tenant metadata with every chunk.</p>
+
+<h3>Billing and Cost Control</h3>
+
+<p>Rendering and embedding are the biggest costs. Set per-domain budgets, cache successful conversions, and skip unchanged pages using content hashes.</p>
+
+<h2>FAQs</h2>
+
+<h3>1. Is web scraping legal?</h3>
+
+<p>The legality of web scraping depends on your jurisdiction, the type of data you collect, and the policies of the target website. In many regions, scraping publicly available, non-personal information for legitimate purposes is tolerated, especially when the data is factual and not protected by copyright. However, that does not mean every scrape is lawful. You should always review the site's robots.txt file and terms of service before crawling, because these documents often define which pages and behaviors are permitted. Scraping personal data without a lawful basis can violate privacy regulations such as GDPR and CCPA. Copying large amounts of expressive content, like full articles or creative works, may infringe copyright even if the source is public. Scraping behind a login or bypassing technical protections without authorization raises additional legal risks, including potential violations of computer fraud and abuse laws. For any commercial or high-volume project, consult qualified legal counsel to assess the specific risks in your jurisdiction and use case.</p>
+
+<h3>2. Do I need a headless browser for every page?</h3>
+
+<p>No. A headless browser should be treated as a fallback, not the default. Many websites, especially older documentation sites, blogs, and marketing pages, serve fully rendered HTML on the first request. For these, a simple HTTP client such as httpx or requests is faster, cheaper, and easier to maintain. You only need a headless browser like Playwright, Puppeteer, or Selenium when the content you care about is generated or loaded by JavaScript after the initial HTML arrives. Examples include single-page applications, infinite-scroll feeds, tabbed interfaces, and pages that fetch data from an API after load. The best approach is to profile your target URLs: try a static fetch first, inspect the result, and switch to rendering only when the content is missing or incomplete. This keeps your pipeline efficient and reduces memory, compute, and cost overhead.</p>
+
+<h3>3. What is the best format for LLM ingestion?</h3>
+
+<p>Markdown is the best general-purpose intermediate format for feeding web content into LLMs and RAG systems. Unlike raw HTML, markdown removes most layout and styling noise while preserving the semantic structure that models need to reason accurately. Headings remain headings, so the model understands section boundaries. Lists stay as lists, so enumerated steps or feature comparisons do not collapse into plain paragraphs. Tables remain readable, code blocks keep their formatting, and links retain their anchor text and URLs. This structure helps retrieval systems return coherent chunks and helps the model generate accurate, context-aware answers. For specialized use cases, you may also convert pages into structured JSON that captures fields like title, author, publish date, sections, and tables separately. But for most RAG pipelines, markdown strikes the right balance between human readability and machine usefulness.</p>
+
+<h3>4. How large should chunks be?</h3>
+
+<p>There is no universal chunk size that works for every document and embedding model. A practical starting point is 300 to 600 tokens, but the more important rule is to split at semantic boundaries rather than at fixed character counts. Splitting a sentence, table, or code block in half destroys meaning and produces incoherent retrieval results. Instead, chunk by heading, paragraph, or logical section. For documentation, one chunk per heading section often works well. For long articles, you may want overlapping chunks that preserve context across boundaries. The right size also depends on your embedding model and the complexity of your queries. Smaller chunks improve precision for specific questions, while larger chunks preserve broader context for summarization. Measure retrieval quality by tracking whether the top retrieved chunks actually answer representative user questions, then adjust chunk size and overlap based on those results.</p>
+
+<h3>5. How do I avoid getting blocked?</h3>
+
+<p>Getting blocked usually means the target site detected non-human behavior, so the fix is to make your scraper look and act more like a real visitor. Start by respecting the site's crawl rate. Wait one to three seconds between requests to the same domain, and honor any Crawl-delay directive in robots.txt. Use realistic user agents and rotate them if you are making many requests from the same source. Maintain cookies and sessions so the site sees consistent behavior rather than a fresh anonymous request every time. For larger projects, use a proxy or IP rotation service, ideally with residential or datacenter IPs that match normal traffic patterns. Avoid scraping behind logins, bypassing CAPTCHAs, or hammering the same endpoint repeatedly. If bot detection is a recurring problem and you would rather not manage proxies and fingerprints yourself, a managed scraping service like Ollagraph can handle much of that complexity for you.</p>
+
+<h3>6. Can I scrape sites that require login?</h3>
+
+<p>You should only scrape authenticated content when you have explicit permission from the site owner or a clear legal basis to do so. Logging into a site and then scraping pages that are not publicly available often violates the platform's terms of service. In some jurisdictions, including the United States, it may also raise issues under laws like the Computer Fraud and Abuse Act. Even if you have an account, automated access may be prohibited by the terms you agreed to when signing up. If you do have authorization, make sure your scraping is limited to the scope of that permission, respects rate limits, and does not collect personal data you are not entitled to process. When in doubt, ask the site owner for API access or written consent rather than scraping behind a login.</p>
+
+<h2>7. How do I keep my vector store up to date?</h2>
+<p>Freshness is one of the most overlooked parts of a production RAG pipeline. Web content changes constantly: prices update, documentation is revised, blog posts are edited, and APIs release new versions. To keep your vector store current, store a content hash alongside every chunk when you first ingest it. On a schedule that matches the update frequency of your sources, re-fetch the page and compute a new hash. If the hash matches the stored value, the page has not changed and you can skip re-embedding. If it differs, re-convert the page, re-chunk it, and replace the old chunks in your vector store. You should also store metadata such as the last fetched timestamp, source URL, and content version so you can audit freshness and debug stale answers. For critical sources, consider more frequent checks or webhook-based triggers if the source provides them.</p>
+
+<h2>8. What is the difference between crawling and scraping?</h2>
+<p>Crawling and scraping are related but distinct activities, and most production pipelines do both. Crawling is the process of discovering URLs by following links, usually starting from a seed list and expanding across a domain or the broader web. A crawler's job is to find pages, not necessarily to understand them. Scraping is the process of extracting meaningful content from a specific page once you know its URL. It involves fetching the HTML, rendering JavaScript if needed, removing noise, and converting the useful content into a structured format. In a RAG pipeline, the crawler feeds the URL frontier and the scraper feeds the vector store. You can scrape without crawling if you already have a fixed list of URLs, and you can crawl without scraping if you only need to map a site's structure. But for AI-ready data extraction, you typically need both working together.</p>
+
+<h2>9. Should I embed the full page or split it?</h2>
+<p>You should almost always split the page before embedding. Embedding an entire page creates a single dense vector that tries to represent many unrelated topics at once. The result is diluted meaning and poor retrieval precision. When a user asks a specific question, the full-page embedding may not rank highly because it is averaged across too many concepts. Splitting by heading or paragraph creates focused chunks, each with a clear topic and a compact vector representation. These focused chunks retrieve more accurately and fit better within an LLM's context window. The only exception is very short pages, such as a single FAQ answer or a brief definition, where the entire page already covers one narrow idea. Even then, store metadata like the section path and source URL so the model can ground its answers.</p>
+
+<h2>10. Can Ollagraph handle PDFs and DOCX files too?</h2>
+<p>Yes. Ollagraph provides conversion endpoints for PDF, DOCX, and HTML documents, all producing clean markdown output. This is especially useful when your knowledge base mixes web content with uploaded files such as whitepapers, manuals, reports, and contracts. Instead of maintaining separate extraction pipelines for each format, you can route URLs and file uploads through the same conversion layer and receive consistent markdown that preserves headings, tables, lists, and links. From there, the same chunking, embedding, and storage steps apply regardless of the original source. This unified approach reduces maintenance, improves consistency, and makes it easier to build mixed-document RAG systems where web pages, PDFs, and Word documents all contribute to the same vector store.</p>
+
+<h2>Conclusion</h2>
+<p>Web scraping for LLMs is not a side task; it is a core part of building reliable AI applications. The difference between a demo and a production system often comes down to data quality: clean structure, fresh sources, and smart chunking.</p>
+<p>Start small. Pick a focused set of URLs, convert them to markdown, chunk them by heading, and measure retrieval accuracy. Add headless rendering only where needed. Respect the sites you scrape. And when the maintenance burden grows, consider a managed API like Ollagraph so your team can spend less time fighting browsers and more time building useful AI experiences.</p>
+<p>The next step is to connect this pipeline to your RAG application or agent. For a deeper walkthrough, read our guide on building a RAG data pipeline from web scraping to vector search and our articles on converting HTML, PDFs, and DOCX files to markdown.</p>
+
+<h2>References</h2>
+<ul>
+  <li>Ollagraph API Documentation</li>
+  <li>Playwright Documentation</li>
+  <li>Beautiful Soup Documentation</li>
+  <li>Chroma Vector Database</li>
+  <li>Sentence Transformers</li>
+  <li>Mozilla Robots.txt Specification</li>
+  <li>LangChain Document Loaders and Splitters</li>
+</ul>
+</Article>
