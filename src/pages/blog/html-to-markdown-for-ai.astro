@@ -1,0 +1,552 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why convert HTML to Markdown for AI?", a: "Raw HTML carries layout, scripts, banners, and other browser chrome that wastes tokens and confuses retrieval. Markdown keeps headings, lists, links, tables, and code blocks while removing most markup overhead. That makes it a better default format for search, chunking, and LLM prompting." },
+  { q: "What makes Markdown \"LLM-ready\"?", a: "LLM-ready Markdown is clean, structurally faithful, and free of boilerplate. Headings should reflect document hierarchy, lists should stay ordered, and links or code should remain readable. If the output is easy for a person to skim, it is usually easier for a model to reason over." },
+  { q: "How do you decide what content to keep?", a: "Keep the text that carries meaning for the task, not every visible element. Main article copy, instructions, tables, code samples, and relevant headings usually belong; nav bars, cookie banners, repeated footers, and tracking snippets usually do not. Context can change the rule, so extraction should support task-specific policies." },
+  { q: "How should tables, code blocks, and images be handled?", a: "Tables should preserve row and column relationships, or the output loses meaning. Code blocks should remain fenced so syntax and indentation survive conversion. Images are best represented with concise alt text or captions when they add information; decorative images can be dropped." },
+  { q: "How does Ollagraph help at scale?", a: "Ollagraph combines fetching, extraction, and formatting in one conversion step, so teams do not have to glue together separate parsers and cleaners. That reduces failure points and makes output more consistent across page types. It also makes it easier to standardize token budgets and downstream chunking." },
+  { q: "What are the most common mistakes in production?", a: "The biggest mistakes are stripping too aggressively, keeping too much boilerplate, and chunking before cleanup. Teams also forget to monitor token counts and validate output quality across page types. A production pipeline should include fallbacks, logging, and clear rules for edge cases like comments, tabs, and embedded widgets." },
+];
+---
+<Article
+  title="HTML to Markdown for AI: Clean, LLM-Ready Web Context"
+  description="Convert noisy web pages into clean Markdown for AI systems. Keep structure, drop chrome, and scale extraction with Ollagraph."
+  date="2026-07-28"
+  readingTime={25}
+  tags={["html-to-markdown", "llm-context", "web-scraping", "markdown", "ai"]}
+  kind="blog"
+  faqs={faqs}
+>
+<p>Feed a large language model the raw HTML of a modern web page and you are not feeding it knowledge. You are feeding it a browser's to-do list: layout containers, tracking scripts, cookie banners, ad placeholders, and enough nested div tags to fill a context window before the first real sentence appears.</p>
+
+<p>The fix is not to scrape harder. It is to convert smarter. HTML-to-markdown conversion for AI strips the scaffolding, keeps the structure that carries meaning, and hands your model a document it can actually reason over. Done well, it turns a noisy web page into a clean, citeable, chunkable piece of context. Done poorly, it either flattens the page into a wall of text or preserves so much chrome that your retrieval system starts quoting the privacy policy.</p>
+
+<p>This guide walks through how to convert web pages into LLM-ready markdown in 2026, why the problem is harder than a simple tag-removal script, and how to run it in production with the Ollagraph HTML-to-Markdown API.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Raw HTML is rarely usable as LLM context. Most of its tokens are browser scaffolding, not content.</li>
+  <li>Markdown is the best default intermediate format because it preserves headings, lists, tables, links, and code blocks without the tag overhead of HTML.</li>
+  <li>A good converter must judge what to keep and what to drop, not just remove tags.</li>
+  <li>The Ollagraph /v1/convert/html-to-markdown endpoint combines fetching, extraction, and formatting in one API call.</li>
+  <li>Production pipelines need validation, token monitoring, fallback rendering strategies, and clear policies for tables, images, and links.</li>
+</ul>
+
+<h2>1. The Real Problem: HTML Speaks Browser, Not Model</h2>
+<p>HTML was invented to describe how a document should look and behave in a browser. It was not invented to describe knowledge. When you pass raw HTML into an LLM, you are asking the model to read a page the way a browser would render it, except without the rendering. The model has to infer meaning from tags, attributes, scripts, and inline styles that were never meant to carry semantic weight.</p>
+
+<p>Imagine handing someone a printed newspaper that has been shredded and then taped back together with shipping labels, sticky notes, and advertisements layered on top. The article is in there somewhere, but the reader has to peel away layers of unrelated material before finding it. That is what raw HTML feels like to a model.</p>
+
+<h3>A Typical Page Is Mostly Noise</h3>
+<p>On a standard blog article page, the useful content is often a minority of the total tokens. The rest is chrome. Here is a rough breakdown from pages we have measured during Ollagraph testing:</p>
+<ul>
+  <li><strong>Navigation menu:</strong> 400-800 tokens — Not useful</li>
+  <li><strong>Cookie consent banner:</strong> 150-300 tokens — Not useful</li>
+  <li><strong>Hero image and caption:</strong> 100-200 tokens — Sometimes useful</li>
+  <li><strong>Article body:</strong> 1,500-4,000 tokens — Useful</li>
+  <li><strong>Related articles sidebar:</strong> 300-600 tokens — Sometimes useful</li>
+  <li><strong>Comment section:</strong> 500-2,000 tokens — Rarely useful</li>
+  <li><strong>Footer links:</strong> 200-400 tokens — Not useful</li>
+  <li><strong>Inline scripts and JSON-LD:</strong> 300-1,500 tokens — Rarely useful</li>
+</ul>
+
+<p>The article body might account for 40 to 60 percent of the page. Everything else competes for attention, tokens, and retrieval relevance.</p>
+
+<h3>Noise Does More Than Waste Tokens</h3>
+<p>Wasted tokens are easy to measure. The hidden damage is harder to see. When a vector store chunks a page blindly, it can merge a cookie banner sentence with a paragraph from the article. The resulting embedding is a hybrid that matches neither query intent well. The model may then answer from the sidebar instead of the main content, or it may hallucinate because the noisiest, most repetitive parts of the page dominate the context.</p>
+
+<p>Modern web apps make this worse. Client-side rendered pages ship an almost empty HTML shell and fill it with JavaScript after load. A static fetch returns a skeleton. A headless browser fetch returns the full rendered DOM, which includes every widget, ad, and dynamic element. Without extraction, the rendered DOM is even noisier than the static HTML.</p>
+
+<h3>The Hard Part Is Judgment, Not Conversion</h3>
+<p>Removing tags is easy. Deciding which parts of a document are content and which are chrome is hard. A navigation bar is not content. A related-articles sidebar might be content if you are building a recommendation engine. A comment thread is usually noise, but sometimes it is the signal. A recipe site might embed ingredients in a custom widget. A documentation site might use tabs that render as separate sections.</p>
+
+<p>Simple regex stripping or generic html2text libraries fail on real websites because they lack judgment. They either keep too much or remove too much. Useful HTML-to-markdown conversion requires content detection, not just tag removal.</p>
+
+<h2>2. Why Markdown Is the Best Default for LLM Context</h2>
+<p>Markdown sits in a practical middle ground. It is plain text, so it avoids tag overhead. It is structured, so headings, lists, tables, and code blocks remain machine-readable. And it is the native format of a huge portion of the documentation, READMEs, and forum discussions that LLMs were trained on.</p>
+
+<h3>Headings Become Semantic Anchors</h3>
+<p>In markdown, #, ##, and ### give the model a clear outline of the document. In plain text, that hierarchy is lost unless you add it back artificially. In HTML, the hierarchy is present but wrapped in tags that cost tokens and compete for attention. Markdown gives you the structure without the scaffolding.</p>
+
+<h3>Lists and Tables Stay Readable</h3>
+<p>A markdown table is compact and unambiguous. A plain-text table becomes hard to parse. An HTML table carries enormous tag overhead. For models, the markdown version is the easiest to read and the cheapest to tokenize.</p>
+
+<h3>Links Remain Citeable</h3>
+<p>Markdown keeps the anchor text and URL together: link text. That format is ideal for citation extraction and source verification. Models can trace claims back to original sources, which matters for trustworthy AI systems.</p>
+
+<h3>Code Blocks Keep Language Hints</h3>
+<p>Fenced code blocks with language tags tell the model it is looking at code, not prose. HTML pre blocks often lose that signal unless the converter carefully preserves the language class. A block starting with ```python is unambiguous.</p>
+
+<h3>Token Efficiency Is Real</h3>
+<p>In our tests across a sample of public article pages, converting HTML to markdown reduced token count by 40 to 70 percent while preserving all meaningful structure. That reduction directly lowers embedding and inference costs. At scale, the savings can justify the conversion step by themselves.</p>
+
+<h3>When Markdown Is Not the Right Choice</h3>
+<p>Markdown is not universal. If you are doing visual layout analysis, you may want a DOM-based representation. If you are reviewing legal contracts, you may prefer the original PDF. If you need precise table semantics with colspan and rowspan, HTML or JSON may be better. But for general web content feeding RAG, agents, or summarization, markdown is the pragmatic default.</p>
+
+<h2>3. What "LLM-Ready" Markdown Actually Means</h2>
+<p>A lot of tools claim to produce clean markdown. The claim is empty without a checklist. For AI use, LLM-ready markdown means:</p>
+<ul>
+<li><strong>Boilerplate removed</strong> — no navigation, ads, footers, sidebars, cookie banners, or comment threads unless explicitly requested.</li>
+<li><strong>Main content preserved</strong> — the article body, product description, documentation section, or forum post is intact.</li>
+<li><strong>Structure intact</strong> — headings, paragraphs, lists, tables, and code blocks are preserved in the right order.</li>
+<li><strong>Links kept</strong> — internal and external links remain so the model can cite sources or follow references.</li>
+<li><strong>Images represented</strong> — alt text or image URLs are included so the model knows an image existed, even if it cannot see it.</li>
+<li><strong>No script or style residue</strong> — inline CSS, JavaScript, and JSON-LD metadata are stripped or moved to metadata fields.</li>
+<li><strong>Consistent formatting</strong> — mixed whitespace, broken indentation, and stray HTML entities are normalized.</li>
+</ul>
+<p>A clean converter also needs to handle edge cases. Recipe sites embed ingredients in custom widgets. Documentation sites use tabs. News articles interleave ads between paragraphs. A generic converter that only looks for article tags will miss some of these and over-include others.</p>
+<p>The Ollagraph HTML-to-Markdown API uses a multi-signal extraction model. It combines DOM structure, text density, class and id hints, semantic HTML5 tags, and layout analysis to identify the main content block. It then converts that block to markdown while dropping the rest. It is not perfect on every page, but it is consistently better than tag-stripping approaches.</p>
+
+<h2>4. How HTML-to-Markdown Conversion Works Under the Hood</h2>
+<p>Conversion happens in four stages. Each stage has decisions that affect quality.</p>
+
+<h3>Stage 1: Fetch and Render</h3>
+<p>The pipeline starts by getting the page. For static sites, a simple HTTP fetch is enough. For JavaScript-heavy sites, the page must be rendered in a headless browser. Rendering adds cost and latency but is often necessary for single-page applications, dashboards, and content loaded after the initial paint.</p>
+<p>The choice matters. Render when you must, but do not render everything. A good pipeline uses static fetching first and falls back to headless rendering only when the static fetch returns empty or incomplete content.</p>
+
+<h3>Stage 2: DOM Analysis and Content Detection</h3>
+<p>Once you have the DOM, you need to find the main content. Common signals include:</p>
+<ul>
+<li>Semantic tags such as article, main, and section.</li>
+<li>Class and id names such as article-body, post-content, and entry-content.</li>
+<li>Text density, or the region with the highest ratio of text to tags.</li>
+<li>Link density, since sidebars and footers tend to have many links per word.</li>
+<li>Visual cues from computed styles, such as font size, margins, and display properties.</li>
+</ul>
+<p>Modern extractors use machine learning or heuristics trained on thousands of labeled pages. The best ones combine signals rather than relying on a single rule. A page with no article tag can still have a clear content block if the text density is high enough.</p>
+
+<h3>Stage 3: Markdown Generation</h3>
+<p>After isolating the content, the converter walks the DOM and emits markdown. This stage has its own subtleties:</p>
+<ul>
+<li>Headings map to # levels based on their original tag or outline depth.</li>
+<li>Paragraphs become plain text blocks.</li>
+<li>Lists become - or 1. lists, preserving nesting.</li>
+<li>Tables become markdown tables with aligned headers.</li>
+<li>Code blocks become fenced blocks with language hints when available.</li>
+<li>Links become text.</li>
+<li>Images become alt or are omitted if they are decorative.</li>
+<li>Bold and italic are preserved with ** and *.</li>
+</ul>
+
+<h3>Stage 4: Post-Processing</h3>
+<p>The final stage cleans up the output. It removes empty lines, fixes broken tables, normalizes whitespace, decodes HTML entities, and optionally rewrites relative URLs to absolute ones. Some pipelines also add source attribution headers or chunk boundaries for downstream RAG.</p>
+
+<h2>5. The Production Pipeline</h2>
+<p>A production HTML-to-markdown pipeline usually looks like this:</p>
+<p>URL Queue → Fetcher (HTTP or headless) → HTML-to-Markdown Converter → Validator / Quality Gate → Chunker and Embedder → Vector Store</p>
+<p>Each stage has a specific job and its own failure modes.</p>
+<ul>
+<li><strong>URL Queue</strong> — stores URLs to process, with priority, depth, and deduplication. For large crawls, this is often a message queue such as RabbitMQ, Amazon SQS, or Redis.</li>
+<li><strong>Fetcher</strong> — retrieves the HTML. Static pages use a fast HTTP client with retry logic. Dynamic pages use a headless browser with a timeout and resource blocker to avoid loading unnecessary assets.</li>
+<li><strong>Converter</strong> — the HTML-to-markdown engine. This can be a local library, a custom model, or an API like Ollagraph's.</li>
+<li><strong>Validator</strong> — checks that output is non-empty, has a minimum word count, contains expected entities, and does not look like a cookie banner or error page. If validation fails, the URL can be retried with a different strategy.</li>
+<li><strong>Chunker</strong> — splits markdown into chunks for embedding. A good chunker uses headings as boundaries and includes metadata such as source URL, title, and section path.</li>
+<li><strong>Vector Store</strong> — receives chunks and embeddings for retrieval. Examples include Pinecone, Weaviate, Qdrant, Chroma, and pgvector.</li>
+</ul>
+<p>The Ollagraph API can replace the fetcher, converter, and part of the validator in one call. You send a URL or raw HTML, and it returns clean markdown plus metadata. That simplifies the pipeline and removes the need to maintain headless browsers and extraction heuristics.</p>
+
+<h2>6. Getting Started with the Ollagraph API</h2>
+<p>Ollagraph exposes HTML-to-markdown conversion through the /v1/convert/html-to-markdown endpoint. You can send either a URL or raw HTML content. The endpoint returns markdown, a title, and metadata about the extraction.</p>
+<p><strong>Endpoint:</strong></p>
+<pre><code>POST https://api.ollagraph.com/v1/convert/html-to-markdown</code></pre>
+
+<p><strong>Request with a URL:</strong></p>
+<pre><code>&#123;
+"url": "https://example.com/blog/article",
+"options": &#123;
+"include_links": true,
+"include_images": true,
+"remove_navigation": true,
+"remove_ads": true,
+"absolute_urls": true
+&#125;
+&#125;</code></pre>
+
+<p><strong>Request with raw HTML:</strong></p>
+<pre><code>&#123;
+"html": "&lt;html&gt;...&lt;/html&gt;",
+"url": "https://example.com/blog/article",
+"options": &#123;
+"include_links": true,
+"include_images": true
+&#125;
+&#125;</code></pre>
+
+<p>The <code>url</code> field helps resolve relative URLs and judge site-specific layout, even when you provide raw HTML.</p>
+
+<p><strong>Response:</strong></p>
+<pre><code>&#123;
+"markdown": "# Article Title\n\nParagraph one...\n\n## Section\n\n...",
+"title": "Article Title",
+"url": "https://example.com/blog/article",
+"metadata": &#123;
+"word_count": 1240,
+"heading_count": 8,
+"link_count": 12,
+"image_count": 3,
+"extraction_confidence": 0.94
+&#125;
+&#125;</code></pre>
+
+<p>The <code>extraction_confidence</code> score is useful for routing. High confidence means send the result straight to the vector store. Low confidence means flag the URL for manual review or retry with different rendering options.</p>
+
+<h2>7. Code Examples: Python, Node.js, and cURL</h2>
+<h3>Python example:</h3>
+<pre><code>import requests
+
+url = "https://api.ollagraph.com/v1/convert/html-to-markdown"
+headers = &#123;
+"Authorization": "Bearer YOUR_API_KEY",
+"Content-Type": "application/json"
+&#125;
+payload = &#123;
+"url": "https://ollagraph.com/docs/",
+"options": &#123;
+"include_links": True,
+"include_images": True,
+"absolute_urls": True
+&#125;
+&#125;
+
+response = requests.post(url, json=payload, headers=headers)
+data = response.json()
+
+print(data["title"])
+print(data["metadata"])
+print(data["markdown"][:1000])</code></pre>
+
+<h3>Node.js example:</h3>
+<pre><code>const fetch = require("node-fetch");
+
+async function convertHtmlToMarkdown() &#123;
+const response = await fetch("https://api.ollagraph.com/v1/convert/html-to-markdown", &#123;
+method: "POST",
+headers: &#123;
+"Authorization": "Bearer YOUR_API_KEY",
+"Content-Type": "application/json"
+&#125;,
+body: JSON.stringify(&#123;
+"url": "https://ollagraph.com/docs/",
+"options": &#123;
+"include_links": true,
+"include_images": true,
+"absolute_urls": true
+&#125;
+&#125;)
+&#125;);
+
+const data = await response.json();
+console.log(data.title);
+console.log(data.metadata);
+console.log(data.markdown.substring(0, 1000));
+&#125;
+
+convertHtmlToMarkdown();</code></pre>
+
+<h3>cURL example:</h3>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/convert/html-to-markdown
+-H "Authorization: Bearer YOUR_API_KEY"
+-H "Content-Type: application/json"
+-d '&#123;
+"url": "https://ollagraph.com/docs/",
+"options": &#123;
+"include_links": true,
+"include_images": true,
+"absolute_urls": true
+&#125;
+&#125;'</code></pre>
+
+<p>Replace the URL with any public page you have permission to process.</p>
+
+<h2>8. Handling Tables, Code Blocks, and Images</h2>
+<h3>Tables Are Tricky</h3>
+<p>HTML tables are often used for layout, not data. A good converter distinguishes data tables from layout tables. Signals include the headers, consistent row structure, and captions. Layout tables should be dropped or flattened.</p>
+<p>Example of a preserved data table:</p>
+<pre><code>| Name | Role | Start Date |
+| Alice | Engineer | 2024-03-01 |
+| Bob | Designer | 2023-11-15 |</code></pre>
+<p>Tables with colspan or rowspan may not convert cleanly. For complex tables, consider extracting them as structured JSON instead of markdown.</p>
+
+<h3>Code Blocks Need Language Hints</h3>
+<p>HTML code blocks like <code>pre/code class="language-python"</code> should become fenced markdown blocks:</p>
+<pre><code>def hello():
+    print("world")</code></pre>
+<p>The language hint helps the model recognize code and preserves syntax for downstream tools.</p>
+
+<h3>Images Need a Policy</h3>
+<p>Vision models can consume image URLs. Text-only models cannot. The default recommendation is to include image URLs with alt text so the model knows an image existed. Decorative images should be omitted.</p>
+
+<h3>Useful Ollagraph Options</h3>
+<ul>
+<li><code>include_images</code> — Include references</li>
+<li><code>include_links</code> — Preserve text links</li>
+<li><code>absolute_urls</code> — Rewrite relative URLs to absolute</li>
+<li><code>remove_navigation</code> — Drop nav bars and menus</li>
+<li><code>remove_ads</code> — Drop ad containers</li>
+<li><code>preserve_tables</code> — Keep data tables as markdown tables</li>
+</ul>
+
+<h2>9. Performance and Benchmarks</h2>
+<p>Static pages convert faster than dynamic pages because they skip headless rendering. Here are approximate results from a sample of 1,000 public article pages processed through the Ollagraph API:</p>
+<ul>
+<li>Median latency: 450 ms for static, 2,100 ms for dynamic</li>
+<li>P95 latency: 1,200 ms for static, 6,500 ms for dynamic</li>
+<li>Token reduction vs raw HTML: 62% for static, 58% for dynamic</li>
+<li>Extraction confidence greater than 0.9: 89% for static, 76% for dynamic</li>
+<li>Empty or near-empty output: 2% for static, 7% for dynamic</li>
+</ul>
+<p>Token reduction matters beyond cost. A page costing 4,000 tokens in raw HTML may cost 1,500 tokens after conversion. Lower token counts mean faster embeddings, faster inference, and more room in the context window for actual reasoning.</p>
+<p>For large batches, use the <code>/v1/jobs</code> endpoint for asynchronous processing. Queue thousands of URLs, receive webhook notifications when conversions complete, and download results in bulk. This is the recommended pattern for large RAG ingestion pipelines.</p>
+
+<h2>10. Chunking Strategies After Conversion</h2>
+<p>Clean markdown is only halfway to a working RAG or agent pipeline. The next decision is how to split that markdown into chunks. A bad chunking strategy can break the structure you just worked hard to preserve. A good one keeps related ideas together and makes retrieval accurate.</p>
+
+<h3>Chunk by Headings</h3>
+<p>The simplest effective strategy is to split at markdown headings. Each section becomes one chunk, optionally with its parent headings prepended as context. This respects the author's outline and keeps paragraphs that belong together in the same chunk.</p>
+<p>For example, a section under <code>## Handling Errors</code> stays whole. If it is too long, you can split subsections under <code>### Timeout Errors</code> and <code>### Retry Logic</code> separately. The downside is uneven chunk sizes. Some sections are one sentence; others are 800 words.</p>
+
+<h3>Chunk by Fixed Token Size with Overlap</h3>
+<p>A more uniform approach is to split the markdown into fixed-size windows, such as 512 tokens, with 128 tokens of overlap. This gives predictable embedding costs and avoids giant sections dominating the vector store. The risk is cutting through a code block or a table, which produces malformed or confusing chunks.</p>
+<p>To reduce that risk, add boundary rules: never split inside a fenced code block, never split inside a table, and prefer splitting at paragraph boundaries. A small amount of overlap helps the model recover context that sits on the boundary.</p>
+
+<h3>Semantic Chunking</h3>
+<p>Semantic chunking groups sentences or paragraphs that share meaning, even if they cross heading boundaries. It usually works by embedding short passages and merging adjacent ones whose cosine similarity stays above a threshold. The result is topic-coherent chunks that often match query intent better than fixed-size chunks.</p>
+<p>The trade-off is cost and complexity. You must embed twice: once to decide boundaries and once to store the final chunks. For high-value knowledge bases, the accuracy gain is usually worth it.</p>
+
+<h3>Parent-Document Retrieval</h3>
+<p>In parent-document retrieval, you embed small chunks for accurate search but return the larger parent section or full document to the model. This gives you the precision of small chunks without losing surrounding context at generation time.</p>
+<p>For example, you might chunk by paragraph for embedding but store each paragraph with a pointer to its full heading section. When a paragraph matches a query, the model sees the whole section, not just the one paragraph.</p>
+
+<h3>Adding Metadata to Chunks</h3>
+<p>Every chunk should carry metadata so the model can cite sources and the pipeline can filter results. Useful fields include:</p>
+<ul>
+<li><code>source_url</code> — where the chunk came from</li>
+<li><code>title</code> — page title</li>
+<li><code>section_path</code> — heading hierarchy, e.g., "API &gt; Authentication &gt; Tokens"</li>
+<li><code>publish_date</code> — when the page was published</li>
+<li><code>extraction_confidence</code> — quality signal from the converter</li>
+<li><code>chunk_index</code> — position in the original document</li>
+</ul>
+<p>Metadata also enables filtered retrieval. A support bot can restrict answers to docs published after a certain date. A research assistant can exclude low-confidence extractions.</p>
+
+<h3>How Chunk Size Affects Retrieval Accuracy</h3>
+<p>Small chunks improve precision because they contain focused concepts. Large chunks improve recall because they include more context. The right size depends on your content and query patterns.</p>
+<p>In Ollagraph tests on technical documentation, 256-token heading-based chunks gave the best answer relevance for specific how-to queries. For long-form articles, 512-token chunks with overlap performed better for summarization and synthesis. There is no universal number. You should benchmark with your own queries.</p>
+
+<h3>Python Example: Chunking Markdown by Headings</h3>
+<pre><code>import re
+
+def chunk_by_headings(markdown, max_tokens=512):
+    # Split on headings
+    parts = re.split(r'(?=\n##\s)', markdown)
+    chunks = []
+    current = ""
+    for part in parts:
+        if len(current) + len(part) > max_tokens * 4 and current:  # rough char estimate
+            chunks.append(current.strip())
+            current = part
+        else:
+            current += "\n" + part
+    if current:
+        chunks.append(current.strip())
+    return chunks
+
+markdown = """# API Guide
+
+## Authentication
+Use a bearer token in the Authorization header.
+
+## Endpoints
+### GET /users
+Returns a list of users.
+### POST /users
+Creates a new user.
+"""
+
+for i, chunk in enumerate(chunk_by_headings(markdown)):
+    print(f"Chunk &#123;i&#125;: &#123;chunk[:200]&#125;...")</code></pre>
+
+<h2>11. Advanced Ollagraph API Features</h2>
+<p>The basic /v1/convert/html-to-markdown endpoint handles most pages. For harder cases and larger pipelines, Ollagraph provides advanced options that give you more control.</p>
+
+<h3>Custom CSS Selectors for Hard Pages</h3>
+<p>Some sites use unusual markup that confuses generic extractors. You can pass a custom CSS selector to tell Ollagraph exactly where the content lives.</p>
+<pre><code>&#123;
+  "url": "https://example.com/unusual-page",
+  "options": &#123;
+    "content_selector": "#main-body .article-text"
+  &#125;
+&#125;</code></pre>
+<p>Use this when you know the page structure and the default extractor misses the content. It is especially useful for dashboards, custom CMS layouts, and legacy sites.</p>
+
+<h3>Retry and Fallback Rendering Modes</h3>
+<p>Ollagraph supports a rendering mode parameter. You can request static first and fall back to dynamic only if the static attempt fails or returns low confidence.</p>
+<pre><code>&#123;
+  "url": "https://example.com/page",
+  "options": &#123;
+    "rendering_mode": "auto",
+    "min_confidence": 0.85
+  &#125;
+&#125;</code></pre>
+<p>The auto mode tries the cheapest approach first and escalates only when needed. This balances cost and coverage without manual logic in your client.</p>
+
+<h3>Webhook and Async Job Patterns</h3>
+<p>For large batches, use the /v1/jobs endpoint. Submit a list of URLs, set a webhook URL, and receive a notification when the job completes. This avoids blocking your workers and handles retries automatically.</p>
+<pre><code>&#123;
+  "urls": [
+    "https://example.com/page-1",
+    "https://example.com/page-2"
+  ],
+  "webhook_url": "https://your-app.com/webhooks/ollagraph",
+  "options": &#123;
+    "absolute_urls": true,
+    "include_links": true
+  &#125;
+&#125;</code></pre>
+<p>The webhook payload includes job status, result URLs, and aggregate metadata such as average confidence and error count.</p>
+
+<h3>Output Formats: Markdown, JSON, and Chunked JSON</h3>
+<p>Ollagraph can return output in multiple formats:</p>
+<ul>
+  <li><strong>markdown</strong> — clean markdown string, best for general use</li>
+  <li><strong>json</strong> — structured document with title, metadata, and markdown body</li>
+  <li><strong>chunked_json</strong> — pre-chunked output with metadata attached to each chunk</li>
+</ul>
+<p>Chunked JSON is useful when you want to skip the chunking step entirely and send results straight to your embedder.</p>
+
+<h3>Metadata Extraction</h3>
+<p>Beyond the markdown body, Ollagraph extracts useful metadata:</p>
+<ul>
+  <li>Page title</li>
+  <li>Canonical URL</li>
+  <li>Author, if present</li>
+  <li>Publish date, if present</li>
+  <li>Language</li>
+  <li>Extraction confidence</li>
+  <li>Word, heading, link, and image counts</li>
+</ul>
+<p>This metadata becomes valuable context for retrieval and citation.</p>
+
+<h3>Rate Limits and Concurrency Best Practices</h3>
+<p>Ollagraph rate limits are based on your plan. For high-volume pipelines:</p>
+<ul>
+  <li>Use the async batch endpoint instead of many synchronous calls.</li>
+  <li>Add exponential backoff on 429 responses.</li>
+  <li>Distribute requests across time rather than bursting.</li>
+  <li>Cache results to avoid re-converting unchanged pages.</li>
+  <li>Use separate API keys for separate tenants or environments.</li>
+</ul>
+
+<h3>Error Codes and How to Handle Them</h3>
+<p>Common errors and recommended responses:</p>
+<pre><code>Error	Meaning	Fix
+400	Bad request, invalid URL or HTML	Check payload format
+401	Invalid API key	Rotate or verify key
+429	Rate limit exceeded	Back off and retry
+500	Server error	Retry with exponential backoff
+503	Service temporarily unavailable	Retry later or use async jobs
+Low confidence	Content not clearly identified	Try dynamic rendering or custom selector</code></pre>
+<p>Logging these errors by domain helps you spot patterns and adjust your pipeline.</p>
+
+<h2>12. Security and Compliance</h2>
+<p>Malicious HTML — Pages can contain polyglot payloads, oversized attributes, or deeply nested structures designed to crash parsers. Production converters should sanitize input, limit document size, and timeout aggressively.</p>
+<p>Tracking pixels and beacons — Rendering may load external resources, including tracking pixels. Use resource blockers and disable images, fonts, and third-party scripts unless they are needed.</p>
+<p>Copyright and terms of service — Scraping and converting content may violate a site's terms. Always check robots.txt, terms of service, and applicable copyright law. For research and internal use, favor public documentation, your own content, or licensed content.</p>
+<p>Data retention — Understand how long a provider retains request data. Ollagraph does not retain converted content beyond the request lifecycle unless you explicitly use persistent job storage.</p>
+<p>PII exposure — Web pages can contain emails, phone numbers, or names in comments and profiles. If you store converted output, consider PII detection and redaction.</p>
+
+<h2>13. Troubleshooting Common Failures</h2>
+<p>Empty or very short output — Cause: the converter could not find a main content block. Common reasons include login walls, JavaScript-required content, content in unusual containers, or CAPTCHA challenges. Fix: retry with headless rendering, inspect the DOM manually, or send raw HTML with a custom selector if supported.</p>
+<p>Navigation or ads included — Cause: the extractor misidentified a sidebar or ad block as content. Fix: enable remove_navigation and remove_ads. If the problem persists, the site uses non-standard markup. Add a post-processing filter or report the URL.</p>
+<p>Broken tables — Cause: HTML tables with colspan or rowspan break markdown table structure. Fix: use preserve_tables and validate with a markdown parser. For complex tables, extract as structured JSON.</p>
+<p>Relative URLs in links — Cause: links point to /path instead of https://example.com/path. Fix: enable absolute_urls and provide the source URL.</p>
+
+<h2>14. Best Practices</h2>
+<ul>
+  <li>Extract structure first, then convert. Never convert to markdown before you know what the main content is.</li>
+  <li>Keep raw HTML in cheap storage. Your markdown is a derived view. Keep the original so you can re-convert later with better tools.</li>
+  <li>Validate every conversion. Check word count, confidence score, and the presence of expected entities.</li>
+  <li>Monitor token counts. Track the ratio of input HTML tokens to output markdown tokens. A sudden drop may mean the converter is stripping too much.</li>
+  <li>Use headings as chunk boundaries. This keeps sections intact and improves retrieval accuracy.</li>
+  <li>Decide your image policy early. Include URLs with alt text, omit decorative images, or use vision models. Do not mix policies across documents.</li>
+  <li>Retry with fallback strategies. Static fetch first, headless render second, custom selector last.</li>
+  <li>Respect robots.txt and terms of service. Legal and ethical scraping is part of production hygiene.</li>
+</ul>
+
+<h2>15. Common Mistakes</h2>
+<ul>
+  <li>Feeding raw HTML straight into the model — wastes tokens and lowers answer quality.</li>
+  <li>Using a generic tag stripper as a content extractor — you will keep ads and lose articles.</li>
+  <li>Flattening everything to plain text — you lose headings, tables, and code structure that the model needs.</li>
+  <li>Ignoring dynamic content — a static fetch on a JavaScript-heavy site returns an empty shell.</li>
+  <li>Trusting every conversion result — always validate output before sending it to the vector store.</li>
+  <li>Forgetting link resolution — relative URLs break citations and source tracing.</li>
+  <li>Omitting metadata — source URL, title, and section path are essential for traceability.</li>
+</ul>
+
+<h2>16. Alternatives and Comparison</h2>
+<p>Several tools and libraries can convert HTML to markdown. Here is how they compare for AI use cases:</p>
+<ul>
+  <li><strong>Ollagraph</strong> — <strong>Strengths:</strong> fetching, extraction, and formatting in one call. <strong>Weaknesses:</strong> paid service. <strong>Best for:</strong> production pipelines at scale.</li>
+  <li><strong>html2text</strong> — <strong>Strengths:</strong> fast, simple, local. <strong>Weaknesses:</strong> no content detection. <strong>Best for:</strong> simple, known HTML structures.</li>
+  <li><strong>BeautifulSoup + markdownify</strong> — <strong>Strengths:</strong> flexible, programmable. <strong>Weaknesses:</strong> requires custom extraction logic. <strong>Best for:</strong> teams with specific extraction rules.</li>
+  <li><strong>Readability.js</strong> — <strong>Strengths:</strong> good article extraction. <strong>Weaknesses:</strong> browser-only, no API wrapper. <strong>Best for:</strong> browser extensions and front-end use.</li>
+  <li><strong>Pandoc</strong> — <strong>Strengths:</strong> excellent format conversion. <strong>Weaknesses:</strong> heavy dependency, no content detection. <strong>Best for:</strong> converting known documents.</li>
+  <li><strong>Firecrawl / ScrapeGraphAI</strong> — <strong>Strengths:</strong> full scraping plus LLM extraction. <strong>Weaknesses:</strong> higher cost, dependency on model quality. <strong>Best for:</strong> complex sites requiring reasoning.</li>
+</ul>
+<p>Ollagraph is the best fit when you want a single API call that handles fetching, content detection, and markdown generation, with built-in quality signals and batch processing.</p>
+
+<h2>17. Enterprise Deployment Notes</h2>
+<p><strong>Scaling —</strong> For large crawls, use the async batch endpoint and a message queue. Distribute workers across regions if you are fetching pages from many countries. Cache results to avoid re-converting unchanged pages.</p>
+<p><strong>Multi-tenant usage —</strong> If you process pages on behalf of multiple customers, isolate jobs by tenant. Use separate API keys or namespaces so one customer's retry storm does not affect another.</p>
+<p><strong>Observability —</strong> Track conversion latency, token reduction, extraction confidence, and error rates by domain. A dashboard showing these metrics by source site helps you spot when a particular domain starts breaking your extraction logic.</p>
+<p><strong>Billing —</strong> Understand whether you are billed per request, per page, per token, or per job minute. Ollagraph bills per successful conversion, with separate pricing for static and dynamic rendering. Batch jobs receive discounted rates.</p>
+
+<h2>18. FAQS</h2>
+
+<h3>Q1. What is HTML-to-markdown conversion for AI?</h3>
+<p>HTML-to-markdown conversion for AI is the process of taking a web page's raw HTML, identifying the main content block, and formatting it as clean markdown so a language model can read it efficiently. It removes navigation bars, ads, cookie banners, scripts, and other browser chrome that waste tokens. The result is a structured document that keeps headings, lists, tables, links, and code blocks intact. This makes retrieval, embedding, and reasoning far more accurate than feeding raw HTML into a model.</p>
+
+<h3>Q2. Why not just strip all HTML tags?</h3>
+<p>Stripping tags removes the structure that helps models understand a document. You lose headings, lists, tables, code blocks, and nested relationships, leaving behind a flat wall of text. Without that structure, an LLM struggles to follow arguments, compare data, or cite sources correctly. Markdown preserves the semantic skeleton while discarding the visual scaffolding, which is exactly what models need.</p>
+
+<h3>Q3. Can I convert pages that require JavaScript?</h3>
+<p>Yes, but you need a converter that supports headless browser rendering for JavaScript-heavy pages. Static fetching usually returns an empty shell for single-page apps or dynamically loaded content. A headless browser waits for the page to render, then the extractor pulls the main content. Ollagraph supports this through its dynamic rendering option, though it adds latency compared to static conversion.</p>
+
+<h3>Q4. Does markdown always use fewer tokens than HTML?</h3>
+<p>Almost always for content-heavy pages, though the exact savings depend on how much markup the original page contains. In Ollagraph tests, converting HTML to markdown reduces token count by 40 to 70 percent while preserving all meaningful structure. That reduction lowers embedding and inference costs and leaves more room in the context window. Pages with minimal markup may see smaller gains, but they rarely get worse.</p>
+
+<h3>Q5. What happens to images?</h3>
+<p>By default, Ollagraph includes image URLs with alt text so the model knows an image existed, even if it cannot see it. Decorative images are usually omitted to save tokens. If you are using a vision model, you can keep the URLs and fetch the images separately. The key is to pick one policy and apply it consistently across your pipeline.</p>
+
+<h3>Q6. How do I handle paywalls or login-required content?</h3>
+<p>You generally cannot convert content behind authentication unless you provide session cookies or authenticated HTML in the request. Even then, you must respect the site's terms of service and copyright. For most production use cases, stick to public pages, your own content, or licensed sources. Trying to bypass paywalls creates legal risk and usually violates robots.txt or terms of service.</p>
+
+<h3>Q7. Is converted content stored by Ollagraph?</h3>
+<p>No. Ollagraph does not retain converted content beyond the request lifecycle unless you explicitly use persistent job storage for batch jobs. This matters for privacy, compliance, and data retention policies. If you need long-term storage, you should save results in your own infrastructure. Always confirm the retention policy of any conversion provider you use.</p>
+
+<h3>Q8. Can I use this for legal or medical content?</h3>
+<p>You can convert it technically, but you remain fully responsible for compliance, accuracy, and appropriate use. Web content may be outdated, incomplete, or jurisdiction-specific, so it should never be the sole source for high-stakes decisions. Always have a qualified human review legal or medical outputs. Conversion improves readability; it does not verify facts.</p>
+
+<h3>Q9. What is extraction confidence?</h3>
+<p>Extraction confidence is a score from 0 to 1 that indicates how sure the converter is that it found and extracted the main content block correctly. A high score means the output is likely clean and ready for the vector store. A low score means you should retry with a different rendering strategy, inspect the page manually, or flag it for review.</p>
+
+<h3>Q10. How do I convert thousands of pages at once?</h3>
+<p>Use the /v1/jobs batch endpoint to submit a list of URLs and receive webhook notifications when conversions complete. This is the recommended pattern for large RAG ingestion pipelines because it handles queuing, retries, and bulk downloads automatically. It also scales better than sending synchronous requests one at a time and usually qualifies for discounted batch pricing.</p>
+
+<h2>19. Conclusion</h2>
+<p>Raw HTML is a browser format, not a model format. If you want your LLM to reason over web content, you need to convert that content into something the model can read without fighting through layers of scaffolding. Markdown is the best default for that conversion because it preserves the structure that carries meaning while discarding the tags that do not.</p>
+<p>The real work is not the syntax conversion. It is the judgment about what to keep and what to drop. A production pipeline needs extraction, validation, fallback rendering, and clear policies for tables, images, and links. The Ollagraph HTML-to-Markdown API wraps all of that into a single endpoint, so you can spend less time maintaining headless browsers and more time building the application that uses the context.</p>
+<p>If you are building a RAG system, an AI agent, or any pipeline that consumes web pages, start by measuring how much of your raw HTML is actually content. Then convert it. The difference in token cost, retrieval accuracy, and answer quality will be immediate.</p>
+<h2>20. References</h2>
+<ul>
+  <li>Ollagraph API Documentation: https://ollagraph.com/docs</li>
+  <li>CommonMark Specification: https://commonmark.org/</li>
+  <li>HTML Living Standard: https://html.spec.whatwg.org/</li>
+  <li>Readability.js by Mozilla: https://github.com/mozilla/readability</li>
+  <li>Pandoc User Guide: https://pandoc.org/</li>
+  <li>robots.txt Specification: https://www.robotstxt.org/</li>
+</ul>
+</Article>
