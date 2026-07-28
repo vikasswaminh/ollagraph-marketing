@@ -8,7 +8,7 @@
     <div class="hero-glow"></div>
     <div class="container">
       <div style="max-width: 920px; margin: 0 auto; text-align: center;">
-        <a class="pill" style="margin-bottom: 24px;"><span class="pill-dot"></span>26 actor families · 73 endpoints · normalized JSON</a>
+        <a class="pill" style="margin-bottom: 24px;"><span class="pill-dot"></span>27 actor families · 76 endpoints · normalized JSON</a>
         <h1 class="h-display h-1" style="margin: 0 0 22px;">
           Vertical scrapers your agent<br>
           can actually rely on.
@@ -16,7 +16,7 @@
         <p style="font-size: 18px; color: var(--text-muted); line-height: 1.55; max-width: 760px; margin: 0 auto 32px;">
           Zillow, Google Maps, Markdown conversion, ATS career pages, job aggregators, Product Hunt,
           and an academic graph — plus 17 free public-data actors for GitHub, npm, PyPI, SEC filings, OpenAlex,
-          Hacker News and more, and premium vendor-backed scrapers for Google Maps and LinkedIn. One Bearer token.
+          Hacker News and more, and premium vertical actors for Google Maps, LinkedIn, and YouTube. One Bearer token.
           Normalized JSON. Automatic fallback baked in — when one path trips a CAPTCHA, another finishes the call
           without you ever knowing.
         </p>
@@ -79,7 +79,7 @@
     <div class="container">
       <h2 class="h-display h-2" style="margin: 0 0 8px; text-align: center;">The 7 actor families</h2>
       <p style="color: var(--text-muted); font-size: 15px; text-align: center; max-width: 660px; margin: 0 auto 36px;">
-        The 7 core families below total 18 endpoints; 17 free public-data families bring it to 68, and 2 premium vendor-backed families add 5 more — 73 in all on <span class="text-mono">api.ollagraph.com</span>, one Bearer token.
+        The 7 core families below total 18 endpoints; 17 free public-data families bring it to 68, and 3 premium vertical families add 8 more — 76 in all on <span class="text-mono">api.ollagraph.com</span>, one Bearer token.
       </p>
 
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
@@ -250,9 +250,9 @@
   <!-- Premium vendor-backed actors -->
   <section class="section" style="padding-top: 24px;">
     <div class="container">
-      <h2 class="h-display h-2" style="margin: 0 0 8px; text-align: center;">2 premium vendor-backed actors</h2>
+      <h2 class="h-display h-2" style="margin: 0 0 8px; text-align: center;">3 premium vertical actors</h2>
       <p style="color: var(--text-muted); font-size: 15px; text-align: center; max-width: 660px; margin: 0 auto 36px;">
-        Heavier vertical scrapers for local business and professional data. 30-50 credits per call by family (vs 1 for public-data actors), same normalized envelope, failed calls auto-refund. 5 endpoints.
+        Heavier vertical scrapers for local business, professional, and media data. 4-50 credits per call by family (vs 1 for public-data actors), same normalized envelope, failed calls auto-refund. 8 endpoints.
       </p>
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
         <div class="acard">
@@ -278,8 +278,20 @@
             POST /v1/actors/linkedin/company &nbsp;<span class="c">{ slug | company_url }</span>
           </div>
         </div>
+        <div class="acard">
+          <div class="icon-row">
+            <h3 class="m-0">YouTube</h3>
+            <span class="badge badge-mute" style="margin-left:auto;">3 endpoints · 4 credits</span>
+          </div>
+          <p class="copy-sm">Video metadata, channel info, and search: title, views, duration, channel, upload date. <strong>Self-hosted</strong> over a residential proxy (not a vendor), so it is a fraction of the cost.</p>
+          <div class="endpoints">
+            POST /v1/actors/youtube/search &nbsp;<span class="c">{ query, limit }</span><br>
+            POST /v1/actors/youtube/video &nbsp;<span class="c">{ url | id }</span><br>
+            POST /v1/actors/youtube/channel &nbsp;<span class="c">{ handle }</span>
+          </div>
+        </div>
         <div class="acard" style="display:flex; flex-direction:column; justify-content:center;">
-          <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">These are vendor-backed (heavier than the public-data actors), so they're metered at 30-50 credits by family and carry automatic fallback. Full request shapes in the <a href="/docs" class="text-accent">API docs</a>.</p>
+          <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0;">These are heavier than the public-data actors (some vendor-backed, some self-hosted via residential proxy), metered at 4-50 credits by family with automatic fallback. Full request shapes in the <a href="/docs" class="text-accent">API docs</a>.</p>
         </div>
       </div>
     </div>
