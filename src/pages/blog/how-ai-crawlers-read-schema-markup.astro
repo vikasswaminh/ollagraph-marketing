@@ -1,0 +1,1009 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What does schema markup do for AI crawlers?", a: "Schema markup helps AI crawlers label entities, normalize attributes, and reduce ambiguity in page content. It does not replace the page text; crawlers still reconcile JSON-LD with visible content and context before they cite anything." },
+  { q: "Why is JSON-LD usually the best format for AI-readiness?", a: "JSON-LD is explicit, self-contained, and easier for crawlers to parse than markup embedded throughout HTML. That makes it less fragile and more reliable when the crawler is extracting entities and relationships." },
+  { q: "Which schema properties matter most for citations?", a: "Stable identifiers, clear names, and high-value fields like dates, authors, products, prices, and availability matter most. These properties reduce ambiguity and make it easier for a model to trust and cite the passage." },
+  { q: "What causes schema markup to be ignored or devalued?", a: "Common failures include missing identifiers, conflicting dates, generic types, stale data, and schema that disagrees with the visible page. If the markup and the text do not align, extraction confidence drops." },
+  { q: "How should you validate schema for AI crawler use?", a: "Check that the JSON-LD is syntactically valid, that entity names and identifiers are consistent, and that key facts appear in the rendered content. Then compare the schema against what a crawler would actually extract from the page." },
+  { q: "Can structured data replace strong page content?", a: "No. Structured data improves labeling and normalization, but it cannot fix thin content, blocked access, or missing information. Clear, crawlable, substantive page text is still required for reliable citations." },
+];
+---
+<Article
+  title="How AI Crawlers Read Schema Markup for Better Citations"
+  description="Schema only helps when crawlers can label and trust it. Learn how JSON-LD, entities, and page text work together for AI citations."
+  date="2026-07-28"
+  readingTime={30}
+  tags={["JSON-LD", "schema.org", "entities", "structured data", "AI citations"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Schema markup is often treated like a checkbox: “add JSON-LD and you’re done.” For AI crawlers and answer engines, that mindset breaks down. The crawler still has to fetch your page, extract text, and chunk it into passages. Schema markup matters because it changes what the extraction pipeline can label, normalize, and connect—especially when the page contains many entities (people, products, organizations, locations, events) and when the model needs to decide what to cite.</p>
+<p>This article explains how AI crawlers read schema markup in practice: how JSON-LD is parsed, how entity types and properties map into a knowledge-graph-like representation, and why “structured” is not the same as “useful.” You’ll learn how to design schema for extraction reliability, how to avoid common failure modes (wrong types, missing identifiers, conflicting fields, stale dates), and how to validate your structured data against the way answer engines actually behave.</p>
+<p>Key takeaway: treat schema as an extraction contract—write it so the crawler can confidently label entities and the model can confidently cite them.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>JSON-LD is the most crawler-friendly schema format because it is explicit, self-contained, and easy to parse.</li>
+  <li>AI crawlers do not trust schema blindly; they reconcile schema with visible text and page context.</li>
+  <li>Entities work best when you provide stable identifiers (URLs, @id, sameAs) and consistent names across the page.</li>
+  <li>Dates, authors, and product attributes are high-value properties for citations because they reduce ambiguity.</li>
+  <li>Conflicting schema fields, or schema that disagrees with the page, can reduce extraction confidence.</li>
+  <li>Structured data improves labeling and normalization, but it cannot fix access failures, blocked fetches, or missing content.</li>
+  <li>You can audit schema readiness by validating JSON-LD, checking entity consistency, and simulating what the crawler extracts.</li>
+</ul>
+
+<h2>1. Problem Statement: Why Schema Fails for AI Citations</h2>
+<p>Most teams add schema markup because it is “best practice.” The problem is that best practice is not the same as extraction reliability.</p>
+<p>In 2026, answer engines increasingly retrieve passages and then decide what to cite. If your page contains a product, an author, a date, and a claim, the model needs to map those details into a structured representation it can trust. JSON-LD can help, but only if it is consistent, complete, and aligned with what the crawler extracts from the page.</p>
+<p>Here is the failure pattern we see repeatedly:</p>
+<ul>
+  <li>The page looks correct to a human.</li>
+  <li>The JSON-LD validates syntactically.</li>
+  <li>But the schema is incomplete (missing @id, missing datePublished, missing brand, missing offers), or it uses overly generic types.</li>
+  <li>Worse, the schema disagrees with the visible text (for example, the page shows “Updated July 2026,” but JSON-LD says “2024-11-03”).</li>
+  <li>The crawler extracts text chunks that do not include the same entity attributes the schema claims.</li>
+  <li>The model resolves the conflict by lowering confidence, and the citation either disappears or becomes less specific.</li>
+</ul>
+<p>So the real question is not “does schema exist?” It is “does schema improve the crawler’s ability to label entities and reduce ambiguity in the passages the model sees?”</p>
+<p>This article is for technical SEOs, developers, and content engineers who want schema markup to do real work for AI citations—not just pass a validator.</p>
+
+<h2>2. History &amp; Context: From SEO Markup to Entity Signals</h2>
+<p>Schema.org started as a way to help search engines understand page content. Over time, the industry learned that structured data is most valuable when it supports entity extraction: identifying what the page is about, who is involved, what the product is, where the event happens, and when it occurred.</p>
+<p>For traditional search, the payoff was often indirect: richer results, better indexing, and improved relevance.</p>
+<p>For AI answer engines, the payoff is more direct. The model needs to answer questions with grounded specifics. Entity signals reduce the work the model must do to interpret ambiguous text.</p>
+<p>In practice, that means:</p>
+<ul>
+  <li>A crawler can label a passage as “this is an article about X” rather than “this is a block of text.”</li>
+  <li>An entity linker can connect “Ollagraph” in the body to the same entity in schema.</li>
+  <li>A date normalizer can interpret dateModified and datePublished consistently.</li>
+  <li>A product attribute extractor can map “price,” “availability,” and “SKU” into a structured object.</li>
+</ul>
+<p>The shift from “markup for search” to “markup for entity labeling” is why schema design now matters more than ever.</p>
+
+<h2>3. Definition: What “Structured Data for AI” Actually Means</h2>
+<p>Structured data for AI is not just JSON-LD that conforms to schema.org.</p>
+<p>It is a contract between three systems:</p>
+<ul>
+  <li>The crawler/extractor: parses your markup and extracts visible text.</li>
+  <li>The entity normalizer: maps schema types and properties into canonical entity representations.</li>
+  <li>The answer engine: decides what to cite based on confidence and consistency.</li>
+</ul>
+<p>If any side of the contract is weak, schema becomes noise.</p>
+<p>A useful mental model:</p>
+<ul>
+  <li>Text is the evidence.</li>
+  <li>Schema is the labeling and normalization layer.</li>
+  <li>Entities are the glue.</li>
+</ul>
+<p>When schema is designed well, it increases the probability that the answer engine can cite your page with specific details (dates, authors, product attributes) rather than generic summaries.</p>
+
+<h2>4. Architecture: Where JSON-LD Fits in the AI Crawler Pipeline</h2>
+<p>To understand how schema helps, you need to place it in the pipeline.</p>
+<h3>The pipeline (simplified)</h3>
+<ol>
+  <li>Fetch: the crawler requests your URL.</li>
+  <li>Parse: it builds a DOM tree and extracts text.</li>
+  <li>Extract: it pulls headings, paragraphs, lists, tables, and key metadata.</li>
+  <li>Parse structured data: it detects JSON-LD blocks and parses them into objects.</li>
+  <li>Reconcile: it compares schema claims with extracted text and page context.</li>
+  <li>Chunk &amp; embed: it creates passages for retrieval.</li>
+  <li>Answer &amp; cite: the model uses retrieved passages and may use structured labels to improve grounding.</li>
+</ol>
+
+<h2>5. Components &amp; Workflow: JSON-LD Parsing to Entity Linking</h2>
+<p>Let’s break down what happens when the crawler encounters JSON-LD.</p>
+<ol>
+  <li>
+    <p><strong>Detection and parsing</strong></p>
+    <p>Most crawlers look for &lt;script type="application/ld+json"&gt; blocks. They parse the JSON into objects.</p>
+    <p><strong>Key reliability factors:</strong></p>
+    <ul>
+      <li>The JSON-LD is present in the initial HTML response, not injected only after client-side rendering.</li>
+      <li>The JSON is valid and not truncated.</li>
+      <li>The schema uses clear types (<strong>@type</strong>) and properties.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Normalization into entity objects</strong></p>
+    <p>Schema.org types and properties are normalized into an internal representation.</p>
+    <p><strong>For example:</strong></p>
+    <ul>
+      <li><strong>@type: "Article"</strong> becomes an article-like entity.</li>
+      <li><strong>headline</strong> becomes a canonical title field.</li>
+      <li><strong>author</strong> becomes a nested entity or reference.</li>
+      <li><strong>datePublished</strong> and <strong>dateModified</strong> become normalized timestamps.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Entity linking (the “glue” step)</strong></p>
+    <p>Entity linking is where schema becomes more than formatting.</p>
+    <p>If your schema includes stable identifiers, the crawler can connect entities across pages and across time.</p>
+    <p><strong>Common linking signals:</strong></p>
+    <ul>
+      <li><strong>@id</strong> (internal stable identifier)</li>
+      <li><strong>sameAs</strong> (external canonical identifiers)</li>
+      <li>consistent name values</li>
+      <li>consistent URLs for the entity, for example, an author profile URL</li>
+    </ul>
+    <p>If you omit identifiers, the crawler may still extract the entity, but it has less ability to connect it confidently.</p>
+  </li>
+  <li>
+    <p><strong>Reconciliation with extracted text</strong></p>
+    <p>This is the step that most teams underestimate.</p>
+    <p>Even if JSON-LD is correct, the crawler still extracts text from the page. If the schema claims “Updated July 2026” but the visible text says “Updated March 2025,” the reconciliation step sees a mismatch.</p>
+    <p>In that case, the answer engine may:</p>
+    <ul>
+      <li>prefer the text evidence over schema labels,</li>
+      <li>lower confidence and cite less specific details,</li>
+      <li>ignore the structured fields for that entity.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Passage-level grounding</strong></p>
+    <p>Finally, the answer engine decides what to cite.</p>
+    <p>Schema helps when it improves passage-level grounding:</p>
+    <ul>
+      <li>The model can attach structured labels to the retrieved passage.</li>
+      <li>The model can answer with specific fields, such as dates, authors, and product attributes, rather than paraphrasing.</li>
+      <li>If schema is generic or incomplete, it may not improve grounding enough to change citations.</li>
+    </ul>
+  </li>
+</ol>
+<h3>Deeper Entity Modeling: How Schema Turns Text Into Linked Facts</h3>
+<p>Schema markup becomes valuable for AI crawlers when it helps the system move from “words on a page” to “facts about entities.” That move is not magic; it is a series of modeling decisions that determine whether the crawler can label, normalize, and connect information.</p>
+<h3>Entities are not just nouns</h3>
+<p>In schema.org terms, an entity is a node in a graph: a person, organization, product, place, event, or concept. In practice, AI crawlers treat entities as the units that can be attached to retrieved passages.</p>
+<p>If your page says “Ollagraph helps teams audit AI citations,” the crawler might extract a passage that contains the words “Ollagraph,” “teams,” and “AI citations.” Without schema, the model has to infer what those words refer to. With schema, you can tell the system that “Ollagraph” is an Organization, that “AI citations” is a concept you care about, and that the page is an Article published by a specific publisher.</p>
+<p>The difference is subtle but important: schema reduces the amount of inference the model must do before it can ground an answer.</p>
+<h3>Properties are the edges</h3>
+<p>In entity modeling, properties are the relationships between nodes. For example, <strong>author</strong> connects an Article entity to a Person entity. <strong>publisher</strong> connects an Article to an Organization. <strong>offers</strong> connects a Product to an Offer.</p>
+<p>AI crawlers benefit when these edges are explicit and consistent. If your schema says the author is “Ollagraph Engineering” but the visible text says “Ollagraph Team,” the system sees a mismatch between the edge label and the evidence. That mismatch can lower confidence at reconciliation time.</p>
+<h3>Identifiers are the join keys</h3>
+<p>Entity linking is where many schema implementations quietly fail. The crawler can parse JSON-LD, but it may not be able to confidently join the entity in schema to the entity in other contexts.</p>
+<p>Stable identifiers make joins deterministic. In JSON-LD, the most common join keys are:</p>
+<ul>
+  <li><strong>@id</strong> for internal references within your site’s schema graph.</li>
+  <li><strong>sameAs</strong> for external canonical identifiers.</li>
+  <li>canonical URLs for entities you control, such as author profile URLs and organization homepage URLs.</li>
+</ul>
+<p>When identifiers are missing, the system can still extract the entity, but it may treat it as a local label rather than a globally consistent node.</p>
+<h3>The “confidence triangle”: schema, text, and context</h3>
+<p>Think of AI crawler interpretation as a triangle of evidence:</p>
+<ul>
+  <li>Schema claims (types and properties).</li>
+  <li>Text evidence (what the crawler actually extracted).</li>
+  <li>Context (page type, surrounding headings, internal links, and navigation).</li>
+</ul>
+<p>When all three agree, the model can cite specific fields with higher confidence. When schema claims disagree with text evidence, the system has to choose which side to trust. In many cases, it will prefer text evidence because it is the direct source of what the crawler saw.</p>
+<p>This is why “schema validates” is not the same as “schema helps.” Validation checks syntax. The confidence triangle checks alignment.</p>
+<h3>Entity granularity: don’t over-model</h3>
+<p>Another modeling decision is granularity. Teams sometimes create a deep graph with many nested entities, but they do not provide enough evidence for each node.</p>
+<p>Over-modeling can backfire. If you create separate entities for “Author,” “Editor,” and “Publisher” but only one of those appears clearly in the visible text, the crawler may extract only partial evidence. The model then has to reconcile incomplete edges.</p>
+<p>A practical rule: model the entities you can point to in the page content. If you cannot show it in the extracted text, keep the schema simpler.</p>
+<h2>6. Configuration / Setup: A Practical JSON-LD Design Checklist</h2>
+<p>This section is intentionally practical. Use it as a pre-deploy checklist.</p>
+<ol>
+  <li>
+    <p><strong>Choose the right top-level type</strong></p>
+    <p>Start with the most specific type that matches the page.</p>
+    <p><strong>Examples:</strong></p>
+    <ul>
+      <li>Blog post: Article (often with BlogPosting)</li>
+      <li>FAQ page: FAQPage</li>
+      <li>Organization: Organization</li>
+      <li>Product page: Product</li>
+      <li>Local business: LocalBusiness</li>
+    </ul>
+    <p>Avoid overly generic types when you can be specific.</p>
+  </li>
+  <li>
+    <p><strong>Provide the “citation-critical” properties</strong></p>
+    <p>For most pages, these properties are high-value because they reduce ambiguity:</p>
+    <ul>
+      <li>headline</li>
+      <li>datePublished</li>
+      <li>dateModified</li>
+      <li>author (and author identity)</li>
+      <li>publisher (for articles)</li>
+      <li>mainEntityOfPage (for the primary entity)</li>
+    </ul>
+    <p>For product pages:</p>
+    <ul>
+      <li>brand</li>
+      <li>offers (price, currency, availability)</li>
+      <li>sku (if you have it)</li>
+      <li>aggregateRating (only if accurate)</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Make entity names consistent across page and schema</strong></p>
+    <p>If the page uses “Ollagraph” but schema uses “Ollagraph.com” or a different spelling, reconciliation becomes harder.</p>
+    <p>Consistency matters because entity linking often relies on string similarity plus identifiers.</p>
+  </li>
+  <li>
+    <p><strong>Add stable identifiers</strong></p>
+    <p>Use:</p>
+    <ul>
+      <li><strong>@id</strong> for internal references</li>
+      <li><strong>sameAs</strong> for external canonical references, such as official social profiles, Wikipedia, and company profiles</li>
+    </ul>
+    <p>If you do not have stable identifiers, start by adding consistent URLs for entities you control, such as an author profile URL or organization homepage URL.</p>
+  </li>
+  <li>
+    <p><strong>Avoid conflicts and stale fields</strong></p>
+    <p>Conflicts are worse than missing fields.</p>
+  </li>
+</ol>
+
+<p>If you can’t guarantee that dateModified stays current, consider whether you should omit it rather than publish stale data.</p>
+
+<h3>Step 6: Keep JSON-LD close to the content</h3>
+<p>Place JSON-LD in the HTML head or near the body, but ensure it is present in the initial response.</p>
+<p>If your site renders schema only after hydration, many AI crawlers will miss it.</p>
+
+<h3>Step 7: Validate and then validate again with extraction in mind</h3>
+<p>Syntactic validation is necessary.</p>
+<p>But you also need to validate semantic consistency:</p>
+<ul>
+  <li>Does the visible text contain the same headline?</li>
+  <li>Does the author name match?</li>
+  <li>Do dates match?</li>
+</ul>
+
+<h3>Step 8: Validate entity alignment across the page</h3>
+<p>After you validate syntax, do a quick alignment pass:</p>
+<ul>
+  <li>Find the visible headline and compare it to headline.</li>
+  <li>Find the visible author block and compare it to author.name and author.url.</li>
+  <li>Find the visible “last updated” or “published” date and compare it to datePublished and dateModified.</li>
+  <li>If you can’t guarantee alignment, omit the field rather than publish a conflicting value.</li>
+</ul>
+
+<h3>Step 9: Validate that the schema is present in the initial HTML</h3>
+<p>Many sites generate JSON-LD after hydration. That can work for some tools, but it often fails for crawlers that fetch HTML without executing JavaScript.</p>
+<p>Your goal is simple: the JSON should be visible in the initial response body. If it isn’t, the crawler may never parse it.</p>
+
+<h2>7. Examples: JSON-LD Patterns That Survive Extraction</h2>
+<p>Below are patterns that tend to work well because they are explicit, consistent, and entity-first.</p>
+
+<h3>Example 1: Article with author identity and stable publisher</h3>
+<pre><code>&lt;script type="application/ld+json"&gt;
+&#123;
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "mainEntityOfPage": &#123;
+    "@type": "WebPage",
+    "@id": "https://ollagraph.com/blog/how-ai-crawlers-read-schema-markup-json-ld-entities-structured-data"
+  &#125;,
+  "headline": "How AI Crawlers Read Schema Markup: JSON-LD, Entities &amp; Structured Data Explained",
+  "datePublished": "2026-07-21",
+  "dateModified": "2026-07-21",
+  "author": &#123;
+    "@type": "Person",
+    "name": "Ollagraph Engineering",
+    "@id": "https://ollagraph.com/authors/ollagraph-engineering",
+    "url": "https://ollagraph.com/authors/ollagraph-engineering"
+  &#125;,
+  "publisher": &#123;
+    "@type": "Organization",
+    "name": "Ollagraph",
+    "@id": "https://ollagraph.com/#organization",
+    "url": "https://ollagraph.com"
+  &#125;
+&#125;
+&lt;/script&gt;</code></pre>
+<p>Why this pattern survives:</p>
+<ul>
+  <li>It uses a specific type (BlogPosting).</li>
+  <li>It includes mainEntityOfPage and stable @id values.</li>
+  <li>It provides author and publisher identity.</li>
+  <li>It keeps dates aligned with the page.</li>
+</ul>
+
+<h3>Example 2: FAQPage with question/answer pairs</h3>
+<pre><code>&lt;script type="application/ld+json"&gt;
+&#123;
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    &#123;
+      "@type": "Question",
+      "name": "How do AI crawlers read JSON-LD?",
+      "acceptedAnswer": &#123;
+        "@type": "Answer",
+        "text": "Most AI crawlers parse JSON-LD blocks from the initial HTML response, then reconcile schema fields with visible text before deciding what to cite."
+      &#125;
+    &#125;,
+    &#123;
+      "@type": "Question",
+      "name": "Does schema markup guarantee AI citations?",
+      "acceptedAnswer": &#123;
+        "@type": "Answer",
+        "text": "No. Schema improves labeling and normalization, but access failures, missing content, and conflicts between schema and page text can still prevent citations."
+      &#125;
+    &#125;
+  ]
+&#125;
+&lt;/script&gt;</code></pre>
+<p>Why this pattern survives:</p>
+<ul>
+  <li>It is explicit about each question and answer.</li>
+  <li>It avoids vague answers.</li>
+  <li>It aligns with the visible FAQ content.</li>
+</ul>
+
+<h3>Example 3: Product with offers and availability</h3>
+<pre><code>&lt;script type="application/ld+json"&gt;
+&#123;
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "Ollagraph API",
+  "sku": "OLLAGRAPH-API-001",
+  "brand": &#123;
+    "@type": "Organization",
+    "name": "Ollagraph",
+    "@id": "https://ollagraph.com/#organization"
+  &#125;,
+  "offers": &#123;
+    "@type": "Offer",
+    "priceCurrency": "USD",
+    "price": "49.00",
+    "availability": "https://schema.org/InStock",
+    "url": "https://ollagraph.com/pricing"
+  &#125;
+&#125;
+&lt;/script&gt;</code></pre>
+<p>Why this pattern survives:</p>
+<ul>
+  <li>It includes offers with price and availability.</li>
+  <li>It uses canonical URLs.</li>
+  <li>It avoids “price on request” unless that’s truly your policy.</li>
+</ul>
+
+<h3>Example 4: Organization with consistent identity and social links</h3>
+<pre><code>&lt;script type="application/ld+json"&gt;
+&#123;
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Ollagraph",
+  "url": "https://ollagraph.com",
+  "@id": "https://ollagraph.com/#organization",
+  "logo": "https://ollagraph.com/static/logo.png",
+  "sameAs": [
+    "https://www.linkedin.com/company/ollagraph/",
+    "https://x.com/ollagraph"
+  ]
+&#125;
+&lt;/script&gt;</code></pre>
+<p>Why this pattern survives:</p>
+<ul>
+  <li>It provides a stable @id and canonical url.</li>
+  <li>It uses sameAs only when you have reliable official profiles.</li>
+  <li>It keeps identity fields consistent across pages.</li>
+</ul>
+
+<h3>Example 5: LocalBusiness with address and opening hours</h3>
+<pre><code>&lt;script type="application/ld+json"&gt;
+&#123;
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "Ollagraph",
+  "url": "https://ollagraph.com",
+  "address": &#123;
+    "@type": "PostalAddress",
+    "streetAddress": "123 Example St",
+    "addressLocality": "Austin",
+    "addressRegion": "TX",
+    "postalCode": "78701",
+    "addressCountry": "US"
+  &#125;,
+  "openingHoursSpecification": [
+    &#123;
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      "opens": "09:00",
+      "closes": "17:00"
+    &#125;
+  ]
+&#125;
+&lt;/script&gt;</code></pre>
+<p>Why this pattern survives:</p>
+<ul>
+  <li>It uses structured address fields instead of a single free-text blob.</li>
+  <li>It models opening hours explicitly so the crawler can normalize them.</li>
+</ul>
+
+<h3>Example 6: Event with date, location, and organizer</h3>
+<pre><code>&lt;script type="application/ld+json"&gt;
+&#123;
+  "@context": "https://schema.org",
+  "@type": "Event",
+  "name": "Ollagraph Schema Workshop",
+  "startDate": "2026-09-12T10:00:00-05:00",
+  "endDate": "2026-09-12T12:00:00-05:00",
+  "eventAttendanceMode": "https://schema.org/OnlineEventAttendanceMode",
+  "location": &#123;
+    "@type": "VirtualLocation",
+    "url": "https://ollagraph.com/events/schema-workshop"
+  &#125;,
+  "organizer": &#123;
+    "@type": "Organization",
+    "name": "Ollagraph",
+    "url": "https://ollagraph.com",
+    "@id": "https://ollagraph.com/#organization"
+  &#125;
+&#125;
+&lt;/script&gt;</code></pre>
+<p>Why this pattern survives:</p>
+<ul>
+  <li>It uses ISO timestamps so date normalization is unambiguous.</li>
+  <li>It models organizer identity with a stable @id.</li>
+</ul>
+
+<h3>Example 7: FAQPage with entity-rich answers</h3>
+<pre><code>&lt;script type="application/ld+json"&gt;
+&#123;
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    &#123;
+      "@type": "Question",
+      "name": "How do entities improve AI citations?",
+      "acceptedAnswer": &#123;
+        "@type": "Answer",
+        "text": "Entities reduce ambiguity by letting the crawler label passages as facts about specific nodes (author, organization, product). When schema and visible text align, the answer engine can ground citations in consistent identifiers and normalized fields."
+      &#125;
+    &#125;
+  ]
+&#125;
+&lt;/script&gt;</code></pre>
+<p>Why this pattern survives:</p>
+<ul>
+  <li>The answer text is specific and aligned with the page’s intent.</li>
+  <li>It avoids vague filler that the model might paraphrase away.</li>
+</ul>
+
+<h2>8. Performance &amp; Benchmarks: What Changes When Schema Is Good</h2>
+<p>Schema doesn’t “speed up” crawling in a direct way. But it changes what the extraction pipeline can label and what the answer engine can ground.</p>
+<p>In practice, the best benchmarks are not “validator passes.” They are reconciliation outcomes: does the system retrieve passages that contain the same facts schema claims, and does it cite those facts with the right specificity?</p>
+
+<h3>What you can measure (practically)</h3>
+<p>Use a small, repeatable scorecard. For each URL, run the same set of checks before and after a schema change.</p>
+<p>Track these metrics:</p>
+<ul>
+  <li>Schema presence in initial HTML (binary): did JSON-LD exist before any JS?</li>
+  <li>Parse success (binary): does JSON-LD parse cleanly?</li>
+  <li>Field alignment rate (0–100%): % of citation-critical fields where schema matches visible text.</li>
+  <li>Conflict rate (0–100%): % of fields where schema conflicts with visible text.</li>
+  <li>Evidence coverage (0–100%): % of citation-critical fields that appear in extractable, high-signal text (headings, direct-answer paragraphs, definition blocks).</li>
+  <li>Citation specificity uplift (qualitative → score): when you ask the same question, do citations include the specific field (date/author/price) more often?</li>
+</ul>
+
+<h3>A realistic benchmark experiment (what to run)</h3>
+<p>Instead of claiming universal numbers, run a controlled experiment on your own templates.</p>
+
+<ol>
+  <li>Pick 20–40 URLs across your real mix (articles, FAQs, products/services, and at least one author/organization page).</li>
+  <li>Freeze a baseline snapshot:
+    <ul>
+      <li>capture initial HTML for each URL</li>
+      <li>extract schema fields</li>
+      <li>extract visible text fields</li>
+      <li>record alignment/conflicts using the rubric in the audit workflow</li>
+    </ul>
+  </li>
+  <li>Apply one change at a time (don’t batch everything):
+    <ul>
+      <li>Change A: fix dateModified drift</li>
+      <li>Change B: add stable identifiers (@id + canonical URLs)</li>
+      <li>Change C: remove conflicting legacy JSON-LD fragments</li>
+    </ul>
+  </li>
+  <li>Re-run the same baseline checks after each change.</li>
+  <li>For 5–10 representative questions per template, record whether citations become more specific.</li>
+</ol>
+
+<p><strong>Sample scoring table (fill this in during your audit)</strong></p>
+<p>Use this table as a template for your internal spreadsheet.</p>
+
+<pre><code>URL	Type	Presence (0/1)	Parse (0/1)	Alignment %	Conflict %	Evidence %	Readiness Score (0–15)
+/blog/example-1	Article	1	1	80	10	70	11
+/faq/example-2	FAQPage	1	1	60	20	55	8
+/product/example-3	Product	0	1	40	30	35	5</code></pre>
+
+<p><strong>How to compute Readiness Score (0–15):</strong></p>
+<ul>
+  <li>Presence in initial HTML: 0 or 3</li>
+  <li>Syntax validity: 0–3</li>
+  <li>Entity alignment: 0–3</li>
+  <li>Identifier quality: 0–3</li>
+  <li>Evidence coverage: 0–3</li>
+</ul>
+
+<h3>What “good schema” should improve (expected direction)</h3>
+<p>When schema is aligned and evidence is extractable, you should see:</p>
+<ul>
+  <li>Alignment % increases (especially for headline/author/date and offers).</li>
+  <li>Conflict % decreases (especially dateModified and author identity).</li>
+  <li>Evidence % increases because you mirror citation-critical facts in extractable text.</li>
+  <li>Citation specificity uplift becomes noticeable in the questions that depend on those fields.</li>
+</ul>
+<p>If you don’t see these directional improvements, the issue is usually one of:</p>
+<ul>
+  <li>JSON-LD is missing from initial HTML</li>
+  <li>schema conflicts with visible text</li>
+  <li>stable identifiers are missing</li>
+  <li>the fact exists only in schema, not in extractable passages</li>
+</ul>
+
+<h3>What “good schema” costs</h3>
+<p>Good schema costs engineering time and content discipline. The runtime cost is small: JSON-LD is a few kilobytes.</p>
+<p>The real cost is operational: keeping schema synchronized with CMS updates.</p>
+
+<h2>Step-by-Step Schema Audit Workflow (Schema vs Text vs Extraction)</h2>
+<p>This workflow is designed to answer one question: “Will an AI crawler extract and reconcile my structured data in a way that improves grounding?”</p>
+
+<h3>Step 1: Pick a representative URL set</h3>
+<p>Choose 10–30 URLs that represent your real content mix:</p>
+<ul>
+  <li>3–5 article pages.</li>
+  <li>2–5 FAQ pages.</li>
+  <li>2–5 product or service pages.</li>
+  <li>1–3 organization or author pages.</li>
+</ul>
+<p>If you only test one template, you’ll miss drift caused by edge cases.</p>
+
+<h3>Step 2: Capture the initial HTML response</h3>
+<p>For each URL, capture the raw HTML that a crawler would fetch. The goal is to confirm whether JSON-LD is present before any client-side rendering.</p>
+<p>Record:</p>
+<ul>
+  <li>whether application/ld+json exists in the initial response.</li>
+  <li>whether the JSON is complete (not truncated).</li>
+</ul>
+
+<h3>Step 3: Validate JSON-LD syntax</h3>
+<p>Run a JSON-LD validator (or schema validator) to catch syntax errors. This step prevents false negatives where the crawler ignores the entire block.</p>
+<p>Record:</p>
+<ul>
+  <li>parse success/failure.</li>
+  <li>number of JSON-LD blocks.</li>
+</ul>
+
+<h3>Step 4: Extract the “citation-critical” fields</h3>
+<p>For each page, extract the fields that typically drive grounding:</p>
+<ul>
+  <li>headline/title.</li>
+  <li>author name and author identity.</li>
+  <li>publisher identity.</li>
+  <li>datePublished and dateModified.</li>
+  <li>product offers (price, currency, availability) when relevant.</li>
+</ul>
+<p>Record the values from schema.</p>
+
+<h3>Step 5: Extract the same fields from visible text</h3>
+<p>Now extract the same fields from the visible page content (the text the crawler would likely keep):</p>
+<ul>
+  <li>visible headline.</li>
+  <li>visible author block.</li>
+  <li>visible published/updated date.</li>
+  <li>visible product price/availability.</li>
+</ul>
+<p>Record the values from text.</p>
+
+<h3>Step 6: Compute alignment and conflict</h3>
+<p>For each field, mark one of three outcomes:</p>
+<ul>
+  <li>aligned (schema matches text).</li>
+  <li>missing (schema field absent or text absent).</li>
+  <li>conflicting (schema and text disagree).</li>
+</ul>
+<p>Conflicts are the most damaging outcome because they force reconciliation.</p>
+
+<h3>Step 7: Check entity identifiers</h3>
+<p>For each entity (author, organization, product), confirm:</p>
+<ul>
+  <li>stable @id exists where you reference it.</li>
+  <li>canonical URLs are consistent.</li>
+  <li>sameAs is present only when accurate.</li>
+</ul>
+<p>Record missing identifiers.</p>
+
+<h3>Step 8: Simulate passage-level grounding (qualitative)</h3>
+<p>You can’t fully reproduce every answer engine, but you can approximate the failure modes:</p>
+<ul>
+  <li>If the page’s key facts are only in schema and not in visible text, grounding will likely fail.</li>
+  <li>If the page’s key facts are in visible text but schema conflicts, grounding may degrade.</li>
+</ul>
+<p>Record which side is the “evidence” for each critical fact.</p>
+
+<h3>Step 9: Prioritize fixes by impact</h3>
+<p>Fix order that usually yields the biggest gains:</p>
+<ul>
+  <li>remove conflicts (dates, author identity, product offers).</li>
+  <li>add missing citation-critical fields.</li>
+  <li>add stable identifiers.</li>
+  <li>ensure JSON-LD is present in initial HTML.</li>
+</ul>
+
+<h3>Step 10: Re-test after deployment</h3>
+<p>After you ship schema changes, re-run the same audit on the same URL set. Schema drift is common after CMS or template updates.</p>
+
+<h3>Step 11: Score readiness (so you can prioritize)</h3>
+<p>To make this audit actionable, score each URL on a 0–3 scale per category, then sum.</p>
+<ul>
+  <li>Presence in initial HTML (0–3): 0 = missing, 1 = present but incomplete/truncated, 2 = present and complete, 3 = present and stable across variants.</li>
+  <li>Syntax validity (0–3): 0 = invalid JSON-LD, 1 = parses but has structural issues, 2 = valid and parseable, 3 = valid and consistent across blocks.</li>
+  <li>Entity alignment (0–3): 0 = frequent conflicts, 1 = partial alignment, 2 = mostly aligned, 3 = aligned for headline/author/date and key entities.</li>
+  <li>Identifier quality (0–3): 0 = no stable identifiers, 1 = identifiers exist but inconsistent, 2 = consistent internal identifiers, 3 = consistent internal + accurate external identifiers.</li>
+  <li>Evidence coverage (0–3): 0 = key facts only in schema, 1 = key facts partially in text, 2 = key facts in text and schema, 3 = key facts are repeated in extractable sections (headings/definitions).</li>
+</ul>
+<p>Use the score to prioritize fixes:</p>
+<ul>
+  <li>High syntax, low alignment: fix conflicts first (dates, author identity, product offers).</li>
+  <li>Low presence: fix rendering so JSON-LD is in initial HTML.</li>
+  <li>Low evidence coverage: add direct-answer blocks and ensure the same facts appear in visible text.</li>
+</ul>
+<p>This scoring rubric turns “schema work” into a repeatable engineering loop.</p>
+
+<h2>9. Security Considerations: Don’t Break Crawlers While Adding Schema</h2>
+<p>Schema markup is not a security feature, but it can interact with security controls.</p>
+<p><strong>Common issues:</strong></p>
+<ul>
+  <li>Bot protection: if your WAF blocks AI crawler user-agents, schema never gets parsed.</li>
+  <li>CDN edge rules: some sites serve different HTML to different user-agents; JSON-LD might be missing for bots.</li>
+  <li>Client-side injection: if schema is injected after hydration, crawlers that don’t execute JS will miss it.</li>
+  <li>Malformed JSON: a single trailing comma can break parsing and cause the crawler to ignore the entire block.</li>
+</ul>
+<p><strong>Security best practice:</strong></p>
+<ul>
+  <li>Validate JSON-LD in CI.</li>
+  <li>Ensure schema is present in the initial HTML response.</li>
+  <li>Keep schema generation deterministic and versioned.</li>
+</ul>
+
+<h2>10. Troubleshooting: The Most Common Schema-to-AI Failures</h2>
+<p>This section is a “diagnose and fix” guide.</p>
+
+<h2>Failure 1: JSON-LD validates, but citations don’t improve</h2>
+<p><strong>Symptom:</strong> The schema validator passes, but AI citations stay generic and don’t mention dates, authors, or specific attributes.</p>
+<p><strong>Cause:</strong> The schema is missing citation-critical properties (like <code>dateModified</code>, <code>author</code>, or <code>offers</code>), or it uses overly generic types that don’t map cleanly to the page’s real entity.</p>
+<p><strong>Fix:</strong> Align schema headline/author/dateModified with the visible page, add stable identifiers (<code>@id</code> and canonical URLs), and use the most specific schema type that matches the page.</p>
+<p><strong>Concrete check:</strong></p>
+<ol>
+  <li>Ask the same question that should trigger a specific field (for example: “When was this updated?” or “Who is the author?”).</li>
+  <li>Verify whether the retrieved passage contains the field value you expect.</li>
+  <li>If the passage doesn’t contain it, schema can’t help because the model has no evidence to cite.</li>
+</ol>
+<p><strong>Before (generic / missing evidence):</strong></p>
+<pre><code>&#123;
+  "@type": "Article",
+  "headline": "How AI Crawlers Read Schema Markup"
+&#125;</code></pre>
+<p><strong>After (field-complete + aligned):</strong></p>
+<pre><code>&#123;
+  "@type": "BlogPosting",
+  "@id": "https://ollagraph.com/blog/how-ai-crawlers-read-schema-markup-json-ld-entities-structured-data#article",
+  "headline": "How AI Crawlers Read Schema Markup: JSON-LD, Entities &amp; Structured Data Explained",
+  "datePublished": "2026-07-21",
+  "dateModified": "2026-07-21",
+  "author": &#123;
+    "@type": "Person",
+    "@id": "https://ollagraph.com/authors/ollagraph-engineering",
+    "name": "Ollagraph Engineering",
+    "url": "https://ollagraph.com/authors/ollagraph-engineering"
+  &#125;
+&#125;</code></pre>
+
+<h2>Failure 2: Schema exists only after JS loads</h2>
+<p><strong>Symptom:</strong> JSON-LD is missing from “view source,” and bot fetches don’t show the structured data.</p>
+<p><strong>Cause:</strong> Your CMS or frontend injects JSON-LD after hydration, so crawlers that fetch HTML without executing JavaScript never parse it.</p>
+<p><strong>Fix:</strong> Render JSON-LD server-side (or ensure it’s present in the initial HTML response), and re-test with a bot-like fetch to confirm the script block is included.</p>
+<p><strong>Concrete check:</strong></p>
+<ol>
+  <li>Fetch the URL with a “no-JS” client (or view the raw HTML response).</li>
+  <li>Confirm the <code>&lt;script type="application/ld+json"&gt;</code> block exists in the initial response.</li>
+  <li>If it appears only after hydration, the crawler likely won’t parse it.</li>
+</ol>
+
+<h2>Failure 3: Conflicting dates</h2>
+<p><strong>Symptom:</strong> The page shows a newer “last updated” date, but schema still reports an older <code>dateModified</code>.</p>
+<p><strong>Cause:</strong> Schema generation is pulling from a different CMS field than the visible “last updated” UI, or it’s using cached values.</p>
+<p><strong>Fix:</strong> Generate <code>dateModified</code> from the same source as the visible last-updated field; if you can’t guarantee freshness, omit <code>dateModified</code> rather than publish stale data.</p>
+<p><strong>Concrete check:</strong></p>
+<ol>
+  <li>In the initial HTML, confirm the JSON-LD <code>dateModified</code> value.</li>
+  <li>In the extracted visible text, confirm the “last updated” value that users see.</li>
+  <li>If they differ, reconciliation confidence drops.</li>
+</ol>
+<p><strong>Before (stale):</strong></p>
+<pre><code>&#123;
+  "@type": "BlogPosting",
+  "dateModified": "2024-11-03"
+&#125;</code></pre>
+<p><strong>After (aligned):</strong></p>
+<pre><code>&#123;
+  "@type": "BlogPosting",
+  "dateModified": "2026-07-21"
+&#125;</code></pre>
+
+<h2>Failure 4: Author identity mismatch</h2>
+<p><strong>Symptom:</strong> The visible author name differs from <code>author.name</code>, or the author URL in schema doesn’t match the author profile link on the page.</p>
+<p><strong>Cause:</strong> Template drift or inconsistent naming across systems (CMS display name vs schema generator vs author profile slug).</p>
+<p><strong>Fix:</strong> Use the same canonical author name and URL in both the body and schema, and add an <code>@id</code> for the author entity so linking is stable.</p>
+<p><strong>Concrete check:</strong></p>
+<ol>
+  <li>In the visible author block, copy the exact displayed name and author profile URL.</li>
+  <li>In JSON-LD, confirm <code>author.name</code> and <code>author.url</code> match those exact values.</li>
+  <li>If they differ, entity linking becomes probabilistic and citations can drift.</li>
+</ol>
+<p><strong>Before (mismatched identity):</strong></p>
+<pre><code>&#123;
+  "author": &#123;
+    "@type": "Person",
+    "name": "Ollagraph Team",
+    "url": "https://ollagraph.com/authors/ollagraph-team"
+  &#125;
+&#125;</code></pre>
+<p><strong>After (canonical identity):</strong></p>
+<pre><code>&#123;
+  "author": &#123;
+    "@type": "Person",
+    "@id": "https://ollagraph.com/authors/ollagraph-engineering",
+    "name": "Ollagraph Engineering",
+    "url": "https://ollagraph.com/authors/ollagraph-engineering"
+  &#125;
+&#125;</code></pre>
+
+<h2>Failure 5: Product offers are incomplete</h2>
+<p><strong>Symptom:</strong> AI answers about pricing or availability are vague, or the model avoids quoting price.</p>
+<p><strong>Cause:</strong> <code>offers</code> is missing key fields (<code>price</code>, <code>currency</code>, <code>availability</code>), or it contains values that don’t match the visible product section.</p>
+<p><strong>Fix:</strong> Provide accurate offers with <code>price</code>, <code>priceCurrency</code>, and <code>availability</code>; only include ratings if you can support them with real, verifiable data.</p>
+<p><strong>Concrete check:</strong></p>
+<ol>
+  <li>Find the visible price and availability section on the page.</li>
+  <li>Confirm the same values appear in JSON-LD <code>offers.price</code>, <code>offers.priceCurrency</code>, and <code>offers.availability</code>.</li>
+  <li>If the visible section is “Contact us for pricing,” don’t publish a fake numeric price in schema.</li>
+</ol>
+<p><strong>Before (incomplete offers):</strong></p>
+<pre><code>&#123;
+  "offers": &#123;
+    "@type": "Offer",
+    "availability": "https://schema.org/InStock"
+  &#125;
+&#125;</code></pre>
+<p><strong>After (complete offers):</strong></p>
+<pre><code>&#123;
+  "offers": &#123;
+    "@type": "Offer",
+    "@id": "https://ollagraph.com/services/schema-audit#offer",
+    "price": "1499",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock",
+    "url": "https://ollagraph.com/services/schema-audit"
+  &#125;
+&#125;</code></pre>
+
+<h2>Failure 6: Multiple JSON-LD blocks conflict</h2>
+<p><strong>Symptom:</strong> You have more than one JSON-LD block for the same entity, and fields disagree (headline, dates, author, or product attributes).</p>
+<p><strong>Cause:</strong> Multiple template components generate overlapping schema, or a migration left old schema fragments in place.</p>
+<p><strong>Fix:</strong> Consolidate into one canonical JSON-LD block per primary entity, ensure only one source of truth, and remove conflicting legacy blocks.</p>
+<p><strong>Concrete check:</strong></p>
+<ol>
+  <li>Search the initial HTML for multiple <code>application/ld+json</code> blocks.</li>
+  <li>For the primary entity, compare overlapping fields (headline, dates, author, offers).</li>
+  <li>If any overlap disagrees, remove the conflicting fragment and keep one canonical block.</li>
+</ol>
+
+<h2>Failure 7: Schema is present, but evidence is missing</h2>
+<p><strong>Symptom:</strong> Schema claims a fact (for example, a specific service area or a workshop date), but the visible page doesn’t clearly state it.</p>
+<p><strong>Cause:</strong> The schema is “ahead” of the content, or the crawler’s extraction removes the relevant text because it’s buried in low-signal areas.</p>
+<p><strong>Fix:</strong> Ensure the same facts appear in visible, extractable content near the schema, and keep the schema aligned with what the crawler can actually keep.</p>
+<p><strong>Concrete check:</strong></p>
+<ol>
+  <li>Pick one schema field that should be citable (for example: service area, workshop date, or event location).</li>
+  <li>Confirm the same value appears in a heading or direct-answer paragraph.</li>
+  <li>If it only appears in schema, the answer engine may never retrieve the evidence passage.</li>
+</ol>
+
+<h2>Failure 8: Breadcrumbs or navigation context are missing</h2>
+<p><strong>Symptom:</strong> The crawler extracts the page, but the model can’t place it in the right topic context, so citations become generic.</p>
+<p><strong>Cause:</strong> The page lacks navigation context that helps the system understand hierarchy (for example, breadcrumbs) and the schema doesn’t provide a clear “where this belongs.”</p>
+<p><strong>Fix:</strong> Add <code>BreadcrumbList</code> where appropriate and ensure the breadcrumb labels match visible navigation text.</p>
+<p><strong>Concrete check:</strong></p>
+<ol>
+  <li>Verify the visible breadcrumb labels (or navigation hierarchy) on the page.</li>
+  <li>Confirm JSON-LD <code>BreadcrumbList.itemListElement[].name</code> matches those labels.</li>
+  <li>If breadcrumbs are missing in both schema and UI, the model may still answer, but citations can become generic.</li>
+</ol>
+
+<h2>Failure 9: Multiple entities share the same name</h2>
+<p><strong>Symptom:</strong> The model cites the wrong person/organization/product when names are ambiguous (for example, “John Smith” or a common product name).</p>
+<p><strong>Cause:</strong> Schema uses the same name string for multiple entities without stable identifiers, so entity linking becomes probabilistic.</p>
+<p><strong>Fix:</strong> Add stable identifiers (<code>@id</code>, canonical URLs) and disambiguate with additional properties (official URLs, location, brand, or product SKU).</p>
+<p><strong>Concrete check:</strong></p>
+
+<ul>
+  <li>Identify ambiguous names on the page (common people, generic product names).</li>
+  <li>Ensure each entity has a stable <strong>@id</strong> and a canonical URL.</li>
+  <li>If two entities share the same name but lack identifiers, the model can cite the wrong one.</li>
+</ul>
+
+<h2>Failure 10: Schema is correct, but the crawler extracts the wrong passage</h2>
+<p><strong>Symptom:</strong> Schema claims a fact, but the answer engine never cites it because the retrieved passage doesn’t contain the evidence.</p>
+<p><strong>Cause:</strong> The fact exists on the page, but it’s buried in low-signal areas (collapsed accordions, long tables without headings, or repeated boilerplate) so extraction chunking misses it.</p>
+<p><strong>Fix:</strong> Move citation-critical facts into extractable sections with clear headings, and mirror them in the schema fields.</p>
+<p><strong>Concrete check:</strong></p>
+<ul>
+  <li>For the question you care about, identify the exact passage the answer engine should cite.</li>
+  <li>Ensure that passage is in a high-signal area: a heading, a short paragraph, or a definition block.</li>
+  <li>Avoid placing citation-critical facts only in low-signal UI (collapsed accordions, long tables without headings, or repeated boilerplate).</li>
+</ul>
+
+<h2>11. Best Practices: Entity-First Schema Authoring</h2>
+<p>If you want schema to help AI crawlers, author it like you’re building an entity graph.</p>
+
+<h3>1) Start with the entity, not the markup</h3>
+<p>Ask:</p>
+<ul>
+  <li>What is the primary entity of this page?</li>
+  <li>What properties are stable and correct?</li>
+  <li>What identifiers can connect this entity across the site?</li>
+</ul>
+<p>Then map those answers into schema.</p>
+
+<h3>2) Use stable identifiers everywhere you can</h3>
+<ul>
+  <li><strong>@id</strong> for internal references.</li>
+  <li><strong>sameAs</strong> for external canonical references.</li>
+  <li>Canonical URLs for entities you control.</li>
+</ul>
+
+<h3>3) Keep schema and visible text aligned</h3>
+<p>Schema is a label. The model still needs evidence.</p>
+<p>If the evidence and label disagree, reconciliation becomes harder.</p>
+
+<h3>4) Prefer completeness over cleverness</h3>
+<p>A complete schema with fewer fields is better than a clever schema with missing critical properties.</p>
+
+<h3>5) Treat schema as versioned content</h3>
+<p>When you update a page, update schema in the same release.</p>
+<p>If your CMS updates visible content but schema generation lags, you create drift.</p>
+
+<h2>12. Common Mistakes: How JSON-LD Gets Ignored</h2>
+<ul>
+  <li>Adding JSON-LD but not ensuring it is present in initial HTML.</li>
+  <li>Using generic types that don’t match the page’s real entity.</li>
+  <li>Leaving <strong>dateModified</strong> stale.</li>
+  <li>Mismatching author names between body and schema.</li>
+  <li>Including conflicting fields across multiple JSON-LD blocks.</li>
+  <li>Omitting identifiers (<strong>@id</strong>, <strong>sameAs</strong>) when you could provide them.</li>
+  <li>Treating schema as a replacement for clear on-page answers.</li>
+</ul>
+
+<h2>13. Alternatives &amp; Comparison: JSON-LD vs Microdata vs “Just Text”</h2>
+
+<h3>JSON-LD</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Easy to parse.</li>
+  <li>Self-contained.</li>
+  <li>Works well with entity-first design.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Requires careful generation to avoid conflicts.</li>
+</ul>
+
+<h3>Microdata</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Can be embedded directly in HTML.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Harder to maintain at scale.</li>
+  <li>More likely to break when templates change.</li>
+</ul>
+
+<h3>“Just Text”</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Always present.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>The crawler must infer structure.</li>
+  <li>The model may cite less specific details.</li>
+</ul>
+
+<p><strong>Bottom line:</strong> JSON-LD is usually the best structured-data format for AI extraction reliability, but it works best when paired with clear, entity-rich on-page content.</p>
+
+<h2>14. Enterprise / Cloud Deployment: Schema at Scale Without Drift</h2>
+<p>At enterprise scale, schema failures are rarely “syntax errors.” They are drift.</p>
+<p>Drift happens when:</p>
+<ul>
+  <li>CMS updates visible content but schema generation uses cached or older data.</li>
+  <li>Multiple services generate schema differently.</li>
+  <li>A CDN rule serves different HTML to different user-agents.</li>
+</ul>
+
+<h3>A deployment approach that reduces drift</h3>
+<ul>
+  <li>Generate JSON-LD from the same data model that renders the page.</li>
+  <li>Add CI checks:
+    <ul>
+      <li>JSON-LD parses.</li>
+      <li>critical fields exist.</li>
+      <li>headline/author/dateModified match the rendered page.</li>
+    </ul>
+  </li>
+  <li>Add monitoring:
+    <ul>
+      <li>sample fetches for bot user-agents.</li>
+      <li>diff schema fields over time.</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>Observability signals</h3>
+<ul>
+  <li>“Schema present in initial HTML” rate.</li>
+  <li>“Schema vs text match” rate.</li>
+  <li>“Conflict rate” for dates and authors.</li>
+</ul>
+
+<h2>15. FAQs</h2>
+
+<h3>1) Do AI crawlers read JSON-LD directly?</h3>
+<p>Most AI crawlers parse JSON-LD from the initial HTML response. They then reconcile schema fields with visible text before deciding what to cite. If JSON-LD is injected only after client-side rendering, many crawlers will miss it. So the practical rule is: present in the first fetch and aligned with the page.</p>
+
+<h3>2) Does schema markup guarantee AI citations?</h3>
+<p>No. Schema improves labeling and normalization, but citations depend on access, extraction quality, and consistency. If schema conflicts with the page or evidence is missing, the answer engine may generalize or skip the detail. Treat schema as an extraction contract, not a guarantee.</p>
+
+<h3>3) What schema types matter most for AI citations?</h3>
+<p>For most content pages, Article/BlogPosting, FAQPage, Organization, and Person map to citation-critical fields like headline, author, and dates. For commerce pages, Product and Offer reduce ambiguity about price and availability. The best type matches the entity your page actually represents. Over-generic types add less grounding.</p>
+
+<h3>4) Should I include dateModified?</h3>
+<p>Include <strong>dateModified</strong> only if you can keep it accurate. Stale <strong>dateModified</strong> is worse than missing it because it creates reconciliation conflicts. If your CMS updates “last updated” reliably, mirror that value into schema. If you can’t guarantee freshness, omit it.</p>
+
+<h3>5) How do entities help AI crawlers?</h3>
+<p>Entities reduce ambiguity by giving the crawler a structured label for what the page is about. With stable identifiers and consistent names, the crawler can label passages with the correct entity type and connect references across the site. That helps the model ground answers in specific facts. Without alignment, entity linking becomes less reliable.</p>
+
+<h3>6) What is the difference between structured data and structured content?</h3>
+<p>Structured data is machine-readable markup like JSON-LD or microdata. Structured content is how you write and format the page: headings, lists, tables, and explicit Q&amp;A. AI answer engines use both: structured data helps labeling, while structured content provides evidence. If evidence is missing, schema can’t fully compensate.</p>
+
+<h3>7) Can I use schema without changing my page content?</h3>
+<p>You can, but gains are usually limited. Schema works best when it aligns with visible text. If your page doesn’t clearly state the facts you put in schema, reconciliation confidence drops. Best results come from aligning schema with what the crawler can extract.</p>
+
+<h3>8) How many JSON-LD blocks should I use?</h3>
+<p>Prefer a single canonical block per primary entity. Multiple blocks are fine if they are consistent, but conflicts across blocks are a common failure mode. When blocks disagree, the system has to reconcile contradictions. One source of truth is safest.</p>
+
+<h3>9) What about sameAs?</h3>
+<p><strong>sameAs</strong> helps entity linking by pointing to canonical external identifiers. It’s most useful when you have reliable official profiles or references. If you don’t, focus on stable internal identifiers first. Often, consistent URLs and <strong>@id</strong> provide more value.</p>
+
+<h2>10) Do I need to validate schema with Google’s tools?</h2>
+<p>Validation is necessary but not sufficient. Validate syntax, then validate semantic consistency: ensure headline, author, and dates match the rendered page and critical properties exist. A schema that “passes” but disagrees can still fail reconciliation. Treat validation as step one.</p>
+
+<h2>11) What if my site is behind a bot challenge?</h2>
+<p>Then schema won’t matter much because the crawler can’t fetch and parse your page. If the crawler can’t access HTML, it can’t extract evidence or read JSON-LD. Fix access first: allowlisting, WAF rules, and CDN behavior for crawler user-agents. Then optimize structured data.</p>
+
+<h2>12) How do I audit schema-readiness for AI?</h2>
+<p>Audit in three layers: (1) presence in initial HTML, (2) syntactic validity, and (3) schema vs text consistency for entity-critical fields. Then simulate extraction and check whether the answer engine can ground details. Focus on conflicts first because they degrade confidence. Clean alignment makes schema a reliable labeling layer.</p>
+
+<h2>16. Conclusion</h2>
+<p>Schema markup is not a magic switch for AI citations. It is an extraction contract that helps crawlers label entities and helps answer engines ground answers in specific facts.</p>
+<p>If you want schema to work for AI crawlers, focus on entity-first design: choose the right types, provide citation-critical properties, keep dates and authors consistent, and add stable identifiers. Then validate not only syntax but reconciliation: schema must match the visible evidence the crawler extracts.</p>
+<p>Next step: pick one high-value page, improve its JSON-LD using the checklist above, and run a schema-vs-text audit. If you do that consistently across your top pages, you’ll see citations become more specific and more reliable.</p>
+
+<h2>17. References</h2>
+<ul>
+  <li>schema.org JSON-LD documentation: https://schema.org/docs/gs.html</li>
+  <li>Google Search Central: Structured data guidelines: https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data</li>
+  <li>JSON-LD 1.1 specification: https://www.w3.org/TR/json-ld/</li>
+  <li>RFC 3986 (URI syntax, relevant for canonical identifiers): https://www.rfc-editor.org/rfc/rfc3986</li>
+  <li>W3C Web Schema / RDF background (entity modeling context): https://www.w3.org/standards/semanticweb/</li>
+</ul>
+</Article>

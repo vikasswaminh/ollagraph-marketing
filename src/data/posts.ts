@@ -10,6 +10,7 @@ export interface PostMeta {
 }
 
 export const posts: PostMeta[] = [
+  { slug: "how-ai-crawlers-read-schema-markup", title: "How AI Crawlers Read Schema Markup for Better Citations", description: "Schema only helps when crawlers can label and trust it. Learn how JSON-LD, entities, and page text work together for AI citations.", date: "2026-07-28", readingTime: 30, tags: ["JSON-LD", "schema.org", "entities", "structured data", "AI citations"] },
   { slug: "how-to-build-an-mcp-toolchain-for-ai-agents", title: "Build an MCP Toolchain for AI Agents", description: "Scrape, extract, and convert web data into LLM-ready artifacts with evidence loops, validation, and reliable citations.", date: "2026-07-28", readingTime: 23, tags: ["mcp", "ai-agents", "web-scraping", "data-extraction", "rag"] },
   { slug: "pdf-to-markdown-for-rag", title: "PDF to Markdown for RAG: Preserve Structure for Better Retrieval", description: "Convert PDFs to Markdown before chunking so headings, lists, tables, and captions survive. Cleaner structure improves retrieval accuracy and citations.", date: "2026-07-28", readingTime: 26, tags: ["rag", "pdf", "markdown", "chunking", "document-ai"] },
   { slug: "web-scraping-at-scale", title: "Web Scraping at Scale: Reliable Architecture for Tough Targets", description: "Build scraping systems that survive failures, changing defenses, and rising costs. Learn the queue-first architecture, proxy strategy, and escalation ladder.", date: "2026-07-28", readingTime: 23, tags: ["scraping", "proxies", "anti-bot", "queues", "observability"] },
