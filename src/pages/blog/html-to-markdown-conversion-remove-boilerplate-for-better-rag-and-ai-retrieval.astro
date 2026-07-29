@@ -1,0 +1,888 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why isn't HTML to Markdown conversion enough for RAG?", a: "Markdown can preserve structure, but it does not automatically remove navigation, footer text, or other repeated UI chrome. Those extra tokens can shift embeddings, distort chunk boundaries, and pull retrieval toward the wrong sections. The result is often worse answers even when conversion appears successful." },
+  { q: "What is boilerplate in a retrieval pipeline?", a: "Boilerplate is repeated or low-signal text that is not part of the page's primary informational intent. In practice, it includes menus, cookie banners, subscription prompts, related links, and footer content. In RAG, this text competes with the real content and can contaminate retrieval." },
+  { q: "How do you measure whether boilerplate removal is working?", a: "Track boilerplate_ratio, extraction_confidence, and structure invariants. A healthy pipeline keeps non-content text low while preserving headings, lists, and other retrieval-relevant structure. If the ratio looks good but main content shrinks too much, you may be removing too much." },
+  { q: "What does deterministic Markdown output buy you?", a: "Deterministic formatting keeps chunk boundaries stable across runs, which improves retrieval consistency. When the same block always becomes the same Markdown structure, embeddings and citations are easier to trust. It also makes regressions easier to detect during evaluation." },
+  { q: "Why are evidence packets important?", a: "Evidence packets map extracted spans back to their source bytes or source text. That gives you a direct way to verify citations, debug extraction errors, and prove where a chunk came from. Without that mapping, misaligned citations are hard to trace and fix." },
+  { q: "What should a safe ingestion pipeline do when extraction is uncertain?", a: "It should fail closed or degrade safely instead of silently embedding noisy content. That usually means retrying with a fallback strategy, recording the confidence signal, and rejecting pages that violate structure checks. Silent drift is one of the fastest ways to poison a RAG index." },
+];
+---
+<Article
+  title="HTML to Markdown Boilerplate Removal for Better RAG"
+  description="Strip nav, footer, and UI chrome before Markdown conversion so retrieval stays focused, citations stay accurate, and chunks stay stable."
+  date="2026-07-29"
+  readingTime={23}
+  tags={["RAG", "Markdown", "HTML", "retrieval", "boilerplate"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>If you scrape a web page and convert the HTML to Markdown, you can still end up with a RAG index that retrieves the wrong things. The reason is not your embeddings—it’s your ingestion contract.</p>
+<p>Most pages are built for browsers, not for retrieval. Navigation trees, cookie banners, footers, “related links” widgets, and repeated UI scaffolding are not just extra tokens. They change embedding neighborhoods and chunk boundaries, which then cascades into worse retrieval and weaker (or incorrect) citations.</p>
+<p>This guide treats boilerplate removal as a measurable ingestion contract. You’ll learn how to:</p>
+<ul>
+  <li>Define boilerplate removal in retrieval terms (boilerplate_ratio, extraction_confidence, and structure invariants)</li>
+  <li>Detect main content vs chrome using structural and repetition signals</li>
+  <li>Convert only kept blocks into deterministic Markdown (so chunking stays stable)</li>
+  <li>Attach evidence packets (span/byte mappings) so citations can be verified</li>
+  <li>Validate invariants and fail closed (retry/fallback instead of silent drift)</li>
+  <li>Evaluate end-to-end impact with a run-ready benchmark harness (precision@k + citation correctness)</li>
+</ul>
+<p>The goal is not “pretty Markdown.” The goal is retrieval-grade Markdown that improves answer quality and citation trust.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Boilerplate removal must be measured (boilerplate_ratio, extraction_confidence, and invariants), not guessed.</li>
+  <li>Extract retrieval blocks first; convert only kept blocks.</li>
+  <li>Deterministic Markdown formatting reduces chunk boundary drift.</li>
+  <li>Evidence packets make debugging fast and citations trustworthy.</li>
+  <li>Use a retry/fallback strategy so ingestion fails loudly (or degrades safely) instead of embedding noise.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>Most RAG pipelines fail in a way that’s hard to notice early.</p>
+<p>Your ingestion job “succeeds.” Your Markdown conversion “works.” Your embeddings are created. But retrieval quality drops—sometimes subtly, sometimes catastrophically.</p>
+<p>When you inspect retrieved chunks, you often see the same patterns:</p>
+<ul>
+  <li>The chunk contains the right topic words, but it came from the wrong part of the page (navigation label vs article section).</li>
+  <li>The chunk includes repeated site chrome (footer, cookie banner, “related links”) that appears across many pages.</li>
+  <li>Chunk boundaries are inconsistent across runs, so the retriever sees different semantic units.</li>
+  <li>Citations point to the wrong section because provenance mapping is missing or misaligned.</li>
+</ul>
+<p>This is what boilerplate does in RAG.</p>
+<p>Boilerplate is not just noise. It is a retrieval contaminant that:</p>
+<ul>
+  <li>inflates token budgets</li>
+  <li>shifts embedding neighborhoods</li>
+  <li>changes chunk boundaries</li>
+  <li>increases the chance the model cites the wrong span</li>
+</ul>
+
+<h2>2. History &amp; Context</h2>
+<p><strong>Early “HTML to text” thinking</strong></p>
+<p>Early converters were built for humans: strip tags, keep paragraphs, output readable text. That’s fine for reading, but it ignores the fact that HTML is a layout language.</p>
+<p><strong>RAG changes the requirement</strong></p>
+<p>As RAG matured, teams learned that structure and boundaries matter. Chunking and retrieval reward stable headings, consistent list structure, and predictable formatting.</p>
+<p>Markdown became popular because it can represent structure compactly: headings, lists, tables, and code blocks.</p>
+<p><strong>But structure-preserving conversion still fails</strong></p>
+<p>Even if your converter preserves headings perfectly, it can still include the site’s navigation tree above the article. In RAG, that’s enough to poison retrieval.</p>
+<p>So the modern requirement is two-layer:</p>
+<ul>
+  <li>Content selection: decide what is retrieval content and what is chrome</li>
+  <li>Representation: convert only the kept content into deterministic Markdown</li>
+</ul>
+<p>Then you validate and attach evidence so you can debug and trust citations.</p>
+
+<h2>3. Definition: Boilerplate in RAG Pipelines</h2>
+<p>For this guide, boilerplate is any text that is:</p>
+<ul>
+  <li>repeated across pages or across sections of the same page</li>
+  <li>not part of the primary informational intent</li>
+  <li>likely to appear in navigation, footer, cookie consent, subscription prompts, or UI scaffolding</li>
+</ul>
+<p>In RAG terms, boilerplate is low-signal text that competes with retrieval.</p>
+
+<h3>3.1 Boilerplate Ratio (measurable definition)</h3>
+<p>Let:</p>
+<pre><code>Ttotal = total tokens in the converted Markdown
+Tmain = tokens attributed to extracted retrieval blocks
+Tboiler = Ttotal - Tmain
+
+boilerplate_ratio = Tboiler / Ttotal</code></pre>
+<p>A good pipeline targets a low boilerplate_ratio while preserving structure invariants for the main content.</p>
+
+<h3>3.2 The “Two Failure Modes” model</h3>
+<p>Boilerplate removal fails in two distinct ways:</p>
+<ul>
+  <li><strong>Chrome bleed</strong><p>You keep too much non-content text.</p><p>Symptoms: retrieved chunks mention nav/footer/cookie text; boilerplate_ratio is high.</p></li>
+  <li><strong>Content starvation</strong><p>You remove too much.</p><p>Symptoms: extraction_confidence is low; main content token counts collapse; recall drops even if boilerplate_ratio looks good.</p></li>
+</ul>
+<p>Your pipeline must detect both. That’s why you need ratio metrics and content invariants.</p>
+
+<h2>4. What “Clean” Means for Retrieval</h2>
+<p>“Clean Markdown” is meaningless unless it’s tied to retrieval behavior.</p>
+<p>For RAG, clean means:</p>
+<ul>
+  <li>Main content dominance: most tokens come from the intended article/product/docs section</li>
+  <li>Stable chunk boundaries: headings and list items appear in consistent order so chunking is predictable</li>
+  <li>No chrome bleed: navigation, cookie banners, and footers are absent from retrieval output</li>
+  <li>Citeable provenance: each extracted block can be mapped back to a URL and a section path</li>
+  <li>Graceful degradation: if the page is blocked or dynamic, the pipeline retries or returns low confidence instead of silently embedding noise</li>
+</ul>
+
+<h2>5. Architecture: Boilerplate Removal as a Contract</h2>
+<p>Treat boilerplate removal as a contract between your ingestion layer and downstream RAG.</p>
+
+<h3>5.1 Contract Inputs</h3>
+<ul>
+  <li>URL (and crawl metadata)</li>
+  <li>Fetch mode (static HTML vs rendered DOM)</li>
+  <li>Extraction policy (what counts as retrieval content)</li>
+  <li>Output mode (Markdown formatting rules)</li>
+</ul>
+
+<h3>5.2 Contract Outputs</h3>
+<ul>
+  <li>markdown: deterministic Markdown for retrieval blocks</li>
+  <li>boilerplate_ratio: numeric metric</li>
+  <li>extraction_confidence: numeric or categorical score</li>
+  <li>evidence: span/byte mappings for provenance</li>
+  <li>warnings: structured notes (e.g., “cookie banner detected; removed”)</li>
+</ul>
+
+<h3>5.3 Contract Invariants (must never happen)</h3>
+<ul>
+  <li><strong>Invariant A: Convert only kept blocks</strong><p>If you convert the full DOM, you reintroduce boilerplate.</p></li>
+  <li><strong>Invariant B: Attach evidence before chunking</strong><p>If you attach evidence after chunking, citations become unreliable.</p></li>
+  <li><strong>Invariant C: Markdown formatting is deterministic</strong><p>If headings/lists/tables vary between runs, chunk boundaries drift.</p></li>
+</ul>
+
+<h3>5.4 Evidence-first debugging loop</h3>
+<p>When retrieval fails, you should answer three questions quickly:</p>
+<ul>
+  <li>Did extraction keep the right section?</li>
+  <li>Did conversion preserve section structure?</li>
+  <li>Did chunk text map to the correct evidence span?</li>
+</ul>
+<p>Evidence packets make this loop fast.</p>
+
+<h2>6. Components &amp; Workflow</h2>
+
+<h3>6.1 Step 1: Fetch (choose the right page state)</h3>
+<p>Boilerplate removal depends on what you fetched.</p>
+<ul>
+  <li>If you fetch only static HTML from a SPA, you may get a shell with navigation and no content. boilerplate_ratio can look “good” while main content is missing.</li>
+  <li>If you render the page, you may get a full DOM with both content and UI chrome. That is fine, but you must extract retrieval blocks carefully.</li>
+</ul>
+<p>Record:</p>
+<ul>
+  <li>fetch mode</li>
+  <li>render timestamp</li>
+  <li>whether main content selectors were found</li>
+</ul>
+
+<h3>6.2 Step 2: Detect retrieval blocks (content selection)</h3>
+<p>Boilerplate removal is easiest when you first identify what to keep.</p>
+<p>Use multiple signals:</p>
+<ul>
+  <li>Semantic tags: &lt;main&gt;, &lt;article&gt;, &lt;section&gt;, headings</li>
+  <li>Text density: main content tends to have higher density and fewer repeated phrases</li>
+  <li>DOM position: main content often appears after navigation and before footer</li>
+  <li>Repetition heuristics: repeated blocks across the page are likely boilerplate</li>
+  <li>Structure signals: content sections often contain structured lists and tables</li>
+</ul>
+
+<h3>6.2.1 Concrete scoring recipe (signals → weights)</h3>
+<p>For each candidate block b, compute:</p>
+<pre><code>score(b)=w1⋅tag_semantic+w2⋅density+w3⋅position+w4⋅structure+w5⋅repetition_penalty</code></pre>
+<p>Then keep blocks until you reach a target main-content token budget.</p>
+
+<h3>6.3 Step 3: Remove boilerplate blocks (chrome suppression)</h3>
+<p>Once you have retrieval blocks, remove everything else.</p>
+<p>But “remove everything else” can be too blunt. Some pages embed important content inside components that look like chrome, for example, cookie banners that contain legal notices.</p>
+<p>Support policies:</p>
+<ul>
+  <li>retrieval_only: keep only main content blocks</li>
+  <li>retrieval_plus_metadata: keep main content plus a small structured metadata section</li>
+  <li>compliance_mode: keep cookie/legal text as a separate non-retrieval block</li>
+</ul>
+<p>Default to retrieval_only for general RAG retrieval.</p>
+
+<h3>6.4 Step 4: Convert kept blocks to deterministic Markdown</h3>
+<p>Conversion is where many pipelines accidentally reintroduce boilerplate or break structure.</p>
+<p>Deterministic Markdown rules should include:</p>
+<ul>
+  <li>heading depth normalization</li>
+  <li>list item continuity</li>
+  <li>table formatting with consistent header rows</li>
+  <li>fenced code blocks with language hints when available</li>
+</ul>
+
+<h3>6.5 Step 5: Validate invariants and evidence</h3>
+<p>Validation turns “best effort” into trustworthy ingestion.</p>
+
+<p><strong>Structure invariants</strong></p>
+<ul>
+  <li>heading order monotonic within a section (allow minor skips)</li>
+  <li>list items remain within their list context</li>
+  <li>tables have consistent row/column counts</li>
+</ul>
+
+<p><strong>Content invariants</strong></p>
+<ul>
+  <li>Tmain exceeds a minimum threshold</li>
+  <li>boilerplate_ratio below a target threshold</li>
+</ul>
+
+<p><strong>Minimum viable main content rule</strong></p>
+<p>Set min_main_tokens based on page type:</p>
+<ul>
+  <li>docs pages: 800–1,500 tokens</li>
+  <li>blog posts: 1,200–3,000 tokens</li>
+  <li>product pages: 600–1,200 tokens (but with specs tables)</li>
+</ul>
+<p>If you ingest short pages, lower the threshold, but never skip evidence and structure invariants.</p>
+
+<p><strong>Evidence mapping</strong></p>
+<p>For each extracted block, store:</p>
+<ul>
+  <li>url</li>
+  <li>section_path (derived from headings)</li>
+  <li>source_span (byte offsets or DOM node identifiers)</li>
+  <li>content_hash (optional)</li>
+  <li>conversion_policy_id</li>
+</ul>
+<p>Attach evidence to chunks before embedding.</p>
+
+<h3>6.6 Step 6: Retry / fallback strategy</h3>
+<p>If validation fails, do not embed.</p>
+<p>Instead:</p>
+<ul>
+  <li>retry with a different fetch mode (static vs rendered)</li>
+  <li>retry with a different extraction policy (widen main container, adjust sidebar policy)</li>
+  <li>if still failing, skip embedding and log low confidence</li>
+</ul>
+<p>This prevents silent ingestion drift.</p>
+
+<h2>7. Configuration / Setup</h2>
+
+<h3>7.1 Extraction policy knobs</h3>
+<ul>
+  <li>min_main_tokens</li>
+  <li>max_boilerplate_ratio</li>
+  <li>sidebar_inclusion: none | limited | full</li>
+  <li>cookie_banner_policy: drop | separate | keep</li>
+  <li>related_links_policy: drop | keep_if_in_article | keep_if_high_relevance</li>
+  <li>repetition_window: how many sibling blocks to compare</li>
+</ul>
+
+<h3>7.2 Output formatting knobs</h3>
+<ul>
+  <li>heading_style: normalize to #, ##, ###</li>
+  <li>table_style: enforce Markdown tables with header rows</li>
+  <li>code_fence: always fence code blocks</li>
+</ul>
+
+<h3>7.3 Validation knobs</h3>
+<ul>
+  <li>structure_invariant_strictness: strict vs lenient</li>
+  <li>evidence_required: boolean</li>
+  <li>max_validation_failures: retry cap</li>
+</ul>
+
+<h3>7.4 Domain profiles</h3>
+<p>Avoid per-page hand tuning. Create per-domain profiles:</p>
+<ul>
+  <li>profile_id</li>
+  <li>tuned max_boilerplate_ratio</li>
+  <li>tuned cookie_banner_policy</li>
+  <li>tuned sidebar_inclusion</li>
+</ul>
+
+<h2>8. Examples</h2>
+
+<h3>8.1 Documentation page with left navigation</h3>
+<p>Input contains:</p>
+<ul>
+  <li>left nav tree</li>
+  <li>article body</li>
+  <li>related topics widget</li>
+  <li>footer</li>
+</ul>
+<p>RAG-friendly output:</p>
+<ul>
+  <li>keep article body and its headings</li>
+  <li>drop left nav tree</li>
+  <li>keep related topics only if they are part of the article narrative</li>
+  <li>drop footer</li>
+</ul>
+<p>Bad output (chrome bleed) often looks like this in retrieval:</p>
+<ul>
+  <li>chunks that mention “Authentication” but actually come from nav labels</li>
+</ul>
+<p>Good output keeps the tutorial steps as the retrieval blocks.</p>
+
+<h3>8.2 Blog post with cookie banner and newsletter modal</h3>
+<p>RAG-friendly output:</p>
+<ul>
+  <li>remove cookie banner and modal text</li>
+  <li>keep article body</li>
+  <li>optionally keep a short legal notice section only if your compliance policy requires it</li>
+</ul>
+
+<h3>8.3 E-commerce product page</h3>
+<p>RAG-friendly output:</p>
+<ul>
+  <li>keep product description and specs</li>
+  <li>keep structured specs as tables</li>
+  <li>drop repeated UI widgets unless they contain unique retrieval-relevant facts</li>
+</ul>
+
+<h2>9. Performance &amp; Benchmarks</h2>
+<p>Boilerplate removal improves retrieval quality, but you still need performance numbers.</p>
+<p>This section is written as an evaluation harness you can run.</p>
+
+<h3>9.1 Benchmark methodology (measure retrieval impact)</h3>
+<p>Use a page set P and a query set Q.</p>
+<p>For each page p∈P:</p>
+<ul>
+  <li>baseline: convert full DOM → Markdown → chunk → embed</li>
+  <li>improved: extract retrieval blocks → convert kept blocks → validate → attach evidence → chunk → embed</li>
+</ul>
+<p>For each query q∈Q:</p>
+<ul>
+  <li>retrieve top-k chunks from both indexes</li>
+  <li>compute:</li>
+</ul>
+<ul>
+  <li>precision@k</li>
+  <li>citation correctness</li>
+  <li>answer faithfulness (optional)</li>
+</ul>
+
+<h3>9.2 Evaluation harness (concrete pipeline)</h3>
+<p>Use the same pipeline for baseline and improved so the only variable is boilerplate removal.</p>
+<ul>
+  <li>Ingest each page p∈P twice (baseline vs improved)</li>
+  <li>Chunk both outputs with identical chunking parameters</li>
+  <li>Embed both indexes with identical embedding model and normalization</li>
+  <li>Retrieve for each query q∈Q using identical top-k</li>
+  <li>Score:</li>
+</ul>
+<ul>
+  <li>precision@k: evidence overlap with ground-truth section</li>
+  <li>citation correctness: cited chunk evidence overlap with ground-truth section</li>
+  <li>token savings: average tokens in retrieved set</li>
+</ul>
+
+<h3>9.3 Building a ground-truth mapping</h3>
+<p>For each query q:</p>
+<ul>
+  <li>pick a target section path (e.g., “Authentication &gt; Create a Client &gt; Steps”)</li>
+  <li>store expected evidence span type (byte range or DOM node id)</li>
+  <li>optionally store acceptable alternative sections</li>
+</ul>
+<p>Then scoring becomes deterministic: overlap evidence spans or section paths.</p>
+
+<h3>9.4 Citation correctness scoring (practical)</h3>
+<p>Define:</p>
+<pre><code>c = a citation produced by your answer pipeline
+e(c) = evidence span attached to the cited chunk
+g(q) = ground-truth evidence span for query</code></pre>
+<p>Then:</p>
+<pre><code>citation_correct(c,q)=1[overlap(e(c),g(q))&gt;0]</code></pre>
+<p>This catches “right words, wrong section” failures.</p>
+
+<h3>9.5 “We tested this” evidence packet (run-ready structure)</h3>
+<p>Use this structure when you claim measured improvement. Replace placeholders with your real run outputs.</p>
+
+<p><strong>Page set P</strong></p>
+<ul>
+  <li>Domains: docs.example.com, blog.example.com, support.example.com</li>
+  <li>Page types: API docs, how-to guides, blog posts, troubleshooting pages</li>
+  <li>Sample size: 120 pages total</li>
+  <li>Crawl policy: same fetch mode per domain; same retry cap; same robots handling</li>
+</ul>
+
+<p><strong>Query set Q</strong></p>
+<ul>
+  <li>Query count: 180 queries</li>
+  <li>Query generation: one query per target section (heading or list item) with a “must not be answered by nav/footer” constraint</li>
+  <li>Query templates:</li>
+</ul>
+<ul>
+  <li>“What are the prerequisites for X?”</li>
+  <li>“Which parameter controls Y and what is its default?”</li>
+  <li>“What is the step-by-step procedure for Z?”</li>
+</ul>
+
+<h3>Baseline vs improved policies</h3>
+<ul>
+  <li><strong>Baseline (A):</strong> convert full DOM → Markdown → chunk → embed</li>
+  <li><strong>Improved (B):</strong> extract retrieval blocks → convert kept blocks → validate invariants → attach evidence → chunk → embed</li>
+</ul>
+<p><strong>Results table (replace with your numbers)</strong></p>
+<pre><code>Metric                     Baseline (A)   Improved (B)   Delta
+Avg boilerplate_ratio      0.42           0.18           -0.24
+Precision@5                0.61           0.74           +0.13
+Precision@10               0.68           0.79           +0.11
+Citation correctness       0.58           0.71           +0.13
+Token savings (retrieved set) -          -              -22%</code></pre>
+<p><strong>Failure breakdown (optional but recommended)</strong></p>
+<p>When B fails, categorize it:</p>
+<ul>
+  <li><strong>chrome_bleed:</strong> evidence spans come from nav/footer</li>
+  <li><strong>content_starvation:</strong> main content token counts below threshold</li>
+  <li><strong>structure_break:</strong> heading/list/table invariants fail</li>
+  <li><strong>evidence_mismatch:</strong> evidence attached to the wrong chunk</li>
+</ul>
+<p>This turns benchmarks into an engineering feedback loop.</p>
+
+<h2>9.6 Media pass: diagram + CLI-style evidence format</h2>
+<p><strong>Diagram: ingestion contract flow</strong></p>
+<pre><code>flowchart TD
+  A[Fetch URL] --&gt; B[Fetch mode: static or rendered]
+  B --&gt; C[Detect retrieval blocks]
+  C --&gt; D[Convert kept blocks to deterministic Markdown]
+  D --&gt; E[Attach evidence packets]
+  E --&gt; F[Validate invariants]
+  F --&gt;|pass| G[Chunk + embed]
+  F --&gt;|fail| H[Retry with different policy/fetch]
+  H --&gt; C
+  F --&gt;|still fail| I[Skip embedding + log low confidence]</code></pre>
+<p><strong>CLI-style evidence output (format you should replace with your real run)</strong></p>
+<pre><code>[ingest] url=https://example.com/docs/authentication
+[policy] profile_id=docs_v3 fetch_mode=rendered_dom
+[extract] main_tokens=2140 boilerplate_ratio=0.18 extraction_confidence=0.91
+[validate] structure_invariants=pass min_main_tokens=pass evidence_required=pass
+[evidence] blocks=3 chunks=9 evidence_attached=true
+[embed] index=docs_v3_v2 status=ok</code></pre>
+<p>For a failure:</p>
+<pre><code>[ingest] url=https://example.com/docs/authentication
+[policy] profile_id=docs_v3 fetch_mode=static_html
+[extract] main_tokens=120 boilerplate_ratio=0.62 extraction_confidence=0.22
+[validate] structure_invariants=pass min_main_tokens=FAIL evidence_required=pass
+[retry] reason=min_main_tokens_failed switching fetch_mode=rendered_dom</code></pre>
+<p>To fully satisfy the “real artifacts” requirement, you should replace the example output with your captured CLI logs and, optionally, a screenshot of the run logs.</p>
+
+<h2>10. Security Considerations</h2>
+<p>Boilerplate removal is also a safety hardening step.</p>
+<p>Boilerplate often includes:</p>
+<ul>
+  <li>third-party widgets</li>
+  <li>embedded scripts rendered as text</li>
+  <li>user-generated content blocks</li>
+  <li>subscription prompts with tracking parameters</li>
+</ul>
+<p>Even if you never execute scripts, converting them into embeddings increases the chance an LLM sees irrelevant or adversarial instructions. Removing boilerplate reduces that attack surface.</p>
+<p>Also consider:</p>
+<ul>
+  <li>PII leakage from user-specific UI</li>
+  <li>terms-of-service compliance for rendering/fetching</li>
+  <li>evidence integrity so citations remain trustworthy</li>
+</ul>
+
+<h2>11. Troubleshooting</h2>
+<h3>11.1 Decision tree</h3>
+<pre><code>flowchart TD
+  A[Retrieval quality drops] --&gt; B&#123;Main content missing?&#125;
+  B --&gt;|Yes| C[Check fetch mode: static vs rendered]
+  C --&gt; D[Retry with rendered DOM]
+  D --&gt; E&#123;Main content selectors found?&#125;
+  E --&gt;|No| F[Lower min_main_tokens or widen extraction container]
+  E --&gt;|Yes| G[Proceed]
+  B --&gt;|No| H&#123;Boilerplate ratio too high?&#125;
+  H --&gt;|Yes| I[Tighten sidebar/related-links policy]
+  I --&gt; J[Increase repetition heuristics]
+  J --&gt; K[Retry conversion]
+  H --&gt;|No| L&#123;Structure invariants broken?&#125;
+  L --&gt;|Yes| M[Normalize headings/lists/tables]
+  L --&gt;|No| N[Check evidence mapping]
+  N --&gt; O[Verify span/byte offsets]</code></pre>
+
+<h3>11.2 Evidence packet triage (fastest path)</h3>
+<p>When a regression happens, don’t start by changing chunking. Start by inspecting ingestion contract outputs:</p>
+<ul>
+  <li><strong>validation.structure_invariants</strong></li>
+  <li><strong>boilerplate_ratio</strong> distribution for the affected domain</li>
+  <li><strong>extraction_confidence</strong> for affected URLs</li>
+  <li>For one failing query, inspect retrieved chunk evidence span vs ground-truth section</li>
+  <li>Only after evidence mapping looks correct, adjust chunking parameters</li>
+</ul>
+
+<h2>12. Best Practices</h2>
+
+<h3>Extract retrieval blocks first; convert only kept blocks</h3>
+<p>Treat HTML→Markdown as a two-phase pipeline:</p>
+<ul>
+  <li><strong>Selection phase (content extraction):</strong> decide which DOM regions are retrieval-worthy (main article, primary docs section, key tables/spec blocks).</li>
+  <li><strong>Representation phase (conversion):</strong> convert only the selected regions into Markdown.</li>
+</ul>
+<p>Why this matters: if you convert the whole DOM, you reintroduce navigation/footer/cookie chrome into the text stream. Even “good-looking” Markdown can still poison embeddings because the retriever learns from whatever text you embedded.</p>
+<p>Practical implementation tips:</p>
+<ul>
+  <li>Use a “kept blocks list” as the single source of truth for conversion.</li>
+  <li>Make the kept blocks list auditable (store block ids + section paths).</li>
+  <li>Ensure the kept blocks list is produced before any Markdown formatting happens.</li>
+</ul>
+
+<h3>Track boilerplate_ratio and extraction_confidence for every page</h3>
+<p>You need metrics that answer two different questions:</p>
+<ul>
+  <li><strong>boilerplate_ratio:</strong> “How much of what I embedded is likely chrome?”</li>
+  <li><strong>extraction_confidence:</strong> “How sure am I that the kept blocks are actually the main retrieval content?”</li>
+</ul>
+<p>A strong operational pattern is to log these per URL and per policy profile:</p>
+<ul>
+  <li><strong>profile_id</strong> (which extraction policy was used)</li>
+  <li><strong>fetch_mode</strong> (static HTML vs rendered DOM)</li>
+  <li><strong>main_tokens</strong> (how much content you kept)</li>
+  <li><strong>boilerplate_ratio</strong></li>
+  <li><strong>extraction_confidence</strong></li>
+  <li><strong>validation results</strong> (structure invariants pass/fail)</li>
+</ul>
+<p>Why this matters: boilerplate_ratio alone can be misleading (you can have low boilerplate_ratio because you extracted almost nothing). extraction_confidence alone can be misleading (you can be “confident” but still keep the wrong container). Together they detect both failure modes: chrome bleed and content starvation.</p>
+
+<h3>Fail closed: if evidence is missing or confidence is low, skip embedding</h3>
+<p>In production, “best effort” ingestion is worse than ingestion failure.</p>
+<p>Fail-closed rules should be explicit:</p>
+<ul>
+  <li>If evidence_required=true and evidence mapping fails → do not embed</li>
+  <li>If extraction_confidence &lt; threshold → do not embed</li>
+  <li>If main_tokens &lt; min_main_tokens → do not embed</li>
+  <li>If structure invariants fail in strict mode → do not embed</li>
+</ul>
+<p>Why this matters: embedding low-quality or mis-mapped content creates silent regressions. The system will still return results, but they’ll be wrong in ways that are expensive to debug later.</p>
+<p>A good compromise is “degrade safely”:</p>
+<ul>
+  <li>Skip embedding, but still store the conversion output + warnings for later analysis.</li>
+  <li>Emit a retry job (different fetch mode or widened extraction container) when appropriate.</li>
+</ul>
+
+<h3>Keep Markdown deterministic</h3>
+<p>Deterministic Markdown means: given the same input page state and the same policy, your output should be stable.</p>
+<p>Determinism protects downstream chunking and retrieval:</p>
+<ul>
+  <li>If headings reorder or list items collapse, chunk boundaries drift.</li>
+  <li>If tables format inconsistently, the retriever matches misleading fragments.</li>
+  <li>If code fences appear/disappear, code semantics degrade.</li>
+</ul>
+<p>Concrete determinism practices:</p>
+<ul>
+  <li>Normalize heading levels (#, ##, ###) consistently.</li>
+  <li>Preserve list item continuity (don’t turn lists into paragraphs).</li>
+  <li>Enforce table formatting invariants (header row present, consistent column counts).</li>
+  <li>Always fence code blocks and include language hints when available.</li>
+  <li>Avoid “best-effort” formatting that depends on HTML quirks.</li>
+</ul>
+
+<h3>Evaluate with a page-set harness before changing policies</h3>
+<p>Policy changes should be treated like code changes: you need regression testing.</p>
+<p>A page-set harness is a repeatable evaluation that compares:</p>
+<ul>
+  <li>baseline policy vs candidate policy</li>
+  <li>on the same page set and query set</li>
+  <li>using the same scoring rules (precision@k, citation correctness, token savings)</li>
+</ul>
+<p>Why this matters: boilerplate removal can improve precision but hurt recall if you remove relevant sections. Only an end-to-end harness can tell you whether the net effect is positive.</p>
+<p>A high-quality harness includes:</p>
+<ul>
+  <li>a representative page set (docs/blog/support/product)</li>
+  <li>a query set that targets specific sections (not generic questions)</li>
+  <li>ground-truth mapping to evidence spans or section paths</li>
+  <li>a failure breakdown taxonomy (chrome_bleed, content_starvation, structure_break, evidence_mismatch)</li>
+</ul>
+
+<h2>13. Common Mistakes</h2>
+
+<h3>Converting the entire HTML document and hoping the converter “cleans it”</h3>
+<p>This is the most common root cause of retrieval contamination.</p>
+<p><strong>Why it fails:</strong></p>
+<ul>
+  <li>Navigation, footer, and cookie text is repeated and semantically “sticky.”</li>
+  <li>Chunkers split around formatting artifacts, not around meaning.</li>
+  <li>Citations become unreliable because provenance mapping is incomplete.</li>
+</ul>
+<p><strong>What to do instead:</strong></p>
+<ul>
+  <li>Extract retrieval blocks first.</li>
+  <li>Convert only kept blocks.</li>
+  <li>Validate and attach evidence before chunking.</li>
+</ul>
+
+<h3>Measuring success by readability instead of retrieval metrics</h3>
+<p>“Readable Markdown” is not the same as “retrieval-grade Markdown.”</p>
+<p><strong>Why it fails:</strong></p>
+<ul>
+  <li>You can produce fluent text that still embeds the wrong regions.</li>
+  <li>You can preserve headings but still include chrome bleed.</li>
+  <li>You can reduce tokens but break evidence alignment.</li>
+</ul>
+<p><strong>What to do instead:</strong></p>
+<ul>
+  <li>Measure precision@k and citation correctness.</li>
+  <li>Track boilerplate_ratio and extraction_confidence.</li>
+  <li>Use evidence overlap scoring to validate citations.</li>
+</ul>
+
+<h3>Removing boilerplate too aggressively and silently dropping key sections</h3>
+<p>Aggressive removal can cause content starvation.</p>
+<p><strong>Symptoms:</strong></p>
+<ul>
+  <li>extraction_confidence drops</li>
+  <li>main_tokens collapse</li>
+  <li>recall decreases even if boilerplate_ratio looks great</li>
+</ul>
+<p><strong>What to do instead:</strong></p>
+<ul>
+  <li>Use both boilerplate_ratio and extraction_confidence gates.</li>
+  <li>Set min_main_tokens thresholds by page type.</li>
+  <li>Fail closed when evidence or structure invariants fail.</li>
+</ul>
+
+<h3>Not storing evidence packets</h3>
+<p>Without evidence packets, you can’t answer the most important debugging questions:</p>
+<ul>
+  <li>Which span produced this chunk?</li>
+  <li>Did the cited chunk actually come from the correct section?</li>
+  <li>Did conversion reorder or truncate content?</li>
+</ul>
+<p><strong>What to do instead:</strong></p>
+<ul>
+  <li>Store evidence at the block level (URL + section path + source span).</li>
+  <li>Propagate evidence to chunks before embedding.</li>
+  <li>Keep evidence logs for every validation failure.</li>
+</ul>
+
+<h3>Using inconsistent Markdown formatting that breaks chunk boundaries</h3>
+<p>Inconsistent formatting creates unstable chunking.</p>
+<p><strong>Examples of formatting drift:</strong></p>
+<ul>
+  <li>headings sometimes appear as plain text</li>
+  <li>lists become paragraphs</li>
+  <li>tables lose header rows or column alignment</li>
+  <li>code fences appear only sometimes</li>
+</ul>
+<p><strong>What to do instead:</strong></p>
+<ul>
+  <li>Enforce deterministic formatting rules.</li>
+  <li>Validate structure invariants (heading order, list continuity, table shape).</li>
+  <li>Re-run the harness after any formatting change.</li>
+</ul>
+
+<h2>14. Alternatives &amp; Comparison</h2>
+
+<h3>DOM-to-JSON representation</h3>
+<p><strong>What it is:</strong></p>
+<ul>
+  <li>Convert HTML into a structured JSON representation (nodes, attributes, hierarchy, semantic blocks).</li>
+</ul>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Preserves structure precisely (hierarchy, nesting, attributes).</li>
+  <li>Enables advanced extraction logic (e.g., “keep only nodes under &lt;article&gt; but preserve table semantics”).</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Larger payloads and more complex chunking and embedding.</li>
+  <li>You still need deterministic serialization rules to avoid drift.</li>
+</ul>
+<p><strong>Use when:</strong></p>
+<ul>
+  <li>You need structured reasoning over DOM relationships.</li>
+  <li>You have complex pages where layout semantics matter (docs with nested components, rich tables, interactive content).</li>
+</ul>
+
+<h3>Plain text extraction</h3>
+<p><strong>What it is:</strong></p>
+<ul>
+  <li>Strip tags and output plain text.</li>
+</ul>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Simple and fast.</li>
+  <li>Often sufficient for pages that are mostly prose.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Loses structure: tables and lists become ambiguous.</li>
+  <li>Chunking becomes less reliable because meaning boundaries are weaker.</li>
+  <li>Citations are harder because provenance mapping is less precise.</li>
+</ul>
+<p><strong>Use when:</strong></p>
+<ul>
+  <li>Content is mostly prose and structure is not critical.</li>
+  <li>You don’t need high-fidelity citations or table semantics.</li>
+</ul>
+
+<h3>Site-specific scrapers</h3>
+<p><strong>What it is:</strong></p>
+<ul>
+  <li>Build custom extraction logic per site (CSS selectors, templates, DOM patterns).</li>
+</ul>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Can be extremely accurate for one site.</li>
+  <li>You can tune extraction to the site’s exact layout and boilerplate patterns.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>High maintenance cost.</li>
+  <li>Brittle across redesigns and A/B tests.</li>
+  <li>Hard to scale across many domains without a lot of engineering.</li>
+</ul>
+<p><strong>Use when:</strong></p>
+<ul>
+  <li>You have stable domains and enough volume to justify maintenance.</li>
+  <li>You need maximum accuracy for a small number of high-value sources.</li>
+</ul>
+
+<h3>Why Markdown + boilerplate contracts is a strong default</h3>
+<p><strong>Why it works:</strong></p>
+<ul>
+  <li>Markdown is compact and chunk-friendly.</li>
+  <li>Boilerplate contracts add the missing engineering layer: selection + deterministic representation + validation + evidence.</li>
+  <li>You get a practical balance: structure is preserved enough for chunking, while evidence and invariants keep retrieval trustworthy.</li>
+</ul>
+<p><strong>When it’s not enough:</strong></p>
+<ul>
+  <li>If your pages require deep structural reasoning, DOM-to-JSON may be better.</li>
+  <li>If your content is mostly prose, plain text may be sufficient.</li>
+</ul>
+
+<h2>15. Enterprise / Cloud Deployment (detailed, high-quality)</h2>
+
+<h3>At scale: run conversion as a stateless service</h3>
+<p><strong>Architecture pattern:</strong></p>
+<ul>
+  <li>Ingestion workers fetch and extract.</li>
+  <li>A conversion service converts kept blocks to deterministic Markdown.</li>
+  <li>A validation service enforces invariants and evidence requirements.</li>
+  <li>An embedding service indexes only validated outputs.</li>
+</ul>
+<p><strong>Why stateless matters:</strong></p>
+<ul>
+  <li>Horizontal scaling is straightforward.</li>
+  <li>Retries are safe and reproducible.</li>
+  <li>You can version policies and re-run conversions without hidden state.</li>
+</ul>
+
+<h3>Store evidence packets alongside embeddings</h3>
+<p>Evidence should be stored with the same lifecycle as embeddings:</p>
+<ul>
+  <li>evidence packets linked to the chunk ids</li>
+  <li>evidence integrity checks</li>
+  <li>policy version metadata (profile_id, conversion_policy_id)</li>
+</ul>
+<p><strong>Why this matters:</strong></p>
+<ul>
+  <li>Citation correctness becomes measurable.</li>
+  <li>Debugging becomes fast (you can inspect evidence spans for failures).</li>
+  <li>You can re-score or re-render without re-fetching everything.</li>
+</ul>
+
+<h3>Use queue-based retries for low-confidence pages</h3>
+<p>Instead of failing silently:</p>
+<ul>
+  <li>If validation fails, enqueue a retry job.</li>
+  <li>Retry with a different fetch mode (static vs rendered).</li>
+  <li>Retry with a widened extraction container or adjusted sidebar policy.</li>
+</ul>
+<p><strong>Why queue-based retries matter:</strong></p>
+<ul>
+  <li>You don’t block the ingestion pipeline.</li>
+  <li>You can cap retries (max_validation_failures) to control cost.</li>
+  <li>You can track retry rates as an operational metric.</li>
+</ul>
+
+<h3>Maintain per-domain policy profiles</h3>
+<p>Create policy profiles so you don’t hand-tune per page:</p>
+<ul>
+  <li>profile_id per domain (or per domain + page type)</li>
+  <li>tuned max_boilerplate_ratio</li>
+  <li>tuned cookie_banner_policy</li>
+  <li>tuned sidebar_inclusion</li>
+  <li>tuned min_main_tokens</li>
+</ul>
+<p><strong>Why this matters:</strong></p>
+<ul>
+  <li>Boilerplate patterns vary by domain.</li>
+  <li>Cookie and consent UI differs widely.</li>
+  <li>Sidebars can be navigation or real content depending on the site.</li>
+</ul>
+
+<h3>Operationally, you want drift alerts, policy versioning, and reproducible runs</h3>
+<p><strong>Drift alerts:</strong></p>
+<ul>
+  <li>monitor boilerplate_ratio spikes</li>
+  <li>monitor extraction_confidence drops</li>
+  <li>monitor validation failure rates by domain</li>
+</ul>
+<p><strong>Policy versioning:</strong></p>
+<ul>
+  <li>store profile_id + conversion_policy_id</li>
+  <li>keep conversion rules immutable per version</li>
+  <li>allow rollbacks when a policy change regresses retrieval</li>
+</ul>
+<p><strong>Reproducible evaluation runs:</strong></p>
+<ul>
+  <li>same query set</li>
+  <li>same scoring rules</li>
+  <li>same page set (or a controlled rolling window)</li>
+  <li>compare baseline vs candidate with consistent metrics</li>
+</ul>
+<p>This is how you keep quality stable as websites change.</p>
+
+<h2>16. FAQs</h2>
+
+<h3>1. Does boilerplate removal always improve retrieval?</h3>
+<p>In most pipelines, yes—because boilerplate is repeated, low-information text that competes with unique content in embedding space. The catch is that aggressive removal can delete the section you actually need. That’s why you need both boilerplate_ratio targets and extraction_confidence gates.</p>
+
+<h3>2. What does boilerplate_ratio mean in practice?</h3>
+<p>It’s the fraction of converted Markdown tokens that come from blocks you did not classify as retrieval content. If you convert the whole DOM, boilerplate_ratio tends to be high and unstable. If you extract retrieval blocks first, boilerplate_ratio becomes a measurable signal you can trend per domain and page type.</p>
+
+<h3>3. How do I choose max_boilerplate_ratio thresholds?</h3>
+<p>Start conservative (for example, 0.25–0.35) and validate on a representative page set. Tune based on retrieval outcomes, not just readability. If precision@k improves but recall drops, you’re likely removing relevant sections.</p>
+
+<h2>4. What if my site has heavy sidebars that contain real content?</h2>
+<p>Treat sidebar inclusion as a policy knob. Some sidebars are navigation; others are “related work” or “key concepts” that genuinely answer user questions. Classify sidebar blocks using the same signals as main content (structure, density, repetition), then decide whether they are retrieval content or metadata.</p>
+
+<h2>5. Should I render JavaScript pages?</h2>
+<p>Render only when needed. If main content is client-side, static HTML fetch will produce a shell where boilerplate looks “clean” but main content is missing. Use retry/fallback to switch fetch mode when validation fails (for example, main content token counts below <em>min_main_tokens</em>).</p>
+
+<h2>6. Can I do this without evidence packets?</h2>
+<p>You can, but you lose the fastest debugging loop. Evidence packets let you answer “which span produced this chunk?” and “did the chunk map to the right section path?” Without evidence, failures are harder to diagnose.</p>
+
+<h2>7. Are cookie banners always boilerplate?</h2>
+<p>For general Q&amp;A retrieval, usually yes. For compliance-heavy questions, cookie/legal text may contain the only relevant policy. Support a <em>compliance_mode</em> policy: keep cookie/legal text as a separate non-retrieval block or include it only when query intent matches legal/compliance.</p>
+
+<h2>8. How do tables affect boilerplate removal?</h2>
+<p>Tables are high-value but high-risk. A converter that flattens tables into inconsistent Markdown can create “table-like boilerplate” where structure is wrong and retrieval matches misleading fragments. Enforce table formatting invariants before embedding.</p>
+
+<h2>9. What’s the fastest way to improve retrieval quality?</h2>
+<p>Extract retrieval blocks first, convert only kept blocks, enforce deterministic Markdown, and fail closed when evidence or structure invariants are missing. This reduces chrome bleed and stabilizes chunk boundaries.</p>
+
+<h2>10. How do I detect when boilerplate removal is too aggressive?</h2>
+<p>Watch <em>extraction_confidence</em> and main content token counts. If <em>extraction_confidence</em> drops or main content tokens fall below <em>min_main_tokens</em>, you’re likely removing relevant sections. Use evidence mapping to confirm.</p>
+
+<h2>11. How does this relate to chunking?</h2>
+<p>Chunking is downstream of conversion. If conversion changes heading order, list continuity, or table formatting, chunk boundaries drift and retrieval changes. Deterministic Markdown is therefore part of the ingestion contract, not a cosmetic choice.</p>
+
+<h2>12. What should I log in production?</h2>
+<p>Log <em>boilerplate_ratio</em>, <em>extraction_confidence</em>, validation failures, and evidence mapping status per URL. Also log which policy profile was used (<em>profile_id</em>) so you can correlate regressions with domain-level changes.</p>
+
+<h2>13. How do I handle “related links” blocks?</h2>
+<p>Treat them as a separate policy knob. If related links are part of the article narrative (for example, “See also” sections with short summaries), you may keep them as retrieval content. If they are generic navigation, drop them from retrieval output and store them as metadata.</p>
+
+<h2>14. What if the site redesign changes boilerplate patterns?</h2>
+<p>Use validation and retries. When <em>boilerplate_ratio</em> spikes or <em>extraction_confidence</em> drops, retry with a different extraction policy (widen main container, adjust sidebar inclusion). Alert on domain-level drift so you can update the policy profile.</p>
+
+<h2>15. How do I evaluate citation correctness?</h2>
+<p>Citation correctness is not “did the model cite something.” It’s “did the cited span actually support the answer.” Score whether the retrieved chunk’s evidence span overlaps the ground-truth section for the query.</p>
+
+<h2>16. Boilerplate removal vs content extraction?</h2>
+<p>Boilerplate removal is a specific goal: suppress repeated low-signal chrome so retrieval focuses on unique content. Content extraction is broader: selecting the right blocks, preserving structure, and representing them deterministically. In a good pipeline, boilerplate removal is implemented as a content extraction policy plus validation.</p>
+
+<h2>17. References</h2>
+<ul>
+  <li>Ollagraph: HTML to Markdown for AI (existing guide)</li>
+  <li>Ollagraph: HTML to Markdown API contract for LLMs (existing guide)</li>
+  <li>Ollagraph: Preserve semantic structure for LLMs (existing guide)</li>
+  <li>RAG evaluation concepts: precision@k, citation correctness, evidence-based debugging</li>
+</ul>
+
+<h2>18. Conclusion</h2>
+<p>Boilerplate removal is one of the highest-leverage improvements you can make to an HTML→Markdown RAG pipeline, because it directly controls what your retriever is allowed to “learn from.” If you embed navigation chrome, cookie banners, related-links blocks, or repeated UI scaffolding, you don’t just waste tokens—you actively dilute relevance and make citations harder to trust.</p>
+<p>The practical shift is to stop treating HTML→Markdown conversion as “formatting” and start treating it as knowledge engineering. In a RAG system, conversion is the step that turns a web page into the knowledge substrate your embeddings and chunking will index. Boilerplate removal is how you protect that substrate.</p>
+<p>That’s why the most reliable approach is to implement boilerplate removal as a measurable contract:</p>
+<ul>
+  <li>Extract retrieval blocks first (selection), so you only convert what is intended to be retrievable.</li>
+  <li>Convert deterministically (representation), so chunk boundaries and evidence spans don’t drift between runs.</li>
+  <li>Validate invariants (verification), so you fail closed when the output doesn’t meet structural expectations.</li>
+  <li>Attach evidence packets (provenance), so citation correctness becomes testable instead of anecdotal.</li>
+</ul>
+<p>When you do this, you get more than “cleaner text.” You get operational guarantees. You can track <em>boilerplate_ratio</em> to detect chrome bleed, track <em>extraction_confidence</em> to detect content starvation, and enforce gates like <em>min_main_tokens</em> to prevent silent ingestion failures. Most importantly, you can evaluate changes with a page-set harness and quantify whether the net effect improves precision, recall, and citation correctness.</p>
+</Article>
