@@ -1,0 +1,1195 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why isn't fetching HTML enough for dynamic sites?", a: "Because the content you want may not exist in the initial response. Modern pages often hydrate, fetch data after load, or change route state in the browser, so HTML-only extraction can capture an empty shell or the wrong page." },
+  { q: "What does content readiness mean?", a: "Content readiness is the condition that the main content exists and is stable enough to extract. It should be based on measurable signals such as selectors, network completion, DOM stability, or scroll state, not a fixed sleep." },
+  { q: "How do you choose the main content region deterministically?", a: "Use stable selection rules such as landmark containers, known content selectors, and priority orderings. The goal is to remove boilerplate without guessing, so the same page state produces the same extracted region every time." },
+  { q: "How do you make Markdown output deterministic?", a: "Apply consistent formatting rules for headings, lists, links, tables, and code blocks. Normalize structure before conversion so identical DOM content produces identical Markdown and stable chunk boundaries." },
+  { q: "What should validation check before ingestion?", a: "Validate that the output is non-empty, on the expected route, and substantial enough to represent real content. Also check for boilerplate contamination, missing sections, and unstable structure, then fail closed if the signals are weak." },
+  { q: "What is an evidence packet and why does it matter?", a: "An evidence packet is a structured record of what was extracted, from which DOM nodes, and under which readiness signals. It turns a vague failure into a concrete debug trail, making it much easier to fix wrong-route, partial, or empty extractions." },
+];
+---
+<Article
+  title="JavaScript Rendering to Deterministic Markdown for AI Content"
+  description="Render dynamic pages only when content is ready, then convert them into stable Markdown for reliable AI ingestion. Fail closed when signals are weak."
+  date="2026-07-29"
+  readingTime={26}
+  tags={["markdown", "javascript", "scraping", "rag", "validation"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Dynamic websites break naive “HTML to Markdown” pipelines because the content you want often doesn’t exist until JavaScript runs. If you scrape only the initial HTML, you frequently ingest an empty shell, the wrong route state, or UI chrome that contaminates embeddings and citations.</p>
+<p>This post describes an end-to-end pipeline that turns JavaScript-rendered pages into deterministic, AI-ready Markdown. The core idea is simple but strict: define content readiness (not a fixed sleep), render only when needed, select main content deterministically, convert with stable formatting rules, and validate with measurable signals. When extraction fails, you don’t guess—you use evidence packets to debug the exact failure mode.</p>
+<p>You’ll get:</p>
+<ul>
+  <li>A practical architecture for JS rendering → deterministic Markdown conversion → validation</li>
+  <li>Readiness condition patterns (selector-based, network-based, stability-based, scroll-based)</li>
+  <li>DOM selection heuristics that reduce boilerplate without deleting meaning</li>
+  <li>A validation scoring rubric you can implement and tune</li>
+  <li>A worked example including an evidence packet JSON</li>
+  <li>A Q&amp;A section in strict Q:/A: format (12+ pairs)</li>
+</ul>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Rendering is not optional for many modern pages; the pipeline must include a readiness contract.</li>
+  <li>Deterministic Markdown requires stable DOM selection rules and consistent conversion policies.</li>
+  <li>Boilerplate removal must be retrieval-grade: measure contamination, don’t eyeball cleanliness.</li>
+  <li>Validation should fail closed on empty/partial/wrong-route outputs.</li>
+  <li>Evidence packets convert “mysterious extraction failures” into actionable fixes.</li>
+</ul>
+
+<h2>1) Problem Statement</h2>
+<p>You scrape a URL. You convert HTML to Markdown. You ingest it into a vector store. Retrieval quality drops.</p>
+<p>When you inspect the stored chunks, the pattern is usually one of these:</p>
+<ul>
+  <li>The Markdown contains mostly navigation, cookie banners, and footer chrome.</li>
+  <li>The Markdown is empty or near-empty because the meaningful content never existed in the fetched HTML.</li>
+  <li>The Markdown contains the wrong page state (wrong route, wrong locale, missing personalization).</li>
+  <li>The Markdown changes between runs: headings move, sections split differently, and chunk boundaries drift.</li>
+</ul>
+<p>For static sites, “HTML to Markdown” can be deterministic enough. For dynamic sites, it’s not. The content you want is created after load, often after hydration and asynchronous data fetching.</p>
+<p>So the real problem is not conversion. It’s content readiness.</p>
+<p>A robust pipeline must answer two questions before converting:</p>
+<ul>
+  <li>Has the page reached the state where the main content exists in the DOM?</li>
+  <li>Is the DOM selection stable enough that Markdown output is deterministic?</li>
+</ul>
+<p>This post is about building that pipeline.</p>
+
+<h2>2) History &amp; Context</h2>
+<p>Early extraction pipelines assumed a simple model:</p>
+<ul>
+  <li>Fetch HTML</li>
+  <li>Parse DOM</li>
+  <li>Extract text</li>
+  <li>Convert to Markdown</li>
+</ul>
+<p>That model works for server-rendered pages where the content is present in the initial response.</p>
+<p>Modern web apps changed the default architecture:</p>
+<ul>
+  <li>Client-side routing: the URL may map to a route component that only renders after JS runs.</li>
+  <li>Hydration: server markup may exist, but meaningful content may be replaced or augmented after JS activation.</li>
+  <li>Lazy loading: sections appear only after scroll, intersection observers, or user interaction.</li>
+  <li>Data fetching after load: content arrives via API calls after the initial HTML.</li>
+</ul>
+<p>At the same time, LLM crawlers and RAG pipelines became more sensitive to extraction quality:</p>
+<ul>
+  <li>If extracted text is empty, the crawler can’t cite.</li>
+  <li>If extracted text is noisy, embeddings drift.</li>
+  <li>If extracted text is unstable, chunk boundaries change and retrieval becomes inconsistent.</li>
+</ul>
+<p>The practical shift is this: treat JavaScript rendering as part of your content accessibility contract.</p>
+
+<h2>3) Definition / What It Is</h2>
+<p>In this post, “Markdown conversion for dynamic websites” means:</p>
+<ul>
+  <li>Rendering a page in a browser environment that executes JavaScript</li>
+  <li>Waiting for a defined “content readiness” condition</li>
+  <li>Selecting the main content region(s) from the rendered DOM</li>
+  <li>Converting those regions into deterministic Markdown</li>
+  <li>Validating the output with measurable extraction signals</li>
+  <li>Emitting evidence packets so you can debug failures</li>
+</ul>
+<p>Key terms:</p>
+<ul>
+  <li><strong>Content readiness:</strong> a condition that indicates the main content exists and is stable enough to extract.</li>
+  <li><strong>Deterministic Markdown:</strong> output consistent across runs for the same page state, with stable headings, lists, and section boundaries.</li>
+  <li><strong>Evidence packet:</strong> structured mapping from extracted Markdown back to DOM nodes (or selectors) and timing signals.</li>
+  <li><strong>Boilerplate:</strong> repeated or low-signal UI text (navigation, cookie banners, footers, “related” widgets) that contaminates retrieval.</li>
+</ul>
+
+<h2>4) Search Intent Lock</h2>
+<p><strong>Primary intent (one sentence):</strong> Build a reliable pipeline that renders JavaScript pages and converts them into deterministic, AI-ready Markdown for LLM/RAG ingestion.</p>
+<p><strong>Secondary intent (one sentence):</strong> Learn how to validate extraction quality and debug failures using measurable signals and evidence packets.</p>
+<p>This article stays focused on pipeline mechanics—readiness → deterministic selection → deterministic conversion → validation—rather than general “effects of JS rendering.”</p>
+
+<h2>5) Architecture / How It Works</h2>
+<p>At a high level, the pipeline has five stages:</p>
+<ul>
+  <li>Fetch attempt (static HTML)</li>
+  <li>Render decision (do we need JS?)</li>
+  <li>JS rendering + readiness wait</li>
+  <li>DOM-to-Markdown conversion (deterministic)</li>
+  <li>Validation + evidence emission</li>
+</ul>
+
+<h3>Stage 1: Fetch attempt</h3>
+<p>Request the URL and parse the HTML.</p>
+<p>Extract a quick “content presence” signal:</p>
+<ul>
+  <li>Is there a main content container?</li>
+  <li>Does it contain enough text density?</li>
+  <li>Are there signs of a shell-only response (minimal article text, heavy UI scaffolding)?</li>
+</ul>
+<p>If the signal passes, convert directly.</p>
+<p>If it fails, proceed to rendering.</p>
+
+<h3>Stage 2: Render decision</h3>
+<p>Rendering is expensive. You don’t want to render every page.</p>
+<p>Define a decision policy:</p>
+<ul>
+  <li>Render if content presence is below a threshold</li>
+  <li>Render if the page looks like a SPA shell</li>
+  <li>Render if the HTML contains known placeholders (empty article containers)</li>
+  <li>Render if the page requires route-based rendering (detected from script patterns or metadata)</li>
+</ul>
+
+<h3>Stage 3: JS rendering + readiness wait</h3>
+<p>Render the page in a controlled browser.</p>
+<p>The critical part is readiness:</p>
+<ul>
+  <li>Don’t just “wait 3 seconds.”</li>
+  <li>Wait for a condition that indicates the main content is present.</li>
+</ul>
+<p>Examples of readiness conditions:</p>
+<ul>
+  <li>A selector for the main content exists and has a minimum text length</li>
+  <li>A “data-loaded” attribute appears</li>
+  <li>Network activity settles (with a cap)</li>
+  <li>A specific heading appears (for known templates)</li>
+</ul>
+<p>Also enforce stability:</p>
+
+<p>Ensure the content doesn’t keep changing beyond a small window.</p>
+
+<h3>Stage 4: DOM-to-Markdown conversion</h3>
+<p>Select the main content region(s) and convert them.</p>
+<p>Determinism comes from:</p>
+<ul>
+  <li>Stable selection rules (prefer semantic containers over brittle class names)</li>
+  <li>Consistent formatting policies (headings, lists, tables)</li>
+  <li>Controlled handling of dynamic elements (remove UI chrome, normalize whitespace)</li>
+</ul>
+
+<h3>Stage 5: Validation + evidence emission</h3>
+<p>Before accepting Markdown, validate it.</p>
+<p>Validation checks:</p>
+<ul>
+  <li>Empty/near-empty output</li>
+  <li>Boilerplate ratio (how much extracted text is repeated or low-signal)</li>
+  <li>Wrong-route detection (canonical URL mismatch, missing expected headings)</li>
+  <li>Structure sanity (heading count, list formatting, table conversion)</li>
+</ul>
+<p>Evidence packets:</p>
+<ul>
+  <li>Store readiness timestamp and readiness condition result</li>
+  <li>Store selectors used for main content extraction</li>
+  <li>Store a small sample of extracted text spans with DOM provenance</li>
+</ul>
+
+<h2>6) Components &amp; Workflow</h2>
+<p>Below is a concrete component breakdown you can implement.</p>
+
+<h3>1) URL fetcher</h3>
+<p><strong>Responsibilities:</strong></p>
+<ul>
+  <li>Perform HTTP GET with appropriate headers</li>
+  <li>Handle redirects</li>
+  <li>Capture response metadata (status code, content-type)</li>
+</ul>
+<p><strong>Outputs:</strong></p>
+<ul>
+  <li>Raw HTML</li>
+  <li>Response headers</li>
+  <li>Final URL after redirects</li>
+</ul>
+
+<h3>2) Content presence detector</h3>
+<p><strong>Responsibilities:</strong></p>
+<ul>
+  <li>Parse HTML</li>
+  <li>Compute quick signals:
+    <ul>
+      <li>text density in likely main containers</li>
+      <li>presence of article-like elements</li>
+      <li>ratio of script/style to text</li>
+      <li>placeholder patterns</li>
+    </ul>
+  </li>
+</ul>
+<p><strong>Outputs:</strong></p>
+<ul>
+  <li>needs_render boolean</li>
+  <li>presence_score numeric</li>
+  <li>candidate main selectors (optional)</li>
+</ul>
+
+<h3>3) Renderer (Playwright-based)</h3>
+<p><strong>Responsibilities:</strong></p>
+<ul>
+  <li>Launch browser with consistent settings</li>
+  <li>Navigate to URL</li>
+  <li>Apply deterministic policies (viewport, timezone, locale)</li>
+  <li>Capture rendered DOM snapshot at readiness pass time</li>
+</ul>
+<p><strong>Outputs:</strong></p>
+<ul>
+  <li>Rendered DOM snapshot (or query access)</li>
+  <li>Timing signals (navigation start/end, readiness elapsed)</li>
+</ul>
+
+<h3>4) Readiness engine</h3>
+<p><strong>Responsibilities:</strong></p>
+<ul>
+  <li>Evaluate readiness conditions repeatedly until satisfied or timeout</li>
+  <li>Enforce a stability window so content doesn’t keep changing after extraction</li>
+</ul>
+<p><strong>Outputs:</strong></p>
+<ul>
+  <li>readiness_passed</li>
+  <li>readiness_reason</li>
+  <li>readiness_elapsed_ms</li>
+</ul>
+
+<h3>5) DOM selector + boilerplate filter</h3>
+<p><strong>Responsibilities:</strong></p>
+<ul>
+  <li>Select main content region(s)</li>
+  <li>Remove boilerplate blocks without deleting meaning</li>
+</ul>
+<p><strong>Selection strategy:</strong></p>
+<ul>
+  <li>Prefer semantic containers: main, article, and the closest ancestor that contains a heading hierarchy.</li>
+  <li>If the page uses multiple content regions (tabs), extract the active region only.</li>
+  <li>Exclude known chrome regions: cookie banners, nav menus, “related” widgets, repeated link lists.</li>
+</ul>
+<p><strong>Boilerplate filter strategy:</strong></p>
+<ul>
+  <li>Repetition signal: blocks that repeat across siblings or across pages are likely chrome.</li>
+  <li>Density signal: main content tends to have higher paragraph density and lower link density.</li>
+  <li>Structure signal: main content usually contains headings and coherent paragraph sequences.</li>
+</ul>
+<p><strong>Outputs:</strong></p>
+<ul>
+  <li>List of DOM nodes (or extracted blocks) to convert</li>
+</ul>
+
+<h3>6) Deterministic Markdown converter</h3>
+<p><strong>Responsibilities:</strong></p>
+<ul>
+  <li>Convert selected DOM nodes into Markdown</li>
+  <li>Normalize whitespace and line breaks</li>
+  <li>Convert tables consistently</li>
+  <li>Preserve semantic structure (headings, lists, code blocks)</li>
+</ul>
+<p><strong>Determinism rules:</strong></p>
+<ul>
+  <li>Always emit headings in a consistent order.</li>
+  <li>Always convert lists with consistent indentation.</li>
+  <li>Always represent tables using the same Markdown table policy.</li>
+  <li>Strip or normalize dynamic UI artifacts (e.g., “loading...” placeholders).</li>
+</ul>
+<p><strong>Outputs:</strong></p>
+<ul>
+  <li>Markdown string</li>
+  <li>Structure metadata (heading count, list count, table count)</li>
+</ul>
+
+<h3>7) Validation + evidence packet emitter</h3>
+<p><strong>Responsibilities:</strong></p>
+<ul>
+  <li>Run extraction quality checks</li>
+  <li>If validation fails, retry with a different readiness strategy or fall back</li>
+  <li>Emit evidence packets for debugging</li>
+</ul>
+<p><strong>Outputs:</strong></p>
+<ul>
+  <li>validation_passed</li>
+  <li>validation_report</li>
+  <li>evidence_packet</li>
+</ul>
+
+<h2>7) Content Readiness: The Real Contract</h2>
+<p>This is where most pipelines fail in practice. A fixed sleep is not a readiness contract.</p>
+
+<h3>Readiness design goals</h3>
+<p>A readiness condition should:</p>
+<ul>
+  <li>Detect the presence of main content (not just any DOM)</li>
+  <li>Be robust to minor layout changes</li>
+  <li>Avoid extracting before content stabilizes</li>
+  <li>Support scroll/lazy-load patterns when needed</li>
+</ul>
+
+<h3>Readiness patterns (use these as building blocks)</h3>
+<p><strong>Pattern A: Selector + minimum text threshold</strong></p>
+<ul>
+  <li>Wait until main/article exists</li>
+  <li>Wait until its text length exceeds min_main_text_chars</li>
+  <li>Optionally require at least one heading</li>
+</ul>
+<p><strong>Why it works:</strong></p>
+<ul>
+  <li>It directly targets “content exists,” not “time passed.”</li>
+</ul>
+<p><strong>Failure mode:</strong></p>
+<ul>
+  <li>Some pages render chrome early; ensure your selector targets semantic containers.</li>
+</ul>
+
+<p><strong>Pattern B: Required heading regex</strong></p>
+<ul>
+  <li>Wait until a heading matches required_heading_regex</li>
+</ul>
+<p>Example: /^(Introduction|Overview|What you will learn)/i</p>
+<p><strong>Why it works:</strong></p>
+<ul>
+  <li>Many templates have stable heading anchors.</li>
+</ul>
+<p><strong>Failure mode:</strong></p>
+<ul>
+  <li>If the page is localized or template changes, update regex.</li>
+</ul>
+
+<p><strong>Pattern C: Network settling with a cap</strong></p>
+<ul>
+  <li>Wait until network activity is below a threshold for network_idle_timeout_ms</li>
+  <li>Cap total render time with max_render_time_ms</li>
+</ul>
+<p><strong>Why it works:</strong></p>
+<ul>
+  <li>Many content loads are API-driven; network settling correlates with completion.</li>
+</ul>
+<p><strong>Failure mode:</strong></p>
+<ul>
+  <li>Some pages keep polling; use stability window and cap.</li>
+</ul>
+
+<p><strong>Pattern D: Stability window (content stops changing)</strong></p>
+<ul>
+  <li>Sample main container text hash every poll_interval</li>
+  <li>Pass readiness when the hash remains unchanged for stability_window_ms</li>
+</ul>
+<p><strong>Why it works:</strong></p>
+<ul>
+  <li>It prevents “extracting mid-hydration.”</li>
+</ul>
+<p><strong>Failure mode:</strong></p>
+<ul>
+  <li>If content updates continuously (live dashboards), you need a different policy (e.g., extract the latest stable snapshot or a specific section).</li>
+</ul>
+
+<p><strong>Pattern E: Scroll readiness for lazy-loaded content</strong></p>
+<ul>
+  <li>Scroll in increments</li>
+  <li>Track main container text length</li>
+  <li>Pass when text length stops increasing for a stability window</li>
+</ul>
+<p><strong>Why it works:</strong></p>
+<ul>
+  <li>It handles infinite scroll and intersection observer patterns.</li>
+</ul>
+<p><strong>Failure mode:</strong></p>
+<ul>
+  <li>Some pages load irrelevant content on scroll; combine with selector targeting.</li>
+</ul>
+
+<h3>Recommended readiness strategy (practical default)</h3>
+<p>Use a two-phase approach:</p>
+<ul>
+  <li>Initial readiness: selector + min text threshold</li>
+  <li>Stability confirmation: stability window on the same container</li>
+</ul>
+<p>If validation later detects missing expected subsections, you can escalate to scroll readiness.</p>
+
+<h2>8) DOM Selection Heuristics (Deterministic Extraction)</h2>
+<p>Deterministic Markdown depends on deterministic selection.</p>
+
+<h3>Main content selection heuristics</h3>
+<p>Use semantic anchors:</p>
+<ul>
+  <li>Prefer main and article</li>
+  <li>If absent, choose the closest ancestor containing:
+    <ul>
+      <li>a heading hierarchy (H1/H2)</li>
+      <li>multiple paragraphs</li>
+      <li>low link density relative to text density</li>
+    </ul>
+  </li>
+</ul>
+<p>Avoid brittle class names:</p>
+<ul>
+  <li>Class names change frequently in modern frontends.</li>
+  <li>Semantic structure is more stable.</li>
+</ul>
+<p>Handle multi-region pages:</p>
+<ul>
+  <li>Tabs: extract only the active tab content.</li>
+  <li>Accordions: extract expanded sections if they are expanded by default; otherwise extract the first expanded section and validate completeness.</li>
+</ul>
+
+<h3>Boilerplate exclusion heuristics</h3>
+<p>Exclude:</p>
+<ul>
+  <li>Cookie banners and consent dialogs</li>
+  <li>Navigation menus</li>
+  <li>Footer link lists</li>
+  <li>“Related articles” widgets</li>
+  <li>Repeated “subscribe” prompts</li>
+</ul>
+<p>Detect boilerplate by:</p>
+<ul>
+  <li>Repetition across siblings</li>
+  <li>High link density with low paragraph density</li>
+  <li>Blocks that appear in consistent positions across pages</li>
+</ul>
+
+<h3>Determinism rule</h3>
+<p>Once you select the main region(s), do not “re-select” based on heuristics that can vary run-to-run. Keep selection rules stable and versioned.</p>
+
+<h2>9) Deterministic Markdown Conversion Rules</h2>
+<p>Conversion is where structure drift happens.</p>
+
+<h3>Formatting policies that reduce drift</h3>
+<p>Headings:</p>
+<ul>
+  <li>Map DOM heading levels to Markdown headings consistently.</li>
+  <li>Never “skip” levels unpredictably.</li>
+</ul>
+<p>Lists:</p>
+<ul>
+  <li>Preserve list nesting depth.</li>
+  <li>Normalize whitespace so list items don’t merge.</li>
+</ul>
+<p>Tables:</p>
+<ul>
+  <li>Use one table conversion policy across the pipeline.</li>
+  <li>If strict tables are unreliable, use a simplified representation consistently.</li>
+</ul>
+<p>Code blocks:</p>
+<ul>
+  <li>Preserve fenced code blocks.</li>
+  <li>Include language hints when available.</li>
+</ul>
+<p>Whitespace:</p>
+<ul>
+  <li>Normalize multiple spaces.</li>
+  <li>Normalize newlines.</li>
+  <li>Remove “loading...” placeholders.</li>
+</ul>
+
+<h3>Dynamic element handling</h3>
+<p>Remove UI chrome elements inside the selected region if they are clearly non-content (e.g., “copy link” buttons).</p>
+<p>Normalize timestamps or counters if they cause instability (optional, but useful for stability scoring).</p>
+
+<h2>10) Validation Scoring Rubric (Pass/Fail + Debug Reasons)</h2>
+<p>Validation should be measurable and explainable.</p>
+
+<h3>Validation goals</h3>
+<ul>
+  <li>Detect empty/near-empty extraction</li>
+  <li>Detect wrong-route rendering</li>
+  <li>Detect boilerplate contamination</li>
+  <li>Detect structural anomalies</li>
+  <li>Provide a debug reason that maps to a fix</li>
+</ul>
+
+<h3>Suggested scoring components</h3>
+<p>Compute a validation_score and a set of boolean checks.</p>
+
+<h3>1) Content presence</h3>
+<ul>
+  <li>markdown_chars &gt;= min_markdown_chars</li>
+  <li>heading_count &gt;= min_heading_count (optional)</li>
+  <li>paragraph_count &gt;= min_paragraph_count (optional)</li>
+</ul>
+
+<h3>2) Boilerplate ratio</h3>
+<p>Define boilerplate ratio as:</p>
+<pre><code>(estimated chrome text chars) / (total extracted text chars)</code></pre>
+<p>Chrome estimation can be based on:</p>
+<ul>
+  <li>link density</li>
+  <li>repeated block signatures</li>
+  <li>known chrome selectors</li>
+</ul>
+<p><strong>Pass condition:</strong></p>
+<ul>
+  <li>boilerplate_ratio &lt;= boilerplate_ratio_max</li>
+</ul>
+
+<h3>3) Wrong-route detection</h3>
+<p>Detect mismatch using:</p>
+<ul>
+  <li>canonical URL mismatch</li>
+  <li>missing expected heading regex</li>
+  <li>presence of “not found” template markers</li>
+</ul>
+<p><strong>Pass condition:</strong></p>
+<ul>
+  <li>no mismatch flags</li>
+</ul>
+
+<h3>4) Structure sanity</h3>
+<ul>
+  <li>headings are in a plausible order</li>
+  <li>lists are not malformed</li>
+  <li>tables are either converted or consistently represented</li>
+</ul>
+<p><strong>Pass condition:</strong></p>
+<ul>
+  <li>structure anomalies below threshold</li>
+</ul>
+
+<h3>Example validation report fields</h3>
+<ul>
+  <li>pass: true/false</li>
+  <li>reasons: array of strings</li>
+  <li>scores:
+    <ul>
+      <li>content_presence_score</li>
+      <li>boilerplate_ratio</li>
+      <li>stability_score (optional)</li>
+      <li>structure_quality_score</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>Fail closed policy</h3>
+<p>If validation fails:</p>
+<ul>
+  <li>Retry with a different readiness strategy (e.g., stability window vs network idle)</li>
+  <li>Or fall back to a different extraction mode (e.g., scroll readiness)</li>
+  <li>Or mark as “unextractable” with evidence packet.</li>
+</ul>
+
+<h2>11) Evidence Packets: Provenance for Debugging</h2>
+<p>Evidence packets are what make your pipeline operationally sane.</p>
+
+<h3>What to store</h3>
+<ul>
+  <li>url_requested, url_final</li>
+  <li>needs_render, fetch_presence_score</li>
+  <li>render_readiness_passed, render_readiness_reason, render_elapsed_ms</li>
+  <li>main_selectors_used</li>
+  <li>boilerplate_filter_rules_used</li>
+  <li>validation_report</li>
+  <li>sample_provenance: a small list of:
+    <ul>
+      <li>markdown_span</li>
+      <li>dom_selector</li>
+      <li>text_preview</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>Worked evidence packet JSON (example)</h3>
+<pre><code>&#123;
+  "url_requested": "https://example.com/docs/ai-ready",
+  "url_final": "https://example.com/docs/ai-ready",
+  "needs_render": true,
+  "fetch_presence_score": 0.12,
+  "render_readiness_passed": true,
+  "render_readiness_reason": "main_selector_text_threshold",
+  "render_elapsed_ms": 1840,
+  "main_selectors_used": ["main", "article"],
+  "boilerplate_filter_rules_used": ["exclude_cookie_banner", "exclude_related_widgets", "repetition_filter"],
+  "validation_report": &#123;
+    "pass": true,
+    "markdown_chars": 48210,
+    "boilerplate_ratio": 0.07,
+    "heading_count": 18,
+    "wrong_route_detected": false
+  &#125;,
+  "sample_provenance": [
+    &#123;
+      "markdown_span": "## What you will learn",
+      "dom_selector": "article h2:nth-of-type(1)",
+      "text_preview": "What you will learn"
+    &#125;,
+    &#123;
+      "markdown_span": "### Deterministic Markdown rules",
+      "dom_selector": "article h3:nth-of-type(2)",
+      "text_preview": "Deterministic Markdown rules"
+    &#125;
+  ]
+&#125;</code></pre>
+
+<p>This is the difference between “we think it failed” and “we know it failed because readiness passed too early.”</p>
+
+<h2>12) Configuration / Setup</h2>
+<p>Here’s a practical configuration set you can start with.</p>
+
+<h3>Rendering</h3>
+<ul>
+  <li>max_render_time_ms: 8000</li>
+  <li>readiness_poll_interval_ms: 200</li>
+  <li>stability_window_ms: 800</li>
+  <li>network_idle_timeout_ms: 1200 (optional)</li>
+</ul>
+
+<h3>Readiness</h3>
+<ul>
+  <li>min_main_text_chars: 2500</li>
+  <li>required_heading_regex: /^(Introduction|Overview|What you will learn)/i</li>
+  <li>main_selector_priority: ["main", "article", "[role='main']"]</li>
+</ul>
+
+<h3>Conversion</h3>
+<ul>
+  <li>heading_level_mapping: DOM H1→#, H2→##, H3→###</li>
+  <li>table_conversion_mode: strict if stable else simplified</li>
+  <li>code_block_policy: fenced blocks with language hints when present</li>
+  <li>whitespace_normalization: collapse spaces, normalize newlines</li>
+</ul>
+
+<h3>Validation</h3>
+<ul>
+  <li>min_markdown_chars: 3000</li>
+  <li>boilerplate_ratio_max: 0.25</li>
+  <li>wrong_route_detection: enabled</li>
+</ul>
+
+<h2>13) Examples</h2>
+
+<h3>Failure mode 1: Empty Markdown from shell-only HTML</h3>
+<p><strong>Symptom:</strong></p>
+<ul>
+  <li>Markdown chars &lt; min threshold</li>
+</ul>
+<p><strong>Root cause:</strong></p>
+<ul>
+  <li>Content exists only after hydration.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Render decision triggered by low presence score</li>
+  <li>Readiness waits for main selector + min text threshold</li>
+</ul>
+
+<h3>Failure mode 2: Wrong-route extraction</h3>
+<p><strong>Symptom:</strong></p>
+<ul>
+  <li>Validation fails wrong-route detection</li>
+</ul>
+<p><strong>Root cause:</strong></p>
+<ul>
+  <li>Route parameter missing or cookie-gated content.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Add canonical mismatch checks</li>
+  <li>Retry with locale/cookie/session policy</li>
+  <li>Require expected heading regex</li>
+</ul>
+
+<h3>Failure mode 3: Boilerplate contamination</h3>
+<p><strong>Symptom:</strong></p>
+<ul>
+  <li>Boilerplate ratio too high</li>
+</ul>
+<p><strong>Root cause:</strong></p>
+<ul>
+  <li>Main selector too broad; chrome nested inside content container.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Narrow selection to semantic containers</li>
+  <li>Exclude known chrome regions</li>
+  <li>Add repetition-based filtering</li>
+</ul>
+
+<h3>Failure mode 4: Partial extraction due to lazy loading</h3>
+<p><strong>Symptom:</strong></p>
+<ul>
+  <li>Validation passes early but missing expected subsections</li>
+</ul>
+<p><strong>Root cause:</strong></p>
+<ul>
+  <li>Content loads after scroll.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Escalate to scroll readiness</li>
+  <li>Scroll until text length stabilizes for a window</li>
+</ul>
+
+<h2>14) Performance &amp; Benchmarks (How to Measure)</h2>
+<p>Rendering is expensive, so you must measure.</p>
+
+<h3>Benchmark dataset</h3>
+<ul>
+  <li>JS-heavy pages (SPA dashboards, client-side docs)</li>
+  <li>SSR pages</li>
+  <li>Mixed pages</li>
+  <li>Failure-prone pages (geo/cookie gated)</li>
+</ul>
+
+<h3>Metrics</h3>
+<ul>
+  <li>render_rate</li>
+  <li>success_rate (validation pass)</li>
+  <li>avg_markdown_chars</li>
+  <li>median_latency_ms</li>
+  <li>stability_score (structure drift across runs)</li>
+</ul>
+
+<h3>Stability score (simple)</h3>
+<p>Use Jaccard similarity on heading sets across runs:</p>
+<pre><code>𝑆𝐻 = Jaccard(𝐻𝑟1,𝐻𝑟2)</code></pre>
+
+<h3>Publish results</h3>
+<p>Even if you don’t have production numbers yet, publish your lab methodology and measured outcomes. Placeholder tables are acceptable only if clearly labeled as “lab simulation.”</p>
+
+<h2>15) Security Considerations</h2>
+<p>Rendering executes untrusted JavaScript.</p>
+
+<h3>Mitigations</h3>
+<ul>
+  <li>Isolated containers</li>
+  <li>Disable unnecessary browser features</li>
+  <li>Restrict network egress</li>
+  <li>Strict timeouts and resource limits</li>
+</ul>
+
+<h3>Credential handling</h3>
+<ul>
+  <li>Secure session storage</li>
+  <li>Avoid logging sensitive cookies</li>
+  <li>Rotate sessions</li>
+</ul>
+
+<h3>Data retention</h3>
+<ul>
+  <li>Evidence packets may contain extracted text</li>
+  <li>Apply retention policies and redaction</li>
+</ul>
+
+<h2>16) Troubleshooting (Decision Tree + Fixes)</h2>
+
+<h3>Decision tree (what to do when validation fails)</h3>
+<p>Start from the validation report. Don’t jump to “tweak selectors” immediately—map the failure to the most likely root cause.</p>
+<p>If validation fails:</p>
+
+<h3>Empty / near-empty Markdown</h3>
+<p><strong>Likely cause:</strong> readiness passed too early (fixed wait or weak readiness condition), or the main selector never appears.</p>
+<p><strong>What to check:</strong></p>
+<ul>
+  <li>render_readiness_reason and render_elapsed_ms</li>
+  <li>whether main_selectors_used actually existed at readiness time</li>
+  <li>whether the page is cookie/consent gated</li>
+</ul>
+<p><strong>Typical fixes:</strong></p>
+<ul>
+  <li>Increase readiness timeout and require min_main_text_chars</li>
+  <li>Add a required heading regex (template anchor)</li>
+  <li>Add stability confirmation (content hash unchanged for stability_window_ms)</li>
+  <li>If gated, apply a deterministic consent/session policy</li>
+</ul>
+
+<h3>High boilerplate ratio</h3>
+<p><strong>Likely cause:</strong> main selection is too broad, or chrome exclusion rules are missing.</p>
+<p><strong>What to check:</strong></p>
+<ul>
+  <li>boilerplate_filter_rules_used</li>
+  <li>top repeated blocks in the extracted text (often nav/link lists)</li>
+  <li>whether the selected container includes “related widgets” or cookie banners</li>
+</ul>
+<p><strong>Typical fixes:</strong></p>
+<ul>
+  <li>Tighten selection to semantic containers (main, article, [role="main"])</li>
+  <li>Exclude known chrome regions by selector patterns</li>
+  <li>Use repetition-based filtering (blocks repeated across siblings/pages)</li>
+  <li>Re-run validation after conversion changes (don’t assume)</li>
+</ul>
+
+<h3>Wrong-route detected</h3>
+<p><strong>Likely cause:</strong> route parameters not applied, locale mismatch, or the app fell back to a “not found” template.</p>
+<p><strong>What to check:</strong></p>
+<ul>
+  <li>canonical URL mismatch</li>
+  <li>missing expected heading regex</li>
+  <li>presence of “not found” markers in the rendered DOM</li>
+</ul>
+<p><strong>Typical fixes:</strong></p>
+<ul>
+  <li>Validate canonical/expected heading at readiness time</li>
+  <li>Retry with correct locale/timezone policy</li>
+  <li>If the app requires cookies, apply the correct session policy</li>
+  <li>Add a “route state” readiness condition (e.g., expected heading + canonical match)</li>
+</ul>
+
+<h3>Unstable structure across runs</h3>
+<p><strong>Likely cause:</strong> readiness passed while content was still changing, or dynamic UI elements are included.</p>
+<p><strong>What to check:</strong></p>
+<ul>
+  <li>stability score (heading set similarity, list/table signatures)</li>
+  <li>whether the main container text keeps changing after readiness</li>
+</ul>
+<p><strong>Typical fixes:</strong></p>
+<ul>
+  <li>Add/strengthen stability window (hash unchanged for a window)</li>
+  <li>Normalize dynamic UI artifacts (timestamps, counters, “loading…” placeholders)</li>
+  <li>Tighten selection to the stable content subtree</li>
+  <li>Version selection/conversion policies so drift is measurable</li>
+</ul>
+
+<h3>Otherwise (no obvious category)</h3>
+<p><strong>Likely cause:</strong> template-specific edge case or selector mismatch.</p>
+<p><strong>What to check:</strong></p>
+<ul>
+  <li>evidence packet sample_provenance</li>
+  <li>which DOM selectors produced the key Markdown spans</li>
+</ul>
+<p><strong>Typical fixes:</strong></p>
+<ul>
+  <li>Inspect provenance for the first 2–3 headings/paragraphs</li>
+  <li>Update selector priority order (semantic anchors first)</li>
+  <li>Add a template-specific readiness condition only if needed</li>
+</ul>
+
+<h3>Fast fixes checklist (use this during incidents)</h3>
+<p>When you need a quick, high-signal response:</p>
+
+<ul>
+  <li>Tighten main selectors to semantic containers (<code>main</code>, <code>article</code>, <code>[role="main"]</code>) rather than broad layout wrappers.</li>
+  <li>Add a stability window to readiness so you do not extract mid-hydration.</li>
+  <li>Add a required heading regex for template-heavy sites, as a strong anchor for the correct page state.</li>
+  <li>Add scroll readiness escalation for lazy-loaded pages: scroll until text length stabilizes.</li>
+  <li>Version selection and conversion policies so you can compare outputs across pipeline versions and roll back safely.</li>
+  <li>Fail closed: if validation fails, do not silently accept partial Markdown.</li>
+</ul>
+
+<h2>17. Best Practices</h2>
+
+<h3>1) Define readiness explicitly; avoid fixed sleeps</h3>
+<p>Fixed sleeps (“wait 3 seconds”) are brittle because hydration time varies by:</p>
+<ul>
+  <li>network conditions</li>
+  <li>API latency</li>
+  <li>device performance</li>
+  <li>A/B tests and feature flags</li>
+</ul>
+<p>Instead:</p>
+<ul>
+  <li>Use selector + minimum text threshold</li>
+  <li>Confirm with stability window</li>
+  <li>Escalate to scroll readiness when subsections are missing</li>
+</ul>
+
+<h3>2) Keep selection rules deterministic and versioned</h3>
+<p>Selection rules are part of your “content contract.” If they change, your Markdown structure changes.</p>
+<p>Best practice:</p>
+<ul>
+  <li>Maintain a versioned configuration for:</li>
+</ul>
+<ul>
+  <li>main selector priority</li>
+  <li>boilerplate exclusion rules</li>
+  <li>heading mapping policy</li>
+</ul>
+<p>Store evidence packets so you can debug which version produced which output.</p>
+
+<h3>3) Convert only selected main regions, not the entire DOM</h3>
+<p>Converting the entire DOM guarantees boilerplate contamination because:</p>
+<ul>
+  <li>nav/footer widgets are often nested near content</li>
+  <li>cookie banners and related widgets are frequently inside layout containers</li>
+</ul>
+<p>Best practice:</p>
+<ul>
+  <li>Select main content subtree(s) first</li>
+  <li>Convert only those nodes</li>
+  <li>Exclude chrome inside the selected subtree if needed</li>
+</ul>
+
+<h3>4) Validate with measurable signals and fail closed</h3>
+<p>Validation should be:</p>
+<ul>
+  <li>threshold-based (min chars, max boilerplate ratio)</li>
+  <li>mismatch-aware (canonical/expected heading checks)</li>
+  <li>structure-aware (sanity checks for headings/lists/tables)</li>
+</ul>
+<p>Fail closed means:</p>
+<ul>
+  <li>if validation fails, retry or mark unextractable</li>
+  <li>do not ingest low-quality Markdown into embeddings</li>
+</ul>
+
+<h3>5) Emit evidence packets for every attempt (or at least every failure)</h3>
+<p>Evidence packets let you answer:</p>
+<ul>
+  <li>Did readiness pass correctly?</li>
+  <li>Which selectors produced the key spans?</li>
+  <li>Why did validation fail?</li>
+</ul>
+<p>Best practice:</p>
+<ul>
+  <li>Always store readiness reason + selectors used</li>
+  <li>Store sample provenance spans for failures</li>
+</ul>
+
+<h3>6) Track stability drift across runs</h3>
+<p>Stability drift is a silent killer for retrieval quality.</p>
+<p>Best practice:</p>
+<ul>
+  <li>Compute a stability score (e.g., Jaccard similarity of heading sets)</li>
+  <li>Track drift distribution over time</li>
+  <li>Treat drift spikes as incidents, often caused by selector changes or template updates</li>
+</ul>
+
+<h2>18. Common Mistakes</h2>
+
+<h3>1) Waiting a fixed number of seconds for all pages</h3>
+<p>Hydration time varies. Fixed waits cause:</p>
+<ul>
+  <li>empty extraction</li>
+  <li>partial extraction</li>
+  <li>unstable structure</li>
+</ul>
+
+<h3>2) Converting the entire DOM</h3>
+<p>This almost guarantees:</p>
+<ul>
+  <li>boilerplate contamination</li>
+  <li>chunk boundary drift</li>
+  <li>noisy embeddings</li>
+</ul>
+
+<h3>3) Deleting “noise” without checking meaning</h3>
+<p>Boilerplate removal must be retrieval-grade:</p>
+<ul>
+  <li>remove repeated chrome</li>
+  <li>keep meaningful headings/paragraphs</li>
+  <li>do not delete blocks just because they “look like UI”</li>
+</ul>
+
+<h3>4) Accepting near-empty Markdown as success</h3>
+<p>Near-empty outputs create:</p>
+<ul>
+  <li>low-signal embeddings</li>
+  <li>citation failures</li>
+  <li>misleading “pipeline success” metrics</li>
+</ul>
+
+<h3>5) Not tracking stability drift</h3>
+<p>If you do not measure drift, you will not notice:</p>
+<ul>
+  <li>template changes</li>
+  <li>readiness timing regressions</li>
+  <li>conversion policy regressions</li>
+</ul>
+
+<h2>19. Alternatives &amp; Comparison</h2>
+
+<h3>Alternative A: SSR-only approach</h3>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>Less rendering cost</li>
+  <li>More deterministic HTML</li>
+  <li>Often simpler extraction and conversion</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>Not always feasible, especially for existing apps</li>
+  <li>Some content still loads client-side even with SSR</li>
+</ul>
+<p><strong>When it’s best</strong></p>
+<p>You control the site and can enforce SSR for primary content.</p>
+
+<h3>Alternative B: Scraping API with built-in rendering</h3>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>Faster implementation</li>
+  <li>Managed browser infrastructure</li>
+  <li>Often includes anti-bot handling and operational hardening</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>Less control over readiness conditions</li>
+  <li>Potential cost tradeoffs at scale</li>
+  <li>You may still need deterministic conversion + validation on your side</li>
+</ul>
+<p><strong>When it’s best</strong></p>
+<p>You want speed-to-market and can accept some constraints on readiness tuning.</p>
+
+<h3>Alternative C: LLM-based extraction from rendered HTML</h3>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>Flexible extraction across templates</li>
+  <li>Can interpret messy DOM and infer structure</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>Higher variance</li>
+  <li>Harder to guarantee determinism and stability</li>
+  <li>More expensive per extraction</li>
+  <li>Debugging becomes harder unless you enforce strict provenance</li>
+</ul>
+<p><strong>When it’s best</strong></p>
+<p>You need “best effort” extraction for long-tail templates and can tolerate variance.</p>
+
+<h3>Why this pipeline approach wins (in practice)</h3>
+<p>This pipeline approach keeps:</p>
+<ul>
+  <li>conversion deterministic (stable Markdown)</li>
+  <li>validation measurable (pass/fail + reasons)</li>
+  <li>debugging actionable (evidence packets)</li>
+</ul>
+<p>That combination is what improves retrieval reliability and citation trust over time.</p>
+
+<h2>20. Enterprise / Cloud Deployment</h2>
+
+<h3>Operational requirements</h3>
+<p>To run this pipeline reliably at scale:</p>
+<ul>
+  <li>Horizontal scaling for rendering workers</li>
+</ul>
+<p>Rendering is the bottleneck; scale it independently from fetch/parse.</p>
+<ul>
+  <li>Domain-level concurrency limits</li>
+</ul>
+<p>Prevents overload and reduces anti-bot triggers.</p>
+<ul>
+  <li>Caching for repeated URLs</li>
+</ul>
+<p>Avoids re-rendering unchanged pages.</p>
+<ul>
+  <li>Observability</li>
+</ul>
+<p>Track render rate, validation pass rate, latency, and failure reasons.</p>
+
+<h3>Metrics (what to monitor)</h3>
+<p>Track these metrics by domain and template type:</p>
+<ul>
+  <li>render_rate by domain</li>
+  <li>validation_pass_rate by template type</li>
+  <li>avg_readiness_elapsed_ms</li>
+  <li>stability_score distribution</li>
+  <li>failure_reason_counts</li>
+</ul>
+<p>Add alerting rules:</p>
+<ul>
+  <li>sudden drop in validation pass rate</li>
+  <li>spike in wrong-route detections</li>
+  <li>stability drift regression after a deployment</li>
+</ul>
+
+<h3>Deployment pattern (reference architecture)</h3>
+<p>A practical production pattern:</p>
+<ul>
+  <li>Queue of URLs</li>
+  <li>Fetch + parse workers</li>
+  <li>Conditional render workers</li>
+  <li>Conversion + validation service</li>
+  <li>Storage for Markdown + evidence packets</li>
+</ul>
+<p>This separation lets you:</p>
+<ul>
+  <li>scale rendering only when needed</li>
+  <li>keep conversion deterministic and consistent</li>
+  <li>debug failures using evidence packets without re-running everything</li>
+</ul>
+
+<h2>21. FAQs</h2>
+
+<h3>Q1) Do I need to render every dynamic page?</h3>
+<p>No. Rendering everything is usually the most expensive option and it is rarely necessary. Many modern pages still include meaningful server-rendered content in the initial HTML, even if they later hydrate and enhance it. The practical approach is a two-step pipeline: first run static extraction and compute a content presence signal, such as text density, presence of semantic containers like <code>main</code>/<code>article</code>, and whether the page looks like a shell. Only when that signal indicates the “shell-only failure mode” do you escalate to JS rendering. This keeps cost and latency under control while still fixing the cases where the initial HTML is insufficient.</p>
+
+<h3>Q2) How do I choose readiness conditions?</h3>
+<p>Readiness conditions should answer “is the main content actually present and stable?” rather than “has some time passed?”. A strong default is a selector-based condition plus a minimum text threshold: wait until your main content container exists and contains at least <code>min_main_text_chars</code>. Then confirm stability with a stability window: sample the main container’s text, or a hash of it, repeatedly and pass readiness only when it stops changing for <code>stability_window_ms</code>. If your templates are consistent, add a required heading regex, for example an expected H1/H2 pattern. That extra anchor reduces wrong-route and partial-render failures because you are not just checking for “some text,” you are checking for the right content structure.</p>
+
+<h2>Q3) What makes Markdown deterministic in practice?</h2>
+<p>Deterministic Markdown is mostly about controlling variability in two places: (1) DOM selection and (2) conversion formatting. If your selection rules are stable—always choosing the same semantic containers and excluding the same chrome regions—then the input to conversion is consistent. Then conversion must be consistent: headings must map to Markdown heading levels using a fixed policy, lists must preserve nesting and indentation rules, tables must follow one conversion strategy, and whitespace normalization must be deterministic. Also remove or normalize dynamic UI artifacts that change between runs (loading placeholders, counters, timestamps). When these policies are versioned and enforced, your Markdown structure (headings, section boundaries, list and table formatting) stays stable across runs, which directly improves chunk stability for RAG.</p>
+
+<h2>Q4) How do I prevent boilerplate from poisoning embeddings?</h2>
+<p>Boilerplate poisoning happens when your extracted text includes repeated low-signal UI content that dominates embeddings and shifts retrieval neighborhoods. The fix is to measure contamination and enforce thresholds. Compute a boilerplate ratio using signals like link density, repetition signatures, and known chrome selectors (cookie banners, navigation menus, “related” widgets). Then enforce boilerplate_ratio &lt;= boilerplate_ratio_max. But do not stop at ratio checks—validate that the extracted Markdown contains expected content structure: minimum paragraph count, plausible heading hierarchy, and presence of key headings (or at least a minimum number of headings). This combination prevents two common failure modes: (a) “clean-looking” output that is actually mostly chrome, and (b) “content exists” output that is missing the real article sections.</p>
+
+<h2>Q5) Can evidence packets be too large?</h2>
+<p>Yes. Evidence packets are extremely useful, but storing full DOM snapshots or large provenance maps for every attempt can become a major cost and storage burden. Best practice is to store evidence at the right granularity:</p>
+<ul>
+<li>Always store lightweight readiness and validation metadata (readiness reason, elapsed time, selectors used, validation pass or fail, and reasons).</li>
+<li>Store a small sample of provenance spans (for example, 5–20 key Markdown spans mapped to DOM selectors).</li>
+<li>Keep full DOM snapshots optional and gated behind debug flags or only for failures.</li>
+</ul>
+<p>This gives you debuggability without turning your pipeline into a data warehouse. You can also sample evidence packets by failure type; for example, wrong-route failures can get more provenance detail than minor boilerplate issues.</p>
+
+<h2>Q6) What about cookie banners and consent dialogs?</h2>
+<p>Cookie banners and consent dialogs are usually boilerplate: they are repeated, low-signal, and often appear above or inside the same layout containers as the main content. The pipeline should exclude them from main content selection using explicit chrome exclusion rules. However, there is a second scenario: sometimes consent is required to access the actual content, not just to show a banner. In that case, you need a deterministic consent policy. That policy might include:</p>
+<ul>
+<li>applying a known consent state (if your environment supports it),</li>
+<li>using a consistent cookie or session approach,</li>
+<li>or falling back to a “consent required” extraction mode that still validates output quality.</li>
+</ul>
+<p>The key is determinism: do not let consent state vary from run to run, because that will create unstable Markdown and unstable retrieval. Treat consent as a controlled input to the pipeline, not an incidental UI element.</p>
+
+<h2>Q7) How do I handle localization?</h2>
+<p>Localization affects both readiness and validation. The same page in different languages can have different heading text, different content density, and different template anchors. To handle localization:</p>
+<ul>
+<li>Set locale and timezone consistently in the renderer so the DOM you extract matches your expected language.</li>
+<li>Validate language signals; for example, check that expected localized headings exist or that the extracted content matches expected language patterns.</li>
+<li>Fail closed if localization mismatches: if your required heading regex is language-specific and it does not match, treat it as wrong-route or incorrect-state extraction and retry with the correct locale policy.</li>
+</ul>
+<p>This prevents subtle failures where readiness passes because some content exists, but the content is in the wrong language, which can silently degrade retrieval quality and citation correctness.</p>
+
+<h2>Q8) Is Playwright always the best renderer?</h2>
+<p>Playwright is a strong default because it is reliable, scriptable, and supports deterministic browser automation. But it is not the core of the solution. The core is the readiness definition and deterministic conversion rules. Any renderer can work if you can:</p>
+<ul>
+<li>execute JavaScript reliably,</li>
+<li>query the DOM at readiness time,</li>
+<li>and measure stability, or otherwise confirm content completion.</li>
+</ul>
+<p>So the “best renderer” depends on your operational constraints (cost, scaling, environment isolation, anti-bot handling). If you already have a managed rendering service, you can still apply the same pipeline logic: readiness contract, deterministic selection, deterministic conversion, and validation with evidence packets.</p>
+
+<h2>Q9) How do I measure whether this improves retrieval?</h2>
+<p>You measure retrieval improvement by running an offline evaluation that compares your pipeline variants. A typical approach:</p>
+<ul>
+<li>Build a labeled set of queries and expected relevant passages, or expected citations.</li>
+<li>Run two ingestion pipelines: static-only versus static plus JS fallback, or old versus new readiness and selection policies.</li>
+<li>Measure precision@k, recall@k, and/or citation correctness: did the retrieved chunk actually contain the answerable passage?</li>
+</ul>
+<p>Your validation metrics (boilerplate ratio, pass or fail reasons, stability score) should correlate with retrieval outcomes. If they do not, it means your validation thresholds are not aligned with retrieval quality. The goal is not just more successful extractions, but more correct extractions that improve answer quality.</p>
+
+<h2>Q10) What if the page content loads only after scrolling?</h2>
+<p>Then you need scroll readiness escalation. Many pages load the first screen quickly but defer the rest using intersection observers or infinite scroll. A robust strategy is:</p>
+<ul>
+<li>Start with initial readiness (selector plus minimum text threshold).</li>
+<li>If validation later detects missing expected subsections, or too few headings or paragraphs, escalate to scroll.</li>
+<li>Scroll in increments while tracking the main container’s text length, or a hash.</li>
+<li>Pass scroll readiness when the text length stops increasing for a stability window.</li>
+</ul>
+<p>This prevents partial ingestion where the pipeline extracts only the first screen. It also avoids over-scrolling into irrelevant content by tying scroll behavior to readiness and validation signals.</p>
+
+<h2>Q11) How do I avoid rate limits?</h2>
+<p>Rendering increases load on target sites and your infrastructure, so you must treat it as a conditional fallback. Practical controls:</p>
+<ul>
+<li>Use concurrency limits, especially for rendering workers.</li>
+<li>Apply backoff and retry policies for transient failures.</li>
+<li>Cache results for repeated URLs and avoid re-rendering unchanged pages.</li>
+<li>Keep render_rate low by using content presence detectors and strict validation.</li>
+</ul>
+<p>Also consider domain-level scheduling: render heavy pages in controlled batches rather than mixing them with lightweight pages at random concurrency. The goal is to reduce both external pressure (rate limits and anti-bot responses) and internal pressure (worker saturation).</p>
+
+<h2>Q12) Can I reuse the same pipeline for both RAG and citation-ready crawling?</h2>
+<p>Yes. The conversion and validation steps are shared because both RAG ingestion and citation-ready crawling depend on extracting the right content with stable structure. The difference is emphasis:</p>
+<ul>
+<li>For RAG, you emphasize retrieval-grade cleanliness (boilerplate ratio, chunk stability, structure sanity).</li>
+<li>For citation-ready crawling, you emphasize provenance and evidence packets so citations can be verified against extracted spans.</li>
+</ul>
+<p>In practice, you keep the same pipeline but adjust validation thresholds and evidence detail:</p>
+<ul>
+<li>RAG might store fewer provenance spans per success.</li>
+<li>Citation-ready crawling stores more provenance and enforces stricter wrong-route detection and evidence mapping.</li>
+</ul>
+
+<h2>22. Conclusion</h2>
+<p>Dynamic websites break naive “HTML to Markdown” pipelines because the content you want often doesn’t exist until JavaScript runs. The initial HTML is frequently a shell: navigation scaffolding, placeholders, and layout wrappers that get replaced or hydrated later. If you convert that shell, you don’t just get less text—you get the wrong page state, which causes empty/partial extractions, wrong-route content, and boilerplate-heavy Markdown.</p>
+<p>The fix is not just rendering; it’s rendering with a defined content readiness contract. Instead of waiting a fixed time, you wait for measurable conditions that indicate the main content is present and stable. Then you apply deterministic DOM selection and deterministic Markdown conversion rules so the same logical content produces consistent structure and chunk boundaries across runs.</p>
+<p>Finally, measurable validation and evidence packets turn this from a fragile craft into an engineering system. Validation detects empty outputs, excessive boilerplate, wrong-route mismatches, and structural anomalies, and it fails closed (retry or mark unextractable) rather than silently ingesting bad data. Evidence packets provide provenance for debugging, so extraction failures become actionable fixes instead of guesswork.</p>
+<p>When you implement these pieces together, you get Markdown that is stable, retrieval-grade, and debuggable—exactly what LLM crawlers and RAG pipelines need to retrieve the right passages and support citations with confidence.</p>
+
+<h2>23) References</h2>
+<ul>
+<li>Playwright documentation (browser automation, page lifecycle, and waiting strategies): https://playwright.dev/docs/intro</li>
+<li>Playwright documentation (page readiness patterns via page.waitFor* and navigation timing): https://playwright.dev/docs/api/class-page</li>
+<li>MDN Web Docs (SSR vs CSR background and client-side rendering concepts): https://developer.mozilla.org/en-US/docs/Learn/Tools_and_testing/Client-side_JavaScript_frameworks</li>
+<li>MDN Web Docs (hydration concept in the context of client-side frameworks): https://developer.mozilla.org/en-US/docs/Glossary/Hydration</li>
+<li>React documentation (hydration overview): https://react.dev/reference/react-dom/client/hydrateRoot</li>
+<li>Next.js documentation (SSR vs SSG vs CSR and rendering modes): https://nextjs.org/docs/app/building-your-application/rendering</li>
+<li>Retrieval evaluation (precision@k): https://en.wikipedia.org/wiki/Information_retrieval#Precision_and_recall</li>
+<li>Citation correctness / groundedness evaluation (general concept of faithfulness/groundedness): https://arxiv.org/abs/2005.11401</li>
+</ul>
+</Article>
