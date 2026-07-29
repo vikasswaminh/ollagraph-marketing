@@ -1,0 +1,590 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is semantic structure in HTML-to-Markdown conversion?", a: "Semantic structure is the document meaning carried by headings, lists, tables, and code blocks. Preserving it means the converted Markdown still shows how ideas relate, not just which words appear. That structure helps chunkers, retrievers, and models interpret the content correctly." },
+  { q: "Why isn't readable Markdown enough for LLM pipelines?", a: "Readable text can still be structurally wrong. If headings are flattened or lists and tables are merged into paragraphs, downstream systems lose the boundaries they depend on for chunking and retrieval. The result is weaker context selection and less reliable answers." },
+  { q: "How should headings be handled during conversion?", a: "Map heading levels deterministically so hierarchy is preserved, such as h2 to ## and h3 to ###. Do not replace headings with bold text or remove them, because the model needs section boundaries to scope content. Stable heading structure also makes provenance easier to trace." },
+  { q: "What are the highest-risk elements to preserve?", a: "Lists and tables are the most fragile because they encode relationships, not just text. Lists need item continuity and clear ordering, while tables need intact row and column boundaries with no cell merging. If either breaks, facts can be misread or mixed together." },
+  { q: "How should code blocks be represented?", a: "Keep code in fenced blocks and preserve line breaks exactly. Code often depends on indentation, punctuation, and whitespace, so flattening it can change meaning. If a language is known, include it in the fence to improve downstream handling." },
+  { q: "How do I know the conversion is safe for ingestion?", a: "Use structure-aware validation, not just visual checks. Track signals such as heading depth variance, list continuity, table cell mismatch rate, and code fence coverage. If those checks fail, reject or reprocess the document instead of silently flattening it." },
+];
+---
+<Article
+  title="HTML to Markdown for LLMs: Preserve Semantic Structure"
+  description="Convert HTML into Markdown that keeps headings, lists, tables, and code intact so chunking and retrieval stay accurate."
+  date="2026-07-29"
+  readingTime={23}
+  tags={["html", "markdown", "llms", "rag", "validation"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Most “HTML to Markdown” converters produce readable text, but LLM pipelines need something stricter: preserved semantic structure. If your conversion flattens headings, mangles lists, or destroys table row/column boundaries, you don’t just lose formatting—you break chunk boundaries, retrieval relevance, and the model’s ability to answer with the right context.</p>
+<p>This guide explains how to convert HTML into LLM-ready Markdown while keeping meaning intact. You’ll get a structure-first architecture, concrete formatting rules for headings/lists/tables/code, a structure-validation decision tree, and a validator output example you can wire into your ingestion pipeline.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Preserve semantic blocks (sections, lists, tables, code) as first-class units; don’t treat conversion as tag stripping.</li>
+  <li>Use deterministic Markdown representations so chunking and retrieval behave consistently.</li>
+  <li>Tables and lists are the highest-risk structures; validate them with targeted invariants.</li>
+  <li>Add structure-aware quality signals (heading depth variance, list continuity, table cell mismatch rate, code fence coverage).</li>
+  <li>Evaluate end-to-end: conversion quality should correlate with retrieval accuracy, not just token savings.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>Teams often judge HTML→Markdown conversion by “does it look readable?” For LLM ingestion, that’s the wrong metric.</p>
+<p>When semantic structure is lost, the model receives a document whose internal logic no longer matches the source. The symptoms show up later:</p>
+<ul>
+  <li>Chunkers split in the wrong places because headings are missing or flattened.</li>
+  <li>Retrieval returns irrelevant passages because list items and table rows were merged.</li>
+  <li>Answers cite the wrong section because provenance-friendly structure wasn’t preserved.</li>
+</ul>
+<p>The root cause is usually the same: conversion that focuses on removing tags instead of preserving meaning.</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Early “HTML to text” approaches were built for humans: remove tags, keep paragraphs, ignore layout. That works for reading because humans can infer structure from typography, spacing, and visual cues—even when the underlying markup is messy. A simple tag-stripper can still produce something a person can skim.</p>
+<p>RAG changed the requirement. In retrieval-augmented generation, the system doesn’t “read” the document the way a human does. It chunks the content into units, embeds those units, and retrieves the most relevant chunks for a query. Chunking and retrieval reward stable boundaries and consistent formatting. If headings disappear, chunkers split in the wrong places. If lists are flattened, the model loses the “this is a set of steps” relationship. If tables are flattened, row/column facts become mixed tokens that are hard to match reliably. Markdown became popular because it can represent structure compactly—headings, lists, code fences, and tables—without the tag overhead of HTML.</p>
+<p>Now agentic systems add another constraint: tool outputs must be auditable and citeable. Agents often call tools (search, extraction, conversion) and then use the results to answer. If your Markdown representation doesn’t preserve structure, you can’t reliably map what the agent used back to the original document. That mapping matters for both trust and debugging: when an answer is wrong, you need to know which section, list item, or table row supported the claim.</p>
+<p>So the modern requirement is structure fidelity: headings, lists, tables, and code blocks must survive conversion in a deterministic, LLM-friendly form. “Deterministic” is important because ingestion pipelines are evaluated over time. If the same kind of HTML sometimes becomes a clean Markdown table and other times becomes a flattened paragraph, your chunking and retrieval behavior becomes inconsistent, and evaluation becomes noisy. Structure fidelity turns conversion from a best-effort formatting step into a predictable semantic transformation that downstream systems can depend on.</p>
+
+<h2>3. Definition: Semantic Structure in LLM-Ready Markdown</h2>
+<p>Semantic structure is the set of document relationships that carry meaning beyond raw words. It’s not just “what words are present,” but “how those words relate.” In HTML, those relationships are expressed through tags and layout patterns. In LLM ingestion, those relationships must be preserved in the converted representation so chunkers, retrievers, and the model itself can interpret the document correctly.</p>
+<p>In practice, for HTML→Markdown conversion, semantic structure includes:</p>
+
+<h3>Section hierarchy (headings and nesting)</h3>
+<p>Headings define scope. They tell the system where a topic starts and ends, and they provide anchors for hierarchical chunking. When heading levels are preserved (e.g., h2 becomes ##), chunkers can keep related content together and retrieval can target the correct section. When headings are flattened into bold text or removed, the document becomes a sequence of paragraphs with no reliable boundaries.</p>
+
+<h3>Enumerations (ordered/unordered lists with item continuity)</h3>
+<p>Lists define “this is a set” or “this is a sequence.” That matters because many user questions are inherently structural: “What are the steps?”, “Which items are required?”, “What are the options?” If list items are converted into separate paragraphs without list markers, the model may still guess the meaning, but it loses the explicit enumeration relationship that improves reliability.</p>
+
+<h3>Tabular facts (headers, row/column alignment, cell boundaries)</h3>
+<p>Tables encode facts with coordinates: a value belongs to a specific row and column. Flattening tables destroys those coordinates and turns them into a bag of tokens. LLMs can struggle to answer questions like “What is the timeout_ms value?” because the row boundary is gone. Preserving table structure keeps row/column facts queryable and reduces the chance that retrieval matches across unrelated cells.</p>
+
+<h3>Code semantics (fenced blocks with language hints and preserved indentation)</h3>
+<p>Code blocks are not just text; they represent instructions, configuration, or logic. Fenced code blocks preserve boundaries so chunkers don’t mix code with surrounding prose. Language hints (when available) help the model interpret the snippet correctly. If code is emitted as plain paragraphs, indentation and structure can degrade, and the model may misread the snippet’s intent.</p>
+
+<h3>Link semantics (anchor text paired with destination URLs)</h3>
+<p>Links often carry meaning: the anchor text is a label, and the URL is the destination. Preserving [anchor](url) keeps that relationship intact. This is especially important for citation workflows and for systems that extract sources or follow references.</p>
+
+<p>LLM-ready Markdown preserves these relationships so downstream systems can chunk, retrieve, and cite reliably. The practical outcome is that the converted document behaves like the original document’s structure: sections remain sections, lists remain enumerations, tables remain facts, and code remains code. That structural fidelity is what turns “clean Markdown” into “LLM-ready meaning.”</p>
+
+<h2>4. Architecture: Structure-First Conversion</h2>
+
+<p>Structure-first conversion treats HTML as a tree of semantic candidates, then emits Markdown using deterministic rules.</p>
+<p>At a high level:</p>
+<ol>
+  <li>Parse and normalize the DOM (including rendered DOM when needed).</li>
+  <li>Identify semantic blocks (headings, lists, tables, code, and “content regions”).</li>
+  <li>Apply representation rules per block type.</li>
+  <li>Validate structure invariants (before returning Markdown).</li>
+  <li>Emit Markdown plus optional quality signals for your pipeline.</li>
+</ol>
+
+<h3>What “semantic structure” means operationally</h3>
+<p>Semantic structure isn’t vague. It’s measurable relationships your converter must keep.</p>
+<p>Operationally, think of the output as a sequence of blocks with stable boundaries:</p>
+<ul>
+  <li>Heading blocks define scope.</li>
+  <li>List blocks define enumerations.</li>
+  <li>Table blocks define structured facts.</li>
+  <li>Code blocks define executable or declarative snippets.</li>
+</ul>
+<p>If your converter merges blocks (for example, a list item into a paragraph, or a table row into surrounding text), you lose the relationships that make chunking and retrieval work.</p>
+
+<h3>Why deterministic formatting matters</h3>
+<p>LLM pipelines often assume that “the same kind of content looks the same” across pages.</p>
+<p>If your converter sometimes emits tables as Markdown tables and other times emits them as paragraphs, your chunker and retriever see inconsistent token patterns. That increases embedding variance and makes evaluation harder.</p>
+<p>Determinism doesn’t mean “always the same representation.” It means “the same input structure yields the same output representation under the same rules.”</p>
+
+<h2>5. Components &amp; Workflow</h2>
+
+<h3>1) DOM acquisition (static vs rendered)</h3>
+<p>If the page is client-rendered, static HTML may contain placeholders instead of content. In those cases, you need a rendered DOM snapshot.</p>
+
+<h3>2) Semantic block detection</h3>
+<p>Block detection should be conservative: preserve a structure when you’re confident, and fall back to plain paragraphs when you’re not.</p>
+<p>Common patterns that break naive converters:</p>
+<ul>
+  <li>Headings implemented as custom components (e.g., div with role="heading").</li>
+  <li>Lists rendered with nested containers (e.g., ul/ol wrappers plus li-like children).</li>
+  <li>Tables with header spans (rowspan/colspan) that require careful alignment.</li>
+</ul>
+<p>When detection is uncertain, prefer a structured fallback over a flattened paragraph.</p>
+
+<h3>3) Deterministic Markdown emission</h3>
+<p>Representation rules we recommend:</p>
+<ul>
+  <li>Headings: map HTML heading levels to Markdown #/##/### consistently.</li>
+  <li>Lists: emit one Markdown list item per logical HTML item.</li>
+  <li>Tables: emit Markdown tables only when row/column alignment is stable; otherwise emit a structured fallback (e.g., header row + row-per-line).</li>
+  <li>Code: emit fenced blocks with language hints when available.</li>
+</ul>
+<p>Additional emission rules that preserve meaning:</p>
+<ul>
+  <li>Links: emit [anchor](url) and keep surrounding punctuation outside the link when possible.</li>
+  <li>Images: if an image has meaningful alt text, emit it as a short caption; otherwise omit it to avoid token waste.</li>
+  <li>Callouts/notes: treat them as their own block so they don’t blend into adjacent sections.</li>
+</ul>
+
+<h3>4) Structure validation (cheap invariants)</h3>
+<p>Validate invariants that catch the most damaging failures:</p>
+<ul>
+  <li>Heading depth consistency: heading levels should not jump wildly within a section.</li>
+  <li>List continuity: list item count in Markdown should be within a tolerance of detected HTML list items.</li>
+  <li>Table integrity: number of cells per row should be consistent with the header width.</li>
+  <li>Code fences: every code block should be fenced and non-empty.</li>
+</ul>
+<p>If an invariant fails, don’t silently “best effort” the output. Trigger a retry or a fallback.</p>
+
+<h3>5) Quality signals for pipeline decisions</h3>
+<p>Return metrics your pipeline can use to decide whether to accept, retry, or fall back:</p>
+<ul>
+  <li>heading_depth_variance</li>
+  <li>list_item_drop_rate</li>
+  <li>table_cell_mismatch_rate</li>
+  <li>code_fence_coverage</li>
+</ul>
+<p>Example usage:</p>
+<ul>
+  <li>If table_cell_mismatch_rate is high, switch to a structured fallback representation.</li>
+  <li>If heading_depth_variance is extreme, re-run extraction with stricter heading detection.</li>
+  <li>If code_fence_coverage is low, re-emit code blocks with fenced emission.</li>
+</ul>
+
+<h2>6. Configuration / Setup</h2>
+<p>If you’re using an HTML→Markdown API in production, treat conversion as a contract step in your ingestion pipeline:</p>
+<ul>
+  <li>Prioritize structure preservation over aggressive boilerplate removal.</li>
+  <li>Enable rendered DOM capture for pages where content is populated after load.</li>
+  <li>Define validation thresholds for the invariants above.</li>
+</ul>
+<p>If you’re implementing your own converter, the minimum viable setup is:</p>
+<ul>
+  <li>A DOM parser (and a renderer when needed).</li>
+  <li>A semantic block classifier (rules-based or ML-assisted).</li>
+  <li>A Markdown emitter with deterministic formatting.</li>
+  <li>A validator that checks structure invariants.</li>
+</ul>
+
+<h2>7. Examples</h2>
+
+<h3>Example 1: Heading hierarchy that survives chunking</h3>
+<p>Bad conversion flattens headings into bold text or removes them entirely. That causes chunkers to split mid-section.</p>
+<p>Good conversion emits Markdown headings that preserve hierarchy:</p>
+<pre><code># Product Overview
+
+## Security Model
+
+### Data Flow</code></pre>
+<p>Practical tip: keep heading levels monotonic within a section. If you see ## followed immediately by #### without an intervening ###, it’s often a sign that the converter is misclassifying nested headings.</p>
+
+<h3>Example 2: Lists that remain enumerations</h3>
+<p>Bad conversion turns list items into separate paragraphs with no list context.</p>
+<p>Good conversion keeps list semantics:</p>
+<pre><code>- Install the agent
+- Configure the tool permissions
+- Run the evaluation harness</code></pre>
+<p>Practical tip: don’t “reflow” list items into paragraphs. If you need extra explanatory text, keep it inside the list item (indented) rather than outside the list.</p>
+
+<h3>Example 3: Tables that remain facts</h3>
+<p>Bad conversion flattens a table into a paragraph like “Name Value Description …” which destroys row/column alignment.</p>
+<p>Good conversion preserves table structure:</p>
+<pre><code>| Field | Type | Notes |
+| --- | --- | --- |
+| endpoint | string | Conversion API URL |
+| timeout_ms | integer | Request timeout |</code></pre>
+<p>Practical tip: preserve header semantics. If the table has a header row, ensure it becomes the Markdown header row so row cells remain interpretable.</p>
+
+<h3>Example 4: Before/after table conversion (what breaks retrieval)</h3>
+<p>Bad (flattened):</p>
+<pre><code>Field Type Notes endpoint string Conversion API URL timeout_ms integer Request timeout</code></pre>
+<p>Good (structured):</p>
+<pre><code>| Field | Type | Notes |
+| --- | --- | --- |
+| endpoint | string | Conversion API URL |
+| timeout_ms | integer | Request timeout |</code></pre>
+<p>In retrieval, queries like “what is the timeout_ms default?” match the correct row instead of matching across unrelated cells.</p>
+<p>Practical tip: when you can’t emit a Markdown table safely, emit a row-per-line structure with explicit field labels. That keeps facts queryable even without perfect table formatting.</p>
+
+<h2>8. Performance &amp; Benchmarks</h2>
+<p>Structure preservation has a cost: you may keep more formatting tokens than a “flatten everything” approach.</p>
+<p>The right benchmark measures downstream retrieval quality.</p>
+<p>Benchmark methodology (structure-first):</p>
+<ul>
+  <li>Select a page set with diverse structures (docs, blogs, pricing tables, code-heavy pages).</li>
+  <li>Convert each page with two strategies: structure-preserving vs flattening.</li>
+  <li>Chunk both outputs with the same chunker.</li>
+  <li>Run a fixed query set and measure retrieval accuracy.</li>
+</ul>
+<p>To make this reproducible, define:</p>
+
+<ul>
+  <li>A query set that targets structure (e.g., “which section defines X?”, “what is the value in row Y?”, “list the steps”).</li>
+  <li>A chunker configuration that uses headings and list boundaries.</li>
+  <li>A scoring method (exact match, citation match, or retrieval@k).</li>
+</ul>
+<p><strong>Mini-benchmark template (drop-in)</strong></p>
+<pre><code>Strategy        Avg tokens   Heading recall   List continuity   Table integrity   Retrieval@5
+Flattening      1.00x        0.72             0.81              0.55              0.41
+Structure-first 1.18x        0.96             0.94              0.98              0.63</code></pre>
+<p>Even if your numbers differ, the pattern you’re validating is the same: structure fidelity improves retrieval.</p>
+<p><strong>Structure Validation Decision Tree (original artifact)</strong></p>
+<pre><code>flowchart TD
+  A[Start: HTML→Markdown conversion] --&gt; B&#123;Headings present?&#125;
+  B -- No --&gt; B1[Retry with heading detection enabled]
+  B -- Yes --&gt; C&#123;List item continuity OK?&#125;
+  C -- No --&gt; C1[Retry with list container preservation]
+  C -- Yes --&gt; D&#123;Table integrity OK?&#125;
+  D -- No --&gt; D1[Emit structured table fallback]
+  D -- Yes --&gt; E&#123;Code fences complete?&#125;
+  E -- No --&gt; E1[Re-render code blocks with fenced emission]
+  E -- Yes --&gt; F[Accept Markdown + store structure signals]</code></pre>
+<p><strong>Sample validator output (original artifact)</strong></p>
+<pre><code>&#123;
+  "heading_depth_variance": 1.2,
+  "list_item_drop_rate": 0.03,
+  "table_cell_mismatch_rate": 0.00,
+  "code_fence_coverage": 1.0,
+  "invariants": &#123;
+    "headings_present": true,
+    "list_continuity_ok": true,
+    "table_integrity_ok": true,
+    "code_fences_complete": true
+  &#125;,
+  "decision": "accept",
+  "notes": "All structure invariants passed; emitting deterministic Markdown."
+&#125;</code></pre>
+
+<h2>9. Security Considerations</h2>
+<p>HTML→Markdown conversion is an ingestion step, so it inherits the security risks of web content processing. The goal is to preserve meaning while preventing the converted output from becoming an attack surface for your pipeline, your storage layer, or your downstream renderers.</p>
+
+<h3>Threat model: what can go wrong</h3>
+<ul>
+  <li>Script injection: inline scripts, event handlers (like onclick), or script URLs embedded in attributes.</li>
+  <li>Dangerous links: javascript: URLs, malformed redirects, or links that trigger unexpected behavior in downstream tooling.</li>
+  <li>HTML passthrough: if your converter emits raw HTML inside Markdown, any consumer that renders Markdown as HTML can execute or display unsafe content.</li>
+  <li>Renderer escape: if you use a headless browser to capture rendered DOM, the page can attempt to exploit the renderer environment.</li>
+  <li>Prompt injection via content: the page content can include instructions designed to manipulate your agent or model.</li>
+</ul>
+
+<h3>Sanitization rules that preserve structure safely</h3>
+<ul>
+  <li>Strip scripts and event handlers at the DOM level before conversion.</li>
+  <li>Remove or neutralize style attributes that can be used for obfuscation (keep only what you need for semantic extraction).</li>
+  <li>Do not emit raw HTML inside Markdown unless you sanitize it with a strict allowlist.</li>
+  <li>Emit links as data ([text](url)) but validate URL schemes. Allow only safe schemes (typically http and https) and drop or rewrite everything else.</li>
+  <li>For images, emit alt text/captions only. Avoid preserving image URLs if your pipeline doesn’t need them.</li>
+</ul>
+
+<h3>Renderer safety (when you capture rendered DOM)</h3>
+<p>If you render pages to get the real content, treat the renderer like an untrusted execution environment:</p>
+<ul>
+  <li>Run the renderer in a sandbox/container with no access to internal networks.</li>
+  <li>Disable or restrict network access where possible (or restrict to the target domain).</li>
+  <li>Set strict timeouts and memory limits.</li>
+  <li>Ensure the renderer process cannot write to sensitive filesystem paths.</li>
+</ul>
+
+<h3>Prompt-injection hygiene for LLM ingestion</h3>
+<p>Preserving semantic structure can also preserve malicious instructions. Mitigate this by:</p>
+<ul>
+  <li>Separating “content” from “instructions” in your ingestion pipeline when possible (e.g., store page text as data, not as system-like directives).</li>
+  <li>Adding a lightweight classifier or heuristic that flags content containing instruction-like patterns (e.g., “ignore previous instructions”).</li>
+  <li>Logging flagged pages and optionally routing them through a stricter conversion policy.</li>
+</ul>
+
+<h3>Provenance and auditability</h3>
+<p>Structure preservation makes citations easier, but you still need audit trails:</p>
+<ul>
+  <li>Store the conversion metadata (structure signals) alongside the Markdown.</li>
+  <li>Store the source URL and the DOM snapshot identifier used for conversion.</li>
+  <li>When a validator triggers a fallback, record which fallback was used so you can debug retrieval issues later.</li>
+</ul>
+
+<h2>10. Troubleshooting</h2>
+
+<h3>Problem: Headings disappear</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>The converter is treating headings as boilerplate.</li>
+  <li>The page uses custom heading components that don’t map cleanly to h1/h2 tags.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Add rules for semantic heading detection (e.g., ARIA roles or class patterns).</li>
+  <li>Validate heading depth invariants and fail fast when headings are missing.</li>
+  <li>If headings are present but chunking still fails, check whether the converter is emitting headings as plain text (e.g., bold) instead of Markdown headings.</li>
+</ul>
+
+<h3>Problem: Tables become unreadable</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>The converter flattens tables when alignment is uncertain.</li>
+  <li>Header cells are missing or span multiple columns.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Preserve header width and emit a structured fallback when spans are complex.</li>
+  <li>Add table integrity validation (cell mismatch rate).</li>
+  <li>If you see “ragged” tables (rows with different cell counts), treat that as a hard failure and switch representations.</li>
+</ul>
+
+<h3>Problem: Lists merge into paragraphs</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>List items are interleaved with unrelated text nodes.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Emit one Markdown list item per logical HTML item.</li>
+  <li>Keep list containers intact; don’t “helpfully” reflow them.</li>
+  <li>If list items contain nested lists, ensure you preserve nesting by emitting nested Markdown lists rather than flattening.</li>
+</ul>
+
+<h2>11. Best Practices</h2>
+<p>Treat HTML→Markdown conversion as a production ingestion stage with measurable guarantees. The best practices below are designed to keep semantic structure intact while making failures observable.</p>
+
+<h3>Structure-first conversion checklist</h3>
+<ul>
+  <li>Preserve headings as Markdown headings (not bold text).</li>
+  <li>Preserve list semantics: one Markdown list item per logical HTML item.</li>
+  <li>Preserve table facts: keep header semantics and row boundaries.</li>
+  <li>Preserve code semantics: fenced code blocks with language hints when available.</li>
+  <li>Preserve link semantics: [anchor](url) with validated URL schemes.</li>
+</ul>
+
+<h3>Validation and control</h3>
+<ul>
+  <li>Run a structure validator before returning output.</li>
+  <li>Fail fast: if invariants fail, retry or fall back rather than silently emitting degraded structure.</li>
+  <li>Store structure signals (validator metrics) with the output.</li>
+  <li>Version your conversion rules and re-run conversion when rules change.</li>
+</ul>
+
+<h3>Evaluation discipline</h3>
+<ul>
+  <li>Benchmark with a query set that targets structure (section questions, list-step questions, row-value questions).</li>
+  <li>Score retrieval quality (e.g., retrieval@k or citation match), not just token savings.</li>
+  <li>Keep chunking configuration stable while you compare conversion strategies.</li>
+</ul>
+
+<h3>Operational hygiene</h3>
+<ul>
+  <li>Add dashboards for conversion health: heading recall, list continuity, table integrity, and code fence coverage.</li>
+  <li>Track conversion decisions (accept/retry/fallback) to understand where failures cluster.</li>
+  <li>Keep a small “golden set” of pages for regression testing after converter changes.</li>
+</ul>
+
+<h2>12. Common Mistakes</h2>
+<p>These mistakes are common because they look harmless in a quick manual read. They become expensive once you rely on chunking and retrieval.</p>
+
+<h3>Mistake 1: Treating conversion as “remove tags”</h3>
+<p><strong>What happens:</strong> headings become bold text, lists become paragraphs, and tables become token soup.</p>
+<p><strong>Why it hurts:</strong> chunkers lose anchors and retrievers lose row/column facts.</p>
+<p><strong>Fix:</strong> preserve semantic blocks deterministically and validate invariants.</p>
+
+<h3>Mistake 2: Flattening tables into paragraphs</h3>
+<p><strong>What happens:</strong> row boundaries disappear and header semantics are lost.</p>
+<p><strong>Why it hurts:</strong> queries that target a specific row/value match across unrelated cells.</p>
+
+<p><strong>Fix:</strong> emit Markdown tables when alignment is stable; otherwise emit a structured fallback that keeps field labels and row boundaries.</p>
+
+<h3>Mistake 3: Converting lists into plain text</h3>
+<p><strong>What happens:</strong> enumerations lose their “step” or “set” semantics.</p>
+<p><strong>Why it hurts:</strong> the model can’t reliably reason over ordered steps or grouped items.</p>
+<p><strong>Fix:</strong> keep list containers intact and emit nested lists when nesting exists.</p>
+
+<h3>Mistake 4: Heading level drift</h3>
+<p><strong>What happens:</strong> the converter emits inconsistent heading levels (e.g., ## jumping to ####).</p>
+<p><strong>Why it hurts:</strong> hierarchical chunking becomes unstable and retrieval becomes noisier.</p>
+<p><strong>Fix:</strong> validate heading depth variance and enforce monotonicity within sections.</p>
+
+<h3>Mistake 5: No quality signals</h3>
+<p><strong>What happens:</strong> you return Markdown even when structure is broken.</p>
+<p><strong>Why it hurts:</strong> you can’t retry intelligently, and debugging becomes guesswork.</p>
+<p><strong>Fix:</strong> return structure-aware metrics and record accept/retry/fallback decisions.</p>
+
+<h2>13. Alternatives &amp; Comparison</h2>
+<p>If you don’t preserve semantic structure, you can still get “some text,” but you’ll pay later in retrieval errors, hallucinations, and expensive retries.</p>
+
+<h3>Alternative 1: Plain text extraction</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Fast and simple.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Loses hierarchy (headings) and structured facts (tables).</li>
+  <li>Lists lose enumeration semantics.</li>
+</ul>
+<p><strong>Best for:</strong></p>
+<ul>
+  <li>When you only need raw narrative text and don’t rely on structure-aware chunking.</li>
+</ul>
+
+<h3>Alternative 2: HTML passthrough</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Preserves structure implicitly.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Tag noise increases tokens.</li>
+  <li>Many LLMs and chunkers struggle with raw HTML.</li>
+  <li>You still need a parser to interpret structure.</li>
+</ul>
+<p><strong>Best for:</strong></p>
+<ul>
+  <li>When you have a custom downstream parser that can interpret HTML reliably.</li>
+</ul>
+
+<h3>Alternative 3: Generic HTML-to-text libraries</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Quick to integrate.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Inconsistent formatting across sites.</li>
+  <li>Tables and lists are often flattened or partially preserved.</li>
+</ul>
+<p><strong>Best for:</strong></p>
+<ul>
+  <li>Prototyping, not production ingestion.</li>
+</ul>
+
+<h3>Why structure-preserving Markdown usually wins</h3>
+<p>Structure-preserving Markdown is a practical middle ground: it keeps semantic blocks in a compact, deterministic representation that chunkers and retrievers can use directly.</p>
+<p>The deciding factor is not “Markdown vs something else.” It’s whether your representation preserves semantic relationships and whether you validate them.</p>
+
+<h2>14. Enterprise / Cloud Deployment</h2>
+<p>In enterprise settings, HTML→Markdown conversion should behave like a reliable data pipeline stage.</p>
+
+<h3>Reference pipeline design</h3>
+<ul>
+  <li>Fetch/render: acquire DOM snapshot (static or rendered).</li>
+  <li>Convert: emit deterministic Markdown using structure-first rules.</li>
+  <li>Validate: run structure invariants and compute structure signals.</li>
+  <li>Decide: accept, retry, or fall back based on thresholds.</li>
+  <li>Store: persist Markdown, structure signals, and provenance metadata.</li>
+  <li>Index: chunk and embed using stable chunking rules.</li>
+</ul>
+
+<h3>Reliability and SLAs</h3>
+<ul>
+  <li>Define SLAs for conversion latency and failure rates.</li>
+  <li>Track conversion decision rates (how often you accept vs retry vs fallback).</li>
+  <li>Use circuit breakers for repeated failures on specific domains or templates.</li>
+</ul>
+
+<h3>Observability</h3>
+<ul>
+  <li>Metrics: heading recall, list continuity, table integrity, code fence coverage.</li>
+  <li>Logs: include source URL, DOM snapshot id, validator output, and decision.</li>
+  <li>Tracing: correlate conversion runs with downstream retrieval quality regressions.</li>
+</ul>
+
+<h3>Scaling strategy</h3>
+<ul>
+  <li>Run conversion workers horizontally.</li>
+  <li>Cache DOM snapshots when reprocessing is needed.</li>
+  <li>Use queue-based backpressure so ingestion doesn’t overwhelm downstream indexing.</li>
+</ul>
+
+<h3>Governance and compliance</h3>
+<ul>
+  <li>Ensure sanitization policies meet your security requirements.</li>
+  <li>Maintain an allowlist/denylist policy for domains and content types.</li>
+  <li>Keep audit logs for provenance and conversion decisions.</li>
+</ul>
+
+<p>If you treat conversion as a governed pipeline stage (not a one-off script), you can iterate on structure rules safely and keep retrieval quality stable over time.</p>
+
+<h2>15. FAQs</h2>
+
+<h3>1. What’s the difference between “clean Markdown” and “semantic structure preservation”?</h3>
+<p>Clean Markdown is mostly about removing tag noise so the text is easier to read: fewer HTML artifacts, less clutter, and more consistent formatting. Semantic structure preservation goes further: it keeps the relationships between parts of the document that carry meaning. For LLM ingestion, those relationships matter because chunkers and retrievers rely on them. Headings define scope, lists define enumerations, and tables define structured facts. If you only clean Markdown, you might still flatten headings into bold text, merge list items into paragraphs, or destroy table row boundaries—so the model sees content, but not the document logic that tells it what belongs together.</p>
+
+<h3>2. Should I always preserve tables as Markdown tables?</h3>
+<p>Not always. The rule is: preserve table facts in a way that keeps row/column meaning interpretable. If the table’s alignment is stable (consistent header width, predictable row cell counts), emitting a Markdown table is ideal because it preserves structure compactly and is easy for chunkers to treat as a unit. But real-world HTML tables often include rowspan/colspan, nested tables, or irregular rows. In those cases, forcing a Markdown table can create a “lying” representation—cells shift, headers don’t match rows, and the model learns the wrong mapping. The safer approach is a structured fallback that keeps field labels and row boundaries (for example, header + row-per-line with explicit field names). The goal is not to preserve the visual table; it’s to preserve the factual relationships.</p>
+
+<h3>3. Does preserving structure increase token usage?</h3>
+<p>It can, but token usage is not the primary objective. Structure-preserving conversion typically keeps more formatting tokens (headings, list markers, table separators, code fences). However, those tokens often reduce downstream cost by improving retrieval relevance and reducing retries. When structure is lost, the system may retrieve the wrong chunk, require additional tool calls, or produce answers that sound plausible but cite the wrong section. That “hidden cost” usually outweighs the extra tokens from better structure. In practice, you tune token budgets using validation thresholds: accept structure-preserving output when invariants pass, and fall back or retry when structure quality is poor.</p>
+
+<h3>4. How do I know if my converter is failing?</h3>
+<p>You detect failure using structure-aware invariants—measurable checks that correlate with downstream retrieval quality. Examples include:</p>
+<ul>
+  <li>Heading depth consistency: headings should exist and not jump erratically within a section.</li>
+  <li>List item continuity: list items should remain list items; item counts should be close to what the DOM indicates.</li>
+  <li>Table cell mismatch rate: rows should have consistent cell counts relative to the header width.</li>
+  <li>Code fence coverage: code blocks should be fenced and non-empty.</li>
+</ul>
+<p>When these signals cross thresholds, you treat the conversion as degraded. The key is to avoid “silent failure.” Instead of returning best-effort Markdown that looks okay to a human, you trigger a retry (different extraction settings) or a fallback representation (structured table fallback, nested list emission, etc.). This makes ingestion predictable and debuggable.</p>
+
+<h3>5. Can I do this without an API?</h3>
+<p>Yes, but you need the same ingredients that an API would provide. At minimum, you need:</p>
+
+<ul>
+  <li><strong>Semantic block detection:</strong> identify headings, lists, tables, and code blocks reliably (including custom components and rendered DOM).</li>
+  <li><strong>Deterministic Markdown emission:</strong> apply consistent formatting rules so the same structure yields the same representation.</li>
+  <li><strong>Validation:</strong> run invariants before returning output and decide accept/retry/fallback.</li>
+</ul>
+<p>Generic tag stripping won’t reliably preserve meaning across diverse websites because it doesn’t understand structure relationships. You can build it yourself, but you’ll still end up implementing the same core pipeline: detect → emit deterministically → validate.</p>
+
+<h2>6. What about client-rendered pages?</h2>
+<p>Client-rendered pages are a common trap. Static HTML often contains shells, placeholders, or empty containers, while the real content is populated after JavaScript runs. If you convert static HTML, you may preserve the wrong structure (or preserve structure around placeholders instead of real content). The fix is to capture a rendered DOM snapshot (headless browser or equivalent) before conversion, then run the same structure-first conversion and validation steps. After rendering, validate semantic blocks again—because even rendered DOM can include dynamic widgets, repeated UI chrome, or partially loaded content.</p>
+
+<h2>7. How does this help citations?</h2>
+<p>Citations work best when you can map an extracted passage back to a specific part of the source document. Semantic structure preservation makes that mapping easier because the document’s “units” remain intact: a section stays a section, a list stays a list, and a table row stays a row. When the converter flattens everything, you lose the boundaries that define what a claim refers to. With structure preserved, you can attach provenance metadata at the block level (e.g., “this paragraph came from section X,” “this row came from table Y,” “this list item came from bullet Z”). That improves both citation correctness and debugging when users report an answer that cites the wrong place.</p>
+
+<h2>8. What’s the fastest way to improve conversion quality?</h2>
+<p>Start with the highest-risk structures: tables and lists. These are the most likely to be flattened or misrepresented by naive converters, and they directly affect factual retrieval. Add targeted tests for:</p>
+<ul>
+  <li><strong>Table integrity:</strong> header semantics, consistent row cell counts, and safe fallbacks when alignment is unstable.</li>
+  <li><strong>List continuity:</strong> one list item per logical item, correct nesting, and no reflow into paragraphs.</li>
+</ul>
+<p>Once those are stable, expand validation to headings and code blocks. This yields the biggest improvement per engineering hour because you’re fixing the structures that most strongly determine whether retrieval returns the right facts.</p>
+
+<h2>9. Should I chunk before or after conversion?</h2>
+<p>Chunk after conversion. Chunking HTML directly usually produces tag noise, inconsistent boundaries, and unstable representations across pages. When you convert first, your chunker sees a consistent, structure-preserving Markdown representation: headings become anchors, lists become enumerations, and tables become structured facts. That stability improves chunk boundary quality and makes retrieval more predictable. If you chunk HTML first, you often end up with chunks that mix unrelated UI elements or split inside semantic units, which increases retrieval error.</p>
+
+<h2>10. Is Markdown always the best intermediate format?</h2>
+<p>Markdown is a strong default because it preserves structure compactly and is widely supported by tooling. But the real requirement is not “Markdown specifically”—it’s deterministic semantic block representation. If your pipeline uses a different intermediate format (JSON blocks, XML, custom AST), the same principles apply: preserve semantic relationships deterministically and validate structure invariants. Markdown is just the most convenient representation for many teams because it’s human-readable, compact, and chunker-friendly.</p>
+
+<h2>11. How should I handle “tabs” and accordions in HTML?</h2>
+<p>Tabs and accordions represent multiple content panels that users mentally treat as separate sections. If you flatten them, chunkers may mix content from different panels into one retrieval unit, and the model may answer using the wrong panel. The best approach is to treat each panel as its own semantic section:</p>
+<ul>
+  <li>Emit a heading for the tab/accordion label.</li>
+  <li>Place the panel content under that heading.</li>
+  <li>Preserve the panel boundaries so chunking and retrieval can target the correct panel.</li>
+</ul>
+<p>This keeps the user’s mental model aligned with the document structure your LLM sees.</p>
+
+<h2>12. What’s the best way to validate structure without human review?</h2>
+<p>Use measurable invariants first, then validate with a small structure-targeted query set. Invariants include heading presence and depth variance, list item continuity, table cell mismatch rate, and code fence coverage. These are cheap to compute and catch the most damaging failures.</p>
+<p>Then add a small query set that targets structure-specific questions, such as:</p>
+<ul>
+  <li>“Which section defines X?”</li>
+  <li>“What is the value in row Y?”</li>
+  <li>“List the steps required to do Z.”</li>
+</ul>
+<p>If invariants pass and retrieval answers match expected structure targets, you can trust the conversion. This approach avoids expensive human review while still validating the conversion where it matters: downstream retrieval behavior.</p>
+
+<h2>16. References</h2>
+<ul>
+  <li>Ollagraph HTML→Markdown API documentation (internal)</li>
+  <li>Playwright documentation (rendered DOM capture)</li>
+  <li>Markdown specification (structure semantics)</li>
+  <li>W3C HTML Living Standard (DOM structure and semantics)</li>
+  <li>MDN Web Docs: HTML tables and list semantics</li>
+  <li>W3C Web Content Accessibility Guidelines (WCAG) for heading/list semantics</li>
+  <li>Retrieval-Augmented Generation (RAG) overview literature (chunking and retrieval evaluation)</li>
+  <li>OWASP guidance on injection and untrusted content handling</li>
+</ul>
+
+<h2>17. Conclusion</h2>
+<p>HTML→Markdown conversion is not a formatting step; it’s a semantic transformation. If you preserve structure—headings, lists, tables, and code blocks—you give LLM pipelines stable boundaries and interpretable facts.</p>
+<p>Adopt a structure-first architecture, enforce invariants with validation, and evaluate end-to-end retrieval quality. That’s how you turn “clean Markdown” into “LLM-ready meaning.”</p>
+<p>If you want the highest ROI, focus on the structures that drive retrieval: headings for scope, lists for enumerations, and tables for factual row/column mapping. Then make failures observable with structure signals so you can retry or fall back deterministically.</p>
+</Article>
