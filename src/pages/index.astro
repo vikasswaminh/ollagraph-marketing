@@ -23,11 +23,66 @@ const softwareApp = {
     offerCount: "4",
   },
 };
+
+const faqPage = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: [
+    {
+      "@type": "Question",
+      name: "How does Ollagraph compare to Firecrawl?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Firecrawl is an excellent markdown-first context API. Ollagraph covers the same scrape, crawl, and extract surface, then adds web search, domain intelligence, vertical actors, and agent observability behind one key. On price it bills a flat 1 credit per call with no per-feature multipliers, offers true pay-as-you-go from $5, refunds automatically on failed fetches, and starts you with 1,000 free credits.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Is there a free tier and pay-as-you-go pricing?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Yes. Every new account gets 1,000 free credits with no credit card, and every endpoint is available on the free tier. Beyond that you can pay as you go from $5 — you are not forced onto a monthly subscription.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "How is Ollagraph priced and metered?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Most endpoints cost a flat 1 credit per call and orchestrators cost 3. There are no 5x render or extract multipliers, so a JavaScript-rendered page costs the same as a static one. If an upstream fetch errors, the credit is refunded automatically before the response returns, so you only pay for successful calls.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Does Ollagraph provide an MCP server for AI agents?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Yes. The Ollagraph MCP server exposes all 228 endpoints as tools behind one key. Run `pipx run ollagraph-mcp` and Claude Desktop, Cursor, or any MCP client gets scrape, crawl, search, extract, and intelligence at once.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Do you store the content Ollagraph scrapes?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "No. Ollagraph does not persist scraped page content. Requests are processed and returned; we keep usage metadata for billing and observability, not the pages themselves — which is the guarantee agent and enterprise workloads need.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Is Ollagraph a good Firecrawl alternative?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "For teams that want more than markdown — search, extraction, domain intelligence, and vertical actors under one key — with pay-as-you-go pricing, refund-on-failure, and a 1,000-credit free tier, Ollagraph is a strong Firecrawl alternative. See the side-by-side comparison and pricing breakdown for the details.",
+      },
+    },
+  ],
+};
 ---
 <BaseLayout
-  title="Ollagraph — The Web Intelligence Layer for AI Agents"
-  description="The all-in-one web data API for AI agents: scrape, crawl, extract, and intelligence behind one key — a fraction of the cost of stitching vendors together."
-  jsonLd={[softwareApp]}
+  title="Ollagraph — Web Scraping, Crawling & Search API for AI Agents"
+  description="The web data API for AI agents: scrape, crawl, search, and extract behind one key. Flat 1 credit per call (no multipliers), pay-as-you-go from $5, refund on failure, and 1,000 free credits."
+  jsonLd={[softwareApp, faqPage]}
 >
   <Fragment set:html={rendered} />
   <script is:inline src="/scripts/index.js"></script>
