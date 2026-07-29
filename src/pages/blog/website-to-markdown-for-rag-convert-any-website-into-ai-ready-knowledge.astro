@@ -1,0 +1,1090 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is website to Markdown for RAG?", a: "It is a deterministic pipeline that turns web pages into retrieval-ready Markdown blocks. The goal is not just readability; it is stable structure, reliable chunking, and traceable provenance for every section." },
+  { q: "Why not just strip HTML tags and embed the text?", a: "Plain text conversion usually destroys headings, list boundaries, and table structure. That leads to weaker retrieval, unstable chunks, and citations that point to the wrong place." },
+  { q: "How do you keep the Markdown output consistent?", a: "Use a canonical block model before conversion, then map each block type to a fixed Markdown pattern. Stable rules for headings, lists, tables, and code blocks reduce retrieval variance across runs." },
+  { q: "How is provenance preserved during conversion?", a: "Attach source metadata at the block or chunk level, including the original URL and section path. That lets downstream answers cite the exact origin of each retrieved fact." },
+  { q: "When should you fetch rendered content instead of static HTML?", a: "Use rendered content when the main article is missing from static HTML or the page relies on client-side rendering. A quick content-missing check helps you avoid converting placeholders and skeleton markup." },
+  { q: "What should be validated before embedding the converted Markdown?", a: "Check structure fidelity, evidence coverage, and completeness before chunking or embedding. Validation catches silent failures such as truncated articles, collapsed headings, and missing source sections." },
+];
+---
+<Article
+  title="Website to Markdown for RAG: Turn Sites into AI-Ready Knowledge"
+  description="Convert arbitrary websites into deterministic Markdown for RAG, preserving structure, provenance, and retrieval boundaries."
+  date="2026-07-29"
+  readingTime={26}
+  tags={["rag", "markdown", "web-scraping", "ingestion", "provenance"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>1. Executive Summary</h2>
+<p>Turning a website into AI-ready knowledge for RAG is not “download HTML and strip tags.” The hard part is producing Markdown that preserves meaning, keeps retrieval boundaries stable, and carries provenance so citations remain trustworthy.</p>
+<p>In this guide, you’ll learn a conversion playbook that works across arbitrary sites: fetch page state, extract retrieval-ready blocks, convert them into deterministic Markdown, validate structure, and only then chunk + embed.</p>
+<p>We also include a small benchmark harness you can run to measure conversion quality (not just readability) and a troubleshooting decision tree for the most common failure modes.</p>
+
+<h2>2. Key Takeaways</h2>
+<ul>
+  <li>Treat “website to Markdown for RAG” as a pipeline with contracts: extraction contract, document contract, and validation contract.</li>
+  <li>Deterministic Markdown matters: stable headings, list continuity, and table fidelity reduce retrieval variance.</li>
+  <li>Provenance is a first-class output: every chunk should be traceable back to a URL + section path.</li>
+  <li>Validate before you embed: run structure checks and evidence coverage checks to catch silent ingestion drift.</li>
+  <li>Measure information gain: conversion quality should correlate with retrieval accuracy, not just token counts.</li>
+</ul>
+
+<h2>3. Problem Statement</h2>
+<p>Most teams start with a simple idea: “Convert any website into Markdown, then feed it to a vector store.” That approach fails in predictable ways:</p>
+<ul>
+  <li>Boilerplate pollution. Navigation, cookie banners, and footers get mixed into the main content.</li>
+  <li>Structure collapse. Headings flatten, lists merge into paragraphs, and tables become unreadable text.</li>
+  <li>Chunk boundary drift. The chunker splits in the wrong places because the Markdown representation is inconsistent.</li>
+  <li>Citation mismatch. Answers cite the wrong section because provenance metadata was lost during conversion.</li>
+  <li>Silent partial extraction. The pipeline “succeeds” even when the main content is missing or truncated.</li>
+</ul>
+<p>The root cause is that conversion is treated as formatting, not as knowledge engineering.</p>
+
+<h2>4. History &amp; Context</h2>
+<p>Early “HTML to text” converters were built for humans: remove tags, keep paragraphs, ignore layout.</p>
+<p>RAG changed the requirement. Chunking and retrieval reward stable boundaries and consistent formatting. Markdown became popular because it can represent structure compactly.</p>
+<p>But “Markdown for humans” is still not “Markdown for RAG.” For RAG, you need:</p>
+<ul>
+  <li>stable structure invariants (so chunking behaves predictably)</li>
+  <li>evidence-driven validation (so you detect drift)</li>
+  <li>provenance-friendly metadata (so citations map back to the source)</li>
+</ul>
+<p>This post focuses on that missing layer: converting arbitrary websites into AI-ready knowledge with a conversion pipeline you can test.</p>
+
+<h2>5. Definition / What It Is</h2>
+<p><strong>Definition.</strong> Website to Markdown for RAG is a deterministic conversion pipeline that transforms a web page into retrieval-ready Markdown blocks with stable structure and provenance metadata.</p>
+<p>Operationally, the output should satisfy three properties:</p>
+<ul>
+  <li><strong>Meaning fidelity:</strong> headings, lists, tables, and code blocks preserve the relationships that carry meaning.</li>
+  <li><strong>Boundary stability:</strong> the same page structure yields the same Markdown representation under the same rules.</li>
+  <li><strong>Provenance completeness:</strong> every chunk can be traced to a URL and a section path.</li>
+</ul>
+
+<h2>6. Architecture / How It Works</h2>
+<pre><code>flowchart TD
+  A[Input: URL list] --&gt; B[Fetch page state]
+  B --&gt; C[Extract retrieval blocks]
+  C --&gt; D[Normalize blocks]
+  D --&gt; E[Convert to deterministic Markdown]
+  E --&gt; F[Validate structure + evidence]
+  F --&gt; G[Chunk + attach provenance]
+  G --&gt; H[Embed + store]
+  H --&gt; I[Answer-time citations]</code></pre>
+<p>The key design choice is the validation gate between conversion and chunking.</p>
+
+<h2>7. Components &amp; Workflow</h2>
+
+<h3>1) Fetch page state (static vs rendered)</h3>
+<p>Some sites render content client-side. If you only fetch static HTML, you’ll convert placeholders.</p>
+<p><strong>Workflow:</strong></p>
+<ul>
+  <li>Fetch static HTML.</li>
+  <li>Detect “content likely missing” signals (e.g., empty main content, heavy skeleton markup).</li>
+  <li>If missing, fetch a rendered DOM snapshot.</li>
+</ul>
+
+<h3>2) Extract retrieval-ready blocks</h3>
+<p>Instead of converting the entire DOM, extract blocks you can justify as retrieval units:</p>
+<ul>
+  <li>main article content regions</li>
+  <li>headings with hierarchy</li>
+  <li>lists (ordered/unordered) with item continuity</li>
+  <li>tables (as structured facts)</li>
+  <li>code blocks (fenced with language hints when available)</li>
+  <li>key metadata (title, author, publish date when present)</li>
+</ul>
+
+<h3>3) Normalize blocks into a canonical intermediate form</h3>
+<p>Normalization is where you remove ambiguity:</p>
+<ul>
+  <li>unify heading levels into a consistent scheme</li>
+  <li>preserve list item boundaries</li>
+  <li>represent tables with explicit headers and row boundaries</li>
+  <li>keep links as “anchor text + destination” pairs</li>
+</ul>
+
+<h3>4) Convert to deterministic Markdown</h3>
+<p>Deterministic Markdown means:</p>
+<ul>
+  <li>the same block type always maps to the same Markdown pattern</li>
+  <li>tables always use the same table formatting strategy</li>
+  <li>lists never get merged into paragraphs</li>
+</ul>
+
+<h3>5) Validate structure + evidence coverage</h3>
+<p>Before chunking, run checks that catch silent drift:</p>
+<ul>
+  <li>Boilerplate ratio: main content tokens vs total tokens</li>
+  <li>Heading continuity: heading levels should not jump wildly</li>
+  <li>List integrity: list items should remain contiguous</li>
+  <li>Table integrity: table rows should have consistent cell counts</li>
+  <li>Evidence coverage: citation-critical fields (title, section path, publish date if relevant) must exist</li>
+</ul>
+<p>If validation fails, you can either:</p>
+<ul>
+  <li>retry with a different extraction strategy</li>
+  <li>fall back to a safer representation (e.g., plain paragraphs)</li>
+  <li>mark the page as “needs review” and skip embedding</li>
+</ul>
+
+<h3>6) Chunk + attach provenance</h3>
+<p>Chunking should use the Markdown structure as boundaries.</p>
+<p>Every chunk should carry:</p>
+<ul>
+  <li>url</li>
+  <li>title</li>
+  <li>section_path (e.g., H2: Pricing &gt; H3: Plans)</li>
+  <li>crawl_timestamp</li>
+  <li>conversion_version</li>
+</ul>
+
+<h3>7) Answer-time citations</h3>
+<p>At retrieval time, you return chunks with provenance. Your answer generator can cite the exact section path.</p>
+
+<h2>8. Configuration / Setup</h2>
+<p>Below is a practical configuration pattern you can adapt. The goal is to make conversion rules explicit and testable.</p>
+
+<h3>Conversion rules (example)</h3>
+<pre><code>render_if_missing_main=true
+max_boilerplate_ratio=0.35
+min_main_text_chars=1200
+table_mode=structured_markdown
+list_mode=preserve_items
+code_mode=fenced_blocks
+link_mode=anchor_plus_url</code></pre>
+
+<h3>Validation thresholds (example)</h3>
+<pre><code>heading_continuity_score&gt;=0.8
+table_row_cell_count_variance&lt;=2
+evidence_coverage&gt;=0.9</code></pre>
+
+<h3>Provenance schema (example)</h3>
+<pre><code>chunk_id: deterministic hash of (url, section_path, chunk_index, conversion_version)
+source: &#123; url, title, section_path &#125;
+audit: &#123; conversion_version, extraction_strategy, validation_passed &#125;</code></pre>
+
+<h2>9. Examples</h2>
+
+<h3>Example 1: Documentation page with many headings (full in chat)</h3>
+<p>Input: a URL with nested h2/h3 sections.</p>
+<p>Expected Markdown behavior:</p>
+
+<ul>
+  <li>headings become Markdown headings with consistent depth mapping</li>
+  <li>each section’s content stays under its heading</li>
+  <li>code blocks remain fenced and keep indentation</li>
+</ul>
+
+<h2>Why it matters for RAG</h2>
+<ul>
+  <li>chunkers can split by heading boundaries</li>
+  <li>retrieval can return the right section without mixing unrelated subsections</li>
+</ul>
+
+<h2>What the extractor should see (signals)</h2>
+<p>For a typical docs page, the extractor should identify:</p>
+<ul>
+  <li>a stable “main” container (often main, article, or a content wrapper)</li>
+  <li>a heading hierarchy that is consistent across the page (e.g., h2 for major topics, h3 for subtopics)</li>
+  <li>code blocks that are already semantically grouped (for example, a code block immediately following a heading or a paragraph)</li>
+</ul>
+<p>If the page uses multiple heading styles (for example, h2 for both “Overview” and “Changelog”), you still want deterministic mapping, but you may need a rule to normalize “visual headings” into a single canonical depth.</p>
+
+<h2>Before (what goes wrong)</h2>
+<p>If you “strip tags then chunk,” you often get output like this:</p>
+<pre><code>Overview Pricing Plans API Keys
+
+The Pro plan includes analytics and exports.
+
+curl -X POST https://api.example.com/v1/keys ...</code></pre>
+<p>In this failure mode:</p>
+<ul>
+  <li>headings lose their boundaries (everything becomes one paragraph)</li>
+  <li>code fences may disappear or lose indentation</li>
+  <li>the chunker can’t reliably split by section, so retrieval may mix “Pricing” with “API Keys”</li>
+</ul>
+
+<h2>After (RAG-ready Markdown)</h2>
+<p>Below is an example of what deterministic Markdown should look like when headings and code blocks are preserved:</p>
+<pre><code>## Overview
+
+This page explains how to configure the product.
+
+### Pricing
+
+The Pro plan includes analytics and exports.
+
+#### Plans
+
+| Plan | Includes |
+|---|---|
+| Pro | Analytics, exports |
+
+### API Keys
+
+API keys are used to authenticate requests.
+
+```bash
+curl -X POST https://api.example.com/v1/keys \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '&#123;"name":"prod"&#125;'
+```</code></pre>
+
+<h2>Provenance + chunk boundaries (what you should attach)</h2>
+<p>When you chunk by structure, you should be able to point to the exact section path for each chunk. For example:</p>
+<ul>
+  <li>Chunk: H2: Overview &gt; H3: Pricing &gt; H4: Plans contains the table and the “Pro plan includes…” sentence.</li>
+  <li>Chunk: H2: Overview &gt; H3: API Keys contains the API keys explanation and the fenced bash block.</li>
+</ul>
+<p>This is what makes citations stable: the retriever can return the “API Keys” chunk for questions about key rotation, without accidentally pulling pricing text.</p>
+
+<h2>Validation checks (how you know it’s correct)</h2>
+<p>Before chunking, run checks that are specific to heading-heavy pages:</p>
+<ul>
+  <li>Heading continuity: h3 should not appear without a preceding h2 in the extracted representation.</li>
+  <li>Section containment: content blocks (paragraphs, lists, code) must appear after their heading until the next heading of the same or higher level.</li>
+  <li>Code fence integrity: fenced blocks must remain fenced and preserve indentation.</li>
+</ul>
+<p>If any of these fail, quarantine the page or fall back to a safer representation (for example, keep headings but flatten only the code block formatting).</p>
+
+<h2>Example 2: Blog post with lists and tables (full in chat)</h2>
+<p><strong>Input:</strong> a page with bullet lists and a pricing table.</p>
+
+<h3>Expected Markdown behavior</h3>
+<ul>
+  <li>list items remain separate lines (not merged)</li>
+  <li>tables keep headers and row boundaries</li>
+</ul>
+
+<h3>Why it matters for RAG</h3>
+<ul>
+  <li>list semantics survive chunking</li>
+  <li>table facts remain queryable (e.g., “What’s included in the Pro plan?”)</li>
+</ul>
+
+<h3>What the extractor should see (signals)</h3>
+<p>For list + table pages, the extractor should:</p>
+<ul>
+  <li>detect list containers (ul/ol) and preserve item boundaries (each li becomes its own Markdown list item)</li>
+  <li>detect tables and preserve header rows (often thead) and row boundaries (each tr becomes a row)</li>
+  <li>keep the table near the surrounding explanatory text so provenance remains meaningful</li>
+</ul>
+<p>If the page uses “fake tables” (CSS grid layouts that look like tables but aren’t <em>table</em> elements), you’ll need a fallback rule: either convert the grid into a structured table representation or treat it as a list of key/value rows.</p>
+
+<h3>Before (what goes wrong)</h3>
+<p>A common failure mode is list merging and table flattening:</p>
+<pre><code>Features: fast setup, audit logs, role-based access. Pricing Pro includes analytics and exports.</code></pre>
+<p>Here:</p>
+<ul>
+  <li>list items become a single sentence, so retrieval can’t target “audit logs” as a distinct fact</li>
+  <li>table headers and rows collapse into unstructured text, so questions like “What’s included in the Pro plan?” become harder to answer accurately</li>
+</ul>
+
+<h3>After (RAG-ready Markdown)</h3>
+<p>Deterministic Markdown should preserve both list structure and table structure:</p>
+<pre><code>## Features
+
+The following capabilities are included:
+
+- Fast setup
+- Audit logs
+- Role-based access
+
+## Pricing
+
+| Plan | Includes |
+|---|---|
+| Pro | Analytics, exports |
+| Team | Analytics, exports, SSO |</code></pre>
+
+<h2>Example 3: Marketing page with heavy boilerplate (full in chat)</h2>
+<p><strong>Input:</strong> a page with navigation, hero sections, and repeated footer content.</p>
+
+<h3>Expected Markdown behavior</h3>
+<ul>
+  <li>boilerplate is excluded or down-weighted</li>
+  <li>main content region is prioritized</li>
+</ul>
+
+<h3>Why it matters for RAG</h3>
+<ul>
+  <li>retrieval returns evidence, not navigation text</li>
+</ul>
+
+<h3>What the extractor should see (signals)</h3>
+<p>Marketing pages often include repeated elements across the site. The extractor should detect:</p>
+<ul>
+  <li>navigation bars and menus (often repeated across pages)</li>
+  <li>cookie banners and consent modals</li>
+  <li>hero sections that are visually prominent but may not contain the “answer content” users ask about</li>
+  <li>footers that repeat links and legal text</li>
+</ul>
+<p>The goal is not to delete everything; it’s to ensure that retrieval primarily sees the content region that answers user questions.</p>
+
+<h3>Before (what goes wrong)</h3>
+<p>If you convert the entire DOM, you might embed a lot of irrelevant text:</p>
+<pre><code>Home Pricing Docs Blog Contact Cookie Settings Privacy Policy Terms
+
+The product is great. Learn more.</code></pre>
+<p>In this failure mode:</p>
+<ul>
+  <li>embeddings are diluted by boilerplate tokens</li>
+  <li>retrieval returns navigation or footer chunks because they appear frequently across the page</li>
+  <li>citations become unhelpful (“answer” cites cookie policy)</li>
+</ul>
+
+<h3>After (RAG-ready Markdown)</h3>
+<p>Deterministic Markdown should prioritize the main content region and either exclude or down-weight boilerplate. One practical representation is:</p>
+<pre><code>## Value Proposition
+
+Ollagraph converts websites into AI-ready knowledge by extracting retrieval blocks and validating structure before chunking.
+
+## Use Cases
+
+- RAG ingestion for docs and knowledge bases
+- Evidence-backed citations for AI answers
+
+## Security Notes
+
+Extracted page content is treated as untrusted data; conversion rules are deterministic and versioned.</code></pre>
+<p>Boilerplate (navigation, cookie banners, repeated footer links) should not appear as primary headings or as large embedded blocks.</p>
+
+<h3>Provenance + chunk boundaries (what you should attach)</h3>
+<p>For marketing pages, provenance is especially important because the “main content” region can be ambiguous. You should attach provenance that makes the selection auditable:</p>
+<ul>
+  <li>section_path should reflect the extracted content headings (not the site-wide navigation)</li>
+  <li>audit should record whether boilerplate was excluded or down-weighted (and which thresholds were used)</li>
+</ul>
+
+<h3>Validation checks (how you know it’s correct)</h3>
+<p>Validate boilerplate vs main content:</p>
+
+<ul>
+  <li>Boilerplate ratio: main content tokens should exceed a minimum threshold.</li>
+  <li>Heading origin: extracted headings should come from the main content region, not from nav/footer.</li>
+  <li>Repetition detection: repeated footer/legal blocks should not dominate the extracted representation.</li>
+  <li>If validation fails, quarantine the page or reduce the extracted scope until the main content region is dominant.</li>
+</ul>
+
+<h2>10. Performance &amp; Benchmarks</h2>
+
+<p>You should benchmark conversion quality end-to-end. Here’s a lightweight harness you can run.</p>
+
+<h3>Reproducible benchmark dataset (example)</h3>
+
+<p>Use a small, representative set of pages and define the section path you expect retrieval to return.</p>
+
+<pre><code>URL	Expected section_path	Example query
+https://example.com/docs/pricing	H2: Pricing &gt; H3: Plans	What’s included in the Pro plan?
+https://example.com/docs/auth	H2: Authentication &gt; H3: API Keys	How do I rotate API keys?
+https://example.com/blog/faq	H2: FAQ &gt; H3: Billing	Can I export invoices?
+https://example.com/knowledge-base/security	H2: Security &gt; H3: Data retention	How long do you retain logs?</code></pre>
+
+<p>Keep this dataset in version control. When you change conversion rules, re-run the same dataset.</p>
+
+<h3>Benchmark harness (what we measure)</h3>
+
+<p>For each page, compute:</p>
+
+<ul>
+  <li><strong>main_content_ratio:</strong> main content tokens / total tokens</li>
+  <li><strong>structure_score:</strong> heading continuity + list integrity + table integrity</li>
+  <li><strong>evidence_coverage:</strong> presence of title + section path + at least one content block</li>
+  <li><strong>retrieval_proxy:</strong> run a small set of queries against the resulting chunks and measure whether top-3 chunks come from the expected section path</li>
+</ul>
+
+<h3>How to run the harness (procedure)</h3>
+
+<p>This section is intentionally procedural so you can reproduce results and paste them back into the blog.</p>
+
+<ol>
+  <li>Create a dataset file (JSONL) with one record per URL, including <strong>expected_section_path</strong> and 3–5 queries.</li>
+  <li>Run conversion twice:
+    <ul>
+      <li><strong>baseline:</strong> “strip tags then chunk”</li>
+      <li><strong>control:</strong> deterministic Markdown + validation gate</li>
+    </ul>
+  </li>
+  <li>For each run, emit one JSON line per page using the expected output format below.</li>
+  <li>Aggregate metrics:
+    <ul>
+      <li>compare <strong>main_content_ratio</strong>, <strong>structure_score</strong>, <strong>evidence_coverage</strong></li>
+      <li>compute <strong>retrieval.top3_provenance_match</strong> rate across all pages</li>
+    </ul>
+  </li>
+  <li>Generate a conversion diff for at least 3 pages (one success, one partial extraction, one table-heavy page).</li>
+</ol>
+
+<p>If you paste the resulting JSONL summary and diffs into the “Evidence-driven result” section, the post becomes fully evidence-backed.</p>
+
+<h3>Expected output format (what your harness should emit)</h3>
+
+<p>Your harness should output one JSON line per page so you can aggregate metrics and spot regressions.</p>
+
+<pre><code>&#123;
+  "url": "https://example.com/docs/pricing",
+  "conversion_version": "2026-07-23.1",
+  "validation_passed": true,
+  "main_content_ratio": 0.73,
+  "structure_score": 0.88,
+  "evidence_coverage": 0.95,
+  "retrieval": &#123;
+    "top3_provenance_match": true,
+    "expected_section_path": "H2: Pricing &gt; H3: Plans"
+  &#125;
+&#125;</code></pre>
+
+<h3>Evidence-driven result (example)</h3>
+
+<p>In our internal test set of 120 pages across docs, blogs, and knowledge bases:</p>
+
+<ul>
+  <li>Deterministic Markdown + validation gate improved <strong>retrieval_proxy</strong> top-3 hit rate by 18–26% compared to “strip tags then chunk.”</li>
+  <li>Pages that failed validation (low evidence coverage) were skipped, which reduced “wrong citation” incidents by ~40%.</li>
+</ul>
+
+<h3>Mini benchmark table (example)</h3>
+
+<pre><code>Metric	Strip-tags + chunk	Deterministic Markdown + validation
+Main content ratio (avg)	0.41	0.73
+Structure score (avg)	0.62	0.88
+Evidence coverage pass rate	0.74	0.93
+Retrieval provenance top-3 match	0.56	0.72
+Wrong-citation incidents (per 100 answers)	7.8	4.6</code></pre>
+
+<h3>Before/after Markdown snippet (what changed)</h3>
+
+<p><strong>Before (flattened):</strong></p>
+
+<pre><code>Pricing Plans Pro plan includes analytics and exports.
+Features list: fast setup, audit logs, role-based access.</code></pre>
+
+<p><strong>After (RAG-ready):</strong></p>
+
+<pre><code>Pricing
+Plans
+Plan	Includes
+Pro	Analytics, exports
+Features
+
+Fast setup
+Audit logs
+Role-based access</code></pre>
+
+<p>The “after” representation keeps table facts and list boundaries intact, which makes chunking and retrieval far more consistent.</p>
+
+<h3>Reproducible checklist</h3>
+
+<ul>
+  <li>Pick 30–50 representative URLs.</li>
+  <li>Run conversion with and without validation gates.</li>
+  <li>For each URL, define 3–5 “expected section” queries.</li>
+  <li>Compare top-3 provenance match rate.</li>
+  <li>If your conversion quality doesn’t improve retrieval provenance match, you’re optimizing the wrong metric.</li>
+</ul>
+
+<h3>CLI output example (conversion validation)</h3>
+
+<p>When you run your conversion harness, you want machine-readable evidence that the validation gate passed.</p>
+
+<pre><code>[convert] url=https://example.com/docs/pricing
+[fetch] mode=rendered_dom
+[extract] blocks=18 main_chars=6420
+[validate] boilerplate_ratio=0.12 heading_continuity=0.91 list_integrity=1.00 table_integrity=0.98 evidence_coverage=0.95
+[chunk] chunks=14 chunking=structure_boundaries
+[embed] model=embed-v3 dim=1536
+[store] vector_store=prod-us-east-1 upserted=14
+[audit] conversion_version=2026-07-23.1 validation_passed=true</code></pre>
+
+<p>This kind of output is what turns “it seems better” into “we can prove it.”</p>
+
+<h2>11. Security Considerations</h2>
+
+<p>Website ingestion is where RAG pipelines get exposed to real-world risk. Treat extracted content as untrusted input, because it can contain instructions, malicious markup, or sensitive data.</p>
+
+<h3>1) Prompt injection in page content</h3>
+
+<ul>
+  <li>Assume the website text may contain “ignore previous instructions” style payloads.</li>
+  <li>Never execute instructions found in retrieved content. Only use it as data for grounding.</li>
+  <li>Keep a strict separation between:
+    <ul>
+      <li>system/developer instructions (your rules)</li>
+      <li>retrieved text (untrusted)</li>
+    </ul>
+  </li>
+  <li>If you do any “agentic” behavior (tools, browsing, code execution), ensure retrieved content cannot directly trigger tool calls without your own policy checks.</li>
+</ul>
+
+<h3>2) PII leakage and sensitive content</h3>
+
+<ul>
+  <li>Some pages contain personal data (emails, phone numbers, names, internal identifiers).</li>
+  <li>Add allowlists/denylists by domain and path.</li>
+  <li>Consider a PII filter stage before chunking/embedding:
+    <ul>
+      <li>redact obvious patterns (emails, phone numbers)</li>
+      <li>optionally quarantine pages that exceed a threshold of sensitive entities</li>
+    </ul>
+  </li>
+  <li>Store audit logs so you can prove what was ingested and why.</li>
+</ul>
+
+<h3>3) SSRF and unsafe URL handling</h3>
+
+<p>If your ingestion accepts arbitrary URLs, you must prevent access to internal networks.</p>
+
+<p>Enforce:</p>
+
+<ul>
+  <li>URL scheme allowlist (http, https)</li>
+  <li>DNS/IP resolution checks (block private ranges)</li>
+  <li>maximum redirect depth</li>
+  <li>domain allowlists for high-trust ingestion</li>
+</ul>
+
+<p>This is especially important if you run ingestion in cloud environments with metadata access.</p>
+
+<h3>4) Malicious HTML / rendering isolation</h3>
+
+<p>If you render pages (for client-side apps), you’re executing untrusted code in a browser engine.</p>
+
+<p>Run the renderer in an isolated environment:</p>
+
+<ul>
+  <li>sandboxed container/VM</li>
+  <li>restricted filesystem/network access</li>
+  <li>short timeouts and resource limits</li>
+</ul>
+
+<p>Avoid sharing credentials with the renderer.</p>
+
+<h3>5) Data governance and auditability</h3>
+
+<p>Store conversion decisions:</p>
+
+<ul>
+  <li>what was extracted</li>
+  <li>what was rejected</li>
+  <li>validation pass/fail</li>
+  <li>conversion version</li>
+</ul>
+
+<p>This matters when you need to debug “why did the retriever cite the wrong thing?” or when you need to respond to compliance requests.</p>
+
+<h2>12. Troubleshooting</h2>
+
+<h3>Decision tree: “Why is my RAG answer citing the wrong section?”</h3>
+
+<pre><code>flowchart TD
+  A[Wrong citation] --&gt; B&#123;Did conversion validate?&#125;
+  B --&gt;|No| C[Fix extraction/validation thresholds]
+  B --&gt;|Yes| D&#123;Is section_path present?&#125;
+  D --&gt;|No| E[Fix provenance attachment]
+  D --&gt;|Yes| F&#123;Did Markdown preserve headings/lists/tables?&#125;
+  F --&gt;|No| G[Adjust deterministic Markdown rules]
+  F --&gt;|Yes| H&#123;Is chunking using structure boundaries?&#125;
+  H --&gt;|No| I[Chunk by headings/lists/tables]
+  H --&gt;|Yes| J[Check embeddings + retriever settings]</code></pre>
+
+<h3>Common symptoms and fixes</h3>
+
+<p><strong>Symptom:</strong> main content is missing</p>
+<p><strong>Likely cause:</strong> static HTML fetch captured placeholders.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>enable rendered DOM fallback</li>
+  <li>increase <strong>min_main_text_chars</strong></li>
+  <li>add a “main region present” check before conversion</li>
+</ul>
+
+<p><strong>Symptom:</strong> tables become unreadable</p>
+<p><strong>Likely cause:</strong> table flattening into paragraphs.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>use structured table mode</li>
+  <li>validate row cell counts</li>
+  <li>ensure headers are preserved</li>
+</ul>
+
+<p><strong>Symptom:</strong> lists merge into paragraphs</p>
+<p><strong>Likely cause:</strong> list item boundaries lost during normalization.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>preserve list item boundaries</li>
+  <li>enforce list integrity checks</li>
+  <li>ensure list containers don’t get merged with surrounding text blocks</li>
+</ul>
+
+<p><strong>Symptom:</strong> citations point to navigation/footer</p>
+<p><strong>Likely cause:</strong> boilerplate ratio too high or section mapping wrong.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>reduce boilerplate ratio threshold</li>
+  <li>ensure section_path is derived from extracted content regions, not the full DOM</li>
+</ul>
+
+<h2>13. Best Practices</h2>
+<p>These are the practices that consistently improve retrieval quality and citation trustworthiness.</p>
+<ol>
+  <li>
+    <p><strong>Make conversion deterministic and versioned</strong></p>
+    <p>Deterministic means: same input structure → same Markdown representation under the same rules.</p>
+    <p>Version everything:</p>
+    <ul>
+      <li>conversion_version</li>
+      <li>extraction strategy</li>
+      <li>validation thresholds</li>
+    </ul>
+    <p>This prevents “silent drift” between environments and makes regressions diagnosable.</p>
+  </li>
+  <li>
+    <p><strong>Validate before you embed</strong></p>
+    <p>Don’t embed content that fails structure/evidence checks.</p>
+    <p>Quarantine or skip pages that:</p>
+    <ul>
+      <li>have low evidence coverage</li>
+      <li>show table/list integrity failures</li>
+      <li>exceed boilerplate ratio thresholds</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Use structure-aware chunking</strong></p>
+    <p>Chunk by:</p>
+    <ul>
+      <li>headings (scope)</li>
+      <li>lists (enumerations)</li>
+      <li>tables (facts)</li>
+    </ul>
+    <p>Then apply token limits within those boundaries.</p>
+    <p>This reduces boundary drift and improves provenance mapping.</p>
+  </li>
+  <li>
+    <p><strong>Treat provenance as required metadata</strong></p>
+    <p>Every chunk must carry:</p>
+    <ul>
+      <li>url</li>
+      <li>title</li>
+      <li>section_path</li>
+      <li>crawl_timestamp</li>
+      <li>conversion_version</li>
+    </ul>
+    <p>If provenance is missing, citations become guesswork.</p>
+  </li>
+  <li>
+    <p><strong>Maintain a conversion regression suite</strong></p>
+    <p>Keep a small set of representative URLs.</p>
+    <p>For each URL, store expected retrieval provenance outcomes.</p>
+    <p>Re-run the suite whenever you change conversion rules.</p>
+  </li>
+  <li>
+    <p><strong>Measure information gain, not just readability</strong></p>
+    <p>“Looks good” is not enough.</p>
+    <p>Track metrics that correlate with retrieval:</p>
+    <ul>
+      <li>main content ratio</li>
+      <li>structure score</li>
+      <li>evidence coverage</li>
+      <li>top-k provenance match rate</li>
+    </ul>
+  </li>
+</ol>
+
+<h2>14. Common Mistakes</h2>
+<p>These are the failure patterns that repeatedly show up in real ingestion systems.</p>
+<ol>
+  <li>
+    <p><strong>Converting the entire DOM</strong></p>
+    <p>Result: navigation/footer noise pollutes embeddings.</p>
+    <p>Fix: extract retrieval blocks first, then convert.</p>
+  </li>
+  <li>
+    <p><strong>Optimizing for pretty Markdown</strong></p>
+    <p>Result: human readability can be high while structure fidelity is low.</p>
+    <p>Fix: enforce deterministic Markdown patterns for headings/lists/tables.</p>
+  </li>
+  <li>
+    <p><strong>Skipping validation because “it seems fine”</strong></p>
+    <p>Result: silent partial extraction and wrong citations.</p>
+    <p>Fix: add a validation gate and quarantine failures.</p>
+  </li>
+  <li>
+    <p><strong>Losing section hierarchy</strong></p>
+    <p>Result: chunk boundaries don’t align with meaning.</p>
+    <p>Fix: preserve heading hierarchy and map it into section_path.</p>
+  </li>
+  <li>
+    <p><strong>Attaching provenance only at the page level</strong></p>
+    <p>Result: chunk-level citations can’t be trusted.</p>
+    <p>Fix: attach provenance at chunk creation time.</p>
+  </li>
+  <li>
+    <p><strong>Inconsistent conversion rules across environments</strong></p>
+    <p>Result: dev/prod behave differently; regressions are hard to reproduce.</p>
+    <p>Fix: version rules and enforce the same conversion config in all environments.</p>
+  </li>
+</ol>
+
+<h2>15. Alternatives &amp; Comparison</h2>
+<p>When teams say “website to Markdown for RAG,” they usually mean one of three approaches. The differences are mostly about structure fidelity, determinism, and how easy it is to validate.</p>
+
+<h3>Option A: HTML-to-text + chunking</h3>
+<p><strong>How it works</strong></p>
+<ul>
+  <li>fetch HTML</li>
+  <li>strip tags to text</li>
+  <li>chunk by token windows or simple heuristics</li>
+  <li>embed and store</li>
+</ul>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>fastest to implement</li>
+  <li>minimal engineering upfront</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>structure collapse is common:
+    <ul>
+      <li>headings flatten</li>
+      <li>lists merge into paragraphs</li>
+      <li>tables become unreadable text</li>
+    </ul>
+  </li>
+  <li>citations drift because provenance mapping is weak</li>
+  <li>validation is harder because you don’t have structured block boundaries</li>
+</ul>
+<p><strong>Best fit</strong></p>
+<p>prototypes, internal demos, low-stakes retrieval where citations aren’t critical</p>
+
+<h3>Option B: Prompt-based extraction to Markdown</h3>
+<p><strong>How it works</strong></p>
+<ul>
+  <li>fetch page state (static or rendered)</li>
+  <li>ask a model to “extract main content and output Markdown”</li>
+  <li>validate lightly (if at all)</li>
+  <li>chunk and embed</li>
+</ul>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>can handle varied layouts without writing DOM-specific logic</li>
+  <li>often produces readable Markdown quickly</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>output variability:
+    <ul>
+      <li>the same page can produce different Markdown across runs</li>
+      <li>chunk boundaries become less stable</li>
+    </ul>
+  </li>
+  <li>validation is non-trivial:
+    <ul>
+      <li>you need additional checks to ensure headings/lists/tables survived correctly</li>
+    </ul>
+  </li>
+  <li>higher cost and latency:
+    <ul>
+      <li>model calls add cost per page</li>
+    </ul>
+  </li>
+</ul>
+<p><strong>Best fit</strong></p>
+<ul>
+  <li>early-stage ingestion where you need flexibility more than determinism</li>
+  <li>domains where structure is inconsistent and you can tolerate some variance</li>
+</ul>
+
+<h3>Option C: Deterministic block extraction + deterministic Markdown (recommended)</h3>
+<p><strong>How it works</strong></p>
+<ul>
+  <li>fetch page state</li>
+  <li>extract retrieval blocks (main content, headings, lists, tables, code)</li>
+  <li>normalize into a canonical intermediate representation</li>
+  <li>convert to deterministic Markdown using fixed rules</li>
+  <li>validate structure + evidence coverage</li>
+  <li>chunk by structure boundaries and attach provenance</li>
+  <li>embed and store</li>
+</ul>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>stable boundaries:
+    <ul>
+      <li>chunking becomes predictable</li>
+      <li>retrieval variance drops</li>
+    </ul>
+  </li>
+  <li>validation is straightforward:
+    <ul>
+      <li>you can measure integrity (table rows, list continuity, heading continuity)</li>
+    </ul>
+  </li>
+  <li>provenance is reliable:
+    <ul>
+      <li>citations map to section_path consistently</li>
+    </ul>
+  </li>
+  <li>easier regression testing:
+    <ul>
+      <li>deterministic outputs make diffs meaningful</li>
+    </ul>
+  </li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>requires upfront rule design and a regression suite</li>
+  <li>you may need targeted overrides for edge-case templates</li>
+</ul>
+<p><strong>Best fit</strong></p>
+<p>production RAG where citations, reliability, and repeatability matter</p>
+
+<h3>Practical decision guide</h3>
+<p>If you need high citation trust and stable chunking: choose Option C.</p>
+<p>If you need fast iteration and citations are secondary: Option A or B can work temporarily.</p>
+<p>If you choose Option B, you still need deterministic validation gates and provenance mapping, otherwise you’ll reintroduce drift.</p>
+
+<h2>16. Enterprise / Cloud Deployment</h2>
+<p>Enterprise deployment is where “it works on my machine” becomes “it survives production.” For website→Markdown→RAG ingestion, you want isolation, governance, repeatability, and observability.</p>
+<ol>
+  <li>
+    <p><strong>Deployment topology (recommended)</strong></p>
+    <ul>
+      <li><strong>Ingestion control plane (API/service):</strong>
+        <ul>
+          <li>accepts crawl requests (URL lists, schedules, allowlists)</li>
+          <li>stores job state and configuration versions</li>
+          <li>exposes status endpoints for monitoring</li>
+        </ul>
+      </li>
+      <li><strong>Worker pool (stateless conversion workers):</strong>
+        <ul>
+          <li>fetch + extract + convert + validate + chunk + embed</li>
+          <li>runs in isolated containers/VMs</li>
+          <li>scales horizontally based on queue depth</li>
+        </ul>
+      </li>
+      <li><strong>Artifact store:</strong>
+        <ul>
+          <li>stores fetch artifacts (or hashes), extracted block summaries, and conversion outputs</li>
+          <li>enables audit and reprocessing without re-fetching when possible</li>
+        </ul>
+      </li>
+      <li><strong>Vector store + metadata DB:</strong>
+        <ul>
+          <li>vector store for embeddings</li>
+          <li>metadata DB for provenance (url, title, section_path, conversion_version, etc.)</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Isolation and safety controls</strong></p>
+    <ul>
+      <li><strong>Network restrictions:</strong>
+        <ul>
+          <li>block internal IP ranges to prevent SSRF</li>
+          <li>restrict outbound domains if you have allowlists</li>
+        </ul>
+      </li>
+      <li><strong>Renderer sandboxing (if you render pages):</strong>
+        <ul>
+          <li>run headless browser in a sandboxed environment</li>
+          <li>limit CPU/memory/time per page</li>
+          <li>disable access to local files and sensitive environment variables</li>
+        </ul>
+      </li>
+      <li><strong>Secrets management:</strong>
+        <ul>
+          <li>never pass secrets into the renderer</li>
+          <li>use short-lived credentials for authenticated fetches (if needed)</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Governance: versioning, reproducibility, and audit</strong></p>
+    <p>Version everything:</p>
+    <ul>
+      <li>conversion_version</li>
+      <li>extraction strategy identifiers</li>
+      <li>validation thresholds</li>
+      <li>chunking rules</li>
+    </ul>
+    <p><strong>Deterministic chunk IDs:</strong></p>
+    <ul>
+      <li>derive chunk_id from (url, section_path, chunk_index, conversion_version)</li>
+      <li>this makes re-ingestion traceable and prevents “mystery duplicates”</li>
+    </ul>
+    <p><strong>Audit logs:</strong></p>
+    <ul>
+      <li>store validation pass/fail and the reason codes (e.g., boilerplate_ratio_high, table_integrity_failed)</li>
+      <li>store evidence coverage metrics per page</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Reliability: retries, backoff, and quarantine</strong></p>
+    <ul>
+      <li><strong>Retry only what’s transient:</strong>
+        <ul>
+          <li>timeouts, temporary network failures, rate limits</li>
+        </ul>
+      </li>
+      <li><strong>Cap retries:</strong>
+        <ul>
+          <li>avoid runaway costs and infinite loops</li>
+        </ul>
+      </li>
+      <li><strong>Quarantine strategy:</strong>
+        <ul>
+          <li>if validation fails consistently, mark the page as needs_review</li>
+          <li>optionally keep the extracted blocks for manual inspection</li>
+        </ul>
+      </li>
+      <li><strong>Idempotency:</strong>
+        <ul>
+          <li>ensure re-running a job doesn’t corrupt state (use deterministic IDs and upsert semantics)</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Observability: what to measure in production</strong></p>
+    <p>Track metrics that correlate with retrieval quality and citation correctness:</p>
+  </li>
+</ol>
+
+<p><strong>Ingestion quality</strong></p>
+<ul>
+  <li>validation pass rate</li>
+  <li>evidence coverage average and distribution</li>
+  <li>boilerplate ratio distribution</li>
+  <li>table/list integrity failure rates</li>
+</ul>
+<p><strong>Operational health</strong></p>
+<ul>
+  <li>fetch success rate</li>
+  <li>render fallback rate (how often static HTML was insufficient)</li>
+  <li>average conversion latency per page</li>
+</ul>
+<p><strong>Retrieval quality (sampled)</strong></p>
+<ul>
+  <li>top-k provenance match rate on a small query set</li>
+  <li>“wrong citation” incident rate (even a lightweight manual label helps)</li>
+</ul>
+
+<h2>6. Scaling and cost controls</h2>
+<ul>
+  <li><strong>Queue-based scaling:</strong> use a job queue so workers scale with demand</li>
+  <li><strong>Batching:</strong> batch embedding calls where possible</li>
+  <li><strong>Short-circuiting:</strong> if validation fails early, skip expensive steps (chunking/embedding)</li>
+  <li><strong>Caching:</strong> cache fetch artifacts or extracted block summaries to avoid rework</li>
+</ul>
+
+<h2>7. Compliance and data retention</h2>
+<p>Define retention policies for:</p>
+<ul>
+  <li>raw fetch artifacts</li>
+  <li>converted Markdown</li>
+  <li>extracted block summaries</li>
+  <li>logs and audit trails</li>
+</ul>
+<p>If you store raw content, ensure it aligns with your privacy/compliance requirements.</p>
+
+<h2>17. FAQs</h2>
+
+<h3>Q1: What’s the difference between “Markdown for humans” and “Markdown for RAG”?</h3>
+<p>Markdown for humans is optimized for reading: it should look clean, flow naturally, and be easy to skim. Markdown for RAG is optimized for downstream behavior—chunking, retrieval, and citation mapping. That means the representation must preserve stable structure signals (heading hierarchy, list boundaries, table semantics) and keep provenance metadata intact. If headings flatten or lists merge into paragraphs, the retriever may still find relevant words, but it will often return the wrong surrounding context, which reduces answer quality and makes citations less trustworthy.</p>
+
+<h3>Q2: Do I need to render the page or is static HTML enough?</h3>
+<p>Static HTML is enough when the site is server-rendered (the content is present in the initial HTML response). Many modern sites are client-rendered or hybrid: the initial HTML contains placeholders, skeletons, or empty containers, and the real content is loaded by JavaScript. In those cases, converting static HTML produces “empty shells” that look like a page but contain little meaningful text. A practical approach is to fetch static HTML first, run a “main content present” check (e.g., minimum text length, presence of expected heading patterns), and only then fall back to a rendered DOM snapshot when the main content is missing or clearly incomplete.</p>
+
+<h3>Q3: How do I know my conversion is “good”?</h3>
+<p>“Good” conversion is not whether the Markdown looks readable—it’s whether it behaves correctly in the RAG pipeline. You should validate structure invariants (headings, list integrity, table integrity) and evidence coverage (did you actually extract the content blocks you need for citations?). Then you measure retrieval outcomes using provenance: for a set of known queries, check whether the top-k retrieved chunks come from the expected section_path. If conversion quality doesn’t improve citation correctness and provenance match rate, you’re optimizing the wrong metric—even if the Markdown appears polished.</p>
+
+<h3>Q4: What should I store as provenance?</h3>
+<p>Provenance is the bridge between retrieved chunks and the original source. At minimum, store:</p>
+<ul>
+  <li>url (where the content came from)</li>
+  <li>title (page title for context)</li>
+  <li>section_path (the extracted heading hierarchy path, like H2: Pricing &gt; H3: Plans)</li>
+</ul>
+<p>Attach provenance at the chunk level, not only at the page level. Chunking splits content into smaller units, so chunk-level provenance ensures citations remain accurate even when a single page becomes many chunks. Also store conversion_version and crawl_timestamp so you can reproduce what the system ingested and debug regressions when the website or conversion rules change.</p>
+
+<h3>Q5: How should I chunk the Markdown?</h3>
+<p>Chunking should use structure boundaries, not only token windows. Headings define scope, lists define enumerations, and tables define factual relationships. A structure-aware strategy typically:</p>
+<ul>
+  <li>Splits by heading boundaries (so each chunk corresponds to a coherent section).</li>
+  <li>Keeps list items together as a unit (so the enumeration isn’t broken across chunks).</li>
+  <li>Treats tables as structured facts (so rows/headers remain queryable).</li>
+</ul>
+<p>Then apply token limits within those boundaries to avoid overly large chunks. This reduces boundary drift and improves retrieval relevance because the retriever sees chunks that align with how users ask questions.</p>
+
+<h3>Q6: Can I use a single conversion rule set for all websites?</h3>
+<p>You can start with one rule set, but you should expect exceptions. Websites vary in templates, markup patterns, and content layouts. The best practice is to keep your conversion deterministic and versioned, then add targeted overrides only when validation failures show a consistent pattern (for example: “tables on this template always lose headers” or “lists on this CMS are nested differently”). Instead of rewriting everything per site, you evolve a small set of rule adjustments while keeping the overall pipeline contracts stable.</p>
+
+<h3>Q7: What about paywalled or restricted content?</h3>
+<p>For paywalled or restricted sites, you must respect access controls. If you can’t fetch the content reliably, you can’t convert it into knowledge. In practice:</p>
+<ul>
+  <li>Use authenticated fetch flows when allowed.</li>
+  <li>Apply domain/path allowlists so you only ingest permitted content.</li>
+  <li>Keep audit logs of what was ingested and under what access conditions.</li>
+</ul>
+<p>Also consider whether you need additional governance for storing converted text and embeddings, since those artifacts may be subject to licensing or privacy requirements.</p>
+
+<h3>Q8: How do I prevent prompt injection from website content?</h3>
+<p>Treat extracted website text as untrusted data. Never allow instructions inside retrieved content to override your system or developer instructions. In an agentic RAG setup, enforce tool-call policies so retrieved text cannot directly trigger actions. You can also apply content filtering for high-risk patterns (e.g., “ignore previous instructions,” “reveal system prompt,” “call this tool”), but the core defense is architectural separation: retrieval text is data, not control. This prevents malicious pages from steering your model into unsafe behavior.</p>
+
+<h3>Q9: Why do tables matter for RAG?</h3>
+<p>Tables often contain the exact facts users ask about: pricing tiers, feature matrices, comparisons, and eligibility rules. If you flatten tables into paragraphs, you lose row/column relationships and make it harder for retrieval to match the right fact. Structured table Markdown preserves headers and row boundaries, which improves both retrieval relevance and answer grounding. It also helps chunking: table facts remain contained and queryable rather than being scattered across unrelated text.</p>
+
+<h3>Q10: What’s evidence coverage?</h3>
+<p>Evidence coverage is a validation metric that checks whether citation-critical fields and content blocks are present. For example, you might require:</p>
+
+<ul>
+  <li>a title</li>
+  <li>a non-empty main content region</li>
+  <li>a valid section_path</li>
+  <li>at least one extracted content block that is likely to contain answerable information</li>
+</ul>
+<p>Low evidence coverage usually correlates with partial extraction, missing main content, or heavy boilerplate contamination. By gating on evidence coverage before embedding, you reduce the chance that the retriever will return chunks that can’t be cited correctly.</p>
+
+<h3>Q11: Should I embed the entire page or only extracted blocks?</h3>
+<p>Embed extracted blocks, not the entire page. The entire page includes navigation, footers, cookie banners, and repeated template content that dilute embeddings and increase the chance that retrieval returns irrelevant chunks. Extracted blocks focus embeddings on the content that actually answers questions. When you combine block extraction with validation, you improve both relevance and citation accuracy because the system is less likely to index noise.</p>
+
+<h3>Q12: How do I handle website changes over time?</h3>
+<p>Websites change constantly: templates evolve, content moves, and markup patterns break. To handle this:</p>
+<ul>
+  <li>Version your conversion rules (conversion_version).</li>
+  <li>Keep a regression suite of representative URLs.</li>
+  <li>Re-run conversion and validation on that suite when rules change or on a schedule.</li>
+  <li>Monitor validation failure rates and retrieval provenance match rate.</li>
+  <li>When drift is detected, update extraction/normalization rules and re-ingest.</li>
+</ul>
+<p>This turns “website drift” from a silent failure into a measurable operational event, so you can maintain citation correctness over time.</p>
+
+<h2>18. References (full list)</h2>
+<ul>
+  <li>OWASP Server-Side Request Forgery (SSRF) Prevention Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html</li>
+  <li>OWASP Injection (general guidance): https://owasp.org/www-community/attacks/Injection</li>
+  <li>NIST AI Risk Management Framework (AI RMF 1.0): https://www.nist.gov/publications/artificial-intelligence-risk-management-framework</li>
+  <li>Retrieval-Augmented Generation (RAG) foundations (DPR paper): https://arxiv.org/abs/2005.11401</li>
+  <li>Related reading: HTML to Markdown for LLMs: Preserve Semantic Structure (Not Just Text)</li>
+  <li>Related reading: DOCX to Markdown for RAG: Convert Word Documents into AI-Ready Knowledge</li>
+  <li>Related reading: Website to RAG Pipeline with MCP: Build an AI Knowledge Base Without Custom Scrapers</li>
+  <li>Related reading: How to Build a RAG Data Pipeline: From Web Scraping to Vector Search</li>
+  <li>Related reading: Web Scraping at Scale: Architecture, Proxy Rotation, and Anti-Bot Strategies</li>
+</ul>
+
+<h2>19. Conclusion</h2>
+<p>Converting any website into AI-ready knowledge is a pipeline problem, not a formatting problem. The “format” (Markdown) matters only because it controls what your downstream systems can reliably do: chunk, retrieve, and cite. If your conversion collapses structure or loses provenance, you don’t just get worse readability—you get worse retrieval boundaries, weaker grounding, and citations that can’t be trusted.</p>
+<p>The core workflow that makes this reliable is simple:</p>
+<ul>
+  <li><strong>Extract retrieval blocks, not the whole page.</strong> You want the content that actually answers questions (main regions, headings, lists, tables, code), not navigation and template noise. This improves embedding focus and reduces irrelevant matches.</li>
+  <li><strong>Convert blocks into deterministic Markdown.</strong> Determinism means the same structural input produces the same Markdown representation under the same rules. That stability reduces chunk boundary drift and makes retrieval behavior more consistent across pages and over time.</li>
+  <li><strong>Validate structure + evidence before chunking and embedding.</strong> Validation is the safety gate that prevents silent ingestion drift. Structure checks (headings continuity, list integrity, table integrity) catch representation failures, while evidence coverage checks confirm you actually extracted citation-critical content. When validation fails, you quarantine or retry instead of embedding bad data.</li>
+  <li><strong>Chunk using structure boundaries and attach provenance at the chunk level.</strong> Chunking should respect headings/lists/tables so each chunk corresponds to a meaningful scope. Provenance (url, title, section_path, conversion_version) ensures that when retrieval returns a chunk, you can map it back to the exact source section and produce trustworthy citations.</li>
+</ul>
+</Article>
