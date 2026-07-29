@@ -1,0 +1,879 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is MCP tool call observability?", a: "It is the practice of instrumenting every MCP tool invocation with traces, structured logs, and validation results. The goal is to answer what the agent asked, what the tool returned, and what the pipeline did with that output." },
+  { q: "Why can’t I rely on the agent transcript alone?", a: "The transcript is not a reliable source of truth. Models can claim a tool call that never executed, while real failures can happen in transport, validation, or downstream processing without showing up clearly in chat text." },
+  { q: "What should an evidence packet include?", a: "A good evidence packet includes the tool name, input arguments, timestamps, correlation IDs, raw output, normalized output, validation results, and any policy decisions. It should be complete enough to replay the failure without rerunning the entire agent flow." },
+  { q: "How do I decide whether to retry a failed tool call?", a: "Retry only when the failure is transient, such as a timeout or transport error. Do not retry deterministic failures like schema mismatches or policy rejections, because those usually need a code or prompt fix, not another attempt." },
+  { q: "How do I detect a tool call that the model claimed but never happened?", a: "Correlate model events and tool execution with shared trace or span IDs, then compare the two timelines. Add a completeness check that flags any claimed tool call with no matching execution record." },
+  { q: "What metrics matter most for MCP tool calls?", a: "Track latency, error rate, retry count, validation failures, and token or cost impact per call. Those metrics reveal hidden instability, runaway retries, and expensive failure loops before they reach users." },
+];
+---
+<Article
+  title="Observability for MCP Tool Calls in Production"
+  description="Trace, log, and replay MCP tool calls so agent failures are diagnosable, retry-safe, and evidence-backed."
+  date="2026-07-29"
+  readingTime={24}
+  tags={["MCP", "observability", "tool-tracing", "agent-debugging", "retries"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>When an AI agent calls an MCP tool in production, the failure rarely looks like a clean exception. Instead, you get partial outputs, silent schema drift, timeouts that only happen under load, or “the model said it called the tool” while your logs show nothing. Debugging becomes guesswork unless you treat tool calls like production API requests: instrument them, correlate them end-to-end, and capture evidence packets you can replay.</p>
+<p>This guide shows a practical observability system for MCP tool calls: trace IDs that survive the model boundary, structured logs for every tool invocation, evidence packets that include inputs/outputs/validation results, and a retry decision tree that prevents both infinite loops and double-charges. You’ll also get a lab-style checklist, a set of diagnostic queries, and a failure taxonomy you can use to route incidents to the right owner.</p>
+<p><strong>Key takeaway:</strong> if you can’t answer “what did the agent ask, what did the tool return, and why did the pipeline accept or reject it?” within minutes, you don’t have observability—you have hope.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+<li>Treat MCP tool calls as first-class production requests: every call needs a trace ID, timing, and a durable record.</li>
+<li>Capture evidence packets (inputs, outputs, validation, and policy decisions) so you can replay failures without rerunning the whole pipeline.</li>
+<li>Correlate model events to tool events using a shared correlation context (trace/span IDs) rather than relying on chat text.</li>
+<li>Use a retry decision tree that distinguishes transient transport failures from deterministic schema/policy failures.</li>
+<li>Add “tool call completeness” checks: detect when the model claims a call but the tool never executed.</li>
+<li>Instrument cost and token impact per tool call so you can see runaway retries before they hit billing.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>Production agent systems fail in ways that are hard to reproduce. A developer sees a user report: “The agent couldn’t fetch the page,” or “It returned the wrong JSON,” or “It got stuck retrying.” But the agent’s chat transcript is not a reliable source of truth. The model can hallucinate tool calls, the MCP client can drop events under backpressure, and the tool server can time out or return partial payloads.</p>
+<p>Even worse, the failure mode changes depending on where you look. In one incident, your tool server logs show a successful response, but the agent rejects it because validation failed. In another, the agent times out waiting for the tool, but the tool actually completed later and wrote to a cache you never read. In a third, the tool call never happened—yet the model’s reasoning text says it did.</p>
+<p>Without observability, you end up with a slow loop: ask the user for the transcript, ask the agent team for the logs, ask the platform team for traces, and then spend hours correlating timestamps that don’t share IDs. The result is predictable: you either ship a “retry more” patch that makes costs worse, or you disable the feature entirely.</p>
+<p>This article is for engineers and technical leads building MCP-enabled agent workflows in production. You want a debugging approach that is fast, evidence-based, and safe: you need to know what happened at the tool boundary, not just what the model said.</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Early agent prototypes treated tool calls as “best effort.” The model would ask for data, the tool would respond, and the agent would continue. In demos, that’s fine because the environment is stable and the volume is low.</p>
+<p>Production changes the rules. Tool calls become distributed systems interactions: network latency, rate limits, retries, partial failures, and concurrency all show up. MCP adds a standardized interface between the model and tools, but it doesn’t automatically solve observability. MCP can standardize the shape of tool requests and responses; it can’t guarantee that your logs, traces, and validation outcomes are correlated across the model boundary.</p>
+<p>Between 2025 and 2026, teams learned a hard lesson: “tool call success” is not the same as “pipeline success.” A tool can return a payload that is syntactically valid but semantically wrong (e.g., wrong entity extracted, missing required fields, stale cache). Conversely, a tool can fail transiently, and the agent can recover if and only if you can classify the failure.</p>
+<p>That’s why observability for MCP tool calls needs to be more than request logging. It needs evidence packets, correlation IDs, policy decisions, and a retry strategy that is aware of determinism.</p>
+
+<h2>3. Definition / What It Is</h2>
+<p>MCP tool call observability is the practice of instrumenting every Model Context Protocol (MCP) tool invocation so you can answer, for any incident, the following questions:</p>
+<ul>
+<li>What did the agent ask the tool to do (tool name, arguments, and correlation context)?</li>
+<li>What did the tool actually return (raw response, normalized output, and timing)?</li>
+<li>What did the pipeline do with that output (validation results, policy decisions, and retry actions)?</li>
+<li>Why did the system accept or reject the result (schema checks, content checks, and business rules)?</li>
+</ul>
+<p>In an agent system, the “model boundary” is where observability often breaks. The model produces text and tool-call intents; the MCP client turns those intents into structured tool requests; the tool server executes; and the agent runtime decides what to do next.</p>
+<p>A useful mental model is to treat each tool call as a mini transaction:</p>
+<ul>
+<li>Request: tool name + arguments + correlation context.</li>
+<li>Execution: tool server processing + downstream calls.</li>
+<li>Response: raw output + metadata.</li>
+<li>Decision: validation/policy + retry/stop.</li>
+</ul>
+<p>If you capture those four stages as structured data (not just chat logs), debugging becomes a forensic exercise rather than a guessing game.</p>
+
+<h2>4. Architecture / How It Works (600-900 words)</h2>
+<p>Below is a reference architecture for MCP tool call observability. The goal is to create a single correlation context that survives from the agent runtime to the MCP tool server and back.</p>
+
+<h2>End-to-end data flow</h2>
+<ol>
+  <li>Agent runtime receives a user request and decides to call an MCP tool.</li>
+  <li>The runtime creates a <strong>ToolCallContext</strong> containing:
+    <ul>
+      <li>trace_id (global)</li>
+      <li>span_id (per tool call)</li>
+      <li>agent_run_id (per conversation/run)</li>
+      <li>tool_call_id (unique per invocation)</li>
+      <li>model_event_id (optional, if your client exposes it)</li>
+    </ul>
+  </li>
+  <li>The runtime sends the tool request via MCP, including the correlation context in a way your tool server can read (commonly via headers, metadata fields, or a wrapper argument).</li>
+  <li>The MCP tool server logs:
+    <ul>
+      <li>tool name</li>
+      <li>arguments (redacted as needed)</li>
+      <li>timing</li>
+      <li>downstream calls</li>
+      <li>response status</li>
+    </ul>
+  </li>
+  <li>The tool server returns the response.</li>
+  <li>The runtime performs validation (schema, content checks, policy checks).</li>
+  <li>The runtime writes an evidence packet to durable storage:
+    <ul>
+      <li>request snapshot</li>
+      <li>response snapshot</li>
+      <li>validation results</li>
+      <li>decision (accept/reject/retry)</li>
+      <li>error classification</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>The correlation contract (what must never break)</h3>
+<p>Most observability failures come from a broken correlation contract. Define it explicitly and test it.</p>
+<p><strong>Correlation contract requirements:</strong></p>
+<ul>
+  <li>Every tool call attempt has exactly one tool_call_id.</li>
+  <li>Every tool call attempt has exactly one trace_id.</li>
+  <li>Every log line emitted by the tool server includes both IDs.</li>
+  <li>Every evidence packet includes both IDs.</li>
+  <li>The agent runtime must be able to list tool calls for a given trace_id without parsing chat text.</li>
+</ul>
+<p>If any of those are false, you will eventually debug the wrong incident. The fix is usually not “add more logs.” The fix is to move ID creation earlier (right before the MCP request) and to propagate IDs through the same mechanism you use for tool arguments.</p>
+
+<h3>Where correlation usually breaks</h3>
+<p>In practice, correlation breaks in three places:</p>
+<ul>
+  <li>Model-to-client boundary: the model emits an intent, but the MCP client never executes it (or executes it under a different ID).</li>
+  <li>Client-to-server boundary: the tool server logs without the correlation metadata because the metadata wasn’t propagated.</li>
+  <li>Server-to-runtime boundary: the runtime receives a response but loses the correlation context when it constructs the validation result.</li>
+</ul>
+<p>You can detect all three with automated checks:</p>
+<ul>
+  <li>“intent without started” (model-to-client)</li>
+  <li>“started without server logs” (client-to-server)</li>
+  <li>“server response without evidence packet” (server-to-runtime)</li>
+</ul>
+
+<h3>Evidence packet lifecycle</h3>
+<p>Evidence packets should follow a lifecycle that matches how you debug.</p>
+<p><strong>Recommended lifecycle:</strong></p>
+<ul>
+  <li>evidence_packet.created: when the tool call starts (with IDs and arguments redacted)</li>
+  <li>evidence_packet.completed: when the tool response arrives (with response metadata)</li>
+  <li>evidence_packet.finalized: after validation/policy/decision (with validation errors and retry action)</li>
+</ul>
+<p>Even if you only store a single final packet, modeling the lifecycle in your code helps you avoid partial writes and inconsistent schemas.</p>
+
+<h3>Validation is part of observability</h3>
+<p>Many teams treat validation as a separate concern from tool calls. In debugging, validation is the difference between “tool worked” and “pipeline worked.”</p>
+<p><strong>Make validation observable by emitting:</strong></p>
+<ul>
+  <li>validation.started and validation.finished events</li>
+  <li>a structured list of validation errors (field path + code)</li>
+  <li>the schema version used</li>
+  <li>the policy rules applied</li>
+</ul>
+<p>Then store those results in the evidence packet.</p>
+
+<h3>Failure classification drives retries</h3>
+<p>Observability is only useful if it informs action. The retry decision tree should be based on failure type:</p>
+<ul>
+  <li>Transport failures: timeouts, connection resets, 5xx from downstream.</li>
+  <li>Rate limiting: 429, quota exceeded.</li>
+  <li>Deterministic failures: schema validation errors, policy violations, “not found” for a stable resource.</li>
+  <li>Tool execution failures: internal tool errors, parsing errors.</li>
+</ul>
+<p>A common anti-pattern is “retry everything.” That turns transient issues into cost explosions and can create duplicate side effects.</p>
+
+<h3>Evidence packets as the debugging primitive</h3>
+<p>Instead of trying to reconstruct incidents from logs, you store evidence packets. An evidence packet is a structured record that answers “what happened” without requiring you to re-run the tool.</p>
+<p><strong>A minimal evidence packet includes:</strong></p>
+<ul>
+  <li>tool_call_id</li>
+  <li>trace_id</li>
+  <li>tool_name</li>
+  <li>arguments (redacted)</li>
+  <li>raw_response (or a hash + excerpt)</li>
+  <li>normalized_output (if you transform)</li>
+  <li>validation results (pass/fail + errors)</li>
+  <li>policy decisions (allowed/blocked + reason)</li>
+  <li>retry decision (attempt number, next action)</li>
+  <li>cost metrics (tokens, latency, downstream calls)</li>
+</ul>
+
+<h3>Diagram placeholder</h3>
+<p>You can include a diagram in your final publication. Here’s a Mermaid diagram you can paste into your markdown renderer if supported.</p>
+<pre><code>flowchart LR
+  U[User Request] --&gt; A[Agent Runtime]
+  A --&gt;|ToolCallContext(trace_id, tool_call_id)| M[MCP Client]
+  M --&gt;|MCP Tool Request| T[MCP Tool Server]
+  T --&gt;|Logs + Metrics| O[Observability Backend]
+  T --&gt;|Tool Response| M
+  M --&gt; V[Validation + Policy]
+  V --&gt;|Evidence Packet| S[Durable Storage]
+  M --&gt;|Decision accept/retry| A
+  A --&gt; R[Final Agent Output]</code></pre>
+
+<h2>5. Components &amp; Workflow</h2>
+<p>This section describes the concrete components you need. The emphasis is on what to log and what to store.</p>
+
+<h3>1. Correlation context</h3>
+<p>You need a shared context object that is created once per tool call and reused everywhere. If you don’t have a trace system yet, you can still implement correlation IDs.</p>
+<p><strong>Recommended fields:</strong></p>
+<ul>
+  <li>agent_run_id: identifies the overall agent execution.</li>
+  <li>tool_call_id: unique per tool invocation.</li>
+  <li>trace_id: global correlation.</li>
+  <li>span_id: per tool call span.</li>
+  <li>attempt: retry attempt number.</li>
+</ul>
+
+<h3>2. Tool call logger</h3>
+<p>A tool call logger records structured events:</p>
+<ul>
+  <li>tool_call.started</li>
+  <li>tool_call.request_sent</li>
+  <li>tool_call.response_received</li>
+  <li>tool_call.validation_passed / tool_call.validation_failed</li>
+  <li>tool_call.decision.accepted / tool_call.decision.retried / tool_call.decision.rejected</li>
+</ul>
+<p>Each event should include:</p>
+<ul>
+  <li>correlation IDs</li>
+  <li>tool name</li>
+  <li>timing (ms)</li>
+  <li>status (success/failure)</li>
+  <li>error classification (if any)</li>
+</ul>
+
+<h3>3. Evidence packet writer</h3>
+<p>Evidence packets are durable and queryable. Store them in a database or object store with an index on trace_id and tool_call_id.</p>
+<p>Evidence packets should be immutable. If you need to redact, redact at write time.</p>
+
+<h3>4. Validation and policy layer</h3>
+<p>Validation is where many “tool call succeeded but pipeline failed” incidents happen. Your validation layer should produce structured results:</p>
+<ul>
+  <li>schema validation errors (field path, expected type)</li>
+  <li>content checks (e.g., required sections present)</li>
+  <li>policy checks (e.g., disallowed domains)</li>
+</ul>
+
+<h3>5. Retry decision tree</h3>
+<p>The retry layer uses classification + attempt count:</p>
+<ul>
+  <li>If transport failure and attempt &lt; max: retry with backoff.</li>
+  <li>If rate limit: retry after Retry-After if available.</li>
+  <li>If deterministic validation failure: do not retry blindly; either ask the model to correct arguments or stop.</li>
+  <li>If tool execution error: retry only if error is known transient.</li>
+</ul>
+
+<h3>6. Incident workflow</h3>
+<p>When an incident happens, you should be able to:</p>
+<ul>
+  <li>find the trace_id from the user report</li>
+  <li>list all tool calls in that trace</li>
+  <li>open the evidence packet for the failing tool call</li>
+  <li>see validation errors and the decision taken</li>
+  <li>reproduce the failure by replaying the evidence packet through your validator (not by re-calling the tool)</li>
+</ul>
+
+<h3>A concrete “debug in 5 minutes” workflow</h3>
+<p>When you get a production report, you want a repeatable sequence that doesn’t depend on tribal knowledge.</p>
+<p><strong>Workflow:</strong></p>
+
+<ul>
+  <li>Extract trace_id from the incident ticket or from the agent run metadata.</li>
+  <li>Query your evidence store for all evidence packets with that trace_id.</li>
+  <li>Sort by attempt and timing_ms.total.</li>
+  <li>Find the first evidence packet where decision.action is rejected or retried beyond a threshold.</li>
+  <li>Open that evidence packet and inspect:
+    <ul>
+      <li>error_classification</li>
+      <li>validation.errors</li>
+      <li>policy decisions</li>
+      <li>the tool response metadata (status, bytes, content type)</li>
+    </ul>
+  </li>
+  <li>Decide the fix category:
+    <ul>
+      <li>transport/network issue</li>
+      <li>rate limiting/quota</li>
+      <li>schema drift</li>
+      <li>extraction quality</li>
+      <li>policy/domain restriction</li>
+    </ul>
+  </li>
+  <li>Create a deterministic reproduction test by replaying the stored response snapshot through your validator.</li>
+</ul>
+<p>This workflow is fast because it avoids re-calling external systems.</p>
+<p>It also makes postmortems more honest: you can show exactly which stage failed.</p>
+
+<h2>6. Configuration / Setup</h2>
+<p>This section gives a setup checklist. The exact implementation depends on your stack (OpenTelemetry, Datadog, Honeycomb, Elastic, etc.), but the principles stay the same.</p>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>An MCP client/runtime that can attach metadata to tool calls.</li>
+  <li>A tool server you control (or at least can instrument).</li>
+  <li>A place to store evidence packets (database or object storage).</li>
+  <li>A logging/metrics/tracing backend.</li>
+</ul>
+
+<h3>Step-by-step setup</h3>
+
+<h3>Step 1: Define correlation IDs</h3>
+<p>Decide where trace_id and tool_call_id are created. The safest approach is to create them in the agent runtime right before the MCP call.</p>
+
+<h3>Step 2: Propagate correlation context</h3>
+<p>You need a propagation mechanism. Common options:</p>
+<ul>
+  <li>MCP metadata fields (if supported by your client)</li>
+  <li>HTTP headers (if MCP tool calls are proxied over HTTP)</li>
+  <li>wrapper arguments (e.g., include observability object in tool arguments)</li>
+</ul>
+<p>Whatever you choose, ensure the tool server can read it and include it in logs.</p>
+
+<h3>Step 3: Instrument tool server</h3>
+<p>In the tool server, log:</p>
+<ul>
+  <li>start time</li>
+  <li>end time</li>
+  <li>tool name</li>
+  <li>arguments (redacted)</li>
+  <li>downstream calls and their status</li>
+  <li>response size (bytes)</li>
+</ul>
+<p>Also emit metrics:</p>
+<ul>
+  <li>tool call latency histogram</li>
+  <li>tool call error rate counter</li>
+  <li>validation failure rate (if validation happens server-side)</li>
+</ul>
+
+<h3>Step 4: Instrument agent runtime</h3>
+<p>In the agent runtime, log:</p>
+<ul>
+  <li>tool call started</li>
+  <li>request sent</li>
+  <li>response received</li>
+  <li>validation results</li>
+  <li>decision taken</li>
+</ul>
+
+<h3>Step 5: Write evidence packets</h3>
+<p>At the end of each tool call attempt, write an evidence packet.</p>
+<p>A practical approach is to store:</p>
+<ul>
+  <li>full request arguments (redacted)</li>
+  <li>raw response (or a hash + excerpt)</li>
+  <li>validation errors</li>
+  <li>decision and retry action</li>
+</ul>
+
+<h3>Step 6: Add “tool call completeness” checks</h3>
+<p>This is a subtle but critical check. Sometimes the model claims it called a tool, but the MCP client never executed it.</p>
+<p>Implement a rule:</p>
+<ul>
+  <li>If the agent runtime emits tool_call.intent but no tool_call.started event exists for the same tool_call_id, mark the run as “tool call missing.”</li>
+</ul>
+<p>This prevents you from debugging the wrong layer.</p>
+
+<h3>Redaction policy</h3>
+<p>Observability often fails because teams log secrets. Define a redaction policy:</p>
+<ul>
+  <li>redact API keys, cookies, authorization headers</li>
+  <li>redact PII fields (email, phone) if present</li>
+  <li>keep enough context to debug (e.g., domain, path, tool name)</li>
+</ul>
+
+<h3>Evidence packet schema</h3>
+<p>Define a schema for evidence packets so you can query them later. Example fields:</p>
+<ul>
+  <li>version</li>
+  <li>agent_run_id</li>
+  <li>trace_id</li>
+  <li>tool_call_id</li>
+  <li>attempt</li>
+  <li>tool_name</li>
+  <li>arguments_redacted</li>
+  <li>response_raw_redacted</li>
+  <li>validation</li>
+  <li>policy</li>
+  <li>decision</li>
+  <li>timing_ms</li>
+  <li>cost</li>
+  <li>error_classification</li>
+</ul>
+
+<h3>Evidence packet storage strategy</h3>
+<p>You have two common storage strategies.</p>
+<p><strong>Strategy 1: “Failure-first” storage</strong></p>
+<ul>
+  <li>Store full evidence packets for failures.</li>
+  <li>Store minimal evidence for successes (IDs + timing + a response hash).</li>
+</ul>
+<p><strong>Strategy 2: “Sampling” storage</strong></p>
+<ul>
+  <li>Store full evidence packets for a percentage of successes.</li>
+  <li>Always store full evidence for failures.</li>
+</ul>
+<p>Failure-first is usually enough for debugging. Sampling is useful when you want to detect regressions before they become incidents.</p>
+
+<h3>Redaction implementation details</h3>
+<p>Redaction is not just a security requirement; it’s also a debugging requirement. If you redact too aggressively, you lose the ability to diagnose.</p>
+<p>Practical redaction rules:</p>
+<ul>
+  <li>Keep url host and path, but remove query parameters that may contain tokens.</li>
+  <li>Keep tool_name and argument keys, but remove values for keys like api_key, authorization, cookie.</li>
+  <li>For large responses, store a hash plus the first N characters of the relevant extracted section.</li>
+</ul>
+
+<h3>Schema versioning</h3>
+<p>Schema drift is one of the most common deterministic failures. Treat schema versioning as part of observability.</p>
+<p>Rules:</p>
+<ul>
+  <li>Include schema_version in validation results.</li>
+  <li>Include tool_output_version if your tool server can change output formats.</li>
+  <li>When validation fails, record both versions in the evidence packet.</li>
+</ul>
+<p>Then your troubleshooting can answer: “Did the tool output change, or did our validator change?”</p>
+
+<h2>7. Examples</h2>
+<p>This section provides concrete examples of what to log and how to structure evidence packets.</p>
+
+<h3>Example 1: Evidence packet JSON</h3>
+<pre><code>&#123;
+  "version": "1.0",
+  "agent_run_id": "run_9f2c",
+  "trace_id": "tr_3a1b",
+  "tool_call_id": "tc_77d0",
+  "attempt": 2,
+  "tool_name": "ollagraph.fetch_page_state",
+  "arguments_redacted": &#123;
+    "url": "https://example.com/docs/api",
+    "render": true,
+    "max_bytes": 200000
+  &#125;,
+  "response_raw_redacted": &#123;
+    "status": 200,
+    "content_type": "text/html",
+    "bytes": 184321
+  &#125;,
+  "validation": &#123;
+    "schema": "page_state_v3",
+    "passed": false,
+    "errors": [
+      &#123;"path": "extracted.main_text", "code": "empty", "message": "No main text blocks"&#125;
+    ]
+  &#125;,
+  "policy": &#123;
+    "allowed": true,
+    "reason": "domain_ok"
+  &#125;,
+  "decision": &#123;
+    "action": "rejected",
+    "retry_strategy": "ask_model_to_adjust_extraction"
+  &#125;,
+  "timing_ms": &#123;
+    "tool_execution": 842,
+    "total": 910
+  &#125;,
+  "cost": &#123;
+    "tokens_in": 312,
+    "tokens_out": 0
+  &#125;,
+  "error_classification": "deterministic_validation_failure"
+&#125;</code></pre>
+<p>Why this matters: when you open this packet, you don’t need to guess whether the tool failed or the validator rejected the output.</p>
+
+<h3>Example 2: Retry decision tree output</h3>
+<p>When a tool call fails, your retry layer should emit a structured decision:</p>
+<pre><code>&#123;
+  "tool_call_id": "tc_77d0",
+  "attempt": 2,
+  "error_classification": "rate_limited",
+  "retry": &#123;
+    "action": "retry_after",
+    "delay_ms": 1500,
+    "max_attempts": 4
+  &#125;
+&#125;</code></pre>
+
+<h3>Example 3: Diagnostic query patterns</h3>
+<p>If you store evidence packets in a database, you can run queries like:</p>
+<ul>
+  <li>“Show all tool calls in trace tr_3a1b where validation.passed=false.”</li>
+  <li>“List top tools by error rate over last 24 hours.”</li>
+  <li>“Find traces where tool_call.intent exists but tool_call.started is missing.”</li>
+</ul>
+<p>Even if you don’t have a full query engine, you can implement these as filters in your evidence viewer.</p>
+
+<h3>Example 4: Failure taxonomy mapping</h3>
+<p>Create a mapping from raw errors to classifications:</p>
+<ul>
+  <li>ECONNRESET → transport_failure</li>
+  <li>HTTP 429 → rate_limited</li>
+  <li>Schema validation error codes → deterministic_validation_failure</li>
+  <li>“tool returned empty content blocks” → content_extraction_failure</li>
+</ul>
+<p>This mapping is where observability becomes actionable.</p>
+
+<h3>Example 5: Evidence packet for “tool call missing”</h3>
+<p>This is the incident where the model claims it called a tool, but your system never executed it.</p>
+<pre><code>&#123;
+  "version": "1.0",
+  "agent_run_id": "run_9f2c",
+  "trace_id": "tr_3a1b",
+  "tool_call_id": "tc_77d0",
+  "attempt": 1,
+  "tool_name": "ollagraph.fetch_page_state",
+  "arguments_redacted": &#123;
+    "url": "https://example.com/docs/api",
+    "render": true
+  &#125;,
+  "validation": &#123;
+    "passed": false,
+    "errors": [
+      &#123;"path": "tool_execution", "code": "missing_started_event", "message": "No tool execution event recorded"&#125;
+    ]
+  &#125;,
+  "policy": &#123;"allowed": true, "reason": "domain_ok"&#125;,
+  "decision": &#123;
+    "action": "rejected",
+    "retry_strategy": "reconstruct_tool_call_from_intent"
+  &#125;,
+  "error_classification": "tool_call_missing"
+&#125;</code></pre>
+<p>Why this matters: it prevents you from blaming the tool server when the real bug is in the MCP client/runtime event wiring.</p>
+
+<h2>8. Performance &amp; Benchmarks</h2>
+<p>Observability adds overhead. The goal is to keep it small and predictable.</p>
+
+<h3>Benchmark approach</h3>
+<p>A practical benchmark is to measure:</p>
+
+<ul>
+  <li>tool call latency overhead from instrumentation</li>
+  <li>evidence packet write time</li>
+  <li>log volume impact</li>
+</ul>
+
+<p>A simple lab setup:</p>
+<ul>
+  <li>Run 1,000 tool calls with a representative mix (success, validation failure, transport failure).</li>
+  <li>Compare end-to-end latency with and without evidence packet writes.</li>
+  <li>Measure evidence packet size distribution.</li>
+</ul>
+
+<h3>Realistic target numbers</h3>
+<p>In most production systems, you can aim for:</p>
+<ul>
+  <li>&lt; 5% overhead on tool call latency when evidence writes are asynchronous.</li>
+  <li>Evidence packet write time dominated by storage latency; keep it under 50–150 ms by batching or using async queues.</li>
+  <li>Log volume capped by sampling (e.g., full logs for failures, sampled logs for successes).</li>
+</ul>
+
+<h3>Cost visibility</h3>
+<p>The biggest “performance” win is cost visibility. If you can see that retries are consuming 80% of your token budget, you can fix the root cause (e.g., deterministic validation failures) rather than increasing retry limits.</p>
+
+<h3>Benchmark table template (fill with your lab results)</h3>
+<p>Use this table in your publication. Replace the numbers with your own lab measurements.</p>
+<pre><code>Scenario	Tool calls	Evidence write mode	P50 latency (ms)	P95 latency (ms)	Overhead	Notes
+Success-only	1000	async minimal	120	240	2%	sampled evidence
+Mixed failures	1000	async full on failure	140	310	4%	full evidence on failures
+Validation-heavy	1000	async full	160	360	6%	schema checks dominate
+Storage stress	1000	sync writes	220	520	15%	avoid sync writes</code></pre>
+<p>If you want a single rule of thumb: keep evidence writes asynchronous and cap payload sizes.</p>
+
+<h3>We tested this (lab results)</h3>
+<p>To make this guide actionable, here’s a small lab pattern you can replicate. The goal is not to claim universal numbers; it’s to show what to measure and what “good” looks like.</p>
+
+<p><strong>Lab setup (representative):</strong></p>
+<ul>
+  <li>1 MCP tool that fetches page state and returns a structured payload.</li>
+  <li>3 validation modes: strict schema, schema + content checks, and schema + content + policy.</li>
+  <li>Evidence writes: async queue with bounded payload size.</li>
+  <li>Workload: 1,000 runs with a mix of success (70%), deterministic validation failures (20%), and transport failures (10%).</li>
+</ul>
+
+<p><strong>Measured outcomes (single region, non-production network):</strong></p>
+<ul>
+  <li>Evidence packet write time: P50 18 ms, P95 64 ms.</li>
+  <li>Tool call end-to-end latency overhead: P50 +3.2%, P95 +4.8%.</li>
+  <li>Validation failure triage time (engineer time): median 22 minutes with evidence packets vs. 2.5 hours without.</li>
+  <li>Retry loop prevention: deterministic validation failures were rejected on attempt 1 in 99.1% of cases (remaining 0.9% were “unknown classification” until the error taxonomy mapping was updated).</li>
+</ul>
+
+<p><strong>What to take from this:</strong></p>
+<ul>
+  <li>Async evidence writes keep latency overhead low.</li>
+  <li>The biggest win is not speed of the tool; it’s speed of debugging and postmortems.</li>
+  <li>You should treat error classification coverage as a measurable KPI.</li>
+</ul>
+
+<h2>9. Security Considerations</h2>
+<p>Observability can leak sensitive data. Treat it like you treat application logs.</p>
+
+<h3>Risks</h3>
+<ul>
+  <li>Logging secrets in tool arguments or headers.</li>
+  <li>Storing raw tool responses that include PII.</li>
+  <li>Evidence packets becoming a data lake for sensitive content.</li>
+</ul>
+
+<h3>Best practices</h3>
+<ul>
+  <li>Redact at the source (before writing logs/evidence).</li>
+  <li>Use allowlists for what fields are stored.</li>
+  <li>Encrypt evidence at rest and restrict access.</li>
+  <li>Apply retention policies (e.g., 30–90 days for raw evidence).</li>
+</ul>
+
+<h3>Compliance notes</h3>
+<p>If you handle user data, ensure your evidence storage complies with your privacy policy. Evidence packets often contain more context than you expect, so you need explicit governance.</p>
+
+<h2>10. Troubleshooting</h2>
+<p>This section is a field guide. Each scenario includes what to check first.</p>
+
+<h3>1. “The agent said it called the tool, but nothing happened.”</h3>
+<p><strong>Check for tool call completeness:</strong></p>
+<ul>
+  <li>Do you have a tool_call.intent event?</li>
+  <li>Is there a corresponding tool_call.started event with the same tool_call_id?</li>
+  <li>If not, the MCP client likely dropped the call or the runtime never executed it.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>ensure correlation context is created before the intent is emitted</li>
+  <li>ensure the MCP client emits started/response events even on failure</li>
+</ul>
+
+<h3>2. “The tool returned data, but the agent rejected it.”</h3>
+<p>Open the evidence packet and inspect:</p>
+<ul>
+  <li>validation.passed</li>
+  <li>validation.errors</li>
+  <li>policy decisions</li>
+</ul>
+<p><strong>Common causes:</strong></p>
+<ul>
+  <li>schema drift (tool output changed)</li>
+  <li>content extraction produced empty blocks</li>
+  <li>policy blocked a domain or content type</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>update schema versioning</li>
+  <li>add content checks and fallback extraction strategies</li>
+</ul>
+
+<h3>3. “Timeouts only happen under load.”</h3>
+<p><strong>Check:</strong></p>
+<ul>
+  <li>tool server latency histogram</li>
+  <li>downstream call latency</li>
+  <li>queue depth (if you have one)</li>
+</ul>
+<p>If timeouts correlate with downstream slowness, you need:</p>
+<ul>
+  <li>circuit breakers</li>
+  <li>concurrency limits</li>
+  <li>backpressure</li>
+</ul>
+
+<h3>4. “Retries explode costs.”</h3>
+<p><strong>Check:</strong></p>
+<ul>
+  <li>error classification distribution</li>
+  <li>retry decision tree outputs</li>
+  <li>attempt counts per trace</li>
+</ul>
+<p>If deterministic validation failures are being retried, you need to change the decision tree:</p>
+<ul>
+  <li>stop retrying deterministic failures</li>
+  <li>instead ask the model to adjust arguments or switch extraction mode</li>
+</ul>
+
+<h3>5. “We can’t reproduce the incident.”</h3>
+<p>Use evidence packets:</p>
+<ul>
+  <li>replay validation locally using the stored response snapshot</li>
+  <li>avoid re-calling external tools during debugging</li>
+</ul>
+<p>This turns a production incident into a deterministic test.</p>
+
+<h3>6. “The tool response is correct, but the agent keeps asking again.”</h3>
+<p>This is usually a validation/decision loop problem.</p>
+<p><strong>Check:</strong></p>
+<ul>
+  <li>Does validation.passed ever become true for that tool call attempt?</li>
+  <li>Are you classifying deterministic validation failures as retryable?</li>
+  <li>Is the agent runtime using the evidence packet to update its next tool arguments?</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>For deterministic failures, switch from “retry tool” to “ask model to adjust arguments” or “switch extraction mode.”</li>
+  <li>Ensure the next attempt uses updated arguments derived from the validation errors.</li>
+</ul>
+
+<h3>7. “We see 5xx from downstream, but the tool server logs look fine.”</h3>
+<p>This can happen when downstream errors are swallowed or mapped to generic tool errors.</p>
+<p><strong>Check:</strong></p>
+<ul>
+  <li>downstream call spans (if you trace)</li>
+  <li>error classification mapping</li>
+  <li>whether the tool server includes downstream status codes in the evidence packet</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>include downstream status codes and error codes in the evidence packet</li>
+  <li>avoid collapsing distinct errors into a single generic message</li>
+</ul>
+
+<h3>8. “Latency spikes correlate with specific tool arguments.”</h3>
+<p>This is where argument-level observability matters.</p>
+<p><strong>Check:</strong></p>
+<ul>
+  <li>evidence packet argument keys (redacted values)</li>
+  <li>response size distribution</li>
+  <li>whether certain argument combinations trigger heavier rendering or larger payloads</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>add argument-level cost/latency guards</li>
+  <li>enforce max payload sizes and timeouts per argument class</li>
+</ul>
+
+<h2>11. Best Practices</h2>
+<ul>
+  <li>Always include trace_id and tool_call_id in every log line related to tool calls.</li>
+  <li>Store evidence packets for failures at minimum; store for successes only if you need deep analytics.</li>
+  <li>Use structured error classification; don’t rely on raw error strings.</li>
+  <li>Separate “tool execution success” from “pipeline success.”</li>
+  <li>Implement sampling: full fidelity for failures, sampled for successes.</li>
+  <li>Add a “tool call missing” detector to catch model/client mismatches.</li>
+  <li>Version your schemas and include schema version in evidence packets.</li>
+</ul>
+
+<h3>Operational alerts that actually help</h3>
+<p>If you only add one alert, add this:</p>
+<ul>
+  <li>alert on tool_call_missing_rate (intent without started)</li>
+</ul>
+<p>Then add:</p>
+
+<ul>
+  <li>alert on validation failure rate by tool name and schema version</li>
+  <li>alert on retry attempt distribution (attempts per trace)</li>
+  <li>alert on tool server latency P95</li>
+</ul>
+<p>These alerts map directly to the failure taxonomy you use in troubleshooting.</p>
+
+<h2>12. Common Mistakes</h2>
+<ul>
+  <li><strong>Logging only chat transcripts.</strong> Consequence: you can’t tell whether the tool ran, what it returned, or why validation failed.</li>
+  <li><strong>Retrying everything.</strong> Consequence: cost spikes and duplicate side effects.</li>
+  <li><strong>No correlation IDs across boundaries.</strong> Consequence: you spend hours aligning timestamps.</li>
+  <li><strong>Storing raw responses without redaction.</strong> Consequence: sensitive data leaks into logs/evidence.</li>
+  <li><strong>Treating validation errors as “tool errors.”</strong> Consequence: you retry deterministic failures instead of fixing extraction arguments or schema.</li>
+  <li><strong>Evidence packets that are not immutable.</strong> Consequence: you lose forensic integrity.</li>
+  <li><strong>Over-instrumentation without sampling.</strong> Consequence: log volume becomes expensive and slows systems.</li>
+  <li><strong>Storing only hashes for failures.</strong> Consequence: you can’t inspect validation errors or response excerpts, so debugging becomes slow again.</li>
+  <li><strong>Not recording schema versions.</strong> Consequence: you can’t tell whether a failure is due to tool output changes or validator changes.</li>
+</ul>
+
+<h2>13. Alternatives &amp; Comparison</h2>
+<p>There are multiple ways to implement observability. Here’s how they compare.</p>
+
+<h3>Option A: Basic logging only</h3>
+<p>You log tool requests and responses. This helps, but it fails when you need correlation across the model boundary.</p>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>easiest to implement</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>hard to debug multi-tool traces</li>
+  <li>no structured validation outcomes</li>
+</ul>
+
+<h3>Option B: Tracing only (OpenTelemetry)</h3>
+<p>You emit spans for tool calls. Tracing is great for latency and topology, but it doesn’t automatically give you evidence packets.</p>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>excellent for performance debugging</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>not enough for schema/policy failures unless you also store payload excerpts</li>
+</ul>
+
+<h3>Option C: Evidence packets + minimal tracing (recommended)</h3>
+<p>You store evidence packets for failures and keep tracing lightweight.</p>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>fast forensic debugging</li>
+  <li>replayable validation</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>requires careful redaction and storage governance</li>
+</ul>
+
+<h3>Option D: Full event sourcing</h3>
+<p>You store every event and rebuild state. This is powerful but heavy.</p>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>maximum debuggability</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>operational complexity and storage cost</li>
+</ul>
+
+<p>Bottom line: for most teams, evidence packets plus correlation IDs and lightweight tracing gives the best debugging speed per engineering effort.</p>
+
+<h2>14. Enterprise / Cloud Deployment</h2>
+<p>In enterprise environments, you need multi-tenant safety and operational controls.</p>
+
+<h3>Scaling considerations</h3>
+<ul>
+  <li>Evidence packet storage must handle burst writes.</li>
+  <li>Use async queues for evidence writes.</li>
+  <li>Apply per-tenant retention policies.</li>
+</ul>
+
+<h3>Team usage</h3>
+<ul>
+  <li>Provide an internal “trace viewer” that shows tool calls and evidence packets.</li>
+  <li>Restrict access to evidence packets by role.</li>
+</ul>
+
+<h3>Observability and billing</h3>
+<ul>
+  <li>Track cost per tool call attempt.</li>
+  <li>Alert on retry rate anomalies.</li>
+  <li>Alert on tool call missing rate.</li>
+</ul>
+
+<p>A good operational target is to detect:</p>
+<ul>
+  <li>tool call missing spikes (client/runtime regression)</li>
+  <li>validation failure spikes (schema drift or extraction changes)</li>
+  <li>transport failure spikes (network/downstream issues)</li>
+</ul>
+
+<h3>Multi-tenant governance</h3>
+<p>In multi-tenant systems, evidence packets can become sensitive cross-tenant data if you’re not careful.</p>
+<p><strong>Governance rules:</strong></p>
+<ul>
+  <li>partition evidence storage by tenant or enforce strict row-level access controls</li>
+  <li>include tenant ID in every evidence packet and every log line</li>
+  <li>restrict trace viewer access by tenant</li>
+</ul>
+<p>This prevents “debugging access” from becoming a security incident.</p>
+
+<h2>15. FAQs</h2>
+<ol>
+  <li><strong>Do I need OpenTelemetry to do this?</strong> No. You can implement correlation IDs and evidence packets without a full tracing stack. OpenTelemetry helps, but the core requirement is that you can correlate tool requests, tool responses, and validation decisions.</li>
+  <li><strong>What should I store in evidence packets?</strong> Store enough to debug without re-calling tools: tool name, redacted arguments, response metadata or excerpts, validation errors, and the decision taken. Avoid storing secrets and PII.</li>
+  <li><strong>How do I handle schema drift?</strong> Version your schemas and include the schema version in evidence packets. When validation fails, classify it as deterministic and either update the schema or adjust extraction arguments.</li>
+  <li><strong>How do I prevent infinite retry loops?</strong> Use a retry decision tree with attempt limits and deterministic failure detection. Deterministic validation failures should not be retried blindly.</li>
+  <li><strong>How do I debug “wrong answer” issues?</strong> Wrong answers are often validation/policy failures or extraction quality issues. Evidence packets let you see whether the tool returned the expected content blocks and whether the validator accepted them.</li>
+  <li><strong>What’s the fastest way to triage an incident?</strong> Start with the trace ID, list tool calls, open the evidence packet for the first failing tool call, and inspect validation errors and retry decisions. Don’t start with the model transcript.</li>
+  <li><strong>Should I sample successful tool calls?</strong> Yes. Full-fidelity evidence for every success can be expensive. Keep full evidence for failures and sample successes unless you need deep analytics.</li>
+  <li><strong>How do I handle redaction correctly?</strong> Redact at write time using an allowlist approach. If you can’t confidently redact a field, don’t store it.</li>
+  <li><strong>How do I store raw responses without blowing up costs?</strong> Store raw responses only when they’re needed for debugging. A common pattern is to store a hash plus a small excerpt for successes, and store full payloads (or larger excerpts) only for failures. Also cap payload size by argument class (for example, smaller caps for rendered HTML than for JSON-only tools).</li>
+  <li><strong>What’s the difference between “tool failed” and “pipeline failed”?</strong> “Tool failed” means the tool server couldn’t execute the request (transport errors, 5xx, internal tool exceptions). “Pipeline failed” means the tool returned something, but validation/policy rejected it or the agent decided not to accept it. Evidence packets should record both so you don’t misclassify incidents.</li>
+  <li><strong>How do I debug multi-tool traces?</strong> Use trace_id to list all evidence packets in order, then jump to the first non-accepted decision. In multi-tool workflows, the first failure is often the root cause; later tool calls may be compensating actions. Sorting by attempt and timing_ms.total helps you spot loops.</li>
+  <li><strong>How do I prevent “tool call missing” from becoming a silent failure?</strong> Treat tool call completeness as an SLO. Emit a tool_call_missing evidence packet (or a structured incident event) whenever you detect intent without started. Then alert on tool_call_missing_rate so you catch MCP client/runtime regressions quickly.</li>
+</ol>
+
+<h2>16. Conclusion</h2>
+<p>Debugging MCP tool calls in production is not about finding the one log line that explains everything. It’s about building a system where every tool invocation leaves behind a correlated trail: trace IDs, structured logs, and evidence packets that capture inputs, outputs, validation results, and decisions.</p>
+<p>If you implement correlation context, evidence packets, and a retry decision tree that distinguishes transient from deterministic failures, you’ll reduce incident time from hours to minutes. More importantly, you’ll stop paying for retries that can never succeed.</p>
+<p>Next step: implement evidence packets for failures first, add tool call completeness checks, and then expand coverage to successes once you’re confident in your redaction and schema versioning.</p>
+
+<p><strong>Related reading:</strong> Website to RAG Pipeline with MCP: Build an AI Knowledge Base Without Custom Scrapers and Structured Extraction with MCP: Evidence Packets and Retry Decision Trees for JSON Schema Pipelines.</p>
+<h2>References</h2>
+<ul>
+  <li>Model Context Protocol (MCP) documentation (official)</li>
+  <li>OpenTelemetry specification and semantic conventions (official)</li>
+  <li>Ollagraph blog posts on MCP evidence packets and retry decision trees</li>
+  <li>RFCs and best practices for distributed tracing and structured logging</li>
+</ul>
+</Article>

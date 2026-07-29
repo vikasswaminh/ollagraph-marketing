@@ -10,6 +10,7 @@ export interface PostMeta {
 }
 
 export const posts: PostMeta[] = [
+  { slug: "debugging-mcp-tool-calls-in-production", title: "Observability for MCP Tool Calls in Production", description: "Trace, log, and replay MCP tool calls so agent failures are diagnosable, retry-safe, and evidence-backed.", date: "2026-07-29", readingTime: 24, tags: ["MCP", "observability", "tool-tracing", "agent-debugging", "retries"] },
   { slug: "website-to-rag-pipeline-with-mcp", title: "Website-to-RAG Pipelines with MCP, Without Custom Scrapers", description: "Turn websites into RAG-ready knowledge bases with deterministic ingestion, stable metadata, and provenance. No per-site scrapers required.", date: "2026-07-29", readingTime: 22, tags: ["RAG", "MCP", "ingestion", "chunking", "provenance"] },
   { slug: "mcp-security-protecting-ai-agents-from-unsafe-web-tool-calls", title: "MCP Security: Stop Unsafe Web Tool Calls in AI Agents", description: "Secure MCP agents with policy gates, allowlists, sandboxed retrieval, and evidence packets. Prevent unsafe web tool calls without breaking browsing.", date: "2026-07-29", readingTime: 24, tags: ["mcp", "security", "allowlists", "sandboxing", "audit"] },
   { slug: "structured-extraction-with-mcp", title: "Structured Extraction with MCP and JSON Schema", description: "Build agent outputs you can trust with schema-first extraction and validation. Use contracts, evidence, and retries to prevent silent corruption.", date: "2026-07-29", readingTime: 23, tags: ["mcp", "json-schema", "ai-agents", "validation", "structured-data"] },
