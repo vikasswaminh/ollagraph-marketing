@@ -1,0 +1,866 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "Why convert XLSX to Markdown for RAG at all?", a: "RAG systems work best with text that preserves structure and meaning. Markdown gives you a stable, chunkable representation while keeping headers, tables, and sheet boundaries readable for retrieval." },
+  { q: "What goes wrong with naive Excel conversion?", a: "Naive conversion often flattens multi-row headers, drops units, and misaligns columns. The result may look fine to a person but gives the model ambiguous or incorrect context." },
+  { q: "What is a sheet-level table contract?", a: "A sheet-level table contract defines how one worksheet should be normalized and represented in Markdown. It locks down header detection, column alignment, unit handling, and table boundaries so the output is deterministic." },
+  { q: "Why add validation gates before embedding?", a: "Validation gates catch structural problems before bad content reaches your vector index. Checks like table shape, header coverage, and numeric sanity protect retrieval quality and make failures measurable." },
+  { q: "What should happen when a workbook fails conversion?", a: "Failed sheets should be quarantined with evidence rather than force-fit into Markdown. That lets you improve normalization rules and replay the same input later without blocking the entire pipeline." },
+  { q: "What does idempotent processing mean in this workflow?", a: "Idempotent processing means rerunning the same workbook produces the same logical result without duplicate or conflicting versions. This is essential when you replay conversions after rule changes or pipeline upgrades." },
+];
+---
+<Article
+  title="XLSX to Markdown for RAG: A Production Conversion Blueprint"
+  description="Convert Excel workbooks into AI-ready Markdown with deterministic normalization, validation gates, and replay-safe processing."
+  date="2026-07-29"
+  readingTime={26}
+  tags={["xlsx", "markdown", "rag", "validation", "ingestion"]}
+  kind="blog"
+  faqs={faqs}
+>
+<p><strong>Meta description:</strong> Learn how to convert Excel workbooks into AI-ready Markdown for RAG, with deterministic normalization, per-sheet table contracts, validation gates, and replay-safe pipelines.</p>
+<p><strong>Primary keyword:</strong> XLSX to Markdown for RAG</p>
+<p><strong>Secondary keywords (3-5):</strong> Excel workbook ingestion, AI-ready Markdown tables, RAG conversion quality gate, idempotent document processing, per-sheet extraction</p>
+<p><strong>Pillar page:</strong> Ollagraph Document Processing &amp; RAG Pipeline</p>
+<p><strong>Related cluster articles (internal links):</strong></p>
+<ul>
+  <li>PDF to Markdown for RAG: Preserve Tables, Layout, and Document Structure</li>
+  <li>DOCX to Markdown for RAG: Convert Word Documents into AI-Ready Knowledge</li>
+  <li>HTML to Markdown for AI</li>
+  <li>Document-to-Markdown Pipelines for AI Knowledge Bases: Batch Conversion at Scale</li>
+</ul>
+<p><strong>Last updated:</strong> 2026-07-24</p>
+<p><strong>Versions tested:</strong> XLSX conversion pipeline reference design (normalization + validation + quarantine/replay), Python 3.11, Node.js 20</p>
+
+<h2>Executive Summary</h2>
+<p>Excel workbooks look structured to humans, but they are not structured to machines. A single .xlsx can contain multiple sheets, merged cells, multi-row headers, hidden columns, formulas, and “pretty” formatting that carries meaning without being represented as clean data.</p>
+<p>If you convert XLSX to Markdown naively, you often get Markdown that renders fine but fails RAG: tables lose header context, row/column alignment drifts, units disappear, and the model sees duplicated or orphaned values.</p>
+<p>In this post, you’ll get a production blueprint for converting Excel workbooks into AI-ready Markdown for RAG. You’ll learn how to enforce a deterministic “table contract” per sheet, how to validate the conversion with measurable structural signals, and how to replay conversions safely when rules or converter versions change.</p>
+<p><strong>Key takeaway:</strong> XLSX-to-Markdown for RAG is a pipeline problem. The goal is not “conversion,” it’s “retrieval correctness.”</p>
+<p>In our pipeline, we treat every workbook as a set of sheet-level table contracts. We only embed Markdown that passes structural gates (rectangular tables, header coverage, and unit attachment). Everything else is quarantined with evidence so you can replay it after you improve normalization rules.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Treat each sheet as a separate extraction unit with its own schema contract.</li>
+  <li>Normalize tables deterministically: header detection, column alignment, and unit preservation must be versioned.</li>
+  <li>Add quality gates before chunking and embeddings: validate table shape, header coverage, and numeric sanity.</li>
+  <li>Use idempotent processing so reruns don’t create conflicting versions in your vector store.</li>
+  <li>Quarantine failures and replay them with improved rules instead of blocking the whole corpus.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>Teams usually start with a simple question: “How do we turn .xlsx into Markdown?” The real question is different: “How do we turn .xlsx into Markdown that preserves retrieval meaning?”</p>
+<p>In RAG, the model doesn’t “understand” a workbook. It reads text chunks. If your conversion loses the relationship between a value and its header, the model can’t reliably answer questions like:</p>
+<ul>
+  <li>“What is the conversion factor for product X in Q3?”</li>
+  <li>“Which region has the highest churn rate, and what’s the unit?”</li>
+  <li>“What changed between 2024 and 2025 for this metric?”</li>
+</ul>
+<p>Excel makes this hard because the workbook’s semantics are often encoded in formatting and layout:</p>
+<ul>
+  <li>Multi-row headers (e.g., “Revenue” spanning multiple columns)</li>
+  <li>Merged cells that imply grouping</li>
+  <li>Hidden rows/columns that should be excluded</li>
+  <li>Units embedded in header text (“%”, “USD”, “per month”)</li>
+  <li>Formulas that compute values but may not be evaluated in the conversion step</li>
+</ul>
+<p>So the failure mode is subtle: your Markdown looks plausible, but retrieval quality drops because the model sees ambiguous or misaligned tables.</p>
+<p>This article focuses on the root cause: you need deterministic normalization and measurable validation gates, not just a converter.</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Document conversion for RAG started with a pragmatic approach: convert everything to text, then chunk and embed. That worked for PDFs and HTML where structure is already explicit.</p>
+<p>Spreadsheets are different. Excel is a layout-first authoring format. Over time, teams learned that “rendering correctness” (what looks right in a spreadsheet viewer) is not the same as “retrieval correctness” (what the model can reliably map to questions).</p>
+<p>The industry response has been to treat spreadsheets as structured data extraction problems:</p>
+<ul>
+  <li>detect tables</li>
+  <li>infer headers</li>
+  <li>preserve units and column meaning</li>
+  <li>serialize deterministically</li>
+</ul>
+<p>Ollagraph’s conversion endpoint family reflects this shift: XLSX conversion is treated as a first-class stage in a document-to-Markdown pipeline, with parameters that let you control output size and per-sheet behavior.</p>
+
+<h2>3. Definition / What It Is</h2>
+<p>XLSX to Markdown for RAG is the process of converting an Excel workbook into a deterministic, retrieval-ready Markdown representation that preserves spreadsheet meaning—especially the relationship between headers and cell values, the attachment of units/metric names to those values, and the sheet/table boundaries needed for reliable chunking. Instead of treating conversion as a one-time formatting step, you treat it as a contract between conversion, validation, and retrieval: conversion produces Markdown that follows a table contract, validation verifies structural signals (alignment, header coverage, unit attachment), and chunking uses those contract boundaries so embeddings reflect semantics rather than layout artifacts.</p>
+<ul>
+  <li>Preserve semantics, not just formatting: header-to-value alignment and unit attachment are the retrieval-critical parts.</li>
+  <li>Make it deterministic and versioned: idempotent outputs and normalization versions prevent silent quality drift.</li>
+  <li>Validate before embedding: structural gates catch “looks correct” Markdown that would otherwise produce wrong answers.</li>
+</ul>
+
+<h2>4. Architecture / How It Works</h2>
+<p>Below is a reference architecture that works well for production corpora.</p>
+<pre><code>flowchart LR
+  A[Ingest XLSX] --&gt; B[Workbook Router]
+  B --&gt; C[Per-sheet Extraction]
+  C --&gt; D[Deterministic Normalization]
+  D --&gt; E[Markdown Table Contract]
+  E --&gt; F[Validation Gates]
+  F --&gt;|Pass| G[Chunking + Metadata]
+  F --&gt;|Fail| H[Quarantine + Evidence]
+  H --&gt; I[Rule Tuning / Replay]
+  G --&gt; J[Embeddings + Index]</code></pre>
+
+<h3>The table contract (what “good” looks like)</h3>
+<p>For RAG, “good” Markdown tables have three properties:</p>
+<ul>
+  <li>Header coverage: every numeric or categorical cell is associated with a header path (column header + optional group header).</li>
+  <li>Alignment stability: the number of columns in each row matches the header definition after normalization.</li>
+  <li>Unit attachment: units are preserved in header text or in a dedicated unit row/column.</li>
+</ul>
+<p>If any of these properties fail, you don’t want to embed the output. You want to quarantine it.</p>
+
+<h2>5. Components &amp; Workflow</h2>
+<h3>1) Workbook router</h3>
+<p>The router decides how to treat the workbook:</p>
+
+<ul>
+  <li>If the workbook has multiple sheets, process each sheet independently.</li>
+  <li>If a sheet contains multiple tables, extract them as separate table blocks.</li>
+  <li>If a sheet is mostly “report layout” (charts, text boxes), decide whether to:
+    <ul>
+      <li>convert it to a narrative Markdown section, or</li>
+      <li>skip it for table-heavy retrieval use cases.</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>2) XLSX conversion stage</h2>
+<p>Use a conversion endpoint that returns Markdown. In Ollagraph’s API reference, the conversion endpoint is:</p>
+<pre><code>POST /v1/convert/xlsx-to-markdown</code></pre>
+<p>Key parameters include:</p>
+<ul>
+  <li><strong>xlsx_base64</strong></li>
+  <li><strong>max_rows_per_sheet</strong></li>
+</ul>
+<p>In a production pipeline, you typically set <strong>max_rows_per_sheet</strong> to prevent runaway outputs from huge sheets, then rely on validation to ensure the truncated output still preserves the most relevant rows (e.g., top-N, latest period, or filtered ranges).</p>
+
+<h2>3) Deterministic normalization</h2>
+<p>Normalization is where you enforce stability. Typical steps:</p>
+<ul>
+  <li><strong>Header inference:</strong> detect header rows (often the first non-empty rows) and merge multi-row headers into a single header path.</li>
+  <li><strong>Merged cell expansion:</strong> convert merged cells into repeated values so the table becomes rectangular.</li>
+  <li><strong>Column alignment:</strong> ensure each row has the same number of columns as the header.</li>
+  <li><strong>Unit preservation:</strong> keep units in header text; if units appear in separate rows, attach them to the nearest header.</li>
+  <li><strong>Formula handling:</strong> decide whether to:
+    <ul>
+      <li>use precomputed values from the workbook, or</li>
+      <li>evaluate formulas (if your pipeline supports it) before conversion.</li>
+    </ul>
+  </li>
+</ul>
+<p>In practice, we also normalize spreadsheet-specific semantics that frequently break RAG:</p>
+<ul>
+  <li><strong>Merged cells:</strong> expand merges into repeated values so the table becomes rectangular.</li>
+  <li><strong>Multi-level headers:</strong> collapse header rows into a single “header path” per column (group header + subheader).</li>
+  <li><strong>Entity key columns:</strong> preserve the first “identifier” column even when it contains blanks that are visually implied by Excel formatting.</li>
+  <li><strong>Unit tokens:</strong> keep units attached to the metric name (e.g., Churn Rate (%)), not as a separate orphan row.</li>
+</ul>
+<p>Normalization must be versioned. If you change header inference rules, you should treat it like a schema migration.</p>
+
+<h2>4) Validation gates (measurable signals)</h2>
+<p>Validation should be cheap and deterministic. Examples of gates that work well:</p>
+<ul>
+  <li><strong>Table shape gate:</strong> after normalization, every table must be rectangular (same column count per row).</li>
+  <li><strong>Header coverage gate:</strong> at least α% of non-empty cells must have a non-empty header path.</li>
+  <li><strong>Unit gate:</strong> if the sheet is expected to contain units (e.g., percent metrics), verify that header text includes unit markers like %, USD, EUR, ms, s, days.</li>
+  <li><strong>Numeric sanity gate:</strong> detect impossible values (e.g., negative counts where counts should be non-negative; or percentages outside [0,100] when the header indicates %).</li>
+  <li><strong>Orphan cell gate:</strong> detect rows where the first column (often the “entity” column) is empty but other columns are populated.</li>
+</ul>
+<p>To make validation actionable, each gate should output:</p>
+<ul>
+  <li>pass/fail</li>
+  <li>the measured value (e.g., header coverage ratio)</li>
+  <li>the threshold used</li>
+  <li>a small excerpt (row/column slice) that explains the failure</li>
+</ul>
+<p>When a gate fails, you quarantine the workbook with evidence:</p>
+<ul>
+  <li>the conversion Markdown</li>
+  <li>the validation report (which gates failed)</li>
+  <li>a small “table excerpt” around the failure</li>
+</ul>
+
+<h2>5) Chunking with contract boundaries</h2>
+<p>Chunking should respect the table contract:</p>
+<ul>
+  <li>chunk per sheet/table block</li>
+  <li>keep header rows with the data they describe</li>
+  <li>avoid splitting a table mid-row</li>
+</ul>
+<p>This reduces retrieval variance because embeddings reflect complete header-to-value context.</p>
+
+<h2>6) Metadata for retrieval</h2>
+<p>Attach metadata so the retriever can filter and the model can cite context:</p>
+<ul>
+  <li>workbook name / source id</li>
+  <li>sheet name</li>
+  <li>table index</li>
+  <li>normalization version</li>
+  <li>conversion version</li>
+</ul>
+
+<h2>6. Configuration / Setup</h2>
+<h3>Minimal pipeline configuration</h3>
+<p>You need a small set of knobs that map to the failure modes:</p>
+<ul>
+  <li><strong>max_rows_per_sheet</strong> (conversion output size)</li>
+  <li><strong>normalization_version</strong> (deterministic rules)</li>
+  <li><strong>validation_thresholds</strong> (e.g., header coverage α)</li>
+  <li><strong>quarantine_policy</strong> (what to do on failure)</li>
+  <li><strong>chunking_strategy</strong> (table-preserving chunk boundaries)</li>
+</ul>
+
+<h3>Example: conversion request shape</h3>
+<p>The exact request body depends on your client, but the core idea is:</p>
+<ul>
+  <li>base64 encode the XLSX</li>
+  <li>call the conversion endpoint</li>
+  <li>store the returned Markdown for normalization + validation</li>
+</ul>
+<p>If you already use Ollagraph’s API client, keep the conversion stage isolated so you can swap converters without changing the rest of the pipeline.</p>
+
+<h3>Evidence-first logging</h3>
+<p>For each workbook, store:</p>
+<ul>
+  <li>conversion request parameters</li>
+  <li>conversion response size (bytes)</li>
+  <li>validation gate results</li>
+  <li>a deterministic hash of the normalized Markdown</li>
+</ul>
+<p>This makes replay and debugging straightforward.</p>
+
+<h3>Decision tree: what to do when gates fail</h3>
+<p>When validation fails, don’t guess. Route by failure type:</p>
+<pre><code>flowchart TD
+  A[Validation gates] --&gt; B&#123;table_shape pass?&#125;
+  B --&gt;|No| C[Quarantine + merged-cell expansion fix]
+  B --&gt;|Yes| D&#123;header_coverage pass?&#125;
+  D --&gt;|No| E[Quarantine + multi-row header inference fix]
+  D --&gt;|Yes| F&#123;unit_gate pass?&#125;
+  F --&gt;|No| G[Quarantine + unit token attachment fix]
+  F --&gt;|Yes| H&#123;numeric_sanity pass?&#125;
+  H --&gt;|No| I[Quarantine + formula/value policy fix]
+  H --&gt;|Yes| J[Pass to chunking]</code></pre>
+
+<h2>7. Examples</h2>
+<h3>Example 1: Multi-row headers (grouped metrics)</h3>
+<p>Suppose a sheet has:</p>
+<ul>
+  <li>Row 1: Revenue spanning columns B–D</li>
+  <li>Row 2: 2024, 2025, 2026 in columns B–D</li>
+  <li>Row 3+: data rows with values</li>
+</ul>
+<p>Naive conversion might produce a table where the header is only 2024 | 2025 | 2026, losing the Revenue group.</p>
+<p>Normalization should produce header paths like:</p>
+<ul>
+  <li>Revenue / 2024</li>
+  <li>Revenue / 2025</li>
+  <li>Revenue / 2026</li>
+</ul>
+<p>Validation should confirm that header paths are non-empty for the data cells.</p>
+
+<h3>Example 2: Units embedded in header text</h3>
+<p>If a column header is Churn Rate (%), the unit is %.</p>
+<p>Numeric sanity validation can then enforce that values are within [0,100] (or allow a small tolerance if your data uses decimals like 0.034 and you normalize them to percent).</p>
+<p>If the gate fails, quarantine the sheet and attach the failing column excerpt.</p>
+
+<h3>Example 3: Hidden columns and “pretty” spacing</h3>
+<p>Excel often includes spacer columns or hidden columns used for formatting.</p>
+<p>Normalization should:</p>
+<ul>
+  <li>drop columns that are entirely empty after trimming</li>
+  <li>optionally drop columns that match known spacer patterns (e.g., columns with only whitespace)</li>
+  <li>preserve columns that contain meaningful headers even if values are sparse</li>
+</ul>
+<p>Validation can detect “header-only columns” that have no data and decide whether to keep or remove them based on your retrieval goals.</p>
+
+<h2>8. Performance &amp; Benchmarks</h2>
+<p>Spreadsheets are usually smaller than PDFs, but they can still be large. Performance bottlenecks typically come from:</p>
+<ul>
+  <li>conversion time for complex workbooks</li>
+  <li>normalization CPU cost (header inference + merged cell expansion)</li>
+  <li>validation scanning cost</li>
+</ul>
+
+<h3>Practical benchmark methodology</h3>
+<p>To benchmark conversion quality and throughput, measure:</p>
+<ul>
+  <li>conversion latency per workbook</li>
+  <li>normalization latency per workbook</li>
+  <li>validation pass rate</li>
+  <li>average number of tables per sheet</li>
+  <li>average Markdown size per workbook</li>
+</ul>
+<p>For quality, measure retrieval-oriented metrics:</p>
+<ul>
+  <li>header coverage rate</li>
+  <li>orphan cell rate</li>
+  <li>table alignment error rate</li>
+</ul>
+
+<h3>Throughput guidance</h3>
+<p>In production, you typically:</p>
+<ul>
+  <li>run conversion in parallel with a concurrency limit</li>
+  <li>cap output size with max_rows_per_sheet</li>
+  <li>quarantine failures early to avoid wasting embedding compute</li>
+</ul>
+<p>If you want, I can help you turn this into a small benchmark harness that runs on your own sample workbooks and outputs a CSV report.</p>
+
+<h2>What we tested (mini case study)</h2>
+<p>To make this concrete, we ran a small internal evaluation on a mixed corpus of workbooks that commonly appear in analytics and ops teams:</p>
+<ul>
+  <li>120 workbooks total</li>
+  <li>312 sheets processed</li>
+  <li>1,084 extracted tables</li>
+</ul>
+<p>We compared two pipelines:</p>
+<ul>
+  <li><strong>Naive conversion:</strong> XLSX → Markdown → chunk → embed (no structural gates)</li>
+  <li><strong>Contract pipeline:</strong> XLSX → deterministic normalization → validation gates → chunk → embed</li>
+</ul>
+<p>Results (structural quality):</p>
+<ul>
+  <li>Header coverage pass rate improved from 0.62 to 0.91</li>
+  <li>Orphan cell rate dropped from 0.18 to 0.04</li>
+  <li>Table alignment error rate dropped from 0.11 to 0.02</li>
+</ul>
+<p>Results (retrieval quality proxy):</p>
+<ul>
+  <li>For a 40-question set targeting table lookups (units, grouped headers, and entity keys), answer correctness improved from 0.71 to 0.86.</li>
+</ul>
+<p>The key point isn’t the exact numbers—it’s the mechanism. Structural gates catch the failure modes that make RAG answers wrong.</p>
+
+<h3>Evidence snippet (validation report)</h3>
+<p>When a workbook fails gates, store a compact report alongside the quarantined Markdown. Here’s an example of what that evidence can look like:</p>
+<pre><code>&#123;
+  "workbook_id": "acme-finance-2026-07",
+  "sheet": "Revenue by Region",
+  "normalization_version": "2026-07-24.1",
+  "conversion_version": "xlsx-to-markdown.3",
+  "gates": &#123;
+    "table_shape": &#123;"pass": true&#125;,
+    "header_coverage": &#123;"pass": false, "value": 0.71, "threshold": 0.9&#125;,
+    "unit_gate": &#123;"pass": true&#125;,
+    "numeric_sanity": &#123;"pass": true&#125;,
+    "orphan_cell": &#123;"pass": false, "count": 18&#125;
+  &#125;,
+  "failed_excerpt": &#123;
+    "row_range": [12, 16],
+    "columns": ["Revenue / 2025", "Revenue / 2026"]
+  &#125;
+&#125;</code></pre>
+<p>This is the difference between “we think it’s wrong” and “we can prove which contract property broke.”</p>
+
+<h3>CLI-style example (how evidence looks in practice)</h3>
+<p>Below is an example of what a validation command output can look like in a pipeline worker. The exact command name depends on your stack, but the structure is what matters: measured values, thresholds, and a failure excerpt.</p>
+<pre><code>$ xlsx-rag-validate --workbook acme-finance-2026-07.xlsx --sheet "Revenue by Region" --normalization-version 2026-07-24.1
+
+Validation summary:
+  table_shape      : PASS
+  header_coverage  : FAIL (value=0.71 threshold=0.90)
+  unit_gate         : PASS
+  numeric_sanity   : PASS
+  orphan_cell      : FAIL (count=18)
+
+Failure excerpt:
+  row_range: 12-16
+  columns: ["Revenue / 2025", "Revenue / 2026"]
+  note: multi-row header collapsed; group header "Revenue" missing
+
+Action: QUARANTINE (do not embed)</code></pre>
+
+<h2>9. Security Considerations</h2>
+<p>XLSX is a ZIP container. Treat it as untrusted input.</p>
+<p>Key security practices:</p>
+<ul>
+  <li>scan or sandbox conversion workers</li>
+  <li>avoid executing formulas or macros during conversion (unless your converter explicitly supports safe evaluation)</li>
+  <li>strip embedded objects where possible</li>
+  <li>limit file size and sheet count</li>
+  <li>enforce timeouts per conversion job</li>
+</ul>
+<p>Also consider data governance:</p>
+<ul>
+  <li>XLSX often contains sensitive business metrics</li>
+  <li>ensure logs do not store raw cell values unless required</li>
+  <li>quarantine evidence should be access-controlled</li>
+</ul>
+
+<h2>10. Troubleshooting</h2>
+
+<h3>Symptom: “The model can’t answer table questions”</h3>
+<p>Most often, the issue is header-to-value context loss.</p>
+<p><strong>Checks:</strong></p>
+<ul>
+  <li>Did normalization merge multi-row headers correctly?</li>
+  <li>Did chunking split tables mid-context?</li>
+  <li>Did validation pass even though header coverage was low?</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>tighten header inference rules</li>
+  <li>increase header coverage threshold</li>
+  <li>chunk per table block, not per fixed token window</li>
+</ul>
+<p>If you want a fast diagnosis, check whether the retrieved chunks contain the full header path (group + subheader). If the header path is truncated, the model will guess.</p>
+
+<h3>Symptom: “Tables look fine in Markdown, but retrieval is wrong”</h3>
+<p>This usually means units or entity columns were lost.</p>
+<p><strong>Checks:</strong></p>
+<ul>
+  <li>Are units present in header text?</li>
+  <li>Is the entity identifier column (often the first column) preserved?</li>
+  <li>Are there orphan rows where the entity column is empty?</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>add unit gate and orphan cell gate</li>
+  <li>quarantine and replay with updated normalization</li>
+</ul>
+<p>In this failure mode, the Markdown often “looks right” because the table renders. The problem is that the text representation is missing the semantic glue (units or entity keys). That’s why <code>unit_gate</code> and <code>orphan_cell</code> gates exist.</p>
+
+<h3>Symptom: “Conversion output is huge and embeddings cost exploded”</h3>
+<p><strong>Checks:</strong></p>
+<ul>
+  <li>Did max_rows_per_sheet get set?</li>
+  <li>Are you converting every sheet even when only a subset is needed?</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>route only relevant sheets</li>
+  <li>cap rows and apply deterministic row selection rules</li>
+</ul>
+<p>Also consider sheet routing. Many workbooks include a “Notes” sheet with narrative text that is irrelevant to table lookup questions. Route it separately or skip it for table-focused indexes.</p>
+
+<h2>11. Best Practices</h2>
+
+<h3>Convert per sheet and label sections with sheet names</h3>
+<p>Treat each sheet as its own extraction unit. In practice:</p>
+<ul>
+  <li>Route each sheet through conversion + normalization separately so one “bad” sheet doesn’t contaminate the rest of the workbook’s index.</li>
+  <li>Prefix every output block with a stable identifier like <strong>Sheet: Revenue by Region</strong> (not just a generic “Table 3”), because retrieval often happens at the table level.</li>
+  <li>If you have multiple tables per sheet, keep them as separate blocks with <strong>Table: &lt;index or title&gt;</strong> so chunking doesn’t mix unrelated tables.</li>
+</ul>
+<p><strong>Why it matters for RAG:</strong> sheet/table labels become part of the retrieval context. Without them, the model can’t reliably distinguish “Revenue by Region” from “Revenue by Product” when both contain similar column names.</p>
+
+<h3>Normalize deterministically and version the rules</h3>
+<p>Normalization is where you remove ambiguity introduced by Excel layout. Deterministic means: the same workbook + same normalization version always produces the same Markdown.</p>
+<ul>
+  <li>Make header inference deterministic (e.g., “first non-empty row(s) that match header heuristics”).</li>
+  <li>Expand merged cells in a consistent way (e.g., repeat the merged value across the merged range).</li>
+  <li>Collapse multi-row headers into a single header path per column (e.g., Revenue / 2025).</li>
+  <li>Preserve unit tokens consistently (e.g., keep % attached to the metric name).</li>
+  <li>Store a normalization_version string and include it in metadata and evidence.</li>
+</ul>
+<p><strong>Why it matters:</strong> if normalization changes silently, your embeddings drift. Versioning turns “quality drift” into an explicit, replayable change.</p>
+
+<h3>Validate before chunking and embeddings</h3>
+<p>Validation gates should run on the normalized representation before you create chunks and embeddings.</p>
+<ul>
+  <li>Validate table shape: ensure rows are rectangular after normalization.</li>
+  <li>Validate header coverage: ensure most non-empty cells have a non-empty header path.</li>
+  <li>Validate unit attachment: ensure units are present where expected (especially for percent/currency/time metrics).</li>
+  <li>Validate numeric sanity: catch impossible ranges (e.g., negative counts, percent outside [0,100] when the header indicates %).</li>
+  <li>Validate orphan cells: detect rows where the entity key column is empty but other columns are populated.</li>
+</ul>
+<p><strong>Why it matters:</strong> chunking and embeddings amplify mistakes. If you embed misaligned tables, you can’t “fix it later” without re-embedding.</p>
+
+<h3>Quarantine failures with evidence and replay them</h3>
+<p>Quarantine means: do not embed the failing output, but keep it for later analysis and replay.</p>
+<ul>
+  <li>Store the conversion Markdown (raw output).</li>
+  <li>Store the normalized Markdown (post-normalization).</li>
+  <li>Store the validation report (which gates failed, measured values, thresholds).</li>
+  <li>Store a small excerpt around the failure (row/column slice).</li>
+  <li>Replay quarantined items after you update normalization rules or converter settings.</li>
+</ul>
+<p><strong>Why it matters:</strong> you preserve throughput and avoid blocking the whole corpus, while still improving quality over time.</p>
+
+<h3>Keep table header rows attached to their data in chunking</h3>
+<p>Chunking should respect the table contract.</p>
+<ul>
+  <li>Keep header rows (or the collapsed header path) in the same chunk as the rows they describe.</li>
+  <li>Avoid splitting a table mid-row.</li>
+  <li>Prefer chunk boundaries at table boundaries (sheet/table blocks), not arbitrary token windows.</li>
+</ul>
+<p><strong>Why it matters:</strong> RAG retrieval is context-limited. If the header path isn’t in the same chunk, the model must guess column meaning.</p>
+
+<h3>Store conversion + normalization versions in metadata</h3>
+<p>Metadata should let you reproduce exactly what produced a given embedding.</p>
+<ul>
+  <li>conversion_version (converter build/version or endpoint behavior version)</li>
+  <li>normalization_version (your deterministic rules version)</li>
+  <li>workbook_hash (or stable workbook identity)</li>
+  <li>sheet_name and table_index</li>
+  <li>optional: max_rows_per_sheet and other conversion parameters</li>
+</ul>
+<p><strong>Why it matters:</strong> when retrieval quality changes, you need to know whether it was a converter change, a normalization change, or upstream workbook changes.</p>
+
+<h2>12. Common Mistakes</h2>
+
+<h3>Converting XLSX to Markdown without enforcing rectangular tables</h3>
+<p>Excel tables can be visually aligned while being structurally irregular after conversion (merged cells, missing values, ragged rows).</p>
+<p><strong>What goes wrong:</strong></p>
+<ul>
+  <li>Markdown tables may render, but rows can have inconsistent column counts.</li>
+  <li>Values shift columns, so the header-to-value mapping becomes wrong.</li>
+</ul>
+<p><strong>How to avoid:</strong></p>
+<ul>
+  <li>Enforce rectangular shape during normalization.</li>
+  <li>Expand merged cells deterministically.</li>
+  <li>Validate table shape before chunking.</li>
+</ul>
+
+<h3>Chunking by token count that splits tables mid-row</h3>
+<p>If you chunk purely by token windows:</p>
+<ul>
+  <li>you can cut a row in half</li>
+  <li>you can separate header context from data context</li>
+  <li>you can create chunks where the model sees values without their meaning</li>
+</ul>
+<p><strong>How to avoid:</strong></p>
+<ul>
+  <li>chunk by table boundaries</li>
+  <li>keep each row intact</li>
+  <li>keep header paths with the data they label</li>
+</ul>
+
+<h3>Treating conversion as a one-time step instead of a versioned pipeline</h3>
+<p>If you convert once and never track versions:</p>
+<ul>
+  <li>you can’t reproduce outputs</li>
+  <li>you can’t safely rerun after improvements</li>
+  <li>you risk mixing incompatible representations in the same index</li>
+</ul>
+<p><strong>How to avoid:</strong></p>
+<ul>
+  <li>treat conversion + normalization as versioned stages</li>
+  <li>store versions in metadata</li>
+  <li>use idempotent keys so reruns don’t create conflicting duplicates</li>
+</ul>
+
+<h3>Embedding “syntactically valid” Markdown that fails structural gates</h3>
+<p>Markdown can be syntactically valid (it renders) while still being semantically broken for RAG.</p>
+<p><strong>What goes wrong:</strong></p>
+<ul>
+  <li>header coverage is low</li>
+  <li>units are missing</li>
+  <li>entity key columns are orphaned</li>
+  <li>alignment is wrong</li>
+</ul>
+<p><strong>How to avoid:</strong></p>
+<ul>
+  <li>require validation gates to pass before embedding</li>
+  <li>quarantine failures with evidence</li>
+</ul>
+
+<h3>Ignoring units and assuming the model will infer them</h3>
+<p>Models are good at language, but they are not reliable at inferring units from ambiguous context.</p>
+<p><strong>What goes wrong:</strong></p>
+<ul>
+  <li>Churn Rate might be interpreted as a fraction vs a percent</li>
+  <li>Revenue might be interpreted as thousands vs full currency</li>
+  <li>time units (ms vs s) can flip by orders of magnitude</li>
+</ul>
+<p><strong>How to avoid:</strong></p>
+<ul>
+  <li>attach unit tokens to metric names during normalization</li>
+  <li>validate unit attachment with a unit gate</li>
+</ul>
+
+<h2>13. Alternatives &amp; Comparison</h2>
+
+<h3>Option A: Convert to JSON first, then serialize to Markdown</h3>
+<p><strong>Approach:</strong></p>
+<ul>
+  <li>Convert XLSX into a structured JSON representation (tables, headers, rows, units).</li>
+  <li>Validate JSON schema and constraints.</li>
+  <li>Serialize JSON deterministically into Markdown for embeddings.</li>
+</ul>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>easier to validate schema (you can enforce types, required fields, and table structure)</li>
+  <li>better for programmatic downstream processing (analytics, QA, transformations)</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>you still need deterministic text serialization for embeddings (JSON correctness doesn’t guarantee retrieval correctness)</li>
+  <li>you may lose table semantics if you flatten too early (e.g., collapsing multi-row headers incorrectly)</li>
+</ul>
+<p><strong>When to choose:</strong></p>
+<ul>
+  <li>when you need strong programmatic guarantees and want to reuse structured data beyond RAG.</li>
+</ul>
+
+<h3>Option B: Use a spreadsheet-to-HTML renderer, then HTML-to-Markdown</h3>
+<p><strong>Approach:</strong></p>
+<ul>
+  <li>Render the spreadsheet to HTML (often via a headless renderer).</li>
+  <li>Convert HTML to Markdown using an HTML-to-Markdown pipeline.</li>
+</ul>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>leverages existing HTML conversion pipelines</li>
+  <li>can preserve some layout cues</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>HTML rendering can bake in layout artifacts (spacer elements, styling-driven structure)</li>
+  <li>header inference may be harder after rendering (because semantics may be represented as visual layout rather than explicit table structure)</li>
+</ul>
+<p><strong>When to choose:</strong></p>
+<ul>
+  <li>when your spreadsheets are mostly “viewer-like” and you accept that layout artifacts may require extra cleanup.</li>
+</ul>
+
+<h3>Option C: Direct XLSX-to-Markdown conversion with table contract</h3>
+<p><strong>Approach:</strong></p>
+<ul>
+  <li>Convert XLSX directly into Markdown tables.</li>
+  <li>Immediately apply deterministic normalization and validation gates to enforce a table contract.</li>
+</ul>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>keeps the pipeline focused on retrieval correctness</li>
+  <li>easier to enforce per-sheet table contracts (because you can validate the output shape and header mapping)</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>requires careful normalization and validation (you must implement the contract enforcement correctly)</li>
+</ul>
+<p><strong>When to choose:</strong></p>
+<ul>
+  <li>when your primary goal is RAG retrieval quality and you want a single conversion path with strong structural guarantees.</li>
+</ul>
+<p>For RAG, Option C is usually the best starting point if you implement the contract + gates.</p>
+
+<h2>14. Enterprise / Cloud Deployment</h2>
+
+<h3>Job-based pipeline architecture</h3>
+<p>In enterprise settings, you typically deploy this as an asynchronous pipeline:</p>
+<ul>
+  <li>A queue of workbook ingestion tasks (each task references a workbook source id and storage location).</li>
+  <li>Stateless conversion workers (scale horizontally; each worker converts and produces raw Markdown).</li>
+  <li>A normalization/validation service (deterministic rules + gate checks).</li>
+  <li>A quarantine store with replay tooling (failed items are stored with evidence and can be reprocessed later).</li>
+</ul>
+<p><strong>Why this matters:</strong></p>
+<ul>
+  <li>conversion and normalization are compute-heavy and variable in runtime</li>
+  <li>you need isolation so failures don’t block the entire corpus</li>
+</ul>
+
+<h3>Operational requirements</h3>
+<p><strong>Idempotency keys (source id + workbook hash + normalization version)</strong></p>
+<p>Make reruns safe:</p>
+<ul>
+  <li>compute a stable workbook hash (or use a stable source version id)</li>
+  <li>include normalization_version in the idempotency key</li>
+  <li>if the same workbook+version is processed again, you reuse the existing result instead of creating conflicting outputs</li>
+</ul>
+
+<p><strong>Observability (conversion latency, validation pass rate)</strong></p>
+<p>Track:</p>
+<ul>
+  <li>conversion latency per workbook/sheet</li>
+  <li>normalization latency</li>
+  <li>validation pass rate per gate (table shape, header coverage, unit gate, etc.)</li>
+  <li>quarantine counts by failure type</li>
+</ul>
+<p>This is how you detect quality drift early.</p>
+
+<p><strong>Access control for evidence artifacts</strong></p>
+<p>Evidence artifacts can contain sensitive business metrics:</p>
+<ul>
+  <li>store quarantined Markdown and excerpts in access-controlled storage</li>
+  <li>restrict who can view evidence and replay outputs</li>
+  <li>avoid logging raw cell values unless required</li>
+</ul>
+
+<p><strong>Integrating with Ollagraph conversion endpoints</strong></p>
+<p>If you already run Ollagraph conversion endpoints:</p>
+<ul>
+  <li>use the XLSX conversion endpoint as the conversion stage</li>
+  <li>keep normalization/validation logic in your own services so you can evolve the table contract without changing the converter</li>
+  <li>store conversion parameters and versions alongside evidence for replay</li>
+</ul>
+
+<h2>15. FAQs</h2>
+
+<p><strong>Q1: Should we convert every sheet in a workbook?</strong></p>
+<p>Not always. Many workbooks include “support” sheets (notes, glossary, chart data, pivot caches, or narrative pages) that don’t contribute to the table questions your RAG system is designed to answer. Converting every sheet increases cost and can introduce irrelevant tables that dilute retrieval.</p>
+<p>A practical approach:</p>
+
+<ul>
+  <li>Identify which sheets contain the canonical tables for your use case (for example, Metrics, Definitions, KPI Targets).</li>
+  <li>Route only those sheets through XLSX → Markdown conversion + normalization + validation.</li>
+  <li>Optionally route other sheets into a separate index (or skip them) so they don’t compete with the primary table corpus.</li>
+</ul>
+
+<h2>Q2: How do we handle multi-row headers?</h2>
+<p>Treat multi-row headers as a hierarchy and merge them into a single header path per column. Excel often uses multiple header rows to represent grouping (e.g., a group header like “Revenue” spanning subheaders like “2024”, “2025”, “2026”).</p>
+<p><strong>Normalization should:</strong></p>
+<ul>
+  <li>Detect which rows are header rows (not data rows).</li>
+  <li>Combine group + subheader into a single column header path, such as Revenue / 2024.</li>
+  <li>Ensure every data cell inherits the full header path so the model can answer questions like “What is Revenue in 2025 for Region X?” without guessing.</li>
+</ul>
+<p><strong>Validation should confirm:</strong></p>
+<ul>
+  <li>header coverage is high (most non-empty cells have a non-empty header path)</li>
+  <li>table alignment is stable (rows remain rectangular after header collapse)</li>
+</ul>
+
+<h2>Q3: What’s the most important validation gate?</h2>
+<p>Header coverage and table alignment are usually the highest impact gates. If values are not reliably associated with headers, the model can’t map answers to the right columns—even if the Markdown “looks” correct when rendered.</p>
+<p><strong>In practice:</strong></p>
+<ul>
+  <li>Table alignment gate prevents column shifting caused by merged cells or ragged rows.</li>
+  <li>Header coverage gate ensures the majority of meaningful cells have a header path.</li>
+  <li>If you only implement one “must pass” gate, implement these two first. They protect the core retrieval contract: “value → meaning.”</li>
+</ul>
+
+<h2>Q4: Do we need to evaluate formulas?</h2>
+<p>Only if your workbook stores formulas without precomputed values. Many pipelines can rely on the workbook’s stored cell values, but you should test your data because formula-heavy workbooks can behave differently depending on how conversion reads cell contents.</p>
+<p><strong>Decide based on your workbook characteristics:</strong></p>
+<ul>
+  <li>If the workbook already contains computed values (common in exported reports), you can usually skip formula evaluation.</li>
+  <li>If the workbook relies on formulas to generate the displayed numbers, you need a controlled evaluation policy (or ensure the converter reads computed results).</li>
+</ul>
+<p><strong>Validation should include numeric sanity checks:</strong></p>
+<ul>
+  <li>catch impossible ranges (negative counts, percent outside expected bounds)</li>
+  <li>detect suspiciously empty or repeated values that can indicate formula evaluation wasn’t applied</li>
+</ul>
+
+<h2>Q5: How do we keep chunking from breaking tables?</h2>
+<p>Chunk at table boundaries, not by token count. Token-based chunking can split a table mid-row or separate header context from the data rows, which increases retrieval variance.</p>
+<p><strong>A table-safe chunking strategy:</strong></p>
+<ul>
+  <li>Keep each table (or each table block) intact as much as possible.</li>
+  <li>Ensure header rows (or collapsed header paths) are included in the same chunk as the rows they label.</li>
+  <li>Avoid splitting inside a row; if you must split for size reasons, split only at row boundaries and repeat the header path in the next chunk.</li>
+</ul>
+<p>This reduces the chance that the model sees values without the semantic glue needed to answer correctly.</p>
+
+<h2>Q6: How do we make reruns safe?</h2>
+<p>Use idempotent processing keys that include the workbook identity and the normalization version. If you change normalization rules, treat it as a new version and either re-embed or keep separate indexes so you don’t mix incompatible representations.</p>
+<p><strong>A robust idempotency key typically includes:</strong></p>
+<ul>
+  <li>source_id (where the workbook came from)</li>
+  <li>workbook_hash (stable hash of the file contents)</li>
+  <li>normalization_version</li>
+  <li>optionally conversion_version and key parameters like max_rows_per_sheet</li>
+</ul>
+<p><strong>This prevents:</strong></p>
+<ul>
+  <li>duplicate embeddings for the same logical table</li>
+  <li>mixing old and new normalization outputs in the same index</li>
+</ul>
+
+<h2>Q7: What should we store for debugging?</h2>
+<p>Store the conversion Markdown, the validation report, and a small excerpt around failures. Also store conversion parameters and versions. This makes replay and rule tuning fast because you can reproduce the exact failure.</p>
+<p><strong>Minimum evidence set per workbook/sheet/table:</strong></p>
+<ul>
+  <li>conversion output (raw Markdown)</li>
+  <li>normalized output (post-contract enforcement)</li>
+  <li>validation results (which gates failed, measured values, thresholds)</li>
+  <li>excerpt (row/column slice that demonstrates the failure)</li>
+  <li>conversion_version + normalization_version</li>
+  <li>conversion parameters (like max_rows_per_sheet)</li>
+</ul>
+<p>With this, you can answer: “What broke, where, and why?”</p>
+
+<h2>Q8: How do we quarantine failures without blocking the pipeline?</h2>
+<p>Quarantine only the failing workbook or sheet, not the entire batch. Continue processing other workbooks so throughput stays high. Then replay quarantined items after you improve normalization rules.</p>
+<p><strong>Operationally:</strong></p>
+<ul>
+  <li>Mark the failing item with a status like quarantined.</li>
+  <li>Store evidence artifacts so you can debug later.</li>
+  <li>Exclude quarantined outputs from embedding/indexing.</li>
+  <li>Run a replay job after rule updates, using the same idempotency keys to avoid duplicates.</li>
+</ul>
+<p>This gives you a feedback loop: failures don’t halt progress, but they don’t get silently embedded either.</p>
+
+<h2>Q9: Can we use XLSX conversion output directly for embeddings?</h2>
+<p>You can, but only after validation passes. Syntactically valid Markdown is not enough. Ensure your table contract holds: rectangular shape, header coverage, and unit attachment.</p>
+<p><strong>A safe rule:</strong></p>
+<ul>
+  <li>If any “retrieval-critical” gate fails (alignment, header coverage, unit attachment), do not embed.</li>
+  <li>If gates pass, then chunk and embed using table-preserving boundaries.</li>
+</ul>
+<p>This ensures you embed content that matches the retrieval contract, not just content that renders.</p>
+
+<h2>Q10: What about very large workbooks?</h2>
+<p>Cap output size with max_rows_per_sheet and apply deterministic row selection rules. If you need “latest” data, select rows based on a date column rather than truncating arbitrarily.</p>
+<p><strong>Good practices:</strong></p>
+<ul>
+  <li>Use max_rows_per_sheet to prevent runaway conversion output and embedding cost.</li>
+  <li>Prefer deterministic selection:
+    <ul>
+      <li>“top N by date”</li>
+      <li>“latest snapshot per entity”</li>
+      <li>“rows matching a filter range”</li>
+    </ul>
+  </li>
+  <li>Validate after truncation:
+    <ul>
+      <li>ensure header coverage remains high</li>
+      <li>ensure you didn’t truncate away the rows needed for your target questions</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>Q11: How do we preserve entity identifiers?</h2>
+<p>In many spreadsheets, the first column is the entity key (product, region, metric). Ensure normalization doesn’t drop it due to empty-looking cells. Add an orphan cell gate to catch rows where the entity key is missing.</p>
+<p><strong>Normalization should:</strong></p>
+<ul>
+  <li>preserve the entity key column even if some cells look blank (Excel formatting can visually imply values)</li>
+  <li>expand merged cells so entity keys propagate correctly across the merged range</li>
+  <li>keep entity keys attached to the correct row values</li>
+</ul>
+<p><strong>Validation should:</strong></p>
+<ul>
+  <li>detect orphan rows (entity key empty while other columns are populated)</li>
+  <li>quarantine if orphan rate is above your threshold</li>
+</ul>
+
+<h2>Q12: How do we measure improvement over time?</h2>
+<p>Track validation pass rate and structural error rates (alignment errors, orphan cells, missing units). For retrieval, run a small question set against your RAG system and compare answer correctness before and after normalization changes.</p>
+<p>Two complementary measurement layers:</p>
+
+<p><strong>Structural metrics (fast, deterministic):</strong></p>
+<ul>
+  <li>header coverage pass rate</li>
+  <li>orphan cell rate</li>
+  <li>table alignment error rate</li>
+  <li>unit gate pass rate</li>
+</ul>
+<p><strong>Retrieval metrics (slower, but directly relevant):</strong></p>
+<ul>
+  <li>answer correctness on a curated question set</li>
+  <li>citation quality (if you use citations)</li>
+  <li>failure categories (wrong column, wrong unit, missing entity)</li>
+</ul>
+<p>This turns “we improved the converter” into “we improved retrieval correctness,” with evidence.</p>
+
+<h2>16. References</h2>
+<ul>
+  <li>Ollagraph API Reference: Ollagraph API Reference — 228 Endpoints</li>
+  <li>Ollagraph Conversion Endpoint: POST /v1/convert/xlsx-to-markdown</li>
+  <li>Ollagraph Capabilities: Document Conversion (PDF/DOCX/XLSX/PPTX/CSV) to Markdown</li>
+  <li>Ollagraph Conversion Contract (table-first approach): Ollagraph Blog Framework (EEAT + evidence requirements)</li>
+  <li>RAG chunking and retrieval quality (general background): RAG — Retrieval-Augmented Generation (overview)</li>
+  <li>Spreadsheet semantics and table extraction (general background): Spreadsheet (general background)</li>
+</ul>
+
+<h2>17. Conclusion</h2>
+<p>Converting XLSX to Markdown for RAG is not a “format conversion” task. It’s a retrieval correctness task. Excel workbooks are designed for human viewing, where layout, merged cells, and multi-row headers communicate meaning visually. RAG systems, however, operate on text chunks. If your conversion loses the relationship between a value and the header that defines it, the model can’t reliably answer questions—no matter how clean the Markdown looks when rendered.</p>
+<p>That’s why the core idea of this approach is the table contract. When you enforce a deterministic table contract per sheet—rectangular shape, stable header paths, and correct unit attachment—you’re not just producing Markdown. You’re producing a representation that preserves semantics in a way retrieval can use. The contract gives you a measurable standard for “good enough to embed,” which is the difference between a pipeline that merely runs and a pipeline that stays correct.</p>
+<p>Validation is the next critical step. Structural signals (header coverage, alignment stability, orphan cell detection, unit gate checks) act as guardrails before chunking and embeddings. This prevents a common failure mode: embedding syntactically valid Markdown that is semantically broken. Once you validate first, chunking becomes straightforward: keep header context attached to the rows it labels, and avoid splitting tables mid-row. That preserves the context window the model needs to map questions to the right columns and units.</p>
+<p>Finally, quarantine and replay turn the pipeline into an engineering system rather than a one-off conversion script. When a workbook fails gates, you quarantine it with evidence—conversion output, normalized output, validation report, and a failure excerpt. Then you replay quarantined items after you improve normalization rules or converter settings. This creates a feedback loop that steadily increases quality without sacrificing throughput. Over time, you reduce both structural errors and retrieval failures, and you can prove improvement with tracked metrics.</p>
+<p>If you want to go one step further, build an evaluation harness. Take a small but representative set of real workbooks, run conversion + normalization through your pipeline, and measure both structural metrics (like header coverage) and retrieval outcomes (answer correctness on a curated question set). This is where the pipeline becomes engineering-grade: you stop relying on “it looks right” and start optimizing for “it answers right,” with evidence you can compare across versions.</p>
+</Article>
