@@ -10,6 +10,7 @@ export interface PostMeta {
 }
 
 export const posts: PostMeta[] = [
+  { slug: "structured-extraction-with-mcp", title: "Structured Extraction with MCP and JSON Schema", description: "Build agent outputs you can trust with schema-first extraction and validation. Use contracts, evidence, and retries to prevent silent corruption.", date: "2026-07-29", readingTime: 23, tags: ["mcp", "json-schema", "ai-agents", "validation", "structured-data"] },
   { slug: "how-ai-crawlers-read-schema-markup", title: "How AI Crawlers Read Schema Markup for Better Citations", description: "Schema only helps when crawlers can label and trust it. Learn how JSON-LD, entities, and page text work together for AI citations.", date: "2026-07-28", readingTime: 30, tags: ["JSON-LD", "schema.org", "entities", "structured data", "AI citations"] },
   { slug: "how-to-build-an-mcp-toolchain-for-ai-agents", title: "Build an MCP Toolchain for AI Agents", description: "Scrape, extract, and convert web data into LLM-ready artifacts with evidence loops, validation, and reliable citations.", date: "2026-07-28", readingTime: 23, tags: ["mcp", "ai-agents", "web-scraping", "data-extraction", "rag"] },
   { slug: "pdf-to-markdown-for-rag", title: "PDF to Markdown for RAG: Preserve Structure for Better Retrieval", description: "Convert PDFs to Markdown before chunking so headings, lists, tables, and captions survive. Cleaner structure improves retrieval accuracy and citations.", date: "2026-07-28", readingTime: 26, tags: ["rag", "pdf", "markdown", "chunking", "document-ai"] },

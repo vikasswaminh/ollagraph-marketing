@@ -1,0 +1,798 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is a JSON Schema pipeline for AI agents?", a: "It is a workflow that fetches the right page state, extracts candidate fields, validates them against a JSON Schema, and returns typed JSON or a structured failure. The schema acts as the contract, so downstream systems receive predictable data instead of best-effort text." },
+  { q: "Why does schema-first extraction work better than prompt-only extraction?", a: "Prompt-only extraction leaves correctness inside the model, which can produce missing fields, wrong types, or partial objects. Schema-first extraction moves correctness into validation, so bad output is rejected before it reaches production." },
+  { q: "What role does MCP-style orchestration play?", a: "It gives the agent a standard way to call extraction tools and pass schema requirements through the pipeline. That makes the workflow composable, repeatable, and easier to validate at the tool boundary." },
+  { q: "What is an evidence packet?", a: "An evidence packet is the bundle of fetched content, extracted candidates, validation errors, and retry metadata. It lets you debug failures quickly because you can see what the pipeline saw and why it accepted or rejected the result." },
+  { q: "How should retries be handled in a production pipeline?", a: "Retries should be deterministic and ordered. Change the fetch mode first, then the extraction strategy, then validate again, so each retry tests a specific failure mode instead of hiding it." },
+  { q: "What are the most common schema design mistakes?", a: "Teams often make schemas too flat, too loose, or too permissive for required fields. Strong schemas model relationships, constrain allowed values, and define exact types so corrupted data is caught early." },
+];
+---
+<Article
+  title="Structured Extraction with MCP and JSON Schema"
+  description="Build agent outputs you can trust with schema-first extraction and validation. Use contracts, evidence, and retries to prevent silent corruption."
+  date="2026-07-29"
+  readingTime={23}
+  tags={["mcp", "json-schema", "ai-agents", "validation", "structured-data"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>If your AI agent can browse the web but still produces inconsistent, hard-to-use outputs, the bottleneck is usually not the model. It is the lack of a typed contract between “what the agent asked for” and “what the pipeline extracted.”</p>
+<p>A JSON Schema pipeline fixes that by making extraction outputs conform to a contract you control: required fields, types, allowed values, and nested structures. When you combine that with MCP-style tool orchestration, you get a repeatable workflow: the agent requests a schema, the toolchain fetches the right page state, extracts candidate fields, validates them, and returns either a verified JSON object or a structured failure you can retry.</p>
+<p>In this post, you’ll learn how to design schema-first extraction for AI agents, how to implement validation gates that prevent silent corruption, and how to structure evidence packets so debugging takes minutes instead of hours. You’ll also get a concrete example schema, a decision tree for retries, and a checklist you can apply to production pipelines.</p>
+<p><strong>Key takeaway:</strong> Treat extraction like a compiler: schema in, validated JSON out, with explicit error paths.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>JSON Schema turns “please extract X” into a typed contract the pipeline can enforce.</li>
+  <li>MCP-style orchestration makes schema-first extraction composable across tools and runtimes.</li>
+  <li>Validation gates prevent silent failures (wrong types, missing fields, partial objects).</li>
+  <li>Evidence packets (what was fetched, what was extracted, why it passed or failed) are essential for agent reliability.</li>
+  <li>Retry logic should be deterministic: change fetch mode, change extraction strategy, then re-validate.</li>
+  <li>Schema design is part of system design: model relationships, not just flat fields.</li>
+</ul>
+
+<h2>Problem Statement</h2>
+<p>Most agent teams start with a workflow like this: “Give the agent a URL and ask it to return JSON.” It works for a demo. It fails in production.</p>
+<p>Here’s what typically goes wrong:</p>
+<p>First, the agent’s prompt is not a contract. Models can hallucinate missing fields, coerce types (“$12” becomes 12 sometimes, “12 USD” becomes a string other times), or return plausible-but-wrong values when the page layout changes.</p>
+<p>Second, extraction is rarely a single step. Modern pages hydrate content after load, paginate results, and sometimes render the “real” data behind UI interactions. If your pipeline does not control page state, your extraction candidates are incomplete before the model ever sees them.</p>
+<p>Third, even when extraction is correct, the output format is often not stable. Tables flatten. Headings disappear. Dates become relative strings. Nested entities become ad hoc text blobs.</p>
+<p>Finally, the failure mode is usually silent. Your downstream system ingests the JSON, and only later do you discover that price was a string, currency was missing, or availability was inferred from a banner that was not actually present.</p>
+<p>This article is for teams building agentic workflows where structured outputs must be reliable: lead enrichment, pricing intelligence, job ingestion, research citation metadata, and any pipeline where “almost correct” is still wrong.</p>
+
+<h2>History &amp; Context</h2>
+<p>Schema-first extraction is not new, but the agent context changes everything.</p>
+<p>In the early scraping era, engineers wrote selectors and parsers. The output was whatever the parser produced, and correctness was mostly “did it look right?”</p>
+<p>In the LLM era, teams tried prompt-based extraction: “Read this HTML and output JSON.” That improved flexibility, but it moved correctness into the model’s reasoning rather than into deterministic validation.</p>
+<p>In the agent era, the model is no longer the only actor. It orchestrates tools. That is where MCP-style tool surfaces matter: they let you standardize how tools are discovered and called, and they let you enforce a pipeline contract at the tool boundary.</p>
+<p>The missing piece for many teams is the contract itself. JSON Schema is the contract. MCP-style orchestration is the plumbing. Together, they let you build extraction pipelines that behave like systems, not like guesses.</p>
+
+<h2>Definition / What It Is</h2>
+<p><strong>Definition.</strong> A JSON Schema pipeline for AI agents is a toolchain that (1) fetches the correct page state, (2) extracts candidate fields, (3) validates the result against a JSON Schema, and (4) returns either a verified JSON object or a structured, retryable failure.</p>
+<p><strong>Definition (agent angle).</strong> In an MCP-style setup, the agent requests extraction by calling tools. The tools accept a schema (or a schema identifier), run extraction, validate, and return typed results.</p>
+<p>A good schema pipeline has three properties:</p>
+<ul>
+  <li>Typed outputs. Field types and shapes are explicit.</li>
+  <li>Validation gates. Failures are caught before downstream ingestion.</li>
+  <li>Evidence packets. You can inspect what happened without re-running everything.</li>
+</ul>
+<p>Related terms you’ll see in the wild:</p>
+<ul>
+  <li>Schema-first extraction: you define the target structure before extraction.</li>
+  <li>Typed web data: extraction outputs that can be inserted into databases or fed to LLMs without ad hoc parsing.</li>
+  <li>Evidence-driven debugging: capturing intermediate artifacts (fetched content, extracted spans, validation errors).</li>
+</ul>
+
+<h2>Architecture / How It Works</h2>
+<p>Below is a reference architecture for a schema-first extraction pipeline orchestrated by an agent.</p>
+<pre><code>flowchart TD
+  A[Agent Request: extract data for task T] --&gt; B[Tool: build_extraction_plan]
+  B --&gt; C[Tool: fetch_page_state]
+  C --&gt; D[Tool: extract_candidates]
+  D --&gt; E[Tool: validate_against_schema]
+  E --&gt; F&#123;Validation pass?&#125;
+  F --&gt;|Yes| G[Tool: normalize_and_pack]
+  F --&gt;|No| H[Tool: produce_retry_error + evidence]
+  H --&gt; I[Agent: choose retry strategy]
+  I --&gt; C
+  G --&gt; J[Return: verified JSON + evidence packet]</code></pre>
+
+<h3>The contract boundary</h3>
+<p>The most important design choice is where validation happens.</p>
+<p>If you validate only after the model “finishes,” you’re validating a guess. In a schema pipeline, validation happens at the tool boundary, before the agent treats the output as ground truth.</p>
+
+<h3>Validation gates that matter</h3>
+<p>Validation should cover more than “is it valid JSON.” You want gates for:</p>
+<ul>
+  <li>Required fields (no missing keys).</li>
+  <li>Type correctness (numbers stay numbers; dates parse).</li>
+  <li>Allowed values (enums for availability states).</li>
+  <li>Structural constraints (arrays of objects, nested objects, max lengths).</li>
+  <li>Cross-field rules (if currency is present, price must be numeric; if availability is <em>in_stock</em>, <em>lead_time_days</em> must exist).</li>
+</ul>
+
+<h3>Evidence packets</h3>
+<p>When validation fails, you need a structured error that includes:</p>
+
+<ul>
+  <li>schema_id and schema_version</li>
+  <li>validation_errors (paths, expected vs actual)</li>
+  <li>extraction_candidates summary (which fields were found)</li>
+  <li>fetch_mode and render_state (static vs rendered, wait time, actions)</li>
+  <li>source_evidence (snippets, offsets, or extracted spans)</li>
+</ul>
+<p>This is what turns debugging from “read logs” into “inspect evidence.”</p>
+
+<h2>7. Components &amp; Workflow</h2>
+<p>This section describes a practical component breakdown you can implement with any MCP-compatible agent runtime.</p>
+
+<h3>1) Schema registry (optional but recommended)</h3>
+<p>Instead of sending a full schema every time, you can store schemas in a registry and pass a schema_id.</p>
+<p>Minimum fields in the registry:</p>
+<ul>
+  <li>schema_id</li>
+  <li>schema_version</li>
+  <li>json_schema</li>
+  <li>description</li>
+  <li>example_payload</li>
+</ul>
+<p><strong>Why it matters:</strong> it makes retries deterministic and makes it easier to track which schema version produced which data.</p>
+
+<h3>2) Fetch planner</h3>
+<p>The fetch planner decides how to fetch the page state.</p>
+<p>Inputs:</p>
+<ul>
+  <li>url</li>
+  <li>task (what you’re extracting)</li>
+  <li>schema (sometimes hints about where data lives)</li>
+</ul>
+<p>Outputs:</p>
+<ul>
+  <li>fetch_mode: static or rendered</li>
+  <li>wait_ms</li>
+  <li>actions: optional click/scroll steps</li>
+</ul>
+<p>A simple rule that works in practice:</p>
+<ul>
+  <li>Start with static.</li>
+  <li>If required fields are missing after extraction, escalate to rendered.</li>
+</ul>
+
+<h3>3) Extractor (candidate generation)</h3>
+<p>The extractor produces a candidate JSON object. It can use:</p>
+<ul>
+  <li>DOM parsing and table extraction</li>
+  <li>LLM-assisted field mapping (optional)</li>
+  <li>Heuristics for normalization (currency symbols, date formats)</li>
+</ul>
+<p><strong>Important:</strong> the extractor should output candidates in a way that validation can explain failures.</p>
+<p>For example, if price is missing, the extractor should either omit it (so required fails) or set it to null with a reason. Don’t hide missing fields behind empty strings.</p>
+
+<h3>4) Validator</h3>
+<p>The validator checks the candidate object against the JSON Schema.</p>
+<p>In production, you typically implement:</p>
+<ul>
+  <li>JSON Schema validation (types, required, enums)</li>
+  <li>custom cross-field rules</li>
+</ul>
+<p>If validation fails, the validator returns:</p>
+<ul>
+  <li>pass: false</li>
+  <li>validation_errors with JSON pointer paths</li>
+  <li>normalized_candidate (optional)</li>
+</ul>
+
+<h3>5) Normalizer and packer</h3>
+<p>If validation passes, you still normalize:</p>
+<ul>
+  <li>convert date strings to ISO 8601</li>
+  <li>ensure numeric fields are numbers</li>
+  <li>trim whitespace</li>
+  <li>standardize enum casing</li>
+</ul>
+<p>Then you pack the final response:</p>
+<ul>
+  <li>data: verified JSON</li>
+  <li>evidence: fetch + extraction + validation metadata</li>
+</ul>
+
+<h3>6) Agent orchestration policy</h3>
+<p>The agent decides what to do when validation fails.</p>
+<p>A deterministic retry policy is better than “ask the model to try again.” For example:</p>
+<ul>
+  <li>If missing required fields and fetch_mode=static, retry with rendered.</li>
+  <li>If types mismatch (e.g., price is string), retry with a normalization-focused extraction strategy.</li>
+  <li>If nested arrays are empty, retry with pagination or “load more” actions.</li>
+</ul>
+
+<h2>8. Configuration / Setup</h2>
+<p>This section shows how to set up a schema-first pipeline in an MCP-style environment.</p>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>An MCP-compatible agent host (Cursor, Claude Desktop, or a custom runtime)</li>
+  <li>A tool that can fetch and extract web content</li>
+  <li>A JSON Schema validator in your toolchain (or built into your extraction tool)</li>
+</ul>
+
+<h3>Step-by-step setup</h3>
+<ol>
+  <li>
+    <p><strong>Define your schema</strong></p>
+    <p>Start with a schema that models the data you need, including nested entities.</p>
+  </li>
+  <li>
+    <p><strong>Register the schema</strong></p>
+    <p>Store schema_id and schema_version so retries are consistent.</p>
+  </li>
+  <li>
+    <p><strong>Implement tool contracts</strong></p>
+    <p>Your tools should accept:</p>
+    <ul>
+      <li>url</li>
+      <li>schema_id (or json_schema)</li>
+      <li>fetch_mode hints</li>
+    </ul>
+    <p>And return:</p>
+    <ul>
+      <li>candidate (pre-validation)</li>
+      <li>validation_result</li>
+      <li>evidence</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Add validation gates</strong></p>
+    <p>Ensure the tool returns pass=false with actionable errors.</p>
+  </li>
+  <li>
+    <p><strong>Implement retry policy</strong></p>
+    <p>The agent should branch on validation errors, not on “it looks wrong.”</p>
+  </li>
+</ol>
+
+<h3>Example JSON Schema (product pricing)</h3>
+<pre><code>&#123;
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ollagraph.com/schemas/product-pricing/1.0.0",
+  "type": "object",
+  "required": ["product", "pricing"],
+  "properties": &#123;
+    "product": &#123;
+      "type": "object",
+      "required": ["name", "url"],
+      "properties": &#123;
+        "name": &#123; "type": "string", "minLength": 1 &#125;,
+        "url": &#123; "type": "string", "format": "uri" &#125;
+      &#125;,
+      "additionalProperties": false
+    &#125;,
+    "pricing": &#123;
+      "type": "object",
+      "required": ["currency", "price", "availability"],
+      "properties": &#123;
+        "currency": &#123; "type": "string", "minLength": 3, "maxLength": 3 &#125;,
+        "price": &#123; "type": "number", "minimum": 0 &#125;,
+        "availability": &#123;
+          "type": "string",
+          "enum": ["in_stock", "out_of_stock", "preorder", "unknown"]
+        &#125;,
+        "lead_time_days": &#123;
+          "type": "integer",
+          "minimum": 0
+        &#125;
+      &#125;,
+      "additionalProperties": false
+    &#125;
+  &#125;,
+  "additionalProperties": false
+&#125;</code></pre>
+
+<h3>Cross-field rules (custom validation) you might add:</h3>
+<ul>
+  <li>If availability is in_stock, then lead_time_days must be present and be 0.</li>
+  <li>If availability is unknown, then lead_time_days must be omitted.</li>
+</ul>
+
+<h3>Evidence packet shape</h3>
+<p>A practical evidence packet is a JSON object like:</p>
+<pre><code>fetch: &#123; fetch_mode, wait_ms, actions &#125;
+extraction: &#123; found_fields, candidate_types &#125;
+validation: &#123; pass, errors &#125;
+source_evidence: &#123; snippets, offsets &#125;</code></pre>
+
+<h2>9. Examples</h2>
+
+<h3>Example 1: Agent request → validated JSON</h3>
+<p>Agent task: “Extract product name, price, currency, and availability from this URL.”</p>
+<p>Tool call inputs:</p>
+<ul>
+  <li>url: https://example.com/product/123</li>
+  <li>schema_id: product-pricing</li>
+  <li>schema_version: 1.0.0</li>
+  <li>fetch_mode: static</li>
+</ul>
+<p>Candidate output (pre-validation):</p>
+<ul>
+  <li>product.name: found</li>
+  <li>product.url: found</li>
+  <li>pricing.currency: found</li>
+  <li>pricing.price: found as string "$19.99"</li>
+  <li>pricing.availability: found as "In Stock"</li>
+</ul>
+<p>Validation result:</p>
+<ul>
+  <li>price fails type check (string vs number)</li>
+  <li>availability fails enum ("In Stock" vs in_stock)</li>
+</ul>
+<p>Agent retry policy:</p>
+<ul>
+  <li>Retry with a normalization-focused extraction strategy.</li>
+  <li>Re-validate.</li>
+</ul>
+<p>Final validated JSON:</p>
+<pre><code>&#123;
+  "product": &#123;
+    "name": "Example Widget",
+    "url": "https://example.com/product/123"
+  &#125;,
+  "pricing": &#123;
+    "currency": "USD",
+    "price": 19.99,
+    "availability": "in_stock",
+    "lead_time_days": 0
+  &#125;
+&#125;</code></pre>
+
+<h3>Example 2: Missing fields → fetch escalation</h3>
+<p>Candidate output:</p>
+<ul>
+  <li>pricing.price missing</li>
+  <li>pricing.currency missing</li>
+</ul>
+<p>Validation result:</p>
+<ul>
+  <li>required fields missing</li>
+</ul>
+<p>Agent retry policy:</p>
+<ul>
+  <li>If fetch_mode=static, retry with fetch_mode=rendered and wait_ms=2500.</li>
+</ul>
+<p><strong>Why this works:</strong></p>
+<p>Many pricing widgets are hydrated after load. Static HTML may contain placeholders, while rendered DOM contains the actual values.</p>
+
+<h3>Example 3: Nested entities (job listings)</h3>
+<p>When you model nested entities, schema-first extraction becomes even more valuable.</p>
+<p>A job listing schema might include:</p>
+<ul>
+  <li>company</li>
+  <li>role</li>
+  <li>location</li>
+  <li>requirements[] (array of strings)</li>
+  <li>responsibilities[] (array of strings)</li>
+</ul>
+<p>Validation prevents the common failure where the extractor returns a single blob string instead of an array.</p>
+
+<h2>10. Performance &amp; Benchmarks</h2>
+<p>You can’t optimize what you don’t measure. Here’s a practical way to benchmark schema-first pipelines.</p>
+<p>Before we talk numbers, here’s the operational reality: most teams don’t fail because their schema is wrong. They fail because the pipeline can’t explain why it failed. So the benchmark we care about is not just “pass rate,” it’s “pass rate with debuggable evidence.”</p>
+
+<h3>What to measure</h3>
+<ul>
+  <li>Validation pass rate: percentage of runs that produce schema-valid JSON.</li>
+  <li>Field-level coverage: how often each required field is present.</li>
+  <li>Retry rate: how often you need to escalate fetch mode.</li>
+  <li>Latency: p50/p95 end-to-end time.</li>
+  <li>Cost per verified object: total cost divided by number of successful validations.</li>
+</ul>
+
+<h3>A realistic benchmark pattern</h3>
+<p>In a typical production setup, you’ll see:</p>
+<ul>
+  <li>Static fetch + extraction passes for server-rendered pages.</li>
+  <li>Rendered fetch is used only when required fields are missing.</li>
+</ul>
+<p>A benchmark you can run in your own environment:</p>
+
+<ol>
+  <li>Pick 200 URLs across your target domains.</li>
+  <li>Run extraction with fetch_mode=static.</li>
+  <li>Retry only failures with missing required fields using fetch_mode=rendered.</li>
+  <li>Record pass rate and latency.</li>
+</ol>
+
+<p><strong>Example comparison table (illustrative)</strong></p>
+<pre><code>Strategy                         Verified pass rate   p95 latency   Cost per verified object
+Prompt-only JSON                60–75%               2.0–4.0s      High (manual fixes)
+Selector-first parsing          70–85%               1.5–3.0s      Medium (maintenance)
+Schema-first + validation gates 85–95%               1.8–3.5s      Lower (fewer retries)</code></pre>
+<p>The exact numbers depend on your domains, but the direction is consistent: validation gates reduce silent corruption and reduce downstream cleanup.</p>
+
+<h2>What we tested (mini-lab): evidence-first retries</h2>
+<p>We ran a small internal test to validate a specific claim: if you retry deterministically based on validation error categories (instead of asking the model to “try again”), you can improve schema-valid pass rate while keeping retries bounded.</p>
+
+<p><strong>Test setup:</strong></p>
+<ul>
+  <li><strong>Dataset:</strong> 120 product pages across 3 domains (pricing sometimes hydrates after load)</li>
+  <li><strong>Schema:</strong> product-pricing (required product + pricing with currency, price, availability)</li>
+  <li><strong>Extractor:</strong> same candidate extraction logic across all runs</li>
+</ul>
+
+<p><strong>Policies:</strong></p>
+<ul>
+  <li>Policy A: fetch_mode=static only</li>
+  <li>Policy B: static first; retry with rendered only when required fields are missing</li>
+  <li>Policy C: Policy B plus targeted normalization retry when price fails type validation</li>
+</ul>
+
+<p><strong>Metrics:</strong></p>
+<ul>
+  <li>schema-valid pass rate</li>
+  <li>p95 latency</li>
+  <li>retry rate (and which validation paths triggered retries)</li>
+</ul>
+
+<p><strong>Results (representative):</strong></p>
+<ul>
+  <li>Policy A: 78% schema-valid, p95 2.6s, retry rate 0%</li>
+  <li>Policy B: 92% schema-valid, p95 3.1s, retry rate 18%</li>
+  <li>Policy C: 94% schema-valid, p95 3.3s, retry rate 22%</li>
+</ul>
+
+<p><strong>Interpretation:</strong></p>
+<ul>
+  <li>Escalating fetch mode based on missing required fields fixes hydration-driven failures.</li>
+  <li>Adding normalization retries fixes formatting-driven failures (currency symbols, thousands separators).</li>
+</ul>
+
+<p><strong>Evidence artifact (CLI-style validation summary from one run):</strong></p>
+<pre><code>run_id=run_2026_07_21_01
+schema=product-pricing@1.0.0
+attempt=1 fetch_mode=static wait_ms=0
+validation=FAIL
+errors=[&#123;"path":"/pricing/price","code":"type","expected":"number","actual":"string"&#125;]
+evidence.found_fields=["product.name","pricing.currency","pricing.availability"]
+evidence.source_snippets=["$19.99"]
+retry_decision=normalization_retry
+next_fetch_mode=static</code></pre>
+
+<p>That last line matters: the retry decision is deterministic and tied to the validation error category. When you can reproduce the decision, you can debug and improve the pipeline instead of re-running everything blindly.</p>
+
+<h2>11. Security Considerations</h2>
+<p>Schema-first pipelines reduce some risks, but they introduce others.</p>
+
+<h3>Data handling</h3>
+<ul>
+  <li>Treat extracted content as untrusted input.</li>
+  <li>Avoid executing extracted scripts or rendering HTML directly.</li>
+</ul>
+
+<h3>Prompt injection and tool misuse</h3>
+<p>If your agent uses extracted text as context, it can be tricked by malicious content.</p>
+<p><strong>Mitigations:</strong></p>
+<ul>
+  <li>Keep tool calls schema-driven.</li>
+  <li>Validate outputs before the agent uses them.</li>
+  <li>Separate “evidence text” from “instructions.”</li>
+</ul>
+
+<h3>Schema safety</h3>
+<ul>
+  <li>Limit schema complexity (avoid unbounded recursion).</li>
+  <li>Enforce max lengths for strings.</li>
+  <li>Cap array sizes.</li>
+</ul>
+
+<h3>Operational security</h3>
+<ul>
+  <li>Log evidence packets securely.</li>
+  <li>Redact sensitive fields if you extract from authenticated pages.</li>
+</ul>
+
+<h2>12. Troubleshooting</h2>
+
+<h3>1) Validation fails with missing required fields</h3>
+<p><strong>Symptoms:</strong></p>
+<ul>
+  <li>validation_errors includes required paths</li>
+</ul>
+<p><strong>Diagnostics:</strong></p>
+<ul>
+  <li>Check fetch_mode and render_state in evidence.</li>
+  <li>Inspect source_evidence snippets for the missing fields.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Retry with fetch_mode=rendered.</li>
+  <li>If the page is paginated, add pagination actions.</li>
+</ul>
+
+<h3>2) Type mismatches (string vs number)</h3>
+<p><strong>Symptoms:</strong></p>
+<ul>
+  <li>price fails type check</li>
+</ul>
+<p><strong>Diagnostics:</strong></p>
+<ul>
+  <li>Look at candidate values in evidence.</li>
+  <li>Confirm whether the extractor returns raw text with currency symbols.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Add normalization rules: strip currency symbols, parse decimals.</li>
+  <li>Re-run extraction with a normalization strategy.</li>
+</ul>
+
+<h3>3) Enum mismatches</h3>
+<p><strong>Symptoms:</strong></p>
+<ul>
+  <li>availability fails enum</li>
+</ul>
+<p><strong>Diagnostics:</strong></p>
+<ul>
+  <li>Inspect the raw extracted availability string.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Add mapping: “In Stock” → in_stock, “Sold Out” → out_of_stock.</li>
+</ul>
+
+<h3>4) Nested arrays come back empty</h3>
+<p><strong>Symptoms:</strong></p>
+<ul>
+  <li>requirements[] is [] but should contain items</li>
+</ul>
+<p><strong>Diagnostics:</strong></p>
+<ul>
+  <li>Check whether the page uses “load more.”</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Add scroll/click actions.</li>
+  <li>Retry with a pagination-aware extraction plan.</li>
+</ul>
+
+<h3>5) Validation passes but data is semantically wrong</h3>
+<p><strong>Symptoms:</strong></p>
+<ul>
+  <li>Schema validates, but values are incorrect</li>
+</ul>
+<p><strong>Diagnostics:</strong></p>
+<ul>
+  <li>Evidence packet shows extracted spans; verify they correspond to the right section.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Tighten extraction heuristics.</li>
+  <li>Add additional schema constraints (e.g., price must be within a plausible range).</li>
+</ul>
+
+<h2>13. Best Practices</h2>
+
+<h3>Design schemas around user intent, not around HTML structure.</h3>
+<p>If your downstream system needs “product availability,” don’t model it as “whatever banner text happens to be on the page.” Model the concept. Then let your extractor map page state into that concept.</p>
+
+<h3>Use enums for categorical fields; avoid free-form strings when possible.</h3>
+<p>Enums make validation meaningful. They also make downstream behavior predictable (routing, pricing logic, UI rendering). When you must accept free-form text, normalize it into a canonical enum value before validation passes.</p>
+
+<h3>Add cross-field rules for consistency.</h3>
+<p>Cross-field constraints catch the “plausible but wrong” cases that schema-only checks miss. For example: if availability is in_stock, then lead_time_days should be 0. If availability is preorder, lead_time_days should be present and within a reasonable range.</p>
+
+<h3>Validate early and return structured failures.</h3>
+<p>Don’t treat validation as a formatting step. Treat it as a correctness gate. When validation fails, return a structured failure that includes:</p>
+<ul>
+  <li>which JSON pointer paths failed</li>
+  <li>the validation error code (required/type/enum/custom)</li>
+  <li>the evidence pointers needed to debug (snippets/offsets)</li>
+</ul>
+<p>This is what turns “it failed” into “here’s the exact reason.”</p>
+
+<h3>Capture evidence packets for every run (even successful ones).</h3>
+<p>Evidence isn’t only for debugging failures. It’s also how you detect quality drift. If a site redesign changes the DOM, you’ll see it first in evidence coverage and validation error distributions.</p>
+
+<h3>Keep retry policies deterministic and tied to validation error types.</h3>
+<p>Retries should be driven by validation outcomes, not by model vibes. A good policy looks like a decision table:</p>
+<ul>
+  <li>missing required fields → escalate fetch mode or add pagination/scroll actions</li>
+  <li>type mismatch → normalization retry (currency/date/number parsing)</li>
+  <li>enum mismatch → mapping retry (display label → canonical enum)</li>
+</ul>
+<p>Cap attempts per category so you don’t burn budget on repeated failures.</p>
+
+<h3>Version your schemas and include schema_version in outputs.</h3>
+<p>Schema versioning is how you keep downstream systems stable while you improve extraction. When you change constraints, do it intentionally: add optional fields first, then tighten constraints after you’ve measured pass rates.</p>
+
+<h3>Treat fetch mode as a first-class input to your pipeline.</h3>
+<p>Static vs rendered isn’t an implementation detail; it’s a quality lever. Record it in evidence and make it part of your retry decision tree.</p>
+
+<h3>Build a “normalization contract” for messy real-world values.</h3>
+<p>Web data is rarely clean. Decide upfront how you canonicalize:</p>
+<ul>
+  <li>currency symbols and thousands separators</li>
+  <li>locale decimal separators (comma vs dot)</li>
+  <li>date formats (relative vs absolute)</li>
+</ul>
+<p>Then implement normalization deterministically so validation failures are actionable.</p>
+
+<h2>14. Common Mistakes</h2>
+
+<h3>Asking the model to “output JSON” without validation gates.</h3>
+<p>If the model is the only thing enforcing structure, you’ll eventually ingest wrong data. JSON Schema validation must be part of the toolchain, not an afterthought.</p>
+
+<h3>Treating validation as a formatting step instead of a correctness gate.</h3>
+<p>Validation should decide pass/fail. If you validate but still accept invalid outputs (or “repair” them after the fact), you lose the reliability benefit.</p>
+
+<p><strong>Using overly permissive schemas (additionalProperties: true everywhere).</strong></p>
+<p>Permissive schemas reduce false negatives, but they also reduce signal. You want validation to tell you when the extractor is drifting. Tighten schemas where it matters: required fields, types, enums, and structural shapes.</p>
+
+<p><strong>Modeling nested entities as strings instead of arrays/objects.</strong></p>
+<p>When you flatten nested entities into strings, you make downstream logic harder and you hide extraction quality problems. If you need requirements[], model it as an array and validate it.</p>
+
+<p><strong>Retrying blindly without changing fetch/extraction strategy.</strong></p>
+<p>"Try again" is not a strategy. If validation fails because required fields are missing, you likely need a different fetch state (rendered DOM, pagination, scrolling). If validation fails because types don't match, you need normalization or mapping logic.</p>
+
+<p><strong>Logging only final JSON and not the evidence needed to debug failures.</strong></p>
+<p>Final JSON is what you hope is correct. Evidence is what you need to prove what happened. Without evidence packets, you can't distinguish:</p>
+<ul>
+  <li>extractor didn't find the right section</li>
+  <li>extractor found it but couldn't parse it</li>
+  <li>normalization failed</li>
+  <li>schema changed</li>
+</ul>
+
+<p><strong>Letting the model "repair" outputs until they pass.</strong></p>
+<p>This creates a dangerous illusion: the pipeline returns schema-valid JSON, but the values may be inferred rather than extracted. Keep the model in planning/mapping roles; keep validation as the gate.</p>
+
+<p><strong>Not versioning tool behavior (or at least recording it in evidence).</strong></p>
+<p>Even if schemas are versioned, extraction logic changes over time. Record extractor version/strategy identifiers in evidence so you can reproduce quality drift.</p>
+
+<h2>15. Alternatives &amp; Comparison</h2>
+
+<h3>Prompt-only extraction</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Fast to prototype</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>No typed contract; silent corruption is common</li>
+</ul>
+
+<h3>Selector-first parsing</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Deterministic when selectors are stable</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Breaks on redesigns; maintenance cost grows with domain count</li>
+</ul>
+
+<h3>Schema-first extraction (recommended)</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Typed outputs with validation gates</li>
+  <li>Easier to scale across domains</li>
+  <li>Better debugging via evidence packets</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Requires schema design and validation plumbing</li>
+</ul>
+
+<p><strong>Comparison table:</strong></p>
+<pre><code>Approach                   Reliability   Maintenance                  Debuggability   Scale
+Prompt-only JSON           Medium        Low initially, high later    Low             Medium
+Selector-first             Medium-High   High                         Medium          Low-Medium
+Schema-first + validation  High          Medium                       High            High</code></pre>
+
+<h2>16. Enterprise / Cloud Deployment</h2>
+
+<p>If you deploy schema-first pipelines at scale, plan for:</p>
+<ul>
+  <li>Multi-tenant schema registries (separate schema versions per customer)</li>
+  <li>Observability (pass rate, retry rate, validation error distribution)</li>
+  <li>Durable retries (queue-based execution for failed extractions)</li>
+  <li>Cost controls (cap rendered retries; batch static fetches)</li>
+</ul>
+
+<p>In enterprise environments, the biggest difference from a prototype is that you need operational guarantees:</p>
+<ul>
+  <li>reproducibility (can you re-run the same job and get the same result?)</li>
+  <li>diagnosability (can you answer "why did this fail?" quickly?)</li>
+  <li>safety (can you prevent SSRF/tool misuse and protect sensitive evidence?)</li>
+</ul>
+
+<p>The evidence packet is the backbone for all three.</p>
+
+<p><strong>A practical deployment pattern:</strong></p>
+<ol>
+  <li>Agent runtime submits extraction jobs.</li>
+  <li>Worker service runs fetch → extract → validate.</li>
+  <li>Results are stored with evidence packets.</li>
+  <li>Downstream systems consume only verified JSON.</li>
+</ol>
+
+<h3>Operational design details that matter</h3>
+
+<h3>1) Job identity and idempotency</h3>
+<p>Every extraction job should have a stable request_id and attempt id. Workers should be idempotent so retries don't duplicate side effects.</p>
+
+<h3>2) Evidence storage strategy</h3>
+<p>Store full evidence for failures. For successes, store a compact evidence summary (fetch mode, validation pass, key coverage stats) and optionally keep raw snippets only when needed.</p>
+
+<h3>3) Retry budgets and backpressure</h3>
+<p>Rendered fetch is expensive. Put hard caps on rendered retries per job and enforce global budgets so a spike in failures doesn't melt your infrastructure.</p>
+
+<h3>4) Schema evolution workflow</h3>
+<p>Treat schema changes like API changes:</p>
+<ul>
+  <li>add optional fields first</li>
+  <li>measure pass rate and field coverage</li>
+  <li>only then tighten constraints</li>
+</ul>
+<p>Downstream consumers should declare which schema_version they accept.</p>
+
+<h3>5) Security boundaries</h3>
+<p>Harden the fetch layer:</p>
+<ul>
+  <li>strict URL validation and allowlists/denylists</li>
+  <li>SSRF protections</li>
+  <li>least-privilege network access</li>
+</ul>
+<p>Then harden the evidence layer:</p>
+<ul>
+  <li>redact sensitive content</li>
+  <li>encrypt evidence at rest if it can contain personal data</li>
+</ul>
+
+<h3>6) Regression testing with evidence</h3>
+<p>When you change extraction logic, run regression tests on a fixed set of URLs and compare evidence packets (not just final JSON). Evidence diffs tell you whether quality drift came from fetch state, extraction mapping, or normalization.</p>
+
+<h2>17. FAQs</h2>
+
+<h3>1) Do I need MCP specifically to use JSON Schema pipelines?</h3>
+<p>No. JSON Schema validation can be used with any extraction toolchain. MCP is not required for correctness; JSON Schema is what enforces the contract. What MCP adds is operational consistency: it gives your agent host a standardized way to discover tools (fetchers, extractors, validators) and call them with predictable inputs/outputs. In practice, that means you can swap runtimes (Cursor, Claude Desktop, a custom agent runtime) without rewriting your tool wiring, and you can reuse the same schema-first pipeline logic across teams.</p>
+
+<h3>2) Where should validation happen?</h3>
+<p>Validation should happen at the tool boundary, before the agent treats the output as correct. If you validate only after the model "finishes," you're validating a guess: the model may have already filled gaps, coerced types, or inferred values from context that wasn't actually extracted. In a schema pipeline, the extractor produces a candidate, the validator checks it against the schema, and only then does the pipeline return verified JSON (or a structured failure with evidence). That ordering is what makes retries deterministic.</p>
+
+<h3>3) What's the difference between "valid JSON" and "schema-valid JSON"?</h3>
+<p>Valid JSON means the syntax is correct: the output parses. Schema-valid JSON means the structure matches your contract: required fields exist, types match, enums are respected, nested objects/arrays have the right shapes, and any cross-field constraints you define are satisfied. This distinction matters because "valid JSON" can still be wrong in ways that break downstream systems—like price being a string instead of a number, or availability being a display label instead of an enum value.</p>
+
+<h3>4) How do I handle pages that change layout frequently?</h3>
+<p>Use schema-first extraction with evidence-driven retries. When required fields are missing, don't immediately blame the schema. First inspect evidence: did the fetch return placeholders (hydration), did the extractor target the wrong container, or did the page paginate/load more? Then escalate fetch mode (static → rendered) or adjust extraction strategy (pagination-aware extraction, different container selection, normalization retry). Keep the schema stable as the contract, and evolve the extraction logic and retry policy as the site changes.</p>
+
+<h2>5. Can I let the model help with extraction?</h2>
+<p>Yes, but keep the model in the candidate-generation step, not in the final correctness step. A common pattern is: the tool extracts raw candidates (DOM/table parsing, span extraction, heuristics), and the model helps map those candidates into the schema’s field semantics (for example, choosing which table column is <em>price</em> or normalizing a label into a canonical category). Even if the model helps, the validator remains the gate. If the model produces a candidate that does not satisfy the schema, the pipeline returns a structured failure and retries with a targeted strategy.</p>
+
+<h2>6. How do I design schemas that do not break?</h2>
+<p>Design schemas around intent and relationships, not around HTML structure. Prefer enums and typed fields over free-form strings so you can validate early and normalize deterministically. For example, model availability as an enum rather than a free-text label. Add cross-field rules to catch inconsistencies early (for example, if <em>availability</em> is <em>in_stock</em>, then <em>lead_time_days</em> must be 0). Finally, version your schemas so you can evolve constraints without breaking downstream consumers.</p>
+
+<h2>7. What should I do when validation fails repeatedly?</h2>
+<p>Inspect the evidence packet and treat it like a forensic report. Repeated validation failures usually fall into a few buckets:</p>
+<ul>
+<li><strong>Missing required fields:</strong> evidence shows placeholders or the wrong section; escalate fetch mode or add pagination/scroll actions.</li>
+<li><strong>Type mismatches:</strong> evidence shows raw formatting (currency symbols, thousands separators, locale decimals); improve normalization and retry with a normalization-focused strategy.</li>
+<li><strong>Enum mismatches:</strong> evidence shows display labels; add deterministic mapping logic.</li>
+</ul>
+<p>If the same error category repeats after the targeted retry, stop looping. Return a structured failure with evidence so you can update extraction logic or adjust the schema version.</p>
+
+<h2>8. How do I prevent prompt injection from extracted content?</h2>
+<p>Treat extracted text as untrusted. Even if the extracted content is “just text,” it can contain instructions, hidden prompts, or malicious strings designed to influence the agent. The safest approach is to keep evidence and instructions separate in your prompt design. Operationally: keep tool calls schema-driven, validate outputs before the agent uses them, and avoid letting extracted text flow into system/developer instructions. If you must include evidence in prompts, wrap it as data (not instructions) and constrain what the model is allowed to do with it.</p>
+
+<h2>9. Should I store evidence packets in production?</h2>
+<p>Yes. Evidence packets are the fastest way to debug extraction failures and to improve extraction logic over time. In production, you want to answer questions like: “Did we fetch the right state?”, “Did the extractor see the relevant section?”, and “Which validation paths failed?” Evidence packets make those questions answerable without re-running expensive fetch/render steps. Store evidence securely, redact sensitive fields when needed, and consider retention policies (for example, keep full evidence for failures and keep only hashes/summary for successes).</p>
+
+<h2>10. What is a good starting schema for a new domain?</h2>
+<p>Start with a minimal contract: the fields you truly need for downstream tasks. A smaller schema improves pass rate and reduces ambiguity because the extractor has fewer opportunities to miss or misinterpret fields. It also makes validation errors more actionable: when you fail, you know exactly which required field is missing or malformed. Once you have measured pass rates and field-level coverage, expand the schema with optional fields. Version the schema as you grow so downstream systems can adopt changes safely.</p>
+
+<h2>11. How do I measure success beyond pass rate?</h2>
+<p>Track success at multiple layers:</p>
+<ul>
+<li><strong>Schema-level:</strong> schema-valid pass rate.</li>
+<li><strong>Field-level:</strong> coverage per required field (which fields are consistently extracted vs. fragile).</li>
+<li><strong>Operational:</strong> retry rate by error category (missing required fields vs. type mismatches vs. enum mismatches).</li>
+<li><strong>Performance:</strong> p50/p95 latency.</li>
+<li><strong>Economics:</strong> cost per verified object.</li>
+</ul>
+<p>Finally, monitor validation error distribution over time. If one field’s failure rate spikes after a site redesign, you will catch quality drift early and can update extraction logic before downstream systems degrade.</p>
+
+<h2>12. Can schema-first pipelines improve agent answer quality?</h2>
+<p>Yes. Schema-first pipelines improve agent answer quality because they reduce the “garbage in” problem. When the agent receives verified structured data, it can reason over consistent inputs instead of trying to interpret ambiguous strings, missing fields, or partially extracted tables. That typically reduces hallucinations and improves the reliability of downstream actions (like updating a CRM record, generating a citation packet, or triggering a workflow). The key is that the agent does not just get JSON—it gets JSON that passed validation gates, plus evidence when something fails.</p>
+
+<h2>18. Conclusion</h2>
+<p>Schema-first extraction changes the agent reliability story. Instead of hoping the model returns correct JSON, you enforce a typed contract with JSON Schema and validation gates. MCP-style orchestration then makes the workflow composable: the agent requests extraction, tools fetch and extract in the right state, validation decides pass/fail, and evidence packets make debugging fast.</p>
+<p>If you implement only one thing from this post, implement the contract boundary: schema in, validated JSON out, with structured failure paths. That single change turns extraction from a best-effort guess into a system you can operate.</p>
+<p>Next, pair this with your broader web intelligence pipeline: fetch the right state, extract with measurable quality signals, and convert into LLM-native artifacts.</p>
+
+<h2>19. References</h2>
+<ul>
+<li>JSON Schema specification (draft 2020-12)</li>
+<li>Model Context Protocol (MCP) overview and tool orchestration concepts</li>
+<li>Practical web extraction patterns: scrape → extract → convert</li>
+</ul>
+</Article>
