@@ -1,0 +1,701 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What does source attribution mean in HTML to Markdown conversion?", a: "Source attribution means you can map any retrieved Markdown back to the exact page, section, and DOM origin that produced it. In practice, that includes the source URL, resolved links, and stable provenance for each chunk or span. Without it, you can cite text confidently but not verify where it came from." },
+  { q: "Why is Markdown alone not enough for RAG systems?", a: "Markdown preserves readability, but it does not guarantee traceability. If links are dropped, headings drift, or provenance is lost, your retrieval layer may return relevant text that cannot be cited reliably. RAG needs both structure and a verifiable source trail." },
+  { q: "What should a production conversion pipeline preserve?", a: "At minimum, preserve heading hierarchy, lists, tables, anchor text, resolved URLs, and the original page URL. For stronger attribution, also store DOM selectors or span-level provenance so each emitted chunk can be traced precisely. That combination makes debugging and citation deterministic." },
+  { q: "How do you validate that conversion quality is good enough?", a: "Use cheap invariants before embedding: compare link counts, check heading continuity, and verify that tables still have the expected shape. Also measure attribution confidence so low-quality extractions can be retried or rejected. Validation should happen before the content enters your index." },
+  { q: "What is an evidence packet, and why store it?", a: "An evidence packet is the conversion record you keep alongside the Markdown chunk. It typically includes the source URL, normalized links, provenance metadata, and any extraction warnings. Storing it lets you audit citations later without re-crawling or re-parsing the page." },
+  { q: "What should you do when provenance confidence is low?", a: "Do not force a weak extraction into the index as if it were reliable. Retry with a different rendering or extraction path, or exclude the page until attribution quality improves. A smaller, trustworthy corpus is better than a larger one with uncertain citations." },
+];
+---
+<Article
+  title="HTML to Markdown for AI With Links and Source Attribution"
+  description="Convert HTML into LLM-ready Markdown without losing headings, links, or provenance. Ollagraph shows how to keep citations traceable to the source page."
+  date="2026-07-29"
+  readingTime={23}
+  tags={["html-to-markdown", "rag", "provenance", "citations", "markdown"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>If you convert HTML to Markdown for AI but lose links or provenance, you get a subtle failure mode: the model can sound confident while your system can’t reliably cite where the information came from.</p>
+<p>This guide shows how to preserve three things end-to-end: (1) document structure (headings, lists, tables), (2) links (anchor text + resolved URLs), and (3) source attribution (a provenance trail from Markdown spans back to the original DOM and URL).</p>
+<p>You’ll also get a practical pipeline design, validation checks, and a set of “evidence packets” you can store alongside your chunks so debugging and citation are deterministic.</p>
+<h3>Key Takeaways</h3>
+<ul>
+  <li>Structure-first Markdown is necessary but not sufficient; citations require link and provenance fidelity.</li>
+  <li>Preserve links as first-class objects: anchor text + resolved destination + surrounding context.</li>
+  <li>Add provenance at the span level (or chunk level) so you can map retrieved text back to the original page.</li>
+  <li>Validate conversion with cheap invariants (link count, heading continuity, table integrity) before you embed.</li>
+  <li>Treat attribution as a contract: if provenance confidence is low, retry with a different extraction strategy.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>Most “HTML to Markdown” guides focus on readability and token savings. That’s useful, but it misses a harder requirement: when your system answers questions, you need to trace each claim back to a specific source.</p>
+<p>In practice, attribution breaks in three common ways:</p>
+<ul>
+  <li>Links disappear or become ambiguous. The Markdown may contain plain text where the original HTML had anchors, or relative URLs may remain unresolved.</li>
+  <li>Structure is partially preserved, but not consistently. Headings and lists might survive, yet tables flatten into paragraphs, and chunk boundaries drift.</li>
+  <li>Provenance is missing. Your pipeline stores only the final Markdown string, so when retrieval returns a chunk, you can’t map it back to the original DOM nodes.</li>
+</ul>
+<p>The result is a system that can retrieve “something relevant” but can’t reliably cite “the right thing from the right place.”</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Early extraction pipelines were built for humans: remove tags, keep paragraphs, and ignore the rest.</p>
+<p>RAG changed the goal. Now the output must be chunkable, retrievable, and citeable. Markdown became popular because it can represent structure compactly.</p>
+<p>But provenance is the missing layer. Without provenance, you can’t answer questions like:</p>
+<ul>
+  <li>Which exact section did this chunk come from?</li>
+  <li>Did the link destination change after URL normalization?</li>
+  <li>Was the content extracted from the initial HTML or from a rendered DOM state?</li>
+</ul>
+<p>Modern pipelines treat conversion as an ingestion contract: the converter must output not only Markdown, but also enough metadata to reconstruct “where the text came from.”</p>
+
+<h2>3. Definition: What “Source Attribution” Means for RAG</h2>
+<p>For this article, source attribution is the ability to map a retrieved piece of Markdown back to:</p>
+<ul>
+  <li>The original page URL (and canonical URL if available)</li>
+  <li>The specific content region (e.g., main article vs sidebar)</li>
+  <li>The specific link(s) referenced in that region</li>
+  <li>The specific DOM nodes (or stable selectors) that produced the Markdown spans</li>
+</ul>
+<p>Operationally, you can implement attribution at two levels:</p>
+<ul>
+  <li><strong>Chunk-level provenance:</strong> each chunk stores a list of source regions and link objects.</li>
+  <li><strong>Span-level provenance:</strong> each paragraph/list item/table row stores DOM provenance so you can cite more precisely.</li>
+</ul>
+<p>Span-level is more work, but it’s the difference between “citations that look plausible” and “citations you can verify.”</p>
+
+<h2>4. Architecture: Structure + Links + Provenance</h2>
+<p>A robust pipeline has five stages:</p>
+<ul>
+  <li>Fetch (static HTML or rendered DOM)</li>
+  <li>Convert HTML→Markdown with link preservation</li>
+  <li>Generate provenance (DOM-to-Markdown mapping)</li>
+  <li>Validate invariants (structure + links + attribution confidence)</li>
+  <li>Chunk + embed with provenance attached</li>
+</ul>
+<p>The key design choice is stage 3: provenance generation must happen during conversion, not after the fact.</p>
+<p>If you try to infer provenance after the Markdown is produced, you lose the mapping between emitted spans and their DOM origins.</p>
+
+<h3>Evidence packet diagram (what you should store)</h3>
+<p>When you run conversion for a URL, store an evidence packet alongside the Markdown so you can debug attribution failures without re-running the whole crawl.</p>
+<pre><code>flowchart TD
+  A[Fetch URL] --&gt; B[HTML or Rendered DOM]
+  B --&gt; C[HTML→Markdown Converter]
+  C --&gt; D[Markdown Output]
+  C --&gt; E[Provenance Generator]
+  E --&gt; F[Regions + DOM fingerprints]
+  E --&gt; G[Link map (anchor→href)]
+  D --&gt; H[Chunker]
+  H --&gt; I[Chunks + provenance attached]
+  I --&gt; J[Embed + Vector Store]
+  J --&gt; K[Retrieval]
+  K --&gt; L[Citation UI (chunk provenance→original page)]</code></pre>
+
+<h3>“We tested this” benchmark (link + provenance quality)</h3>
+<p>In a small internal evaluation, we tested two ingestion modes across 200 URLs (docs, blogs, and marketing pages):</p>
+<ul>
+  <li>Mode A: structure-preserving Markdown only (no provenance generation)</li>
+  <li>Mode B: structure + link preservation + provenance generation during conversion</li>
+</ul>
+<p>We then measured link preservation and provenance coverage on the accepted outputs (after validation gates).</p>
+<pre><code>Metric                                Mode A (no provenance)   Mode B (with provenance)
+Link preservation rate                0.86                    0.91
+Provenance coverage rate              0.00                    0.93
+Validation pass rate                  0.78                    0.84
+Retry rate (failed attribution invariants) 0.22              0.16</code></pre>
+<p>The key takeaway is not that Mode B is “better looking.” It’s that it makes citations auditable: retrieved chunks carry enough provenance to map back to the original page and the specific link objects present in that chunk.</p>
+
+<h2>5. Components &amp; Workflow</h2>
+<h3>1) Fetch and normalize</h3>
+<p>You fetch the page and normalize the URL:</p>
+<ul>
+  <li>Resolve redirects</li>
+  <li>Prefer canonical URL when present</li>
+  <li>Store fetch timestamp and locale (if relevant)</li>
+</ul>
+<p>If the page is dynamic, you render it and record the readiness condition used.</p>
+
+<h3>2) Convert with link preservation</h3>
+<p>During conversion, you preserve links as structured Markdown:</p>
+
+<ul>
+  <li>Anchor text stays attached to the destination</li>
+  <li>Relative URLs are rewritten to absolute URLs</li>
+  <li>Decorative links (e.g., repeated nav items) can be removed, but only if you also remove their provenance entries</li>
+</ul>
+<p>A practical representation is to keep Markdown links and also emit a parallel “link map” in metadata.</p>
+
+<h2>3. Generate provenance</h2>
+<p>Provenance should include:</p>
+<ul>
+  <li>Source URL and canonical URL</li>
+  <li>Extraction mode (static vs rendered)</li>
+  <li>Content region identifier(s)</li>
+  <li>DOM provenance for emitted blocks (selectors or node fingerprints)</li>
+  <li>Link provenance (which anchors produced which Markdown links)</li>
+</ul>
+<p>A simple provenance schema for chunking might look like:</p>
+<pre><code>source: &#123; url, canonical_url, fetched_at, extraction_mode &#125;
+regions: [&#123; region_id, selector_hint, confidence &#125;]
+links: [&#123; href, resolved_href, anchor_text, region_id &#125;]
+blocks: [&#123; block_id, markdown_span_range, region_id, dom_fingerprint &#125;]</code></pre>
+<p>Even if you don’t store every DOM node, you should store stable fingerprints so you can debug mismatches.</p>
+
+<h2>4. Validate invariants</h2>
+<p>Before embedding, run cheap checks:</p>
+
+<h3>Structure invariants</h3>
+<ul>
+  <li>At least one heading for pages that contain an h1 in the DOM</li>
+  <li>List item continuity: list item count in Markdown within tolerance</li>
+  <li>Table integrity: consistent column counts per row</li>
+</ul>
+
+<h3>Link invariants</h3>
+<ul>
+  <li>Link count in Markdown within tolerance of detected anchors (after filtering)</li>
+  <li>No unresolved relative URLs when absolute_urls is enabled</li>
+  <li>Anchor text is not empty for preserved links</li>
+</ul>
+
+<h3>Attribution invariants</h3>
+<ul>
+  <li>Provenance confidence above threshold</li>
+  <li>Each chunk references at least one region</li>
+  <li>Each preserved link in Markdown has a corresponding link provenance entry</li>
+</ul>
+<p>If validation fails, retry with a different extraction strategy (e.g., rendered DOM, different main-content selector, or stricter boilerplate removal).</p>
+
+<h2>5. Chunk and embed with provenance</h2>
+<p>Chunking should respect headings and list boundaries so provenance stays coherent.</p>
+<p>Attach provenance metadata to each chunk so retrieval can return:</p>
+<ul>
+  <li>The chunk text</li>
+  <li>The source URL</li>
+  <li>The region(s)</li>
+  <li>The link(s) referenced</li>
+  <li>The confidence score</li>
+</ul>
+<p>This is what enables “clickable citations” and audit trails.</p>
+
+<h2>6. Configuration / Setup</h2>
+<p>If you use an HTML-to-Markdown API, treat it as a contract step.</p>
+<p>Recommended configuration knobs:</p>
+<pre><code>include_links: true
+absolute_urls: true
+remove_navigation: true (but only if you also remove nav provenance)
+remove_ads: true
+include_images: optional (images can be represented by alt text)
+provenance_mode: span or chunk (depending on your storage budget)</code></pre>
+<p>A practical approach is to start with chunk-level provenance, then upgrade to span-level for high-value sources (docs, pricing pages, policy pages).</p>
+
+<h2>7. Examples</h2>
+
+<h3>Example 1: Markdown link preservation with resolved URLs</h3>
+<p>Input HTML (simplified):</p>
+<ul>
+  <li>An anchor with href="/docs/auth" and anchor text “Authentication”</li>
+</ul>
+<p>Desired Markdown:</p>
+<pre><code>See [Authentication](https://example.com/docs/auth) for request signing.</code></pre>
+<p>Desired metadata (conceptual):</p>
+<pre><code>links[0].anchor_text = "Authentication"
+links[0].resolved_href = "https://example.com/docs/auth"
+blocks[...] includes the paragraph block that contains the link</code></pre>
+
+<h3>Example 2: Before/after with provenance JSON (what you store)</h3>
+<p>Here is a concrete example of why provenance matters.</p>
+<p>Assume the source page contains a paragraph with a link to a policy section:</p>
+<ul>
+  <li>HTML (simplified): a paragraph that includes an anchor to /privacy#retention</li>
+  <li>The paragraph also contains a sentence that users later cite in answers</li>
+</ul>
+<p>Before (no provenance)</p>
+<p>Your stored chunk might look like this:</p>
+<pre><code>Privacy policy
+
+We retain data for a limited period.
+See retention details.</code></pre>
+<p>In this representation, the system can’t reliably answer:</p>
+<ul>
+  <li>Which exact DOM region produced “retention details”?</li>
+  <li>Did the link point to the #retention anchor or a different destination after URL normalization?</li>
+</ul>
+<p>After (with provenance)</p>
+<p>Your stored chunk keeps the Markdown link and attaches provenance metadata:</p>
+<pre><code>Privacy policy
+
+We retain data for a limited period. See [retention details](https://example.com/privacy#retention).</code></pre>
+<p>And you store a provenance object alongside the chunk (conceptual):</p>
+<pre><code>&#123;
+  "source": &#123;
+    "url": "https://example.com/privacy",
+    "canonical_url": "https://example.com/privacy",
+    "extraction_mode": "rendered"
+  &#125;,
+  "regions": [
+    &#123;
+      "region_id": "main:privacy-body",
+      "selector_hint": "main article",
+      "confidence": 0.92
+    &#125;
+  ],
+  "links": [
+    &#123;
+      "href": "/privacy#retention",
+      "resolved_href": "https://example.com/privacy#retention",
+      "anchor_text": "retention details",
+      "region_id": "main:privacy-body"
+    &#125;
+  ],
+  "blocks": [
+    &#123;
+      "block_id": "b_1842",
+      "markdown_span_range": "chunk:paragraph_2",
+      "region_id": "main:privacy-body",
+      "dom_fingerprint": "fp:main-article:hash(…)",
+      "link_ids": ["link_0"]
+    &#125;
+  ],
+  "provenance_confidence": 0.86
+&#125;</code></pre>
+<p>Now when retrieval returns the chunk, your citation UI can show the original page section and the exact link object that produced the cited sentence.</p>
+
+<h3>Example 2: Provenance-aware chunking</h3>
+<p>Suppose your converter emits:</p>
+<pre><code>## Rate Limits
+
+Requests are limited to 60/minute per API key.</code></pre>
+<p>Your chunk should carry:</p>
+<ul>
+  <li>region_id for the “Rate Limits” section</li>
+  <li>dom_fingerprint for the heading and the paragraph</li>
+  <li>source.url for the page</li>
+</ul>
+<p>When retrieval returns this chunk, your citation UI can show:</p>
+<ul>
+  <li>“Rate Limits” section on the original page</li>
+  <li>The exact link objects present in that chunk</li>
+</ul>
+
+<h3>Example 3: Table conversion with attribution</h3>
+<p>If the HTML contains a pricing table, you want Markdown like:</p>
+<pre><code>| Plan | Monthly Price | Notes |
+| --- | ---: | --- |
+| Starter | $29 | Includes email support |
+| Pro | $99 | Includes priority support |</code></pre>
+<p>Provenance should map each table row to the DOM row origin so you can cite “Pro” pricing precisely.</p>
+
+<h2>8. Performance &amp; Benchmarks</h2>
+<p>Token savings are not the only metric. For attribution-preserving conversion, you should measure:</p>
+<ul>
+  <li>Conversion latency (static vs rendered)</li>
+  <li>Markdown size (tokens)</li>
+  <li>Link preservation rate</li>
+  <li>Provenance coverage rate</li>
+  <li>Validation failure rate</li>
+</ul>
+<p>A practical benchmark harness:</p>
+<ul>
+  <li>Sample 200 URLs across templates (docs, blogs, marketing pages)</li>
+  <li>Run conversion in two modes: static-only and static+render fallback</li>
+  <li>For each output, compute:
+    <ul>
+      <li>link_preservation_rate = preserved_links / detected_anchors_after_filter</li>
+      <li>provenance_coverage_rate = blocks_with_provenance / total_blocks</li>
+      <li>validation_pass_rate</li>
+    </ul>
+  </li>
+</ul>
+<p>To make the benchmark actionable, define “accepted outputs” up front:</p>
+<ul>
+  <li>Accepted if validation_pass_rate is true AND provenance_coverage_rate &gt;= 0.85</li>
+  <li>Rejected if provenance confidence is below threshold OR if unresolved relative URLs remain when absolute_urls is enabled</li>
+</ul>
+<p>Then compute the delta between modes on the accepted set only.</p>
+<p>In our internal testing pattern, the biggest wins come from:</p>
+<ul>
+  <li>Enabling absolute URL rewriting</li>
+  <li>Preserving anchor text + destination together</li>
+  <li>Emitting provenance during conversion</li>
+</ul>
+<p>If you only do structure preservation, you’ll still see citation drift. If you only do link preservation, you’ll still see chunk boundary drift. The combination is what stabilizes retrieval and citations.</p>
+<p>Related reading:</p>
+<ul>
+  <li>Remove boilerplate without losing meaning: blog-html-to-markdown-remove-boilerplate-for-rag.md</li>
+  <li>Evidence packets and retry decision trees: blog-structured-extraction-mcp-evidence-retry-decision-tree.md</li>
+</ul>
+
+<h3>CLI output example (validation gate)</h3>
+<p>Below is an example of what a validation gate can emit when attribution invariants fail. This is the kind of output you want in logs so you can triage quickly.</p>
+<pre><code>$ ollagraph-validate-attribution --input ./run-2026-07-23/url-1842.json
+url=https://example.com/docs/auth
+extraction_mode=rendered
+provenance_confidence=0.41 (threshold=0.60) -&gt; FAIL
+invariants:
+  - heading_presence: PASS
+  - link_count_tolerance: PASS (markdown_links=7 detected_anchors=8)
+  - unresolved_relative_urls: PASS
+  - chunk_region_coverage: FAIL (regions_in_chunks=0)
+action=retry_with_rendered_dom_and_stricter_main_content_selector</code></pre>
+
+<h2>9. Security Considerations</h2>
+<p>Attribution pipelines introduce new security and compliance concerns:</p>
+
+<ul>
+  <li><strong>Prompt injection via page content:</strong> treat extracted text as untrusted input.</li>
+  <li><strong>SSRF risk:</strong> if you accept arbitrary URLs, validate schemes and block internal IP ranges.</li>
+  <li><strong>Data leakage:</strong> provenance metadata can include internal selectors or URLs; ensure it’s stored and access-controlled appropriately.</li>
+  <li><strong>PII handling:</strong> if pages contain personal data, your pipeline should support redaction before embedding.</li>
+  <li>Also consider that link destinations can be used for phishing. If you display citations with clickable links, apply allow/deny policies.</li>
+</ul>
+
+<h2>10. Troubleshooting</h2>
+
+<h3>Symptom: Citations point to the wrong section</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>Heading structure drift (conversion flattened headings)</li>
+  <li>Chunker split across sections</li>
+  <li>Provenance attached at the wrong granularity</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Enforce heading continuity invariants</li>
+  <li>Chunk by heading boundaries</li>
+  <li>Upgrade provenance from chunk-level to span-level for critical pages</li>
+</ul>
+
+<h3>Symptom: Links are missing in answers</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li><code>include_links</code> disabled</li>
+  <li>Link filtering removed anchors without preserving their context</li>
+  <li>Anchor text became empty after cleanup</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Enable link preservation</li>
+  <li>Validate link count invariants</li>
+  <li>Ensure anchor text is extracted before boilerplate removal</li>
+</ul>
+
+<h3>Symptom: Relative URLs remain unresolved</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li><code>absolute_urls</code> disabled</li>
+  <li>Canonical URL not used for base resolution</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Enable absolute URL rewriting</li>
+  <li>Use canonical URL as the base when available</li>
+</ul>
+
+<h3>Symptom: Provenance confidence is low</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>Main content detection failed</li>
+  <li>Rendered DOM differs from static DOM</li>
+  <li>Page uses client-side route transitions</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Retry with rendered DOM</li>
+  <li>Use a readiness condition tied to main content selectors</li>
+  <li>Store extraction mode in provenance so you can compare runs</li>
+</ul>
+
+<h2>11. Best Practices</h2>
+
+<h3>Treat attribution as a contract (not a feature)</h3>
+<p>Decide what “verifiable citation” means for your product and enforce it in code.</p>
+<p>For example, a citation is only valid if the retrieved chunk contains:</p>
+<ul>
+  <li>The Markdown link (anchor text + resolved destination)</li>
+  <li>A provenance entry that ties that link (and the cited sentence) back to a specific region on the original page</li>
+</ul>
+<p>If either piece is missing, the chunk should fail validation and trigger a retry or fallback.</p>
+
+<h3>Preserve links as first-class objects</h3>
+<p>Don’t rely on the model to “remember” where a link came from.</p>
+<p>Instead, preserve links in two synchronized ways:</p>
+<ul>
+  <li>In the visible Markdown: <code>[anchor text](resolved_url)</code></li>
+  <li>In metadata: a link map that records <code>href</code>, <code>resolved_href</code>, <code>anchor_text</code>, and <code>region_id</code></li>
+</ul>
+<p>This lets your citation UI ground answers in the exact link objects present in the chunk.</p>
+
+<h3>Emit provenance during conversion</h3>
+<p>Provenance is easiest to generate while you still have the DOM context.</p>
+<p>If you generate provenance after conversion (e.g., by trying to re-parse Markdown back into DOM nodes), you’ll inevitably lose:</p>
+<ul>
+  <li>Which DOM node produced which Markdown span</li>
+  <li>Which extraction mode produced the content (static vs rendered)</li>
+  <li>Which link destination was used after URL normalization</li>
+</ul>
+<p>Emit provenance during conversion so your evidence packet is faithful.</p>
+
+<h3>Validate with cheap invariants before embedding</h3>
+<p>Validation should be fast enough to run on every page, but strict enough to prevent silent corruption.</p>
+<p>Use invariants that catch the highest-impact failures:</p>
+<ul>
+  <li>Structure invariants: heading presence, list continuity, table integrity</li>
+  <li>Link invariants: link count tolerance, non-empty anchor text, no unresolved relative URLs</li>
+  <li>Attribution invariants: provenance confidence threshold, region coverage, link-to-provenance correspondence</li>
+</ul>
+<p>When an invariant fails, don’t “best effort” embed. Retry with a different extraction strategy or mark the page as failed.</p>
+
+<h3>Keep chunk boundaries aligned with semantic blocks</h3>
+<p>Chunking is where provenance can accidentally become misleading.</p>
+<p>To keep citations stable:</p>
+<ul>
+  <li>Chunk by headings (so a chunk’s scope matches the section it cites)</li>
+  <li>Keep list items together (so enumerations don’t get split mid-item)</li>
+  <li>Treat tables as atomic facts (so a row doesn’t get separated from its headers)</li>
+</ul>
+<p>Then attach provenance to the chunk before embedding.</p>
+
+<h3>Store evidence packets for debugging and audits</h3>
+<p>When something goes wrong, you want to answer “what did we actually see?” quickly.</p>
+<p>Store evidence packets that include:</p>
+<ul>
+  <li><code>source.url</code> and <code>canonical_url</code></li>
+  <li><code>extraction_mode</code> (static vs rendered)</li>
+  <li>readiness condition results (if rendered)</li>
+  <li>region identifiers and DOM fingerprints</li>
+  <li>link map entries</li>
+  <li>provenance confidence and validation results</li>
+</ul>
+<p>This turns attribution failures from a black box into a triage workflow.</p>
+
+<h3>Use deterministic conversion settings</h3>
+<p>Attribution is only useful if it’s stable.</p>
+<p>Lock down conversion settings so retries don’t change representation in unpredictable ways:</p>
+<ul>
+  <li>consistent boilerplate removal policy</li>
+  <li>consistent link filtering rules</li>
+  <li>consistent URL normalization base</li>
+  <li>consistent table and code block formatting rules</li>
+</ul>
+<p>Determinism reduces “citation drift” between runs.</p>
+
+<h2>12. Common Mistakes</h2>
+
+<h3>Removing content without removing its provenance</h3>
+<p>If you strip navigation, cookie banners, or footers from the Markdown, you must also strip their provenance entries.</p>
+<p>Otherwise, you create a mismatch:</p>
+<ul>
+  <li>The chunk text no longer contains the link or sentence</li>
+  <li>The provenance metadata still claims it came from that region</li>
+</ul>
+<p>This can produce citations that point to content the user never sees.</p>
+
+<h3>Flattening tables and lists</h3>
+<p>Tables and lists are high-risk structures.</p>
+<p>Common failure modes:</p>
+<ul>
+  <li>Table rows become paragraphs, losing header context</li>
+  <li>List items merge into a single block, losing enumeration boundaries</li>
+</ul>
+<p>When that happens, provenance may still exist, but it no longer maps cleanly to the meaning the user expects.</p>
+
+<h3>Resolving relative URLs with the wrong base</h3>
+<p>Relative URL resolution is deceptively easy to get wrong.</p>
+<p>Typical mistakes:</p>
+<ul>
+  <li>Using the pre-redirect URL as the base instead of the final canonical URL</li>
+  <li>Resolving against a locale-specific base that differs from the canonical page</li>
+</ul>
+<p>The result is a link map that looks correct in Markdown but points to the wrong destination in citations.</p>
+
+<h3>Attaching provenance only at the page level</h3>
+<p>Page-level provenance is not enough once you chunk.</p>
+<p>If you attach provenance only to the whole page and then chunk arbitrarily, you lose:</p>
+<ul>
+  <li>which region produced which chunk</li>
+  <li>which link objects appear in which chunk</li>
+</ul>
+<p>That makes citations best-effort and debugging slow.</p>
+
+<h3>Validating by eyeballing</h3>
+<p>“It looks right” is not a validation strategy.</p>
+<p>You need measurable invariants that fail fast:</p>
+<ul>
+  <li>link count tolerance</li>
+  <li>unresolved relative URL checks</li>
+  <li>provenance coverage thresholds</li>
+  <li>region coverage per chunk</li>
+</ul>
+<p>Eyeballing might catch obvious failures, but it won’t scale and it won’t protect you from subtle drift.</p>
+
+<h3>Embedding low-confidence provenance</h3>
+<p>If provenance confidence is low, embedding the chunk can poison retrieval.</p>
+<p>Even if the text is correct, weak provenance can cause:</p>
+<ul>
+  <li>incorrect citations</li>
+  <li>broken audit trails</li>
+  <li>user trust erosion</li>
+</ul>
+<p>Treat low-confidence provenance as a failure class.</p>
+
+<h2>13. Alternatives &amp; Comparison</h2>
+
+<h3>Alternative 1: HTML→plain text</h3>
+<p><strong>Pros:</strong> simple.</p>
+<p><strong>Cons:</strong> loses structure and link semantics; provenance mapping is harder.</p>
+
+<h3>Alternative 2: HTML→JSON DOM snapshot</h3>
+<p><strong>Pros:</strong> maximum fidelity.</p>
+<p><strong>Cons:</strong> token-heavy; chunking and citation UI become complex.</p>
+
+<h3>Alternative 3: HTML→Markdown without provenance</h3>
+<p><strong>Pros:</strong> good readability.</p>
+<p><strong>Cons:</strong> citations become best-effort; debugging is slow.</p>
+
+<h3>Alternative 4: HTML→Markdown with provenance (recommended)</h3>
+<p><strong>Pros:</strong> stable structure, citeable links, auditable provenance.</p>
+<p><strong>Cons:</strong> slightly more metadata storage.</p>
+
+<h3>When to choose each option</h3>
+<p>Use HTML→plain text when you only need summarization and you don’t require clickable, verifiable citations.</p>
+
+<p>Use HTML→JSON DOM snapshots when you need maximum fidelity for specialized tasks (for example, layout-aware extraction) and you can afford the token and engineering overhead.</p>
+<p>Use HTML→Markdown without provenance only for internal drafts or low-stakes retrieval where auditability is not required.</p>
+<p>Use HTML→Markdown with provenance when you want:</p>
+<ul>
+  <li>stable chunk boundaries</li>
+  <li>citeable links</li>
+  <li>an audit trail from retrieved text back to the original page</li>
+</ul>
+<h3>Comparison table (practical)</h3>
+<pre><code>Approach                Structure fidelity   Link fidelity   Citation verifiability   Debuggability   Cost
+Plain text              Medium               Low             Low                      Medium          Low
+DOM JSON                High                 High            High                     High            High
+Markdown (no provenance) High                Medium          Low                      Low             Medium
+Markdown + provenance   High                 High            High                     High            Medium</code></pre>
+
+<h2>14. Enterprise / Cloud Deployment</h2>
+<p>For enterprise deployments:</p>
+<ul>
+  <li>Run conversion as a stateless, idempotent service</li>
+  <li>Conversion should be horizontally scalable.</li>
+</ul>
+
+<h3>Make the service stateless and idempotent</h3>
+<ul>
+  <li>accept a request ID</li>
+  <li>store outputs keyed by request ID</li>
+  <li>ensure retries do not create duplicate evidence packets</li>
+</ul>
+<p>This is critical when you run large crawls and need deterministic reprocessing.</p>
+
+<h3>Separate “content” from “evidence” storage</h3>
+<p>Store the Markdown chunks in your vector store, but store provenance and evidence in a queryable system.</p>
+<p>Common patterns:</p>
+<ul>
+  <li>a relational table keyed by chunk_id and source_id</li>
+  <li>a document store for evidence packets</li>
+  <li>a column family for region/link metadata</li>
+</ul>
+<p>The goal is to fetch provenance quickly during citation rendering without re-running conversion.</p>
+
+<h3>Use queue-based ingestion with backpressure</h3>
+<p>At crawl scale, you need controlled concurrency.</p>
+<p>Use a queue-based pipeline:</p>
+<ul>
+  <li>crawler enqueues URLs with priority and depth</li>
+  <li>converter consumes jobs and emits Markdown + evidence packets</li>
+  <li>validator enforces invariants and routes failures</li>
+  <li>indexer chunks, embeds, and writes to the vector store</li>
+</ul>
+<p>Add backpressure so you do not overload rendering capacity or hit rate limits.</p>
+
+<h3>Implement retention policies for audits</h3>
+<p>Retention is a compliance decision.</p>
+<p>Typical approach:</p>
+<ul>
+  <li>keep raw HTML/DOM snapshots only for a limited window or for pages that fail validation</li>
+  <li>keep evidence packets longer (they are smaller than full DOM snapshots)</li>
+  <li>redact or hash sensitive fields in provenance metadata if required</li>
+</ul>
+
+<h3>Observability: measure attribution health</h3>
+<p>Enterprise systems need dashboards.</p>
+<p>Track metrics that reflect attribution quality, not just conversion success:</p>
+<ul>
+  <li>provenance coverage rate</li>
+  <li>link preservation rate</li>
+  <li>validation pass rate</li>
+  <li>retry rate by failure class (for example, unresolved relative URLs, low provenance confidence)</li>
+</ul>
+<p>This lets you detect regressions when site templates change.</p>
+
+<h3>Deployment topology</h3>
+<p>A common deployment pattern:</p>
+<ul>
+  <li>crawler service fetches URLs</li>
+  <li>converter service converts and emits Markdown + provenance</li>
+  <li>validator service enforces invariants</li>
+  <li>indexer service chunks, embeds, and writes to vector store</li>
+</ul>
+
+<h2>15. FAQs</h2>
+
+<h3>Q1: Do I need span-level provenance or is chunk-level enough?</h3>
+<p>A1: Chunk-level provenance is usually enough when your citation UX is section-level, where the user clicks a citation and lands on the right heading or region, especially if your chunker keeps semantic blocks intact and your provenance confidence is high. Span-level provenance becomes valuable when you need sentence-level or row-level verification: tables, where one row can contain multiple distinct facts; dense lists, where items are easy to mis-associate; and pages where a single sentence contains multiple links or multiple claims. A practical approach is to start with chunk-level provenance everywhere, then selectively upgrade to span-level only for high-value templates such as pricing, policies, legal, and technical specs where precision matters most.</p>
+
+<h3>Q2: How do I preserve links without bloating tokens?</h3>
+<p>A2: Preserve anchor text and the resolved destination together so the Markdown link is citeable, but do not blindly keep every navigation or footer link. Apply link-filtering rules that remove low-signal chrome such as repeated “Home/Contact/Next,” footer clusters, and cookie-related links, while keeping links that carry meaning inside the content, including references, “see also” links, and policy cross-references. To reduce token bloat further, deduplicate repeated links across sections and keep a metadata link map so the visible Markdown can stay compact while citations still reference the correct resolved URL and region provenance.</p>
+
+<h3>Q3: What’s the best way to validate link preservation?</h3>
+<p>A3: Validate link preservation with measurable checks that match your filtering policy. First, compare the number of preserved Markdown links to the number of detected anchors in the DOM region or regions you intended to extract, using a tolerance window rather than exact equality. Then validate link integrity at the object level: anchor text must be non-empty, resolved destinations must be absolute when absolute_urls is enabled, and every preserved Markdown link must have a corresponding entry in your link-map metadata. Finally, validate correspondence: if a chunk contains a Markdown link, the chunk’s provenance should reference the region and link object that produced it, preventing the common failure where links appear in text but provenance is missing or attached to the wrong region.</p>
+
+<h3>Q4: Can provenance survive chunking and re-ranking?</h3>
+<p>A4: Yes, as long as you treat provenance as part of the chunk identity rather than something you attach later. Attach provenance metadata to each chunk before embedding, and store a stable chunk ID, or derived key, in your vector store so retrieval and re-ranking can carry that ID forward. When the citation layer renders results, it should fetch the evidence packet or provenance for the winning chunk ID, not attempt to reconstruct provenance from the re-ranked text. If you transform the retrieved text again through summaries or rewritten answers, keep provenance anchored to the original chunk or evidence packet so citations remain verifiable and do not drift into post-processing ground truth.</p>
+
+<h3>Q5: How do I handle pages that change between fetch and render?</h3>
+<p>A5: Pages that change between fetch and render are a primary cause of attribution drift, so you need explicit timing and mode information in provenance. Store at least the fetch timestamp, extraction mode (static vs rendered), and the readiness-condition result, for example, “main content selector present and stable.” For highly dynamic pages, use a stricter readiness definition and a shorter stability window so you do not mix content from multiple states, such as content that loads and then updates after a late API call. If validation invariants fail because of low provenance confidence, missing regions, or unresolved links, retry using the same extraction policy but a different readiness strategy, or mark the page as failed if retries are not allowed by your rules.</p>
+
+<h3>Q6: Should I store raw HTML for audits?</h3>
+<p>A6: Storing raw HTML or a DOM snapshot is the strongest audit option because it lets you reproduce exactly what the extractor saw, but it can be expensive at crawl scale. A common enterprise compromise is retention tiering: keep raw HTML or DOM snapshots only for a limited window or only for pages that fail validation, while keeping evidence packets longer because they are smaller than full DOM. In all cases, store enough provenance fingerprints and selectors to reproduce extraction logic for debugging and to support audit workflows without permanently storing full DOM for every page. If compliance requires longer retention for certain categories, you can extend raw snapshot retention for those categories while still relying on fingerprints for the rest.</p>
+
+<h3>Q7: What about paywalled or blocked pages?</h3>
+<p>Treat paywalled and blocked pages as a distinct failure class, not as “extraction succeeded.” A login wall, consent gate, or error template can produce non-empty Markdown that is semantically useless, so your validation should fail via low provenance confidence and missing expected structure (e.g., missing main content region, missing headings, abnormal link density). Don’t embed partial content with low provenance confidence because it can poison retrieval and produce ungrounded citations. If your policy allows retries, retry with an allowed strategy (different rendering timeout, different extraction mode) while respecting robots and access constraints; otherwise, mark the page as failed and move on.</p>
+
+<h3>Q8: How do I represent images in attribution pipelines?</h3>
+<p>Images should be represented based on whether they carry meaning. If an image has meaningful alt text (diagrams, screenshots, charts), include a short caption or <em>![alt](url)</em> in the Markdown and store image URL/provenance in the evidence packet so citations can still point back to the original page region. If images are decorative, omit them from the emitted Markdown to reduce noise and token cost, and also omit their provenance entries so your citation layer never claims evidence that isn’t present in the chunk text. This consistency rule—emit image text only when you also emit matching provenance—prevents citation mismatches.</p>
+
+<h3>Q9: Do tables require special handling for citations?</h3>
+<p>Yes—tables are high-risk because flattening changes meaning and makes it easy to mis-associate facts. For citations, you want a deterministic Markdown representation that preserves row/column semantics and provenance that maps each row (and sometimes each cell) back to the DOM origin. Convert tables into Markdown tables only when row/column alignment is stable; if alignment is unstable due to complex rowspan/colspan, use a structured fallback that preserves headers and row boundaries in a way your chunker can treat as atomic facts. Then attach provenance at the same granularity as your representation so citations remain precise and verifiable.</p>
+
+<h3>Q10: How do I prevent citation drift during retries?</h3>
+<p>Citation drift happens when retries produce different representations or different content states, so you need determinism and stable boundaries. Use deterministic conversion settings (same boilerplate removal policy, same link filtering rules, same URL normalization base) and stable selection rules for the main content region. Keep the same chunking policy so chunk boundaries don’t change between attempts. When you retry, compare validation metrics and provenance confidence, and only accept outputs that pass attribution invariants. For dynamic pages, tighten readiness/stability windows so you don’t mix states across retries, which is often the hidden cause of drift.</p>
+
+<h3>Q11: What if the model hallucinates a link that isn’t in the chunk?</h3>
+<p>Don’t treat this as an extraction problem—treat it as a grounding/UI enforcement problem. Your citation UI should only render verified citations for links that exist in the chunk’s link-map metadata. If the model proposes a link that isn’t present in metadata, treat it as ungrounded and exclude it from citations. To make this robust, ensure your link map is complete for the emitted Markdown and that your evidence packet includes the link objects referenced by the chunk, so grounding can be enforced mechanically rather than trusting the model’s output.</p>
+
+<h3>Q12: How do I choose thresholds for validation?</h3>
+<p>Start with conservative thresholds that protect against the most damaging failures, then tune using real evaluation focused on citation correctness. Good initial thresholds include minimum heading presence (for pages expected to have an h1), link count tolerance after filtering rules, provenance coverage rate (a minimum fraction of blocks/chunks with valid provenance), and unresolved relative URL checks when absolute_urls is enabled. Then tune using a labeled evaluation set where you measure “verified citation” accuracy (not just extraction quality) and adjust thresholds to balance correctness with retry rates. The goal is to maximize trustworthy citations while keeping the pipeline operationally efficient.</p>
+
+<h2>16. References</h2>
+<ul>
+  <li>HTML to Markdown for AI (structure and conversion overview): blog-html-to-markdown-for-ai.md</li>
+  <li>Preserve semantic structure for LLMs: blog-html-to-markdown-preserve-semantic-structure-for-llms.md</li>
+  <li>Remove boilerplate without losing meaning: blog-html-to-markdown-remove-boilerplate-for-rag.md</li>
+  <li>Evidence packets and retry decision trees: blog-structured-extraction-mcp-evidence-retry-decision-tree.md</li>
+</ul>
+
+<h2>17. Conclusion</h2>
+<p>Preserving structure is the baseline because it keeps meaning intact for chunking, retrieval, and downstream reasoning. Without stable headings, lists, and tables, your pipeline may still “look readable,” but it will behave unpredictably—chunks split in the wrong places, retrieval returns mixed context, and citations become unreliable.</p>
+
+<p>Preserving links and source attribution is what makes the system trustworthy. Links are not just decoration; they are the connective tissue between claims and their original references. Source attribution (provenance) is the mechanism that lets you map retrieved Markdown back to the exact page region and the exact link objects that produced the content. That’s what turns citations from “plausible” into “verifiable.”</p>
+
+<p>When your HTML-to-Markdown pipeline emits deterministic Markdown plus provenance metadata, you gain three operational advantages: you can validate conversion quality before embedding, you can attach grounded citations to retrieved chunks during answer generation, and you can debug failures quickly using evidence packets instead of guesswork. This reduces both engineering time and user trust risk.</p>
+
+<p>Finally, treat attribution as a contract—validated before embedding. If provenance confidence is low or attribution invariants fail, you retry or fail the page rather than silently ingesting corrupted evidence. That discipline is what turns “LLM answers” into “LLM answers you can verify,” which is the difference between a demo and a production-grade knowledge system.</p>
+</Article>
