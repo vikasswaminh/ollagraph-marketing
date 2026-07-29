@@ -2,20 +2,20 @@
 import Article from '../../layouts/Article.astro';
 
 const faqs = [
-  { q: "What makes document-to-Markdown hard at scale?", a: "The hard part is variability. Text PDFs, scanned pages, tables, and DOCX files all fail in different ways, so a single fast path rarely works. At scale, you need routing, backpressure, and validation so slow or broken inputs do not stall the whole pipeline." },
-  { q: "How should a production pipeline be structured?", a: "Use async job orchestration with separate stages for validation, conversion, normalization, and quality gating. Only documents that pass the gate should move into chunking and embedding. This keeps failures isolated and makes retries safe." },
-  { q: "How do you reduce conversion cost?", a: "Deduplicate inputs, cache successful conversions, and avoid reprocessing unchanged documents. The biggest savings usually come from preventing low-quality output from reaching embedding and from routing simple documents to the cheapest reliable path." },
-  { q: "What reliability signals matter most?", a: "Track more than HTTP status codes. Measure conversion latency, timeout rate, quarantine rate, formatting defects, and downstream retrieval quality so you can catch silent corruption before it spreads." },
-  { q: "When should you quarantine instead of retry?", a: "Quarantine documents that repeatedly fail validation, contain malformed structure, or trigger abnormal OCR behavior. Blind retries help transient failures, but they waste budget on deterministic bad inputs and can hide systematic issues." },
-  { q: "How do you know the Markdown is good enough for RAG?", a: "Use a formatting contract that checks headings, lists, tables, code blocks, and chunk boundaries. The output is good enough when it preserves structure well enough for retrieval to isolate the right passage without extra cleanup." },
+  { q: "What is document-to-Markdown for AI?", a: "It is the process of converting source documents into structured Markdown that preserves headings, lists, tables, and code. That structure makes retrieval and chunking more accurate than raw text extraction. At scale, it should be treated as a governed pipeline, not a one-step parse." },
+  { q: "Why does throughput drop as document volume grows?", a: "Document processing time is uneven, so a few complex files can stall an entire batch. Scanned pages, large tables, and embedded objects create long-tail latency that breaks naive parallelism. Async orchestration and backpressure keep the pipeline stable under bursty load." },
+  { q: "How do you keep bad conversions out of the index?", a: "Validate inputs before conversion and run an output quality gate before embedding. If Markdown is malformed, flattened, or OCR-noisy, quarantine it instead of retrying blindly. This prevents silent retrieval failures and avoids paying to index unusable content." },
+  { q: "What is the most effective way to control cost?", a: "Avoid reprocessing the same document, cache successful conversions, and skip embedding low-quality output. The biggest savings often come from preventing wasted downstream work, not from shaving seconds off conversion time. Track cost per usable chunk so quality and spend stay connected." },
+  { q: "How should documents be routed in a scalable pipeline?", a: "Route by file type and complexity, because text PDFs, scanned PDFs, DOCX, and HTML fail in different ways. Then split again by size, table density, and image content so expensive paths are reserved for hard cases. This improves both throughput and unit cost." },
+  { q: "Which metrics matter most in production?", a: "Track latency, queue depth, error rate, and retry count, but do not stop there. Add quality signals such as heading preservation, table integrity, and chunk usability. A pipeline can be operationally healthy while still producing poor retrieval results." },
 ];
 ---
 <Article
-  title="Scaling Document-to-Markdown for AI at Production Scale"
-  description="Build a document-to-Markdown pipeline that stays fast, reliable, and cost-controlled under load. Learn failure modes, quality gates, and the cost model for RAG."
+  title="Scaling Document-to-Markdown for AI: Performance, Reliability, Cost"
+  description="Build a reliable document-to-Markdown pipeline for AI with async orchestration, quality gates, and cost controls. Avoid silent failures and runaway spend."
   date="2026-07-29"
   readingTime={23}
-  tags={["RAG", "Markdown", "ingestion", "reliability", "cost"]}
+  tags={["RAG", "Markdown", "Ingestion", "Reliability", "Cost"]}
   kind="blog"
   faqs={faqs}
 >
@@ -83,7 +83,7 @@ const faqs = [
   H --&gt; J[Reprocess with adjusted settings]
   I --&gt; K[Retrieval + citations]</code></pre>
 
-<h3>The router: why it matters</h3>
+<h2>The router: why it matters</h2>
 <p>A common scaling mistake is treating all documents the same. In reality, conversion time and failure modes depend on document type and complexity.</p>
 <p>A router should decide:</p>
 <ul>
@@ -94,7 +94,7 @@ const faqs = [
 </ul>
 <p>Routing reduces both latency and cost because you avoid expensive paths when they are not needed.</p>
 
-<h3>The validation gate: the cost lever</h3>
+<h2>The validation gate: the cost lever</h2>
 <p>The validation gate is where you prevent “garbage-in” from becoming “garbage-embedded.”</p>
 <p>Instead of embedding everything, you compute a quality score based on measurable signals:</p>
 <ul>
@@ -103,11 +103,11 @@ const faqs = [
   <li>Table integrity (did tables keep header rows and row separators?).</li>
   <li>Code fencing (are code blocks fenced?).</li>
   <li>OCR confidence (if OCR was used).</li>
-  <li>Structural anomalies (e.g., too many consecutive paragraphs without headings in a document that should have sections).</li>
+  <li>Structural anomalies (for example, too many consecutive paragraphs without headings in a document that should have sections).</li>
 </ul>
 <p>If the score is below a threshold, you quarantine the document and either re-run with different settings or route it to a review workflow.</p>
 
-<h3>Determinism and versioning</h3>
+<h2>Determinism and versioning</h2>
 <p>Scaling also requires repeatability. If you change normalization rules, you need to know whether retrieval quality will change.</p>
 <p>A practical approach is to version your normalization rules and store the version ID alongside the output. When you reprocess a corpus, you can compare quality scores and chunk counts across versions.</p>
 
@@ -118,12 +118,12 @@ const faqs = [
 <p>Start by ingesting documents into a durable store (object storage) and enqueue a conversion job.</p>
 <p>Job payload should include:</p>
 <ul>
-  <li><strong>document_id</strong> (stable identifier)</li>
-  <li><strong>source_type</strong> (pdf, docx, html, url)</li>
-  <li><strong>source_uri</strong> (or base64 payload if your system uses direct upload)</li>
-  <li><strong>requested_output</strong> (markdown, markdown+json)</li>
-  <li><strong>normalization_version</strong></li>
-  <li><strong>routing_hints</strong> (optional)</li>
+  <li>document_id (stable identifier)</li>
+  <li>source_type (pdf, docx, html, url)</li>
+  <li>source_uri (or base64 payload if your system uses direct upload)</li>
+  <li>requested_output (markdown, markdown+json)</li>
+  <li>normalization_version</li>
+  <li>routing_hints (optional)</li>
 </ul>
 
 <h3>2) Router: detect complexity</h3>
@@ -144,11 +144,11 @@ const faqs = [
 </ul>
 <p>A job should return:</p>
 <ul>
-  <li><strong>status</strong> (success, failed, quarantined)</li>
-  <li><strong>markdown</strong> (or a pointer to stored output)</li>
-  <li><strong>quality_signals</strong> (if available)</li>
-  <li><strong>timing</strong> (conversion time, OCR time)</li>
-  <li><strong>pages or units processed</strong></li>
+  <li>status (success, failed, quarantined)</li>
+  <li>markdown (or a pointer to stored output)</li>
+  <li>quality_signals (if available)</li>
+  <li>timing (conversion time, OCR time)</li>
+  <li>pages or units processed</li>
 </ul>
 
 <h3>4) Normalization to canonical blocks</h3>
@@ -157,7 +157,7 @@ const faqs = [
 <ul>
   <li>Heading level normalization (map converter headings to a consistent hierarchy).</li>
   <li>Unwrap hard line breaks that break paragraphs.</li>
-  <li>Deduplicate repeated headers/footers.</li>
+  <li>Deduplicate repeated headers and footers.</li>
   <li>Standardize table formatting (header row + separator row).</li>
   <li>Ensure code blocks are fenced.</li>
 </ul>
@@ -168,13 +168,13 @@ const faqs = [
 <p>A practical scoring approach:</p>
 <ul>
   <li>Compute per-construct metrics (headings, lists, tables, code blocks).</li>
-  <li>Compute anomaly metrics (e.g., “table-like text without pipes,” “list markers inside paragraphs,” “missing separator rows”).</li>
+  <li>Compute anomaly metrics (for example, “table-like text without pipes,” “list markers inside paragraphs,” “missing separator rows”).</li>
   <li>Combine into a weighted score.</li>
 </ul>
 <p>Then apply routing:</p>
 <ul>
-  <li><strong>score &gt;= pass_threshold</strong>: proceed to chunking and embedding.</li>
-  <li><strong>score &lt; pass_threshold</strong>: quarantine.</li>
+  <li>score &gt;= pass_threshold: proceed to chunking and embedding.</li>
+  <li>score &lt; pass_threshold: quarantine.</li>
 </ul>
 <p>Quarantine should store:</p>
 <ul>
@@ -195,11 +195,11 @@ const faqs = [
 </ul>
 <p>Chunk metadata should include:</p>
 <ul>
-  <li><strong>section_path</strong> (e.g., # Annual Report 2025 / ## Financial Highlights / ### Revenue by Region)</li>
-  <li><strong>chunk_heading</strong> (the nearest heading)</li>
-  <li><strong>source_document_id</strong></li>
-  <li><strong>page_range or unit_range</strong> if available</li>
-  <li><strong>normalization_version</strong></li>
+  <li>section_path (for example, # Annual Report 2025 / ## Financial Highlights / ### Revenue by Region)</li>
+  <li>chunk_heading (the nearest heading)</li>
+  <li>source_document_id</li>
+  <li>page_range or unit_range if available</li>
+  <li>normalization_version</li>
 </ul>
 
 <h3>7) Embeddings and indexing</h3>
@@ -232,12 +232,12 @@ const faqs = [
 
 <h3>Common options explained</h3>
 <ul>
-  <li><strong>max_pages / max_units</strong>: cap conversion work for very large documents.</li>
-  <li><strong>return_structured_blocks</strong>: request JSON to improve determinism.</li>
-  <li><strong>ocr_mode</strong>: auto, always, never.</li>
-  <li><strong>table_mode</strong>: preserve, split_by_rows, json_only.</li>
-  <li><strong>normalization_version</strong>: required for repeatability.</li>
-  <li><strong>validation_thresholds</strong>: separate thresholds for different document types.</li>
+  <li>max_pages / max_units: cap conversion work for very large documents.</li>
+  <li>return_structured_blocks: request JSON to improve determinism.</li>
+  <li>ocr_mode: auto, always, never.</li>
+  <li>table_mode: preserve, split_by_rows, json_only.</li>
+  <li>normalization_version: required for repeatability.</li>
+  <li>validation_thresholds: separate thresholds for different document types.</li>
 </ul>
 
 <h3>Security considerations in configuration</h3>
@@ -266,7 +266,7 @@ const faqs = [
     &#125;,
     "callback_url": "https://your-app.com/webhooks/ollagraph"
   &#125;'</code></pre>
-<p><strong>Expected behavior:</strong></p>
+<p>Expected behavior:</p>
 <ul>
   <li>You receive a job ID.</li>
   <li>When conversion completes, your webhook stores raw output and triggers normalization + validation.</li>
@@ -296,32 +296,30 @@ const faqs = [
     return score &gt;= pass_threshold, &#123;"score": score, **report&#125;</code></pre>
 
 <h3>Example 3: Cost per usable chunk</h3>
-<p><strong>Let:</strong></p>
-<pre><code>C conv = conversion cost per document
-
-𝐶embed = embedding cost per chunk
-
-N chunks  = number of chunks produced
-
-p usable  = fraction of chunks that pass validation</code></pre>
-<p><strong>Then:</strong></p>
-<pre><code>𝐶𝑢𝑠𝑎𝑏𝑙𝑒 𝑐ℎ𝑢𝑛𝑘 = 𝐶𝑐𝑜𝑛𝑣+(𝑁𝑐ℎ𝑢𝑛𝑘𝑠 ⋅𝐶𝑒𝑚𝑏𝑒𝑑)
-
-                𝑁𝑐ℎ𝑢𝑛𝑘𝑠⋅𝑝𝑢𝑠𝑎𝑏𝑙𝑒</code></pre>
-<p>Your goal is to increase 𝑝𝑢𝑠𝑎𝑏𝑙𝑒 and reduce C conv via routing, caching, and deduplication.</p>
+<p>Let:</p>
+<ul>
+  <li>C conv = conversion cost per document</li>
+  <li>C embed = embedding cost per chunk</li>
+  <li>N chunks = number of chunks produced</li>
+  <li>p usable = fraction of chunks that pass validation</li>
+</ul>
+<p>Then:</p>
+<pre><code>C usable chunk = (C conv + (N chunks · C embed))
+                 / (N chunks · p usable)</code></pre>
+<p>Your goal is to increase p usable and reduce C conv via routing, caching, and deduplication.</p>
 
 <h2>8. Performance &amp; Benchmarks</h2>
 <h3>What to measure</h3>
 <p>You need metrics at three layers.</p>
 
-<h3>Conversion layer</h3>
+<p><strong>Conversion layer</strong></p>
 <ul>
   <li>p50/p95 conversion latency by document type</li>
   <li>OCR rate (fraction of PDFs routed to OCR)</li>
   <li>failure rate by error category</li>
 </ul>
 
-<h3>Pipeline layer</h3>
+<p><strong>Pipeline layer</strong></p>
 <ul>
   <li>queue wait time</li>
   <li>normalization time</li>
@@ -329,7 +327,7 @@ p usable  = fraction of chunks that pass validation</code></pre>
   <li>quarantine rate</li>
 </ul>
 
-<h3>Downstream layer</h3>
+<p><strong>Downstream layer</strong></p>
 <ul>
   <li>chunks per document</li>
   <li>usable chunks per document</li>
@@ -353,24 +351,25 @@ p usable  = fraction of chunks that pass validation</code></pre>
 </ul>
 <p>Then compute:</p>
 <ul>
-  <li><strong>throughput</strong> = documents processed per minute</li>
-  <li><strong>cost per usable chunk</strong></li>
-  <li><strong>p95 end-to-end time</strong> (from enqueue to index)</li>
+  <li>throughput = documents processed per minute</li>
+  <li>cost per usable chunk</li>
+  <li>p95 end-to-end time (from enqueue to index)</li>
 </ul>
 
 <h3>Benchmark methodology that won’t lie</h3>
 <p>Benchmarks fail when they measure the wrong thing. For document-to-Markdown pipelines, “conversion latency” alone is not enough because a fast conversion that produces low-quality Markdown can increase downstream cost.</p>
 <p>Use a two-metric benchmark:</p>
 <ul>
-  <li><strong>Pipeline efficiency:</strong> how many usable chunks you get per unit time.</li>
-  <li><strong>Cost efficiency:</strong> how much you spend per usable chunk.</li>
+  <li>Pipeline efficiency: how many usable chunks you get per unit time.</li>
+  <li>Cost efficiency: how much you spend per usable chunk.</li>
 </ul>
 <p>Define:</p>
 <ul>
-  <li><strong>U</strong> = number of usable chunks (chunks that pass validation)</li>
-  <li><strong>t_end</strong> = end-to-end time from enqueue to indexing</li>
-  <li><strong>C_total</strong> = conversion cost + embedding cost (and optionally OCR cost)</li>
+  <li>U = number of usable chunks (chunks that pass validation)</li>
+  <li>t_end = end-to-end time from enqueue to indexing</li>
+  <li>C_total = conversion cost + embedding cost (and optionally OCR cost)</li>
 </ul>
+<p>Then:</p>
 <pre><code>usable_chunks_per_minute = U / (t_end / 60)
 
 cost_per_usable_chunk = C_total / U</code></pre>
@@ -380,9 +379,9 @@ cost_per_usable_chunk = C_total / U</code></pre>
 <p>Assume a batch of 10,000 documents. Each document produces 120 chunks before validation.</p>
 <p>Let:</p>
 <ul>
-  <li>Conversion cost per document: <strong>C_conv</strong> = $0.06</li>
-  <li>Embedding cost per chunk: <strong>C_embed</strong> = $0.0009</li>
-  <li>Validation pass rate: <strong>p_usable</strong> = 0.72</li>
+  <li>Conversion cost per document: C_conv = $0.06</li>
+  <li>Embedding cost per chunk: C_embed = $0.0009</li>
+  <li>Validation pass rate: p_usable = 0.72</li>
 </ul>
 <p>Total chunks produced:</p>
 <pre><code>N_chunks = 10,000 × 120 = 1,200,000</code></pre>
@@ -396,7 +395,7 @@ cost_per_usable_chunk = C_total / U</code></pre>
 <pre><code>C_total = 600 + 777.6 = 1,377.6</code></pre>
 <p>Cost per usable chunk:</p>
 <pre><code>cost_per_usable_chunk = 1,377.6 / 864,000 ≈ 0.001595</code></pre>
-<p>Now compare improved validation: <strong>p_usable</strong> = 0.80.</p>
+<p>Now compare improved validation: p_usable = 0.80.</p>
 <p>Usable chunks:</p>
 <pre><code>1,200,000 × 0.80 = 960,000</code></pre>
 <p>Embedding cost:</p>
@@ -442,10 +441,26 @@ Mixed HTML pages | 150 | 0% | 1.6 | 0.90 | 118 | $0.0012</code></pre>
 <p>Scaling reliability requires a taxonomy. If you don’t categorize failures, you can’t decide whether to retry, re-route, or quarantine.</p>
 <p>Use four categories:</p>
 <ol>
-  <li><strong>Transport and service failures</strong><br />Examples: timeouts, 5xx errors, rate limiting<br />Action: retry with exponential backoff, respect Retry-After, use circuit breakers.</li>
-  <li><strong>Input integrity failures</strong><br />Examples: corrupted PDFs/DOCX, password-protected documents, unsupported encodings<br />Action: quarantine immediately; do not retry without remediation.</li>
-  <li><strong>Extraction fidelity failures</strong><br />Examples: headings flattened, tables collapsed, lists merged into paragraphs, OCR artifacts dominate<br />Action: quarantine and re-run with adjusted routing/settings; improve normalization; update validation thresholds.</li>
-  <li><strong>Output contract failures</strong><br />Examples: Markdown violates invariants (missing code fences, missing table header separators)<br />Action: quarantine; do not embed; store validation report.</li>
+  <li>
+    <p><strong>Transport and service failures</strong></p>
+    <p>Examples: timeouts, 5xx errors, rate limiting</p>
+    <p>Action: retry with exponential backoff, respect Retry-After, use circuit breakers.</p>
+  </li>
+  <li>
+    <p><strong>Input integrity failures</strong></p>
+    <p>Examples: corrupted PDFs/DOCX, password-protected documents, unsupported encodings</p>
+    <p>Action: quarantine immediately; do not retry without remediation.</p>
+  </li>
+  <li>
+    <p><strong>Extraction fidelity failures</strong></p>
+    <p>Examples: headings flattened, tables collapsed, lists merged into paragraphs, OCR artifacts dominate</p>
+    <p>Action: quarantine and re-run with adjusted routing/settings; improve normalization; update validation thresholds.</p>
+  </li>
+  <li>
+    <p><strong>Output contract failures</strong></p>
+    <p>Examples: Markdown violates invariants (missing code fences, missing table header separators)</p>
+    <p>Action: quarantine; do not embed; store validation report.</p>
+  </li>
 </ol>
 
 <h3>A practical retry policy</h3>
@@ -486,88 +501,112 @@ Mixed HTML pages | 150 | 0% | 1.6 | 0.90 | 118 | $0.0012</code></pre>
 <h2>12. Troubleshooting</h2>
 
 <h3>Common errors and fixes</h3>
-<ul>
-  <li><strong>“Markdown looks fine but retrieval is bad.”</strong><br />Symptom: validation pass rate high, groundedness low.<br />Fix: tighten validation thresholds and add structure-aware chunking checks.</li>
-  <li><strong>“Tables become unreadable text.”</strong><br />Symptom: table_count low or anomaly_table_without_pipes high.<br />Fix: enable table-heavy extraction mode; request structured output.</li>
-  <li><strong>“Headings are missing or flattened.”</strong><br />Symptom: heading_count below threshold.<br />Fix: adjust heading mapping rules; ensure normalization preserves heading markers.</li>
-  <li><strong>“List items merge into paragraphs.”</strong><br />Symptom: list_item_count low; anomaly_list_markers_in_paragraphs high.<br />Fix: unwrap hard line breaks and enforce list template rendering.</li>
-  <li><strong>“Scanned PDFs produce garbage.”</strong><br />Symptom: OCR confidence low; validation fails.<br />Fix: route to OCR with image preprocessing; consider deskew/denoise.</li>
-</ul>
+<p><strong>“Markdown looks fine but retrieval is bad.”</strong></p>
+<p>Symptom: validation pass rate high, groundedness low.</p>
+<p>Fix: tighten validation thresholds and add structure-aware chunking checks.</p>
+
+<p><strong>“Tables become unreadable text.”</strong></p>
+<p>Symptom: table_count low or anomaly_table_without_pipes high.</p>
+<p>Fix: enable table-heavy extraction mode; request structured output.</p>
+
+<p><strong>“Headings are missing or flattened.”</strong></p>
+<p>Symptom: heading_count below threshold.</p>
+<p>Fix: adjust heading mapping rules; ensure normalization preserves heading markers.</p>
+
+<p><strong>“List items merge into paragraphs.”</strong></p>
+<p>Symptom: list_item_count low; anomaly_list_markers_in_paragraphs high.</p>
+<p>Fix: unwrap hard line breaks and enforce list template rendering.</p>
+
+<p><strong>“Scanned PDFs produce garbage.”</strong></p>
+<p>Symptom: OCR confidence low; validation fails.</p>
+<p>Fix: route to OCR with image preprocessing; consider deskew/denoise.</p>
 
 <h3>Runbook: symptom → diagnostic → fix</h3>
-<ul>
-  <li><strong>Symptom:</strong> heading_count drops suddenly after a deploy.<br /><strong>Diagnostic:</strong> compare normalization_version and converter version; check heading markers missing/demoted.<br /><strong>Fix:</strong> roll back normalization version; re-run with heading mapping enabled; add validation assertion.</li>
-  <li><strong>Symptom:</strong> anomaly_table_without_pipes spikes.<br /><strong>Diagnostic:</strong> inspect quarantined samples; confirm tables emitted as plain text blocks.<br /><strong>Fix:</strong> switch table_mode to split_by_rows or request structured output; enforce header separator rows.</li>
-  <li><strong>Symptom:</strong> list items merge into paragraphs.<br /><strong>Diagnostic:</strong> check normalization rules that remove newlines; look for list boundary collapse.<br /><strong>Fix:</strong> preserve list item boundaries; add list integrity check.</li>
-  <li><strong>Symptom:</strong> OCR artifacts dominate and validation pass rate falls.<br /><strong>Diagnostic:</strong> measure OCR confidence distribution; compare image preprocessing settings.<br /><strong>Fix:</strong> enable deskew/denoise; route to dedicated OCR worker pool; quarantine low-confidence outputs.</li>
-  <li><strong>Symptom:</strong> cost per usable chunk increases while throughput stays flat.<br /><strong>Diagnostic:</strong> compare validation pass rate and quarantine rate; check reprocessing frequency.<br /><strong>Fix:</strong> tighten validation thresholds; add caching/dedup by content hash; ensure quarantined chunks aren’t embedded.</li>
-</ul>
+<p><strong>Symptom: heading_count drops suddenly after a deploy.</strong></p>
+<p>Diagnostic: compare normalization_version and converter version; check heading markers missing/demoted.</p>
+<p>Fix: roll back normalization version; re-run with heading mapping enabled; add validation assertion.</p>
+
+<p><strong>Symptom: anomaly_table_without_pipes spikes.</strong></p>
+<p>Diagnostic: inspect quarantined samples; confirm tables emitted as plain text blocks.</p>
+<p>Fix: switch table_mode to split_by_rows or request structured output; enforce header separator rows.</p>
+
+<p><strong>Symptom: list items merge into paragraphs.</strong></p>
+<p>Diagnostic: check normalization rules that remove newlines; look for list boundary collapse.</p>
+<p>Fix: preserve list item boundaries; add list integrity check.</p>
+
+<p><strong>Symptom: OCR artifacts dominate and validation pass rate falls.</strong></p>
+<p>Diagnostic: measure OCR confidence distribution; compare image preprocessing settings.</p>
+<p>Fix: enable deskew/denoise; route to dedicated OCR worker pool; quarantine low-confidence outputs.</p>
+
+<p><strong>Symptom: cost per usable chunk increases while throughput stays flat.</strong></p>
+<p>Diagnostic: compare validation pass rate and quarantine rate; check reprocessing frequency.</p>
+<p>Fix: tighten validation thresholds; add caching/dedup by content hash; ensure quarantined chunks aren’t embedded.</p>
 
 <h2>13. Best Practices</h2>
 
-<h2>Use async jobs with backpressure; cap concurrency per worker</h2>
-<p>Run conversion as an asynchronous pipeline so you can absorb bursty ingestion without timing out or causing cascading failures.</p>
-<p><strong>Backpressure</strong> means your system slows down intake when downstream stages are saturated. In practice:</p>
+<h3>Use async jobs with backpressure; cap concurrency per worker</h3>
+<p>Run conversion as an asynchronous pipeline so you can absorb bursty ingestion without timing out or cascading failures.</p>
+<p>Backpressure means your system slows down intake when downstream stages are saturated. In practice:</p>
 <ul>
   <li>Put documents into a durable queue (or job store) and let workers pull work at a controlled rate.</li>
-  <li>Cap concurrency per worker so one worker pool cannot overwhelm the conversion or OCR services.</li>
-  <li>Use queue visibility timeouts and idempotent job handling so retries do not duplicate work.</li>
-  <li>Separate worker pools when stages differ in cost or latency (for example, OCR workers versus non-OCR conversion workers).</li>
+  <li>Cap concurrency per worker so one worker pool can’t overwhelm the conversion/OCR services.</li>
+  <li>Use queue visibility timeouts and idempotent job handling so retries don’t duplicate work.</li>
+  <li>Separate worker pools when stages differ in cost/latency (for example, OCR workers vs. non-OCR conversion workers).</li>
 </ul>
 <p><strong>Why this matters:</strong> without backpressure, a sudden spike, often caused by an agent, creates queue growth, timeouts, and retry storms. Those storms increase cost and reduce reliability at the same time.</p>
 
-<h2>Implement a normalization version and store it with outputs</h2>
+<h3>Implement a normalization version and store it with outputs</h3>
 <p>Normalization is what makes your Markdown deterministic. Treat it like a versioned contract.</p>
-<p><strong>Do this:</strong></p>
+<p>Do this:</p>
 <ul>
-  <li>Assign a <strong>normalization_version</strong> string (date plus semantic version or git SHA).</li>
+  <li>Assign a normalization_version string (date + semantic version or git SHA).</li>
   <li>Store it alongside every normalized output and every chunk derived from it.</li>
   <li>When you change normalization rules, bump the version and reprocess only what you intend to reprocess.</li>
   <li>Compare quality signals (validation pass rate, anomaly rates, chunk counts) across versions.</li>
 </ul>
-<p><strong>Why this matters:</strong> if normalization changes without versioning, you get silent quality drift. Retrieval regressions can appear weeks later, and you will not know whether the cause was converter behavior, normalization behavior, or chunking behavior.</p>
+<p><strong>Why this matters:</strong> if normalization changes without versioning, you get silent quality drift. Retrieval regressions can appear weeks later, and you won’t know whether the cause was converter behavior, normalization behavior, or chunking behavior.</p>
 
-<h2>Validate before embedding; quarantine instead of embedding low-quality output</h2>
-<p>Embedding is expensive and it locks in whatever structure you produced. So validate first.</p>
-<p><strong>A practical approach:</strong></p>
+<h3>Validate before embedding; quarantine instead of embedding low-quality output</h3>
+<p>Embedding is expensive and it “locks in” whatever structure you produced. So validate first.</p>
+<p>A practical approach:</p>
 <ul>
   <li>Run validation after normalization, not just after conversion.</li>
   <li>Compute a quality score from structure invariants (headings, lists, tables, code fences) and anomaly flags.</li>
-  <li>If the score fails thresholds, quarantine the document or chunks instead of embedding them.</li>
+  <li>If the score fails thresholds, quarantine the document/chunks instead of embedding them.</li>
   <li>Quarantine should store enough evidence to reprocess (raw output pointer, normalized output pointer, validation report, routing settings).</li>
 </ul>
 <p><strong>Why this matters:</strong> embedding low-quality output increases downstream cost because it reduces retrieval success and forces more LLM work to compensate.</p>
 
-<h2>Route by document type and complexity; don’t use one-size-fits-all settings</h2>
+<h3>Route by document type and complexity; don’t use one-size-fits-all settings</h3>
 <p>Different documents require different conversion strategies. Routing is how you keep both cost and quality under control.</p>
-<p><strong>Route decisions should consider:</strong></p>
+<p>Route decisions should consider:</p>
 <ul>
   <li>Source type: pdf, docx, html, url.</li>
   <li>Complexity signals: table density, list nesting, presence of scanned pages, navigation-heavy HTML.</li>
   <li>Extraction feasibility: whether text is extractable from PDFs or whether OCR is likely needed.</li>
 </ul>
-<p><strong>Then map routing to settings:</strong></p>
+<p>Then map routing to settings:</p>
 <ul>
   <li>OCR mode: auto vs always vs never.</li>
   <li>Table mode: preserve vs split_by_rows vs structured/JSON-only.</li>
-  <li>Requested output: Markdown only vs Markdown plus structured blocks.</li>
+  <li>Requested output: Markdown only vs Markdown + structured blocks.</li>
 </ul>
-<p><strong>Why this matters:</strong> one-size-fits-all settings either waste money (doing OCR when not needed) or reduce quality (using a table strategy that cannot represent the document’s structure).</p>
+<p><strong>Why this matters:</strong> one-size-fits-all settings either waste money, by doing OCR when not needed, or reduce quality, by using a table strategy that can’t represent the document’s structure.</p>
 
-<h2>Cache conversion results by content hash to avoid reprocessing</h2>
-<p>Reprocessing is a hidden cost multiplier. Cache conversion outputs so identical inputs do not get converted repeatedly.</p>
-<p><strong>Implementation pattern:</strong></p>
+<h3>Cache conversion results by content hash to avoid reprocessing</h3>
+<p>Reprocessing is a hidden cost multiplier. Cache conversion outputs so identical inputs don’t get converted repeatedly.</p>
+<p>Implementation pattern:</p>
 <ul>
   <li>Compute a stable content hash from the input bytes (or a canonical representation).</li>
   <li>Use the hash as a cache key combined with conversion settings and normalization version.</li>
-  <li>Store conversion results (raw output pointer plus normalized output pointer) so reruns can reuse them.</li>
+  <li>Store conversion results (raw output pointer + normalized output pointer) so reruns can reuse them.</li>
   <li>Ensure idempotency: if two jobs for the same hash arrive concurrently, only one should perform conversion.</li>
 </ul>
 <p><strong>Why this matters:</strong> pipeline reruns happen constantly (deploys, threshold tuning, backfills). Caching prevents you from paying conversion cost again for the same content.</p>
 
-<h2>Track cost per usable chunk and cost per successful retrieval</h2>
+<h3>Track cost per usable chunk and cost per successful retrieval</h3>
 <p>Track cost at the unit that matters: usable chunks and retrieval outcomes.</p>
-<p><strong>Minimum metrics to store:</strong></p>
+<p>Minimum metrics to store:</p>
 <ul>
   <li>Conversion cost per document.</li>
   <li>OCR cost per document (if applicable).</li>
@@ -576,10 +615,9 @@ Mixed HTML pages | 150 | 0% | 1.6 | 0.90 | 118 | $0.0012</code></pre>
   <li>Quarantine rate and reasons.</li>
   <li>Retrieval success metrics (groundedness, citation match rate, or task-specific success).</li>
 </ul>
-<p><strong>Then compute:</strong></p>
+<p>Then compute:</p>
 <pre><code>cost_per_usable_chunk = (conversion_cost + embedding_cost) / usable_chunks</code></pre>
-<p>Optionally:</p>
-<pre><code>cost_per_successful_retrieval = total_cost / successful_queries</code></pre>
+<p>Optionally: cost_per_successful_retrieval = total_cost / successful_queries</p>
 <p><strong>Why this matters:</strong> optimizing only conversion latency or only embedding cost can backfire. You want the system that produces the most usable evidence for the least total spend.</p>
 
 <h3>Production checklist</h3>
@@ -587,7 +625,7 @@ Mixed HTML pages | 150 | 0% | 1.6 | 0.90 | 118 | $0.0012</code></pre>
   <li>Router outputs deterministic settings (endpoint, OCR mode, table mode, normalization version).</li>
   <li>Async conversion with backpressure and concurrency caps.</li>
   <li>Validation gate runs before embedding.</li>
-  <li>Quarantine stores raw and normalized outputs and a validation report.</li>
+  <li>Quarantine stores raw + normalized outputs and a validation report.</li>
   <li>Retry policy is conditional by failure category.</li>
   <li>Cost tracking is stored per job and per chunk.</li>
   <li>Benchmarks are stratified by document type and complexity.</li>
@@ -596,36 +634,60 @@ Mixed HTML pages | 150 | 0% | 1.6 | 0.90 | 118 | $0.0012</code></pre>
 
 <h2>14. Common Mistakes</h2>
 <ul>
-  <li><strong>Retrying everything.</strong><br/>Consequence: pay repeatedly for deterministic failures.<br/>Fix: retry only transient errors; quarantine deterministic quality failures.</li>
-  <li><strong>Treating Markdown as cosmetic.</strong><br/>Consequence: chunk boundaries drift and retrieval quality drops.<br/>Fix: enforce a formatting contract and validate invariants.</li>
-  <li><strong>No observability for quality.</strong><br/>Consequence: you only see failures when users complain.<br/>Fix: store validation reports and quality scores.</li>
-  <li><strong>No deduplication.</strong><br/>Consequence: cost spikes during reprocessing and pipeline reruns.<br/>Fix: hash inputs and cache outputs.</li>
-  <li><strong>Changing normalization rules without versioning.</strong><br/>Consequence: silent quality drift.<br/>Fix: version normalization and compare quality distributions.</li>
-  <li><strong>Embedding before quality gate.</strong><br/>Consequence: you index garbage and waste retrieval budget.<br/>Fix: gate embedding on validation pass.</li>
-  <li><strong>Optimizing for conversion success instead of usable chunks.</strong><br/>Consequence: you win the wrong metric and pay for low-quality embeddings.<br/>Fix: optimize for validation pass rate and cost per usable chunk.</li>
+  <li>
+    <p><strong>Retrying everything.</strong></p>
+    <p><strong>Consequence:</strong> pay repeatedly for deterministic failures.</p>
+    <p><strong>Fix:</strong> retry only transient errors; quarantine deterministic quality failures.</p>
+  </li>
+  <li>
+    <p><strong>Treating Markdown as cosmetic.</strong></p>
+    <p><strong>Consequence:</strong> chunk boundaries drift and retrieval quality drops.</p>
+    <p><strong>Fix:</strong> enforce a formatting contract and validate invariants.</p>
+  </li>
+  <li>
+    <p><strong>No observability for quality.</strong></p>
+    <p><strong>Consequence:</strong> you only see failures when users complain.</p>
+    <p><strong>Fix:</strong> store validation reports and quality scores.</p>
+  </li>
+  <li>
+    <p><strong>No deduplication.</strong></p>
+    <p><strong>Consequence:</strong> cost spikes during reprocessing and pipeline reruns.</p>
+    <p><strong>Fix:</strong> hash inputs and cache outputs.</p>
+  </li>
+  <li>
+    <p><strong>Changing normalization rules without versioning.</strong></p>
+    <p><strong>Consequence:</strong> silent quality drift.</p>
+    <p><strong>Fix:</strong> version normalization and compare quality distributions.</p>
+  </li>
+  <li>
+    <p><strong>Embedding before quality gate.</strong></p>
+    <p><strong>Consequence:</strong> you index garbage and waste retrieval budget.</p>
+    <p><strong>Fix:</strong> gate embedding on validation pass.</p>
+  </li>
+  <li>
+    <p><strong>Optimizing for conversion success instead of usable chunks.</strong></p>
+    <p><strong>Consequence:</strong> you “win” the wrong metric and pay for low-quality embeddings.</p>
+    <p><strong>Fix:</strong> optimize for validation pass rate and cost per usable chunk.</p>
+  </li>
 </ul>
 
 <h2>15. Alternatives &amp; Comparison</h2>
-<p><strong>Option A: Raw text extraction</strong></p>
-<ul>
-  <li>Pros: simplest, fastest for small scale</li>
-  <li>Cons: loses structure; chunking becomes heuristic; retrieval quality suffers</li>
-</ul>
-<p><strong>Option B: HTML-to-text conversion</strong></p>
-<ul>
-  <li>Pros: preserves some structure</li>
-  <li>Cons: HTML is verbose and inconsistent; cleaning is hard</li>
-</ul>
-<p><strong>Option C: Markdown conversion (recommended intermediate)</strong></p>
-<ul>
-  <li>Pros: compact structure; deterministic templates; chunkers can split on headings and lists</li>
-  <li>Cons: requires normalization and validation</li>
-</ul>
-<p><strong>Option D: JSON structured extraction only</strong></p>
-<ul>
-  <li>Pros: typed records; strong determinism</li>
-  <li>Cons: harder to support long-form prose; you still need a rendering strategy for chunking</li>
-</ul>
+<h3>Option A: Raw text extraction</h3>
+<p><strong>Pros:</strong> simplest, fastest for small scale</p>
+<p><strong>Cons:</strong> loses structure; chunking becomes heuristic; retrieval quality suffers</p>
+
+<h3>Option B: HTML-to-text conversion</h3>
+<p><strong>Pros:</strong> preserves some structure</p>
+<p><strong>Cons:</strong> HTML is verbose and inconsistent; cleaning is hard</p>
+
+<h3>Option C: Markdown conversion (recommended intermediate)</h3>
+<p><strong>Pros:</strong> compact structure; deterministic templates; chunkers can split on headings and lists</p>
+<p><strong>Cons:</strong> requires normalization and validation</p>
+
+<h3>Option D: JSON structured extraction only</h3>
+<p><strong>Pros:</strong> typed records; strong determinism</p>
+<p><strong>Cons:</strong> harder to support long-form prose; you still need a rendering strategy for chunking</p>
+
 <p>A practical approach is hybrid: request structured output when available, then render canonical Markdown for chunking and retrieval.</p>
 
 <h2>16. Enterprise / Cloud Deployment</h2>
@@ -635,12 +697,14 @@ Mixed HTML pages | 150 | 0% | 1.6 | 0.90 | 118 | $0.0012</code></pre>
   <li>Enforce per-tenant quotas and concurrency limits.</li>
   <li>Track cost per tenant and per pipeline.</li>
 </ul>
+
 <h3>Observability and billing</h3>
 <ul>
   <li>Emit metrics: conversion latency, validation pass rate, quarantine reasons.</li>
   <li>Store cost fields: conversion cost, embedding cost, reprocessing cost.</li>
-  <li>Provide dashboards for cost per usable chunk and quarantine rate.</li>
+  <li>Provide dashboards for “cost per usable chunk” and “quarantine rate.”</li>
 </ul>
+
 <h3>Deployment patterns</h3>
 <ul>
   <li>Worker autoscaling based on queue depth and conversion latency.</li>
@@ -650,37 +714,37 @@ Mixed HTML pages | 150 | 0% | 1.6 | 0.90 | 118 | $0.0012</code></pre>
 
 <h2>17. FAQs</h2>
 
-<h2>What’s the biggest reason document-to-Markdown pipelines fail at scale?</h2>
+<h2>1. What’s the biggest reason document-to-Markdown pipelines fail at scale?</h2>
 <p>Most failures aren’t conversion failures; they’re quality failures that slip through. At scale, a pipeline can “succeed” operationally (jobs complete, Markdown is returned) while still violating the formatting contract your chunker and retriever depend on—headings flattened, lists merged into paragraphs, tables collapsed, code blocks not fenced, or OCR artifacts dominating. If you don’t validate structure invariants and you embed everything, you index low-quality output and retrieval degrades even when conversions “succeed,” leading to worse recall, weaker grounding, and more brittle answers.</p>
 
-<h2>Should we normalize Markdown before chunking?</h2>
+<h2>2. Should we normalize Markdown before chunking?</h2>
 <p>Yes, you should normalize Markdown before chunking. Normalization is what makes your Markdown deterministic: it standardizes heading levels, unwraps hard line breaks, deduplicates repeated boilerplate, enforces consistent table formatting, and ensures code blocks are properly fenced. Without normalization, small formatting differences change chunk boundaries and therefore change what each embedding represents, which causes retrieval behavior to drift across documents and across reprocessing runs. Version your normalization rules so you can compare outcomes when you update the pipeline.</p>
 
-<h2>How do we control cost end-to-end?</h2>
+<h2>3. How do we control cost end-to-end?</h2>
 <p>To control cost end-to-end, track conversion cost and embedding cost together, then compute cost per usable chunk. The quality gate is the main lever: raise the fraction of chunks that pass validation so you embed less garbage and reduce downstream waste (retries, reprocessing, and retrieval failures that force additional LLM work). When you optimize for “usable chunks per dollar” instead of “conversion success,” you prevent the common trap where faster conversion produces structurally weak Markdown that increases total cost later.</p>
 
-<h2>Do we need OCR for every PDF?</h2>
+<h2>4. Do we need OCR for every PDF?</h2>
 <p>No, you don’t need OCR for every PDF. Route based on detection: if a PDF has extractable text, OCR is usually unnecessary and just adds latency and cost. OCR should be reserved for scanned or image-heavy documents where text extraction is empty or unreliable, because that’s where OCR meaningfully improves the extracted content. A routing step that detects “text-based vs image-based” keeps throughput high and prevents OCR from becoming a default tax.</p>
 
-<h2>What should we store for debugging?</h2>
+<h2>5. What should we store for debugging?</h2>
 <p>For debugging, store raw converter output (or a pointer), normalized output, and the validation report. Also store the routing decision and settings used (OCR mode, table mode, normalization version, and any other conversion options). This turns quarantine from a mystery into an actionable workflow: you can see whether the failure came from extraction fidelity, normalization rules, or validation thresholds, and you can reprocess with adjusted settings based on evidence rather than guesswork.</p>
 
-<h2>How do we measure reliability beyond HTTP status codes?</h2>
+<h2>6. How do we measure reliability beyond HTTP status codes?</h2>
 <p>To measure reliability beyond HTTP status codes, measure validation pass rate, quarantine reasons, retry distributions, and silent quality failure rate. A pipeline can have a high success rate while still producing unusable Markdown if it violates your structure invariants or falls below your quality score threshold. Silent quality failures are especially harmful because they look “healthy” in logs but degrade retrieval quality, so reliability must be computed after normalization and validation, not just after conversion returns success.</p>
 
-<h2>Can we run this pipeline with an agent?</h2>
+<h2>7. Can we run this pipeline with an agent?</h2>
 <p>Yes, you can run this pipeline with an agent, but you still need backpressure and quotas. Agents can trigger ingestion bursts (for example, when users ask for new knowledge or when an agent decides to expand a dataset), and your system must absorb that burstiness without overwhelming conversion workers, timing out jobs, or causing retry storms. The agent should enqueue work into a governed job queue, while the pipeline enforces concurrency limits, rate limits, and circuit breakers so reliability and cost remain stable under real usage.</p>
 
-<h2>What’s a good starting validation threshold?</h2>
+<h2>8. What’s a good starting validation threshold?</h2>
 <p>Start with conservative validation thresholds that quarantine obviously broken outputs, then tune using a small labeled evaluation set. The goal is not to maximize pass rate; it’s to maximize usable chunks per dollar by balancing false positives (quarantining good content) against false negatives (letting bad structure through). Once tuned, version the thresholds and monitor drift so you can catch regressions when converter or normalization behavior changes.</p>
 
-<h2>Conclusion</h2>
+<h2>18. Conclusion</h2>
 <p>Scaling document-to-Markdown for AI is a systems engineering problem. If you treat conversion as a single call, you’ll eventually face throughput collapse, silent quality failures, and runaway costs.</p>
 <p>The blueprint in this article focuses on contracts and gates: route documents by type and complexity, run conversion asynchronously with backpressure, normalize to canonical patterns, validate output before embedding, and quarantine failures with actionable reports.</p>
 <p>If you implement those pieces, you can measure performance (latency and throughput), reliability (quarantine and quality failure rates), and cost (cost per usable chunk) in a way that supports continuous improvement.</p>
-<p><strong>Next step:</strong> pick one document source (PDF or DOCX), implement the router + validation gate, and run a small benchmark harness to establish your baseline.</p>
+<p>Next step: pick one document source (PDF or DOCX), implement the router + validation gate, and run a small benchmark harness to establish your baseline.</p>
 
-<h2>References</h2>
+<h2>19. References</h2>
 <ul>
   <li>Ollagraph blog: Markdown for Retrieval-Augmented Generation (RAG): How Proper Formatting Improves AI Retrieval</li>
   <li>Ollagraph blog: PDF to Markdown for RAG: Extract Clean, AI-Ready Content from PDFs</li>
