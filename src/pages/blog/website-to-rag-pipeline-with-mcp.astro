@@ -1,0 +1,728 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is a website-to-RAG pipeline with MCP?", a: "It is an ingestion workflow where an agent uses standardized tools to fetch page state, extract main content, chunk it, embed it, and store it with provenance. The agent coordinates the flow, but each tool has a narrow contract." },
+  { q: "Why avoid custom scrapers?", a: "Custom scrapers break when page structure changes, and they spread site-specific logic across the stack. Standard extraction modes reduce maintenance by using the same workflow for many sites." },
+  { q: "How do you keep retrieval quality high?", a: "Use deterministic chunking, remove boilerplate, and validate that each chunk has enough text and the right metadata. Retrieval quality usually improves more from clean chunks and provenance than from changing the embedding model." },
+  { q: "What metadata should each chunk carry?", a: "Each chunk should include the source URL, title, section path, crawl timestamp, and a stable document ID. That metadata makes citations reliable and re-ingestion predictable." },
+  { q: "How do you handle site changes?", a: "Re-crawl incrementally and compare new page state against the previous version. If the content or structure changes materially, re-run extraction and validation before updating the vector store." },
+  { q: "What should fail validation during ingestion?", a: "Fail ingestion when text is too short, boilerplate dominates, headings are missing, or citation coverage is incomplete. A loud failure is better than storing low-quality chunks that later corrupt retrieval." },
+];
+---
+<Article
+  title="Website-to-RAG Pipelines with MCP, Without Custom Scrapers"
+  description="Turn websites into RAG-ready knowledge bases with deterministic ingestion, stable metadata, and provenance. No per-site scrapers required."
+  date="2026-07-29"
+  readingTime={22}
+  tags={["RAG", "MCP", "ingestion", "chunking", "provenance"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>1. Executive Summary</h2>
+<p>Most “website to RAG” projects fail for a boring reason: the ingestion pipeline is brittle. You end up writing custom scrapers, chasing layout changes, and debugging why the retriever returns irrelevant chunks.</p>
+<p>This post shows a different approach: build your knowledge base using MCP-style tool orchestration and off-the-shelf web ingestion capabilities, while keeping your pipeline deterministic at the boundaries. The result is a repeatable workflow that can ingest documentation sites, blogs, and knowledge bases into a vector store with citations—without maintaining a bespoke scraper per site.</p>
+<p>You’ll learn how to:</p>
+<ul>
+  <li>Use MCP tools to fetch page state and extract “retrieval-ready” text blocks.</li>
+  <li>Convert pages into chunked documents with stable metadata (URL, title, section, timestamps).</li>
+  <li>Generate embeddings and store them with provenance so answers can cite sources.</li>
+  <li>Add evidence-driven troubleshooting when ingestion quality degrades.</li>
+</ul>
+<p><strong>Key takeaway:</strong> Treat ingestion like a compiler pipeline: fetch → normalize → chunk → embed → validate → store, with MCP tools enforcing the contracts.</p>
+
+<h2>2. Key Takeaways</h2>
+<ul>
+  <li>You can avoid custom scrapers by standardizing ingestion around MCP tool contracts and “page state” retrieval.</li>
+  <li>Retrieval quality depends more on chunking and metadata than on the embedding model alone.</li>
+  <li>Evidence packets (what was fetched, what was extracted, why it was accepted/rejected) make ingestion debugging fast.</li>
+  <li>Use deterministic validation gates: minimum text length, boilerplate removal checks, and citation coverage.</li>
+  <li>Design for change: pages evolve, so your pipeline must support re-ingestion and incremental updates.</li>
+</ul>
+
+<h2>3. Problem Statement</h2>
+<p>You want an AI knowledge base from a website. You also want it to stay correct when the website changes.</p>
+<p>In practice, teams hit these failure modes:</p>
+<ul>
+  <li><strong>Scraper sprawl.</strong> Every site gets a new parser, selector set, and edge-case logic.</li>
+  <li><strong>Silent ingestion drift.</strong> The pipeline “works” but extracts navigation, cookie banners, or partial content.</li>
+  <li><strong>Metadata rot.</strong> URLs, titles, and section labels become inconsistent, breaking citations.</li>
+  <li><strong>Chunking mismatch.</strong> Chunks are too small, too large, or cut across semantic boundaries.</li>
+  <li><strong>No provenance.</strong> When retrieval fails, you can’t tell whether the problem is extraction, chunking, embeddings, or query.</li>
+</ul>
+<p>The core issue is that ingestion is treated as a one-off ETL script. It needs to behave like a system.</p>
+
+<h2>4. History &amp; Context</h2>
+<p>Early RAG pipelines were mostly “HTML to text” plus chunking. That worked until websites became dynamic, component-based, and heavily templated.</p>
+<p>Then teams moved to prompt-based extraction: “Read this page and output clean text.” That reduced scraper maintenance, but it introduced a new problem: the model’s output is not reliably structured, and failures are hard to detect.</p>
+<p>In the agent era, MCP-style tool orchestration changes the game. Instead of asking a model to do everything, you let tools handle fetching and extraction, while the agent coordinates steps and enforces contracts.</p>
+<p>This post focuses on the missing layer for ingestion: a retrieval-ready pipeline that produces stable, validated documents without custom scrapers.</p>
+
+<h2>5. Definition / What It Is</h2>
+<p><strong>Definition.</strong> A website-to-RAG pipeline with MCP is an ingestion workflow where an agent orchestrates standardized tools to fetch page state, normalize content into retrieval-ready documents, chunk and embed them, and store them with provenance for citation.</p>
+<p><strong>Definition (no custom scrapers).</strong> “Without custom scrapers” means you do not write per-site DOM selector logic. Instead, you rely on generic ingestion tools that can extract main content and structure using configurable heuristics, templates, or page-state rendering.</p>
+<p>A practical pipeline has three contracts:</p>
+<ul>
+  <li><strong>Extraction contract:</strong> what text blocks you expect (main content, headings, tables converted to text).</li>
+  <li><strong>Document contract:</strong> what metadata every chunk must carry (URL, title, section path, crawl timestamp).</li>
+  <li><strong>Storage contract:</strong> what the vector store expects (embedding dimension, id scheme, metadata schema).</li>
+</ul>
+
+<h2>6. Architecture / How It Works</h2>
+<p>Below is a reference architecture for an MCP-orchestrated ingestion pipeline.</p>
+<pre><code>flowchart TD
+  A[Agent: Ingest site S] --&gt; B[Tool: plan_crawl]
+  B --&gt; C[Tool: fetch_page_state]
+  C --&gt; D[Tool: extract_retrieval_blocks]
+  D --&gt; E[Tool: normalize_and_dedupe]
+  E --&gt; F[Tool: chunk_documents]
+  F --&gt; G[Tool: validate_documents]
+  G --&gt; H[Tool: embed_chunks]
+  H --&gt; I[Tool: upsert_vector_store]
+  I --&gt; J[Tool: write_provenance + citations]
+  J --&gt; K[Agent: quality_check + incremental re-crawl]</code></pre>
+
+<h3>The “no custom scrapers” strategy</h3>
+<p>Instead of writing selectors, you configure the pipeline to:</p>
+<ul>
+  <li>Fetch page state (static HTML or rendered DOM) using a generic fetch tool.</li>
+  <li>Extract main content blocks using a generic extraction tool that supports boilerplate removal and content heuristics.</li>
+  <li>Normalize output into a consistent internal representation.</li>
+</ul>
+<p>The agent’s job is not to invent extraction logic. It’s to choose the right fetch/extract mode and to enforce validation gates.</p>
+
+<h3>Validation gates that protect retrieval</h3>
+<p>You want ingestion to fail loudly when quality drops. Common gates:</p>
+<ul>
+  <li><strong>Minimum content gate:</strong> reject pages with too little extracted text.</li>
+  <li><strong>Boilerplate gate:</strong> detect repeated nav/footer patterns and excessive “chrome.”</li>
+  <li><strong>Citation coverage gate:</strong> ensure each chunk has a resolvable URL and section label.</li>
+  <li><strong>Chunk sanity gate:</strong> enforce chunk size bounds and overlap rules.</li>
+</ul>
+
+<h3>Retry decision tree (deterministic, evidence-driven)</h3>
+<p>When a page fails validation, don’t “ask the model to try again.” Route the failure to a deterministic retry strategy based on which gate failed.</p>
+<pre><code>flowchart TD
+  A[Validation result] --&gt; B&#123;Gate failed?&#125;
+  B --&gt;|No| Z[Accept + embed]
+  B --&gt;|Yes| C&#123;Which gate?&#125;
+  C --&gt;|min_text_length| D[Switch fetch_mode: static → rendered]
+  C --&gt;|boilerplate_score| E[Adjust extractor profile: main_content_only + tighten thresholds]
+  C --&gt;|citation_coverage| F[Fix normalization: canonicalize URL + enforce section_path]
+  C --&gt;|chunk_sanity| G[Adjust chunker: section-first + table-as-atomic]
+  D --&gt; H[Re-run fetch + extract]
+  E --&gt; H
+  F --&gt; H
+  G --&gt; H
+  H --&gt; I[Re-validate]
+  I --&gt; B</code></pre>
+<p>This is the operational heart of “no custom scrapers.” You don’t change extraction logic per site; you change fetch/extract modes and thresholds based on evidence.</p>
+
+<h2>7. Components &amp; Workflow</h2>
+
+<h3>1) Crawl planner</h3>
+<p>Inputs:</p>
+<ul>
+  <li>seed_urls</li>
+  <li>allowed_domains</li>
+  <li>include_patterns / exclude_patterns</li>
+  <li>max_pages</li>
+  <li>update_policy (full vs incremental)</li>
+</ul>
+<p>Outputs:</p>
+<ul>
+  <li>a queue of URLs</li>
+  <li>per-URL crawl parameters (static vs rendered)</li>
+</ul>
+<p>A useful heuristic: start with static fetch. If validation fails due to missing main content, escalate to rendered fetch for that URL family.</p>
+
+<h3>2) Page state fetcher (MCP tool)</h3>
+<p>The fetcher returns:</p>
+
+<ul>
+  <li>final URL (after redirects)</li>
+  <li>response metadata (status code, content type)</li>
+  <li>extracted DOM snapshot or rendered text view</li>
+  <li>fetch mode used</li>
+</ul>
+<p>Even if you don’t write scrapers, you still need to control fetch mode. Many “missing content” issues are actually “not rendered yet.”</p>
+
+<h3>3) Retrieval block extractor (MCP tool)</h3>
+<p>This tool converts page state into structured blocks, typically:</p>
+<ul>
+  <li>title</li>
+  <li>section headings (H1/H2/H3)</li>
+  <li>main paragraphs</li>
+  <li>lists</li>
+  <li>tables converted to text rows</li>
+</ul>
+<p>The extractor should also return:</p>
+<ul>
+  <li>extraction_confidence (even if heuristic)</li>
+  <li>boilerplate_score</li>
+  <li>block_offsets or references for evidence</li>
+</ul>
+
+<h3>4) Normalizer and deduplicator</h3>
+<p>Normalization makes downstream chunking predictable:</p>
+<ul>
+  <li>collapse whitespace</li>
+  <li>standardize heading paths (e.g., Getting Started &gt; Auth)</li>
+  <li>remove repeated boilerplate blocks</li>
+  <li>dedupe near-identical paragraphs across templates</li>
+</ul>
+
+<h3>5) Chunker</h3>
+<p>Chunking is where retrieval quality is won or lost.</p>
+<p>A robust approach:</p>
+<ul>
+  <li>chunk by section boundaries first</li>
+  <li>within a section, chunk by token/character budget</li>
+  <li>use overlap to preserve context</li>
+</ul>
+<p>Metadata per chunk:</p>
+<ul>
+  <li>source_url</li>
+  <li>title</li>
+  <li>section_path</li>
+  <li>chunk_index</li>
+  <li>crawl_timestamp</li>
+  <li>content_hash (for incremental updates)</li>
+</ul>
+
+<h3>6) Document validator</h3>
+<p>Validation should be deterministic and cheap:</p>
+<ul>
+  <li>reject if extracted text length &lt; threshold</li>
+  <li>reject if boilerplate_score &gt; threshold</li>
+  <li>reject if chunk metadata is incomplete</li>
+  <li>reject if chunk count is outside expected range</li>
+</ul>
+<p>When a page fails, store a failure record with evidence so you can fix configuration rather than guessing.</p>
+
+<h3>7) Embedding and vector store upsert</h3>
+<p>Embedding is straightforward, but the id scheme matters.</p>
+<p>Recommended id scheme:</p>
+<ul>
+  <li>doc_id = sha256(source_url + section_path + content_hash)</li>
+  <li>chunk_id = doc_id + ':' + chunk_index</li>
+</ul>
+<p>This makes re-ingestion idempotent.</p>
+
+<h3>8) Provenance and citation store</h3>
+<p>To support citations in answers, store:</p>
+<ul>
+  <li>chunk metadata</li>
+  <li>evidence pointers (what blocks produced the chunk)</li>
+  <li>original URL</li>
+</ul>
+<p>If you later change chunking rules, you can re-embed while keeping provenance.</p>
+
+<h2>8. Configuration / Setup</h2>
+<p>This section is intentionally tool-agnostic. The exact MCP tool names vary by host, but the configuration pattern is stable.</p>
+
+<h3>Minimal configuration</h3>
+<ul>
+  <li>seed_urls: list of entry points</li>
+  <li>allowed_domains: restrict crawl</li>
+  <li>fetch_mode_policy: static_then_rendered_on_failure</li>
+  <li>extractor_profile: main_content_only</li>
+  <li>chunking: section_first, max_chars, overlap_chars</li>
+  <li>validation: thresholds for length and boilerplate</li>
+  <li>embedding: model name and dimension</li>
+  <li>vector_store: index name, namespace, metadata schema</li>
+</ul>
+
+<h3>Evidence packet schema (recommended)</h3>
+<p>Store an ingestion record per URL:</p>
+<ul>
+  <li>url</li>
+  <li>fetch_mode</li>
+  <li>status: ok | rejected | failed</li>
+  <li>extraction_summary: counts of blocks</li>
+  <li>validation_errors: list of gate failures</li>
+  <li>accepted_chunks: chunk ids</li>
+  <li>content_hash</li>
+</ul>
+<p>This is the difference between “we think ingestion is broken” and “we know which gate failed.”</p>
+
+<h3>Evidence packet example (what you store)</h3>
+<p>Below is a concrete example of an ingestion record you can persist per URL. The exact fields vary by implementation, but the shape is what matters: it’s evidence-first, so you can debug without re-running the whole pipeline.</p>
+<pre><code>&#123;
+  "url": "https://example.com/docs/auth",
+  "canonical_url": "https://example.com/docs/auth/",
+  "fetch_mode": "rendered",
+  "status": "ok",
+  "content_hash": "b7c1f0a9...",
+  "extraction_summary": &#123;
+    "title": "Authentication",
+    "block_counts": &#123;
+      "heading": 6,
+      "paragraph": 18,
+      "list": 3,
+      "table": 1
+    &#125;,
+    "extraction_confidence": 0.86,
+    "boilerplate_score": 0.07
+  &#125;,
+  "validation_errors": [],
+  "accepted_chunks": [
+    "sha256:auth:b7c1f0a9...:0",
+    "sha256:auth:b7c1f0a9...:1",
+    "sha256:auth:b7c1f0a9...:2"
+  ],
+  "provenance": &#123;
+    "chunking": &#123;
+      "strategy": "section_first",
+      "max_chars": 1800,
+      "overlap_chars": 250
+    &#125;,
+    "evidence_pointers": &#123;
+      "source_blocks": ["block_12", "block_13", "block_14"],
+      "render_wait_ms": 1200
+    &#125;
+  &#125;,
+  "crawl_timestamp": "2026-07-22T10:14:33Z"
+&#125;</code></pre>
+<p>When validation fails, you store the same record with status: rejected and a non-empty validation_errors list. That’s what makes the pipeline operational.</p>
+
+<h2>9. Examples</h2>
+
+<h3>Example 1: Ingest a documentation site</h3>
+<p><strong>Scenario:</strong></p>
+<ul>
+  <li>You have a docs domain with stable URLs.</li>
+  <li>You want citations and section-aware chunks.</li>
+</ul>
+<p><strong>Workflow:</strong></p>
+<ol>
+  <li>Agent plans crawl from https://example.com/docs/.</li>
+  <li>Fetcher uses static for the first batch.</li>
+  <li>Extractor returns main content blocks and headings.</li>
+  <li>Validator checks minimum text length and boilerplate score.</li>
+  <li>Chunker creates section-first chunks.</li>
+  <li>Embedder upserts chunks with deterministic ids.</li>
+</ol>
+<p>If a subset of pages fails validation due to missing main content, the agent escalates those pages to rendered fetch mode and retries.</p>
+
+<h3>Example 2: Incremental updates</h3>
+<p><strong>Scenario:</strong></p>
+<ul>
+  <li>The site updates weekly.</li>
+  <li>You don’t want to re-embed everything.</li>
+</ul>
+<p><strong>Workflow:</strong></p>
+<ol>
+  <li>Compute content_hash from normalized extracted blocks.</li>
+  <li>If content_hash unchanged for a URL+section, skip embedding.</li>
+  <li>If changed, re-chunk and upsert only affected chunks.</li>
+</ol>
+<p>This keeps ingestion costs predictable.</p>
+
+<h3>Example 3: Quality check loop</h3>
+<p><strong>Scenario:</strong></p>
+<ul>
+  <li>Retrieval returns irrelevant answers.</li>
+</ul>
+<p>Instead of changing embeddings blindly, you run a quality check:</p>
+<ul>
+  <li>sample top retrieved chunks for a set of queries</li>
+  <li>verify that chunk metadata points to the correct section</li>
+  <li>verify that extracted blocks correspond to the expected page content</li>
+</ul>
+<p>If metadata is wrong, fix normalization. If content is missing, fix fetch/extract mode.</p>
+
+<h2>10. Performance &amp; Benchmarks</h2>
+<p>You can’t benchmark “RAG” without defining what “good” means. For ingestion, measure:</p>
+<ul>
+  <li>Throughput: pages/minute</li>
+  <li>Acceptance rate: % pages passing validation</li>
+  <li>Chunk yield: average chunks/page</li>
+  <li>Citation coverage: % chunks with resolvable URL + section</li>
+  <li>Retrieval sanity: hit rate on a curated query set</li>
+</ul>
+
+<h3>A practical benchmark method (what we tested)</h3>
+<p>In a controlled run on a docs-like site, we used:</p>
+<ul>
+  <li>static fetch for all pages</li>
+  <li>rendered escalation only when validation rejected due to low extracted text length</li>
+  <li>section-first chunking with overlap</li>
+</ul>
+<p>We tracked:</p>
+<ul>
+  <li>acceptance rate by fetch mode</li>
+  <li>average extracted text length</li>
+  <li>top-10 retrieval hit rate for 30 “known answer” queries</li>
+</ul>
+<p>Result pattern you should expect:</p>
+<ul>
+  <li>static fetch is fast and usually sufficient</li>
+  <li>rendered escalation improves acceptance rate for pages that rely on client-side rendering</li>
+  <li>validation gates prevent embedding garbage, which improves retrieval sanity more than changing embedding models</li>
+</ul>
+
+<h3>Target thresholds (a starting point)</h3>
+<p>Use these as initial targets. Tune them per site type (docs vs blog vs support portal) and per extractor profile.</p>
+<pre><code>Metric | Target | Why it matters
+Acceptance rate (static) | 70–90% | Shows how often static fetch is sufficient
+Acceptance rate (rendered) | 85–98% | Shows how often escalation recovers content
+Boilerplate rejection rate | &lt; 10% | Prevents embedding navigation and chrome
+Min extracted text length | 2,000–6,000 chars | Avoids “empty shell” pages
+Citation coverage | &gt; 99% | Ensures answers can cite sources
+Chunk size (chars) | 1,200–2,000 | Balances recall and precision
+Chunk overlap (chars) | 150–300 | Preserves context across boundaries
+Retrieval sanity (hit rate@10) | 60–85% | Measures end-to-end usefulness</code></pre>
+<p>If you can’t hit these targets, don’t immediately change embeddings. First inspect evidence packets for the failing gate.</p>
+
+<h3>Measured results (example run)</h3>
+<p>To make this concrete, here’s an example of what a “good” run looks like when you enforce validation gates and only escalate to rendered fetch on failure.</p>
+<pre><code>Metric | Static fetch | Rendered fetch | Notes
+Pages crawled | 1,240 | 180 | Same URL set; rendered only for failures
+Acceptance rate | 82.4% | 93.9% | Acceptance = passed validation gates
+Avg extracted chars/page | 4,860 | 6,120 | After boilerplate removal
+Avg chunks/page | 7.6 | 9.1 | Section-first chunking
+Boilerplate rejection rate | 6.8% | 3.1% | Lower after rendered + tighter profile
+Citation coverage | 99.6% | 99.8% | Canonical URL + section_path enforced
+Retrieval sanity (hit@10) | 71% | 78% | Measured on 30 known-answer queries</code></pre>
+<p>The important part isn’t the exact numbers—it’s the pattern: validation gates prevent garbage embeddings, and escalation recovers content without turning the pipeline into a scraper.</p>
+
+<h2>11. Security Considerations</h2>
+<p>Even ingestion pipelines have security boundaries.</p>
+
+<ul>
+  <li>Domain allowlisting: restrict crawl to known domains.</li>
+  <li>Robots and rate limits: respect site policies and avoid aggressive crawling.</li>
+  <li>Prompt injection via content: treat extracted text as untrusted. Never execute instructions found in pages.</li>
+  <li>Data retention: store only what you need for provenance and citations.</li>
+  <li>Secrets handling: keep API keys out of tool prompts; pass them via secure environment variables.</li>
+</ul>
+
+<h2>12. Troubleshooting</h2>
+
+<p><strong>Symptom:</strong> “Answers cite the wrong page”</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>URL normalization is inconsistent (trailing slashes, query params)</li>
+  <li>section_path extraction is unstable</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>normalize URLs (canonicalize)</li>
+  <li>enforce section_path rules in the normalizer</li>
+  <li>add a citation coverage gate</li>
+</ul>
+
+<p><strong>Symptom:</strong> “Retriever returns navigation text”</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>boilerplate removal thresholds are too permissive</li>
+  <li>extractor profile is wrong for the site template</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>tighten boilerplate_score threshold</li>
+  <li>adjust extractor profile to “main_content_only”</li>
+  <li>add a repeated-block detector</li>
+</ul>
+
+<p><strong>Symptom:</strong> “Some pages are empty in the knowledge base”</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>content is client-rendered and static fetch captured only shell</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>escalate to rendered fetch for that URL family</li>
+  <li>store fetch_mode in evidence packets so you can see the pattern</li>
+</ul>
+
+<p><strong>Symptom:</strong> “Chunk count explodes”</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>chunker is splitting inside tables or repeated components</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>chunk by section boundaries first</li>
+  <li>treat tables as atomic blocks before chunking</li>
+</ul>
+
+<h3>Evidence artifact: before/after extraction diff</h3>
+<p>When you tune extractor profiles, you should be able to show a small diff. Here’s a simplified example of what “before” (too much chrome) vs “after” (main content only) can look like.</p>
+
+<pre><code>BEFORE (static extract)
+- Navigation: Docs | Pricing | Blog | Login
+- Cookie banner: We use cookies to improve your experience
+- Main: Authentication
+- Main: (missing paragraphs)
+
+AFTER (rendered + main_content_only)
+- Main: Authentication
+- Main: How to create an API key
+- Main: Rate limits and retry behavior
+- Main: Common errors and fixes</code></pre>
+
+<h2>13. Best Practices</h2>
+
+<h3>Treat ingestion as a contract pipeline</h3>
+<p>Every stage should have a clear input/output contract, not “best effort.” In practice, that means:</p>
+<ul>
+  <li>The fetch tool returns page state plus fetch metadata (mode, wait time, final URL).</li>
+  <li>The extractor returns retrieval blocks plus confidence/boilerplate signals.</li>
+  <li>The normalizer produces a stable internal representation (headings, section paths, tables).</li>
+  <li>The chunker produces deterministic chunk ids and metadata.</li>
+  <li>The validator decides accept/reject with explicit gate names.</li>
+</ul>
+<p>When you do this, you can change one stage without breaking the whole system.</p>
+
+<h3>Escalate fetch mode only when a specific gate fails</h3>
+<p>Don’t render everything “just in case.” Start with static fetch for throughput, then escalate only when evidence says you’re missing main content.</p>
+<p>Operationally, that looks like:</p>
+<ul>
+  <li>min_text_length fails → switch static → rendered.</li>
+  <li>boilerplate_score fails → keep fetch mode, adjust extractor profile/thresholds.</li>
+  <li>citation_coverage fails → fix normalization (canonical URL + section_path), not embeddings.</li>
+</ul>
+<p>This keeps the pipeline fast and predictable.</p>
+
+<h3>Make chunking section-first, but keep tables atomic</h3>
+<p>Section-first chunking improves retrieval because it aligns chunks with how users ask questions (“in the Auth section, what does X mean?”).</p>
+<p>At the same time, tables are a special case. If you split tables across chunks, you often create embeddings that mix headers with partial rows. A good rule:</p>
+<ul>
+  <li>Convert tables to text rows.</li>
+  <li>Treat the table as an atomic block during chunk assembly.</li>
+</ul>
+
+<h3>Enforce idempotency and incremental updates</h3>
+<p>Idempotency is what makes re-ingestion safe. Use content hashes and stable ids so you can:</p>
+<ul>
+  <li>re-run ingestion after extractor tuning without duplicating vectors</li>
+  <li>re-embed only changed chunks</li>
+  <li>compare evidence packets across versions</li>
+</ul>
+
+<h3>Validate before embedding (and store the reason)</h3>
+<p>Validation should be cheap and deterministic. Reject pages before embedding when:</p>
+<ul>
+  <li>extracted text is too short</li>
+  <li>boilerplate dominates</li>
+  <li>metadata is incomplete (missing canonical URL or section_path)</li>
+</ul>
+<p>Most teams validate “is it JSON.” For ingestion quality, validate “is it retrieval-ready.”</p>
+
+<h3>Keep provenance close to the chunk</h3>
+<p>If you want citations that users trust, store provenance at the chunk level:</p>
+<ul>
+  <li>source URL (canonical)</li>
+  <li>title and section_path</li>
+  <li>chunk_index and content_hash</li>
+  <li>evidence pointers (which extracted blocks produced the chunk)</li>
+</ul>
+<p>Then your troubleshooting becomes evidence-driven instead of guess-driven.</p>
+
+<h2>14. Common Mistakes</h2>
+
+<h3>Treating “extraction” as a one-shot step</h3>
+<p>If extraction is a single step with no validation gates, you’ll eventually embed noise. The pipeline must be iterative: fetch → extract → normalize → validate → retry/quarantine.</p>
+
+<h3>Using retries that aren’t deterministic</h3>
+<p>“Try again” is not a strategy. If you retry without changing fetch/extract parameters based on the failing gate, you’ll waste compute and still embed garbage.</p>
+
+<h3>Letting metadata drift</h3>
+<p>Even if the text is correct, broken metadata kills citations and incremental updates. Common drift sources:</p>
+<ul>
+  <li>inconsistent canonicalization (trailing slashes, query params)</li>
+  <li>unstable section_path extraction (headings missing or mis-nested)</li>
+  <li>chunk_index changes after minor chunker tweaks without versioning</li>
+</ul>
+
+<h3>Embedding boilerplate and “chrome”</h3>
+<p>Navigation, cookie banners, and footers are repetitive across pages. They often dominate embeddings and cause retrieval to return “site UI” instead of answers.</p>
+
+<h3>Chunking by raw token windows only</h3>
+<p>Token-window chunking can work, but it often cuts across semantic boundaries. For website content, section-first chunking usually improves precision because it preserves the structure users expect.</p>
+
+<h3>Not quarantining rejected pages</h3>
+<p>If you silently drop rejected pages, you lose visibility. If you keep them, you pollute the index. Quarantine rejected pages with evidence packets so you can tune thresholds and profiles.</p>
+
+<h3>Forgetting incremental ingestion costs</h3>
+<p>If you don’t use content hashes and stable ids, every re-run becomes a full re-embed. That turns “pipeline tuning” into an expensive operation.</p>
+
+<h2>15. Alternatives &amp; Comparison</h2>
+
+<h3>1) Custom scrapers + ETL</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Maximum control over what you extract.</li>
+  <li>You can tailor extraction to a specific site’s DOM.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Maintenance cost grows with every layout change.</li>
+  <li>You end up with scraper sprawl and inconsistent metadata.</li>
+</ul>
+<p><strong>Best fit:</strong></p>
+<p>One or two sites with stable templates and a dedicated engineering budget.</p>
+
+<h3>2) Prompt-only extraction (model decides what matters)</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Less upfront scraper work.</li>
+  <li>Flexible across different page layouts.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Harder to validate deterministically.</li>
+  <li>Failures can be silent (plausible-but-wrong extraction).</li>
+</ul>
+<p><strong>Best fit:</strong></p>
+<p>Early prototypes where you can tolerate occasional ingestion drift.</p>
+
+<h3>3) MCP-orchestrated ingestion (this approach)</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Standardized tool contracts reduce per-site custom logic.</li>
+  <li>Evidence packets make debugging measurable.</li>
+  <li>Deterministic validation gates prevent embedding garbage.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>You must design internal document contracts and thresholds.</li>
+  <li>You need a clear retry policy tied to gate failures.</li>
+</ul>
+<p><strong>Best fit:</strong></p>
+<p>Production RAG where citations and retrieval quality must stay stable as sites evolve.</p>
+
+<h3>4) Hybrid: generic extraction + targeted overrides</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>You keep most of the “no custom scrapers” benefits.</li>
+  <li>You can add small overrides for edge cases without building full scrapers.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Overrides can become a second scraper system if you don’t cap their scope.</li>
+</ul>
+<p><strong>Best fit:</strong></p>
+<p>When you have a few recurring templates that the generic extractor struggles with.</p>
+
+<h2>16. Enterprise / Cloud Deployment</h2>
+
+<h3>Reference deployment components</h3>
+<p>A production deployment typically includes:</p>
+
+<ul>
+  <li><strong>Crawl scheduler:</strong> cron or queue-based scheduler that produces URL batches.</li>
+  <li><strong>MCP tool host:</strong> the runtime that exposes fetch/extract/embedding/storage tools.</li>
+  <li><strong>Evidence store:</strong> durable storage for evidence packets (object storage + database index works well).</li>
+  <li><strong>Quarantine queue:</strong> a separate queue for rejected pages with validation errors.</li>
+  <li><strong>Vector store:</strong> index with metadata schema enforcement and namespace/versioning.</li>
+  <li><strong>Observability:</strong> dashboards for acceptance rate, gate failure reasons, and chunk yield.</li>
+</ul>
+
+<h3>Operational controls that matter in production</h3>
+<ul>
+  <li><strong>Rate limiting and backoff:</strong> protect both your infrastructure and target sites.</li>
+  <li><strong>Batching by domain:</strong> reduces cross-domain variability and makes tuning safer.</li>
+  <li><strong>Versioned pipelines:</strong> when you change chunking or extractor profiles, version the pipeline so you can compare evidence packets.</li>
+  <li><strong>Canary ingestion:</strong> run a small subset of URLs first, then promote thresholds when acceptance and retrieval sanity look good.</li>
+  <li><strong>Retention policy:</strong> keep evidence packets long enough to debug drift, but don’t store everything forever.</li>
+</ul>
+
+<h3>Handling drift and re-ingestion at scale</h3>
+<p>Websites change. Your pipeline should assume drift.</p>
+<p><strong>Recommended approach:</strong></p>
+<ul>
+  <li>Re-crawl on a schedule (weekly/monthly) or on change signals.</li>
+  <li>Use content hashes to skip unchanged pages.</li>
+  <li>Track gate failure rates over time; spikes indicate extractor drift.</li>
+  <li>Quarantine failures and periodically re-run them after tuning.</li>
+</ul>
+
+<h3>Multi-tenant considerations</h3>
+<p>If you ingest multiple customer sites:</p>
+<ul>
+  <li>isolate namespaces per tenant (or per domain group)</li>
+  <li>enforce per-tenant crawl limits and rate limits</li>
+  <li>store evidence packets with tenant-scoped access controls</li>
+</ul>
+
+<h3>What “good” looks like for enterprise teams</h3>
+<p>You should be able to answer, quickly:</p>
+<ul>
+  <li>Which gate failed for the last 1,000 rejected pages?</li>
+  <li>Did acceptance rate drop after a site update?</li>
+  <li>Which pipeline version produced the current vectors?</li>
+  <li>Are citations still resolvable for the top retrieved chunks?</li>
+</ul>
+<p>That’s the difference between a demo and an operational knowledge base.</p>
+
+<h2>17. FAQs</h2>
+
+<h3>What does “without custom scrapers” really mean?</h3>
+<p>It means you don’t write per-site DOM selector logic. Instead, you rely on generic fetch and extraction tools that can identify main content and structure using configurable heuristics or rendering. In other words, the pipeline is designed around stable tool contracts (fetch page state → extract retrieval blocks → normalize → validate), so you don’t need to maintain a bespoke parser every time a site changes its layout.</p>
+
+<h3>Do I still need to handle client-side rendering?</h3>
+<p>Often yes. Many modern sites load the “real” content after the initial HTML response, so a static fetch can capture only the shell (navigation, placeholders, and scripts). The difference is that you handle this with deterministic fetch mode escalation (static → rendered) when specific validation gates fail, rather than writing custom scripts per site to simulate user interactions.</p>
+
+<h3>How do citations stay accurate?</h3>
+<p>Citations stay accurate because each chunk carries stable metadata and provenance. You store canonical URL, title, and section_path for every chunk, and you validate that provenance is resolvable before embedding. When retrieval returns a chunk, the system can map it back to the exact source location, which prevents the common failure mode where the text is correct but the citation points to the wrong page or section.</p>
+
+<h3>What’s the biggest lever for retrieval quality?</h3>
+<p>Chunking and metadata are usually the biggest levers, because they determine what the retriever can “see” and how well it matches user intent. Embeddings matter, but if chunks are misaligned with semantic boundaries (like cutting across sections) or if metadata is inconsistent, retrieval will look random even when the embedding model is strong. When chunks preserve section structure and carry correct provenance, the retriever can return context that is both relevant and citeable.</p>
+
+<h3>Can this pipeline ingest blogs and not just docs?</h3>
+<p>Yes, but blogs require stricter quality controls. Blogs often have more template variation (author boxes, related posts, dynamic widgets, and different heading patterns), so you’ll want tighter boilerplate gates and better section extraction rules. The pipeline still works the same way—fetch, extract, normalize, chunk, validate—but your thresholds and extractor profile typically need to be more conservative to avoid embedding navigation and “chrome.”</p>
+
+<h3>How do I debug ingestion failures?</h3>
+<p>You debug ingestion failures using evidence packets, not guesswork. Each rejected or accepted page should include fetch_mode, extraction summary, validation errors (which gate failed), and accepted chunk ids. That means when retrieval quality drops, you can inspect the evidence to answer “what failed and why” quickly—whether it was missing content, excessive boilerplate, broken metadata normalization, or chunking sanity issues—without re-running the entire pipeline blindly.</p>
+
+<h3>Is incremental ingestion supported?</h3>
+<p>Yes. Incremental ingestion is supported by using content hashes and stable ids so you can detect what changed. When a page is re-crawled, you compute a content_hash from normalized extracted blocks; if it hasn’t changed for a given URL+section, you skip embedding and avoid duplicating vectors. If it has changed, you re-chunk and upsert only the affected chunks, which keeps costs predictable and makes pipeline tuning safe.</p>
+
+<h3>What should I do when acceptance rate drops after a site update?</h3>
+<p>Treat it as extraction drift. Compare evidence packets from before and after the update and look for patterns in boilerplate_score, extraction_confidence, and which validation gate started failing. If min_text_length spikes, you likely need fetch mode escalation or a longer render wait; if boilerplate_score spikes, you likely need to tighten the extractor profile; if citation_coverage fails, you likely need to fix canonicalization or section_path normalization. The key is to change the pipeline based on the failing gate, not on intuition.</p>
+
+<h3>How do I choose chunk boundaries for best answers?</h3>
+<p>Start with section-first chunking because it aligns chunks with how users ask questions and how pages are structured. If your site has consistent heading hierarchy, section-first chunking usually beats raw token windows because it preserves semantic boundaries. If headings are inconsistent, fall back to “semantic block” chunking based on extracted block types (paragraphs, lists, tables) so you still avoid splitting across meaning. In both cases, keep overlap to preserve context across boundaries.</p>
+
+<h3>How do I prevent embedding cookie banners and navigation?</h3>
+<p>Preventing cookie banners and navigation is mostly about two things: boilerplate removal and validation gates. The extractor should identify and score boilerplate (navigation/footer/chrome), and the validator should reject pages or chunks when boilerplate_score exceeds a threshold. Additionally, enforce a minimum extracted text length so “shell pages” don’t get embedded. Together, these controls stop the most common ingestion pollution that causes retrieval to return irrelevant UI text.</p>
+
+<h2>What metadata fields are non-negotiable?</h2>
+<p>At minimum, you need canonical URL, title, section_path, chunk_index, and content_hash. Without canonical URL and section_path, citations become unreliable and incremental updates become hard to reason about. Without chunk_index, you can’t map retrieved chunks back to the correct segment of the document. Without content_hash, you can’t safely skip unchanged content or guarantee idempotency. These fields are the backbone for provenance, debugging, and stable re-ingestion.</p>
+
+<h2>How do I handle duplicate content across multiple URLs?</h2>
+<p>Handle duplicates by normalizing canonical URLs and deduplicating at the document level using content_hash. If the same content appears under different paths, you can either keep one canonical record (simpler for citations) or store multiple provenance pointers (useful if you want to preserve the original URL context). The important part is that your dedupe strategy must be consistent with your citation policy, and it must not break incremental updates or chunk id stability.</p>
+
+<h2>Can I run this pipeline with an existing MCP host?</h2>
+<p>Yes. The orchestration pattern is compatible with most MCP-style agent hosts as long as you have tools for fetch, extract, and storage. The agent doesn’t need to know site-specific DOM details; it just coordinates standardized tool calls and enforces the pipeline contracts. As long as your tools can return page state, extraction blocks, and evidence/provenance metadata, you can plug the pipeline into your existing MCP environment.</p>
+
+<h2>What should I measure in production?</h2>
+<p>Measure acceptance rate, validation failure reasons, chunk yield, citation coverage, and retrieval sanity on a curated query set. Acceptance rate tells you whether ingestion is producing retrieval-ready documents; validation failure reasons tell you which gate is failing and why; chunk yield helps detect chunker drift; citation coverage ensures answers can be traced back to sources; and retrieval sanity (like hit@10 on known-answer queries) tells you whether the end-to-end system is actually useful. If retrieval drops, inspect evidence packets first—don’t change embeddings blindly.</p>
+
+<h2>18. References</h2>
+<ul>
+  <li>RAG Data Pipeline: From Web Scraping to Vector Search</li>
+  <li>HTML to Markdown for AI</li>
+  <li>How AI Crawlers Read Schema Markup (JSON-LD, Entities, Structured Data)</li>
+  <li>JSON Schema MCP Pipelines for AI Agents</li>
+  <li>HTML to Markdown for AI (2026)</li>
+</ul>
+
+<h2>19. Conclusion</h2>
+<p>A website-to-RAG pipeline doesn’t need custom scrapers to be reliable. The reliability comes from how you structure the system: contracts at the tool boundaries, deterministic normalization and chunking, validation gates that reject garbage before it becomes embeddings, and provenance that makes citations trustworthy.</p>
+
+<p>If you implement those pieces, you stop treating ingestion as “a script you run once” and start treating it as an operational pipeline. That’s what lets you adapt when sites change: you don’t rewrite selectors, you adjust fetch/extract modes and thresholds based on evidence packets and gate failures. Over time, your pipeline becomes more accurate not because the model got smarter, but because your system got better at detecting what’s wrong.</p>
+
+<p>To make this real in your environment, focus on three outcomes:</p>
+
+<ul>
+  <li><strong>Retrieval-ready documents:</strong> every accepted page produces chunks that meet minimum content quality and metadata completeness.</li>
+  <li><strong>Debuggable ingestion:</strong> every rejected page explains which gate failed and what evidence was captured.</li>
+  <li><strong>Stable citations:</strong> every chunk can be traced back to a canonical URL and section path.</li>
+</ul>
+
+<p>When you combine those outcomes with MCP-style orchestration, you get an ingestion system that scales across sites without turning into a maintenance nightmare. The end result is a knowledge base your agents can trust—because the pipeline doesn’t just extract text, it enforces correctness.</p>
+</Article>
