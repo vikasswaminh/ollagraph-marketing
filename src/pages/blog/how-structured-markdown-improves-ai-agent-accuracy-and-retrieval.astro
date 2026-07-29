@@ -1,0 +1,650 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is structured Markdown for AI agents?", a: "It is Markdown that preserves document meaning as stable blocks instead of flattening everything into plain text. Headings, lists, tables, and code fences stay explicit so retrieval systems can keep the original structure intact. The goal is reliable grounding, not just readable formatting." },
+  { q: "Why does document structure affect retrieval accuracy?", a: "Retrievers score and chunk content based on the shape of the input, not just the words. When headings collapse into paragraphs or tables lose alignment, the system can still find the topic but miss the right evidence unit. Preserving structure makes the right passage easier to isolate and rank." },
+  { q: "Which document elements matter most?", a: "Headings define section boundaries, lists preserve discrete constraints, tables keep row and column relationships, and code blocks protect exact syntax. These elements carry semantics that plain text often destroys during conversion. Keeping them intact improves both recall and citation precision." },
+  { q: "How does deterministic normalization improve citations?", a: "Deterministic normalization means the same source always converts into the same Markdown structure. That stability keeps chunk boundaries, section paths, and reference anchors from drifting between runs. As a result, citations point to the same evidence consistently." },
+  { q: "How can you tell if Markdown is chunking-friendly?", a: "A chunking-friendly document has clear section hierarchy, bounded lists, intact tables, and no merged unrelated ideas. If a retriever can split it into the same logical units every time, the structure is probably stable enough. Structural checks before embedding are usually more reliable than spot-checking final answers." },
+  { q: "What are the most common mistakes when converting documents?", a: "The most common mistakes are flattening headings, turning lists into prose, converting tables into loose sentences, and dropping provenance metadata. These changes make retrieval less deterministic and can cause the agent to ground on the wrong evidence. The fix is to preserve semantic blocks and normalize them consistently." },
+];
+---
+<Article
+  title="Structured Markdown for AI Agents: Better Retrieval and Citations"
+  description="Preserve headings, lists, tables, and code blocks to stabilize chunks, improve retrieval accuracy, and keep citations deterministic."
+  date="2026-07-29"
+  readingTime={23}
+  tags={["structured markdown", "retrieval accuracy", "agent grounding", "chunking", "citations"]}
+  kind="blog"
+  faqs={faqs}
+>
+<p><strong>Meta description:</strong> Structured Markdown improves AI agent accuracy by stabilizing chunk boundaries, preserving semantic units, and making retrieval + citations deterministic.</p>
+<p><strong>Primary keyword:</strong> structured Markdown for AI agents</p>
+<p><strong>Secondary keywords (3-5):</strong> retrieval accuracy, agent grounding, chunking-friendly Markdown, citation correctness, deterministic document normalization</p>
+<p><strong>Pillar page:</strong> Ollagraph Document Processing &amp; RAG Pipeline</p>
+<p><strong>Related cluster articles (internal links):</strong></p>
+<ul>
+  <li>Markdown for Retrieval-Augmented Generation (RAG): How Proper Formatting Improves AI Retrieval</li>
+  <li>HTML to Markdown for LLMs: Preserve Semantic Structure (Not Just Text)</li>
+  <li>Structured Extraction MCP Evidence, Retry Decision Tree</li>
+  <li>XLSX to Markdown for RAG: Converting Excel Workbooks into AI-Ready Markdown</li>
+</ul>
+<p><strong>Last updated:</strong> 2026-07-24</p>
+<p><strong>Versions tested:</strong> Markdown normalization contract v1, chunking templates v2, agent grounding checks v1</p>
+
+<h2>Executive Summary</h2>
+<p>AI agents fail in ways that look like “reasoning problems,” but the root cause is often earlier: the agent is retrieving from documents whose structure was lost during conversion.</p>
+<p>Structured Markdown is the bridge between “what the page means” and “what the agent can reliably retrieve.” When you preserve semantic units (headings, lists, tables, code blocks) and keep them stable across runs, you reduce chunk boundary drift, improve recall for the right evidence, and make citations consistent.</p>
+<p>In this post, you’ll learn a practical, testable Markdown structure contract for agent accuracy. You’ll also get a troubleshooting decision tree and a lightweight evaluation harness you can run before embedding.</p>
+<p>We’ll also show a concrete “before vs after” example of how structured Markdown changes chunk boundaries and improves evidence hit rate for agent queries.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Structured Markdown improves agent accuracy by stabilizing retrieval inputs, not by “helping the model read.”</li>
+  <li>Preserve semantic units as first-class blocks: headings, lists, tables, and code fences.</li>
+  <li>Use deterministic templates so chunkers and retrievers see the same geometry every time.</li>
+  <li>Add provenance-friendly structure (section paths, stable IDs) so grounding and citations don’t drift.</li>
+  <li>Validate formatting quality with structural signals before embedding.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>Most teams measure agent quality by the final answer: “Did the agent do the right thing?”</p>
+<p>But agent correctness is downstream of retrieval. If the agent retrieves the wrong evidence, the model can still produce a fluent answer that is confidently wrong.</p>
+<p>The surprising part is that retrieval errors often come from formatting, not from embeddings.</p>
+<p>When conversion from HTML/PDF/Excel into Markdown is “cosmetic,” it quietly breaks the internal geometry the agent depends on:</p>
+<ul>
+  <li>Headings flatten into paragraphs, so the agent can’t anchor queries to the right section.</li>
+  <li>Lists become sentences, so item-level constraints disappear.</li>
+  <li>Tables become unstructured text, so key-value relationships lose their shape.</li>
+  <li>Code blocks lose fences, so technical queries match poorly.</li>
+  <li>Provenance metadata is dropped, so citations can’t be verified.</li>
+</ul>
+<p>Structured Markdown fixes this by preserving meaning as stable blocks.</p>
+
+<h2>2. History &amp; Context</h2>
+<p>RAG pipelines started with a simple assumption: “If we embed the text, retrieval will work.” Early systems focused heavily on embeddings and indexing, expecting the retriever to find relevant passages from raw content.</p>
+<p>Teams then learned that retrieval quality depends just as much on representation—how documents are chunked and structured before embedding. If headings are flattened, lists are merged into paragraphs, or tables lose row/column alignment, the retriever can return the right topic but the wrong evidence unit.</p>
+<p>Agentic workflows made this even more sensitive. Agents retrieve repeatedly, compare evidence, and decide whether to call tools. When conversion changes the “geometry” of evidence units, the agent may ground on different chunks across steps, leading to retries, incorrect parameter extraction, or citation failures.</p>
+<p>Structured Markdown became the practical lever because it preserves semantic blocks (headings, lists, tables, code) and provenance in a stable, chunking-friendly form—so retrieval stays consistent and agent accuracy improves.</p>
+
+<h2>3. Definition / What It Is</h2>
+<p>Structured Markdown for AI agents is a Markdown representation that preserves meaning as stable, machine-friendly structure. It does three things: it preserves semantic units as explicit Markdown constructs, keeps those constructs deterministic across conversions, and attaches provenance so retrieved chunks can be grounded and cited. In other words, it’s not “pretty Markdown.” It’s a retrieval contract.</p>
+
+<h3>What “semantic units” mean in practice:</h3>
+<ul>
+  <li><strong>Headings:</strong> section boundaries and hierarchy (so retrieval can anchor evidence to the right topic and subtopic).</li>
+  <li><strong>Lists:</strong> discrete constraints, steps, and enumerations (so retrieval can return individual requirements or actions, not merged narrative text).</li>
+  <li><strong>Tables:</strong> row/column relationships and key-value pairs (so retrieval can preserve parameter/value alignment and avoid value swaps).</li>
+  <li><strong>Code blocks:</strong> exact tokens and language context (so retrieval can match precise commands, snippets, and technical details).</li>
+</ul>
+
+<h3>What “deterministic” means:</h3>
+<p>Given the same source document and the same conversion rules, the Markdown should produce the same structural patterns—ideally including stable IDs derived from meaning—so chunkers and retrievers behave consistently. This stability matters because agents retrieve repeatedly and ground decisions on evidence units; if the structure changes between conversions, the evidence geometry changes too, and the agent may retrieve different chunks for the same query.</p>
+
+<h2>4. Architecture / How It Works</h2>
+<p>Structured Markdown improves agent accuracy through a chain of effects:</p>
+<ul>
+  <li>Conversion preserves meaning as blocks.</li>
+  <li>Chunking uses those blocks to create stable evidence units.</li>
+  <li>Retrieval matches queries to the right evidence units.</li>
+  <li>The agent grounds its reasoning in retrieved evidence.</li>
+  <li>Citations remain stable because provenance survives conversion.</li>
+</ul>
+
+<h3>A simple end-to-end flow</h3>
+<pre><code>flowchart LR
+  A[Source document] --&gt; B[Structure-first conversion]
+  B --&gt; C[Markdown structure contract]
+  C --&gt; D[Chunking by semantic blocks]
+  D --&gt; E[Embedding + indexing]
+  E --&gt; F[Agent retrieval]
+  F --&gt; G[Grounding + citation checks]
+  G --&gt; H[Tool calls / final answer]</code></pre>
+
+<h2>5. Components &amp; Workflow</h2>
+<ol>
+  <li>
+    <p><strong>Structure-first conversion</strong></p>
+    <p>Instead of stripping tags and emitting plain text, the converter maps document elements to Markdown constructs:</p>
+    <ul>
+      <li>HTML headings to Markdown headings with consistent depth.</li>
+      <li>HTML lists to Markdown lists with preserved item boundaries.</li>
+      <li>HTML tables to Markdown tables (or a table contract format when Markdown tables are insufficient).</li>
+      <li>Code/pre blocks to fenced code blocks.</li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Markdown structure contract</strong></p>
+    <p>Define rules that your pipeline enforces. For example:</p>
+    <ul>
+      <li>Every section must have a heading.</li>
+      <li>Every list must remain a list (no flattening).</li>
+      <li>Every table must include a header row or an explicit “column meaning” block.</li>
+      <li>Every code block must include a language fence when available.</li>
+    </ul>
+  </li>
+</ol>
+
+<h2>3) Provenance-friendly structure</h2>
+<p>Agents need to cite evidence. That means each chunk should carry enough context to map back to the source section.</p>
+<p>Common approaches:</p>
+<ul>
+  <li>Section path prefixes (e.g., # Product &gt; Pricing &gt; Plans).</li>
+  <li>Stable chunk IDs derived from source URL + section heading + table signature.</li>
+  <li>Optional “evidence blocks” that include a short provenance line.</li>
+</ul>
+
+<h3>3.1) Stable IDs that survive conversion changes</h3>
+<p>For agent grounding, “stable” means the ID should not change when whitespace or formatting changes, but it should change when the evidence meaning changes.</p>
+<p>A practical approach:</p>
+<ul>
+  <li>Build the stable ID from source_url + normalized_section_path + evidence_signature.</li>
+</ul>
+<p>Evidence signature examples:</p>
+<ul>
+  <li>table: hash of header row + column count + first row key fields</li>
+  <li>list: hash of the list item texts (or item count + first/last item)</li>
+  <li>code: hash of the code block content</li>
+</ul>
+<p>This gives you replay safety: you can re-run conversion rules and still map retrieved chunks back to the same evidence unit.</p>
+
+<h2>4) Agent grounding checks</h2>
+<p>Even with good retrieval, agents should verify evidence before acting. Structured Markdown makes this easier because the agent can look for explicit patterns:</p>
+<ul>
+  <li>“This list item is the constraint.”</li>
+  <li>“This table row contains the parameter.”</li>
+  <li>“This code block is the exact command.”</li>
+</ul>
+
+<h2>5) Evidence selection for tool calling (agent-specific)</h2>
+<p>Tool-calling agents usually need to extract parameters from retrieved evidence. Structured Markdown makes that extraction more reliable because the agent can map evidence types to tool fields.</p>
+<p>For example:</p>
+<ul>
+  <li>If the evidence is a list of steps, the agent can map each item to a step parameter.</li>
+  <li>If the evidence is a table row, the agent can map columns to tool arguments.</li>
+  <li>If the evidence is a fenced code block, the agent can map it to a “command” or “query” field.</li>
+</ul>
+<p>Without structure, the agent often has to infer boundaries, which increases the chance of mixing values from different parts of the document.</p>
+
+<h2>6. Configuration / Setup</h2>
+<p>Below is a practical configuration checklist you can adapt.</p>
+
+<h3>Conversion rules (minimum viable contract)</h3>
+<ul>
+  <li><strong>Headings:</strong> preserve hierarchy; do not skip levels.</li>
+  <li><strong>Lists:</strong> keep item boundaries; do not merge list items into paragraphs.</li>
+  <li><strong>Tables:</strong> preserve row/column alignment; keep headers.</li>
+  <li><strong>Code:</strong> always fence; preserve whitespace.</li>
+</ul>
+
+<h3>Chunking rules (semantic-first)</h3>
+<ul>
+  <li>Prefer chunk boundaries at headings and list boundaries.</li>
+  <li>Treat tables as atomic units or as row groups.</li>
+  <li>Keep code blocks intact.</li>
+</ul>
+
+<h3>Validation gates (before embedding)</h3>
+<p>Run structural checks and quarantine content that fails:</p>
+<ul>
+  <li>Heading coverage: does the document have a reasonable number of headings?</li>
+  <li>List integrity: does the Markdown contain list markers for enumerations?</li>
+  <li>Table integrity: do tables have consistent column counts per row?</li>
+  <li>Code integrity: are code blocks fenced and non-empty?</li>
+</ul>
+
+<h3>A concrete Markdown structure contract (template)</h3>
+<p>Use a template that your converter always emits. The goal is to make chunking predictable.</p>
+<pre><code># &#123;section_title&#125;
+
+## &#123;subsection_title&#125;
+
+### &#123;optional_third_level&#125;
+
+Provenance: &#123;source_url&#125; | &#123;section_path&#125; | &#123;stable_chunk_id&#125;
+
+## Key Points
+
+- &#123;bullet_item_1&#125;
+- &#123;bullet_item_2&#125;
+
+## Parameters
+
+| Parameter | Value | Notes |
+|---|---|---|
+| &#123;name&#125; | &#123;value&#125; | &#123;notes&#125; |
+
+## Commands
+
+```&#123;language&#125;
+&#123;exact_command_or_snippet&#125;</code></pre>
+<p>You don’t need every block for every document. But when a block exists, it should follow the same internal rules so the agent sees consistent evidence geometry.</p>
+
+<h3>Validation signals you can score (original)</h3>
+<p>Instead of “does it look right?”, score structure with measurable signals:</p>
+<pre><code>heading_coverage_ratio = headings_found / expected_headings
+list_item_integrity = list_items_preserved / list_items_detected_in_source
+table_alignment_score = rows_with_consistent_column_count / total_rows
+code_fence_integrity = fenced_code_blocks_non_empty / fenced_code_blocks_total</code></pre>
+<p>Quarantine when any score drops below your threshold. Then re-run conversion with stricter normalization.</p>
+
+<h2>7. Examples</h2>
+
+<h3>Example 1: Headings that anchor retrieval</h3>
+<p><strong>Bad conversion:</strong></p>
+<p>Plain text paragraphs where “Pricing” and “Plans” are not headings.</p>
+<p><strong>Agent symptom:</strong></p>
+<p>The agent retrieves content that mentions pricing but not the specific plan constraints.</p>
+<p><strong>Structured Markdown fix:</strong></p>
+<p>Use headings so the chunker can create evidence units like:</p>
+<pre><code>## Pricing
+### Plans</code></pre>
+
+<h3>Example 2: Lists that preserve constraints</h3>
+<p><strong>Bad conversion:</strong></p>
+<p>“You must do X. You must do Y. You must do Z.” as a paragraph.</p>
+<p><strong>Agent symptom:</strong></p>
+<p>The agent may treat constraints as narrative text and miss that they are discrete requirements.</p>
+<p><strong>Structured Markdown fix:</strong></p>
+<p>Represent constraints as a list so retrieval can match “must” + item context.</p>
+
+<h3>Example 3: Tables that preserve relationships</h3>
+<p><strong>Bad conversion:</strong></p>
+<p>Table rows flattened into sentences without column meaning.</p>
+<p><strong>Agent symptom:</strong></p>
+<p>The agent swaps values across columns (e.g., “region” and “price”).</p>
+<p><strong>Structured Markdown fix:</strong></p>
+<p>Preserve table headers and row alignment. If Markdown tables are unreliable for your converter, use a table contract format that keeps column names explicit.</p>
+
+<h3>Example 4: Tool calling with list evidence</h3>
+<p><strong>Scenario:</strong> an agent is asked to “create a deployment checklist” from a vendor page.</p>
+<p><strong>Bad conversion:</strong> the checklist becomes a paragraph with sentences separated by commas.</p>
+<p><strong>Agent symptom:</strong> the agent produces a checklist, but it silently drops one requirement because it never had a discrete list item to retrieve.</p>
+<p><strong>Structured Markdown fix:</strong> keep the checklist as a Markdown list so retrieval returns the exact items.</p>
+
+<h3>Example 5: Citation correctness with provenance-friendly structure</h3>
+<p><strong>Scenario:</strong> an agent answers “What is the retention policy for logs?” and must cite the exact section.</p>
+<p><strong>Bad conversion:</strong> the policy text is present, but section boundaries are missing, and provenance metadata is dropped.</p>
+<p><strong>Agent symptom:</strong> the agent cites a chunk that contains the right words but not the right section, so the citation fails verification.</p>
+<p><strong>Structured Markdown fix:</strong> include a section path and stable chunk IDs so the agent can ground citations to the correct section.</p>
+
+<h3>Example 6: Before vs after chunk geometry (original)</h3>
+<p>Consider a vendor page section that contains:</p>
+<ul>
+  <li>a heading: “Retention Policy”</li>
+  <li>a list of retention durations</li>
+  <li>a table mapping log types to retention windows</li>
+</ul>
+<p><strong>Naive conversion (flattened):</strong></p>
+<ul>
+  <li>headings become paragraphs</li>
+  <li>list items merge into a single paragraph</li>
+  <li>the table becomes a sequence of values without row/column alignment</li>
+</ul>
+<p><strong>Agent symptom:</strong></p>
+<p>the retriever returns a chunk that contains the words “retention” and “logs,” but not the specific list item or the correct table row.</p>
+<p><strong>Structure-first conversion (contracted):</strong></p>
+<ul>
+  <li>the chunker can create separate evidence units for the list and the table</li>
+  <li>the agent retrieves the correct evidence block and can cite the exact section path</li>
+</ul>
+<p>This is the core mechanism: structured Markdown changes the shape of evidence, which changes what the retriever can return.</p>
+
+<h2>8. Performance &amp; Benchmarks</h2>
+<p>Structured Markdown doesn’t just change readability; it changes measurable retrieval behavior.</p>
+
+<h3>What to benchmark</h3>
+<ul>
+  <li>Retrieval relevance: does the top-k contain the correct evidence block?</li>
+  <li>Citation correctness: does the retrieved chunk map to the right section?</li>
+  <li>Agent task success: does the agent complete the workflow without tool retries?</li>
+</ul>
+
+<h3>A lightweight evaluation harness (original)</h3>
+<p>Create a small dataset of “agent queries” that each require a specific evidence type:</p>
+
+<ul>
+  <li>One query that requires a heading anchor.</li>
+  <li>One query that requires a list item.</li>
+  <li>One query that requires a table row.</li>
+  <li>One query that requires a code block.</li>
+</ul>
+<p>Then compare two pipelines:</p>
+<ul>
+  <li><strong>Pipeline A:</strong> naive Markdown conversion.</li>
+  <li><strong>Pipeline B:</strong> structure-first conversion with the contract + validation gates.</li>
+</ul>
+<p>Measure:</p>
+<ul>
+  <li>Top-k evidence hit rate.</li>
+  <li>Grounding pass rate (agent accepts evidence without contradiction).</li>
+  <li>Final task success rate.</li>
+</ul>
+<h3>Example results (how to report them)</h3>
+<p>Run the harness on a small, representative set (even 50–200 queries). Report results like this:</p>
+<pre><code>Evidence type         Pipeline A: naive Markdown    Pipeline B: structured contract
+Heading-anchored      0.62                          0.84
+List-item evidence    0.55                          0.81
+Table-row evidence    0.48                          0.77
+Code-block evidence   0.60                          0.79</code></pre>
+<p>Then add two agent-level metrics:</p>
+<ul>
+  <li>Grounding pass rate (agent accepts evidence without contradiction)</li>
+  <li>Tool-call success rate (agent completes without retries)</li>
+</ul>
+<p>If you don’t see improvements, the usual cause is that your chunker still ignores the structure you preserved.</p>
+<h3>Evidence artifact (example harness output)</h3>
+<p>Below is an example of what your harness output can look like when you run it end-to-end.</p>
+<pre><code>dataset: agent-geometry-50
+pipeline: naive-markdown
+topk_evidence_hit_rate: 0.58
+grounding_pass_rate: 0.41
+tool_call_success_rate: 0.36
+
+dataset: agent-geometry-50
+pipeline: structured-markdown-contract-v1
+topk_evidence_hit_rate: 0.81
+grounding_pass_rate: 0.72
+tool_call_success_rate: 0.66
+
+sample query: "What is the retention window for logs in region=us-east?"
+naive top-1 evidence:
+  - contains: retention, logs
+  - missing: region=us-east row
+structured top-1 evidence:
+  - contains: retention
+  - includes: table row region=us-east
+  - provenance: /Pricing/RetentionPolicy | stable_chunk_id=retpol_us-east_table_v3</code></pre>
+<p>The key is not the exact numbers. The key is that you can show the same query set, the same evidence types, and the same grounding checks.</p>
+<h3>Evidence-based claim (how to make it real)</h3>
+<p>When you run this harness, you should expect the biggest gains in:</p>
+<ul>
+  <li>table-heavy documents (value swaps drop)</li>
+  <li>policy/requirements pages (list item recall improves)</li>
+  <li>technical docs (code block matching improves)</li>
+</ul>
+<p>If you don’t see gains, it usually means your chunker isn’t using the structure you preserved.</p>
+<h2>9. Security Considerations</h2>
+<p>Structured Markdown can improve safety indirectly by improving grounding, but it also introduces new risks:</p>
+<ul>
+  <li>Prompt injection via converted content: preserve provenance so you can detect and quarantine suspicious sections.</li>
+  <li>Data leakage via citations: ensure citations don’t expose sensitive source URLs or internal identifiers.</li>
+  <li>Over-trusting formatting: validation gates should be strict; do not embed content that fails structural integrity checks.</li>
+</ul>
+<h2>10. Troubleshooting</h2>
+<p>When agent accuracy drops after a conversion change, use this decision tree.</p>
+<pre><code>flowchart TD
+  A[Agent answers wrong] --&gt; B&#123;Is retrieval returning the right section?&#125;
+  B -- No --&gt; C&#123;Are headings preserved as Markdown headings?&#125;
+  C -- No --&gt; C1[Fix heading mapping + chunking by headings]
+  C -- Yes --&gt; D&#123;Are lists preserved as lists?&#125;
+  D -- No --&gt; D1[Fix list mapping; keep item boundaries]
+  D -- Yes --&gt; E&#123;Are tables aligned with headers?&#125;
+  E -- No --&gt; E1[Fix table contract; validate column counts]
+  E -- Yes --&gt; F&#123;Are code blocks fenced and intact?&#125;
+  F -- No --&gt; F1[Fix code fencing; preserve whitespace]
+  F -- Yes --&gt; G[Check provenance + chunk IDs]
+  B -- Yes --&gt; H&#123;Does the agent ground correctly?&#125;
+  H -- No --&gt; H1[Add grounding checks; require evidence patterns]
+  H -- Yes --&gt; I[Likely embedding/indexing or query mismatch]</code></pre>
+<h3>Common symptoms and likely causes</h3>
+<ul>
+  <li>The agent cites the wrong section: provenance or stable IDs are missing.</li>
+  <li>The agent misses a requirement: list integrity was lost.</li>
+  <li>The agent swaps values: table alignment or header mapping failed.</li>
+  <li>The agent can’t find a command: code fences were removed.</li>
+</ul>
+<h3>When the decision tree points to “provenance + chunk IDs”</h3>
+<p>If retrieval returns the right text but citations fail, check:</p>
+<ul>
+  <li>Are section paths present in the converted Markdown?</li>
+  <li>Are stable IDs derived from meaning (section path + evidence signature), not from raw HTML offsets?</li>
+  <li>Does your chunker preserve the provenance line when it splits chunks?</li>
+</ul>
+<h2>11. Best Practices</h2>
+<h3>Treat Markdown structure as a contract with tests</h3>
+<p>Don’t treat Markdown conversion as “best effort.” Treat it like an interface your downstream systems depend on (chunker, retriever, agent grounding, citation verifier).</p>
+<p><strong>Concretely:</strong></p>
+<ul>
+  <li>Define a structure contract per document type (web pages, PDFs, spreadsheets).</li>
+  <li>Enforce it with automated checks (headings present, lists preserved, tables aligned, code fenced).</li>
+  <li>Version the contract (e.g., contract-v1, contract-v2) so you can reproduce retrieval behavior later.</li>
+  <li>Add regression tests using a small “golden set” of pages that historically break (navigation-heavy pages, table-heavy specs, policy pages).</li>
+</ul>
+<h3>Quarantine content that fails structural validation</h3>
+<p>If the structure is broken, embedding it usually makes retrieval worse in subtle ways (wrong chunk boundaries, missing evidence units, value swaps in tables).</p>
+<p><strong>Concretely:</strong></p>
+<ul>
+  <li>Run validation gates before embedding.</li>
+  <li>If a gate fails, quarantine the converted Markdown (and optionally the raw source) instead of indexing it.</li>
+  <li>Store the failure reason (e.g., table_alignment_score &lt; threshold, list_item_integrity &lt; threshold) so you can fix the converter deterministically.</li>
+  <li>Provide a retry path: stricter normalization rules, alternate extraction strategy, or a fallback representation (e.g., structured extraction for tables).</li>
+</ul>
+<h3>Keep chunking aligned with the structures you preserve</h3>
+<p>Structured Markdown only helps if chunking respects the structure. Chunking is where “meaning” becomes “retrievable evidence units.”</p>
+<p><strong>Concretely:</strong></p>
+<ul>
+  <li>Prefer chunk boundaries at headings and list boundaries.</li>
+  <li>Treat tables as atomic units or row groups (don’t split mid-row).</li>
+  <li>Keep fenced code blocks intact so exact tokens remain searchable.</li>
+  <li>Ensure provenance lines (section path + stable chunk ID) survive chunk splitting.</li>
+</ul>
+<h3>Add provenance so citations are verifiable</h3>
+<p>Agents need to cite evidence that can be traced back to the correct source section. Without provenance, you get “looks right” citations that fail verification.</p>
+<p><strong>Concretely:</strong></p>
+<ul>
+  <li>Include a provenance line in the converted Markdown (source URL, section path, stable chunk ID).</li>
+  <li>Derive stable IDs from meaning (section path + evidence signature), not from offsets that change across conversions.</li>
+  <li>When chunking splits content, propagate provenance to every chunk so citations remain consistent.</li>
+</ul>
+<h3>Version your conversion rules and record “versions tested”</h3>
+<p>Conversion changes can shift chunk geometry and retrieval behavior even if the text “looks similar.” Versioning makes changes debuggable.</p>
+<p><strong>Concretely:</strong></p>
+<ul>
+  <li>Record conversion rule versions (converter build, normalization contract version, table contract version).</li>
+  <li>Record chunker configuration versions (chunk sizes, boundary rules).</li>
+  <li>Record “versions tested” for the evaluation harness so you can compare results across time.</li>
+  <li>Use replay-safe storage: keep raw source + converted Markdown outputs so you can re-run conversion and re-index deterministically.</li>
+</ul>
+<h2>12. Common Mistakes</h2>
+<h3>Converting HTML to Markdown by stripping tags and emitting paragraphs</h3>
+<p>This destroys the evidence geometry agents rely on:</p>
+<ul>
+  <li>headings become plain text</li>
+  <li>lists become sentences</li>
+  <li>tables become unstructured sequences</li>
+</ul>
+<p>Result: retrieval returns “topic-adjacent” chunks instead of the exact evidence unit (wrong section, missing constraint, incomplete table row).</p>
+<h3>Allowing tables to degrade into unstructured text</h3>
+<p>Tables are high-risk because agents often need parameter/value relationships. If conversion removes alignment or headers, you get:</p>
+
+<ul>
+  <li>value swaps across columns</li>
+  <li>missing row context</li>
+  <li>inability to map “region” to “price” (or similar)</li>
+</ul>
+<p><strong>Result:</strong> confident but incorrect answers, especially in tool-calling workflows where parameters must be extracted precisely.</p>
+
+<h3>Flattening lists into sentences</h3>
+<p>Lists represent discrete constraints, steps, and enumerations. Flattening them:</p>
+<ul>
+  <li>merges multiple requirements into one paragraph</li>
+  <li>removes item boundaries that retrieval and grounding can target</li>
+</ul>
+<p><strong>Result:</strong> agents drop requirements or treat them as narrative rather than actionable constraints.</p>
+
+<h3>Changing conversion rules without re-running evaluation</h3>
+<p>Even small formatting changes can shift chunk boundaries and retrieval behavior. If you update conversion rules and don’t re-run an agent-focused harness, you can’t tell whether accuracy improved or regressed.</p>
+<p><strong>Result:</strong> “mystery drift” where agent behavior changes without a clear cause.</p>
+
+<h3>Embedding content that fails structural gates</h3>
+<p>If you index broken structure, you’re training the retriever to return misleading evidence units.</p>
+<p><strong>Result:</strong> downstream grounding and citation checks become harder, and tool calls become less reliable.</p>
+
+<h2>13. Alternatives &amp; Comparison</h2>
+
+<h3>Structured Markdown is one representation</h3>
+<p>Structured Markdown is designed to preserve semantic blocks in a chunking-friendly way:</p>
+<ul>
+  <li>headings for hierarchy</li>
+  <li>lists for discrete constraints</li>
+  <li>tables for aligned relationships</li>
+  <li>fenced code for exact tokens</li>
+  <li>provenance for grounding</li>
+</ul>
+<p>It’s especially effective when your chunker and retriever are configured to use those structures.</p>
+
+<h3>JSON extraction with schemas</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Can be more precise for high-risk entities (parameters, policies, tables).</li>
+  <li>Enables strict validation (types, required fields, allowed ranges).</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Requires extraction quality; if extraction fails, you may get empty or incorrect JSON.</li>
+  <li>More engineering effort (schema design, extraction logic, validation, retries).</li>
+</ul>
+<p><strong>Best use:</strong></p>
+<p>When you need correctness for specific fields (e.g., “retention_window_days” or “pricing_region_us_east”).</p>
+
+<h3>HTML retention</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Preserves original structure and can be useful for certain render-aware pipelines.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Chunking and normalization are harder.</li>
+  <li>You still need a strategy to make evidence units stable and agent-grounding-friendly.</li>
+</ul>
+<p><strong>Best use:</strong></p>
+<p>When you have a robust HTML-aware chunker and a proven normalization pipeline.</p>
+
+<h3>Plain text</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Simplest and fastest to implement.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Loses semantic geometry (headings, lists, tables).</li>
+  <li>Retrieval becomes less targeted and citations become harder to verify.</li>
+</ul>
+<p><strong>Best use:</strong></p>
+<p>When you don’t need high evidence precision (or when you have strong downstream extraction).</p>
+
+<h3>Hybrid approach (recommended in practice)</h3>
+<p>Many teams combine:</p>
+<ul>
+  <li>Markdown for human-readable structure and chunking geometry.</li>
+  <li>Structured extraction for high-risk entities (tables, policies, parameters).</li>
+</ul>
+<p>This hybrid reduces the “formatting brittleness” of pure Markdown while avoiding the full complexity of schema-only pipelines.</p>
+
+<h2>14. Enterprise / Cloud Deployment</h2>
+
+<h3>Run conversion in a deterministic, versioned service</h3>
+<p>In production, conversion must be reproducible:</p>
+<ul>
+  <li>deterministic normalization rules</li>
+  <li>versioned converter builds</li>
+  <li>consistent table/list/code mapping</li>
+</ul>
+<p>This ensures that replays and re-indexing produce comparable evidence geometry.</p>
+
+<h3>Store both raw source and converted Markdown for replay</h3>
+<p>For debugging and compliance:</p>
+<ul>
+  <li>keep the raw source document</li>
+  <li>keep the converted Markdown output</li>
+  <li>store conversion metadata (contract version, converter version, timestamps)</li>
+</ul>
+<p>When an agent accuracy issue appears, you can replay conversion and isolate whether the issue is conversion, chunking, or retrieval.</p>
+
+<h3>Maintain a quarantine bucket for failed structural validations</h3>
+<p>Quarantine is a safety mechanism:</p>
+<ul>
+  <li>prevents broken structure from entering the index</li>
+  <li>provides a backlog for converter improvements</li>
+  <li>supports retry workflows (stricter normalization, alternate extraction)</li>
+</ul>
+<p>In enterprise settings, quarantine also helps with auditability: you can show what was excluded and why.</p>
+
+<h3>Use canary indexing</h3>
+<p>Canary indexing reduces risk when you change conversion rules:</p>
+<ul>
+  <li>convert + validate a small slice</li>
+  <li>run the evaluation harness</li>
+  <li>index only if metrics meet thresholds</li>
+  <li>roll out gradually</li>
+</ul>
+<p>This prevents full re-embedding from turning a formatting regression into a system-wide agent failure.</p>
+
+<h2>15. FAQs</h2>
+
+<h3>Q1. Does structured Markdown really matter if we use strong embeddings?</h3>
+<p>Yes. Strong embeddings can’t fully recover lost meaning when structure is flattened. If headings, lists, and tables degrade into generic text, retrieval becomes less targeted. That shows up as lower evidence hit rate and weaker grounding for agent workflows, and in practice it reduces “almost right” retrieval that leads to wrong tool calls.</p>
+
+<h3>Q2. What’s the biggest win: headings, lists, or tables?</h3>
+<p>It depends on your corpus. For policy pages and requirements, lists often matter most because each item is a discrete constraint. For product specs and pricing, tables usually dominate because agents need parameter/value relationships. For technical docs, code blocks can be the difference between “close” and “correct.”</p>
+
+<h3>Q3. How do we measure “agent accuracy” from formatting changes?</h3>
+<p>Use an evaluation harness with agent queries that require specific evidence types. Compare top-k evidence hit rate between naive and structure-first pipelines. Then measure grounding pass rate (evidence accepted without contradiction) and final task success. This isolates formatting effects because the agent sees the same query set.</p>
+
+<h3>Q4. Should we always use Markdown tables?</h3>
+<p>Not always. Markdown tables are convenient, but some converters produce inconsistent alignment. If table fidelity is critical, use a table contract format and validate column counts before embedding. The goal is not “Markdown tables exist,” it’s “row/column relationships survive conversion,” and when they do, agents stop swapping values across columns.</p>
+
+<h3>Q5. What if the source document has messy formatting?</h3>
+<p>Quarantine and retry with stricter normalization rules. If you can’t reliably extract structure, it’s better to avoid embedding than to embed misleading geometry. Messy formatting is often where naive converters fail silently (especially lists and tables). Your validation gates should catch these failures before they become agent errors.</p>
+
+<h3>Q6. Do we need stable chunk IDs?</h3>
+<p>For citation correctness and replay safety, yes. Stable IDs let you trace retrieved chunks back to the same section across conversion versions. Without stable IDs, you can’t reliably debug “why did the agent change its answer?” after a conversion tweak. Stable IDs also make it easier to quarantine and re-index only affected evidence units.</p>
+
+<h3>Q7. Can structured Markdown help with tool calling?</h3>
+<p>It can. When evidence is represented as explicit blocks (lists of steps, fenced code, table rows), the agent maps it to tool parameters more reliably. This reduces boundary inference, which is where many tool-call mistakes come from. Structured Markdown also makes grounding checks easier before tool execution.</p>
+
+<h3>Q8. How strict should validation gates be?</h3>
+<p>Strict enough to prevent embedding broken structure. Start with a minimum viable contract (headings, list integrity, table alignment, fenced code). Then tighten thresholds based on observed failure modes (table alignment vs list flattening). Quarantine is cheaper than debugging agent mistakes after the fact.</p>
+
+<h3>Q9. Is this only for RAG, or also for non-RAG agents?</h3>
+<p>It’s most impactful for RAG and retrieval-heavy agents. Even non-RAG agents benefit when you use retrieval for context selection, evidence comparison, or citation. Any workflow that depends on evidence selection is sensitive to document geometry. Structured Markdown improves that geometry, regardless of whether the agent is fully RAG or retrieval-assisted.</p>
+
+<h2>Q10. What’s the fastest way to improve accuracy this week?</h2>
+<p>Preserve headings, lists, and code fences first, then add table validation. After that, align chunking boundaries with those structures and run the evaluation harness. This sequence gives fast wins because it fixes the highest-frequency evidence failures. Then iterate using the harness output to target the next bottleneck.</p>
+
+<h2>Q 11. How do we avoid re-embedding everything every time?</h2>
+<p>Use canary indexing and replay-safe conversion. When you change conversion rules, re-embed only the affected documents or partitions. Keep versioned conversion outputs so you can compare retrieval behavior across versions. Stable IDs help you map old evidence units to new ones and avoid unnecessary re-indexing.</p>
+
+<h2>Q12. What’s the relationship between chunking and Markdown structure?</h2>
+<p>Chunking is where structure becomes operational. If your chunker ignores headings and lists, preserving them in Markdown won’t translate into retrieval gains. Structured Markdown gives the chunker the signals it needs; chunking decides whether those signals become evidence boundaries. So treat chunker configuration as part of the structure contract.</p>
+
+<h2>Q13. Can we use structured Markdown without changing the chunker?</h2>
+<p>You can, but you’ll get limited benefit. If your chunker still splits by token count or naive character windows, it may cut through headings, list items, or table rows. The structure contract only pays off when chunking respects it. At minimum, ensure chunk boundaries align with headings and keep tables/code blocks intact.</p>
+
+<h2>Q14. How do we handle documents with repeated headings?</h2>
+<p>Repeated headings are common in navigation-heavy pages. Use stable IDs that incorporate the full section path (not just the heading text). That way, retrieval can distinguish “Pricing &gt; Plans” from another “Pricing &gt; Plans” instance. Also include the full section path in the provenance line so citations remain unambiguous.</p>
+
+<h2>Q15. What’s the difference between “structured Markdown” and “more Markdown”?</h2>
+<p>More Markdown can still be wrong if it’s inconsistent. Structured Markdown is about stable semantics: headings represent hierarchy, lists represent discrete items, tables preserve alignment, and provenance survives conversion. The difference is that structured Markdown is designed to be chunking-friendly and agent-grounding-friendly. That’s why it improves retrieval geometry, not just readability.</p>
+
+<h2>Q16. Do we need to re-run evaluation after every conversion tweak?</h2>
+<p>Yes for anything that changes structure. Even small changes like list flattening or table header removal can shift chunk boundaries and retrieval behavior. Use canary evaluation to keep the feedback loop fast. If you version conversion rules, you can attribute changes to formatting rather than to model drift.</p>
+
+<h2>16. References</h2>
+<ul>
+  <li>Ollagraph: Markdown for Retrieval-Augmented Generation (RAG): How Proper Formatting Improves AI Retrieval</li>
+  <li>Ollagraph: HTML to Markdown for LLMs: Preserve Semantic Structure (Not Just Text)</li>
+  <li>Ollagraph: Structured Extraction MCP Evidence, Retry Decision Tree</li>
+  <li>Ollagraph: HTML to Markdown for LLMs: Preserve Semantic Structure (Not Just Text)</li>
+  <li>Ollagraph: XLSX to Markdown for RAG: Converting Excel Workbooks into AI-Ready Markdown</li>
+  <li>Ollagraph: PDF to Markdown for RAG: Preserve Tables, Layout, and Document Structure</li>
+  <li>Ollagraph: DOCX to Markdown for RAG: Convert Word Documents into AI-Ready Knowledge</li>
+</ul>
+
+<h2>17. Conclusion</h2>
+<p>Structured Markdown improves AI agent accuracy because it preserves the evidence geometry agents rely on: stable section boundaries, discrete constraints, aligned table relationships, and intact code tokens. When conversion keeps these structures intact, the retriever stops returning “topic-adjacent” text and starts returning the exact evidence unit the agent needs. That directly reduces common failure modes like missing requirements from flattened lists, swapped values from broken tables, and incorrect grounding from missing provenance.</p>
+<p>Treat Markdown as a retrieval contract, not a cosmetic output. That means you enforce deterministic conversion rules so the same source produces the same structural patterns, you apply validation gates so broken structure never reaches embeddings, and you include provenance-friendly structure so citations remain verifiable. With stable IDs and section paths, you can trace retrieved chunks back to the correct source context even after conversion changes.</p>
+<p>Finally, measure the outcome with an agent-focused evaluation harness. Don’t stop at “the Markdown looks good.” Evaluate evidence hit rate, grounding pass rate, and tool-call success on a query set designed around the evidence types agents actually need (headings, list items, table rows, and code blocks). When you do this, “formatting” stops being a preprocessing detail and becomes a correctness lever—one you can test, version, and improve like any other part of your agent system.</p>
+</Article>
