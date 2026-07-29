@@ -1,0 +1,659 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is a document-to-Markdown pipeline for an AI knowledge base?", a: "It is an orchestrated system that converts heterogeneous documents into deterministic, normalized Markdown. The pipeline also validates structure and versions outputs so downstream chunking and indexing can trust the result. It is more than a converter call; it is a set of contracts between stages." },
+  { q: "Why does batch conversion fail when a simple script works?", a: "A script usually assumes clean inputs, fast conversions, and one-time processing. At scale, documents fail in different ways, workers hit backpressure, and bad-but-valid Markdown can slip through. That creates hidden quality issues that only show up later in retrieval." },
+  { q: "How do you make document processing idempotent?", a: "Use a stable document identifier plus a content or version fingerprint to define one canonical output. The pipeline should skip, overwrite, or reconcile based on that key so reruns do not create duplicate or conflicting artifacts. Idempotency is what makes retries and reprocessing safe." },
+  { q: "What should a Markdown conversion quality gate check?", a: "Check structural signals, not just syntax. Good gates look for heading hierarchy, broken tables, duplicated sections, empty output, and obvious OCR noise. The goal is to block garbage Markdown before it reaches embeddings and indexing." },
+  { q: "What is quarantine and replay in a conversion pipeline?", a: "Quarantine isolates documents that fail conversion or miss quality thresholds without stopping the whole batch. Replay lets you reprocess those documents later after fixing rules, updating normalization, or improving the converter. Together, they preserve throughput and make recovery controlled." },
+  { q: "How do you prevent quality drift over time?", a: "Version the normalization contract and keep evidence for each run, including validation metrics and failure reasons. Compare those signals across releases so you can detect regressions before they affect search quality. In practice, drift control is a mix of deterministic transforms, auditability, and scheduled rechecks." },
+];
+---
+<Article
+  title="Document-to-Markdown Pipelines for AI Knowledge Bases"
+  description="Build reliable batch conversion pipelines with idempotency, validation gates, and quarantine/replay to keep AI knowledge bases clean."
+  date="2026-07-29"
+  readingTime={23}
+  tags={["markdown", "pipelines", "idempotency", "validation", "ingestion"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Batch conversion sounds simple until you run it on real corpora: thousands of documents, mixed formats, inconsistent quality, and a downstream system that assumes your output is correct. A document-to-Markdown pipeline for an AI knowledge base is therefore less about “converting files” and more about enforcing contracts between stages: routing, conversion, normalization, validation, chunking, and indexing.</p>
+<p>In this post, you’ll get a production blueprint for batch conversion at scale. You’ll see how to design idempotent jobs, how to quarantine failures without blocking the whole corpus, how to validate Markdown with measurable structural signals, and how to replay conversions safely when rules or converter versions change.</p>
+<p><strong>Key takeaway:</strong> Treat conversion as a pipeline with contracts and evidence, not as a one-off transformation.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Batch conversion needs orchestration primitives: queues, backpressure, retries, and visibility timeouts.</li>
+  <li>Idempotency is non-negotiable: the same document should not produce multiple conflicting outputs.</li>
+  <li>Normalization must be deterministic and versioned, or quality drift will silently accumulate.</li>
+  <li>Validation gates prevent “garbage Markdown” from becoming “garbage embeddings.”</li>
+  <li>Quarantine + replay beats blind retries: you preserve throughput while improving quality.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>Most teams start with a conversion script. It reads a file, calls a converter, writes Markdown, and moves on. That works for a pilot.</p>
+<p>It fails at scale for four predictable reasons.</p>
+<p>First, batch jobs become bursty. Some documents convert quickly; others stall on scanned pages, complex tables, or corrupted inputs. Without backpressure, your workers either time out or thrash.</p>
+<p>Second, failures are not binary. A converter can return Markdown that is syntactically valid but structurally wrong: missing headings, broken tables, duplicated headers, or OCR artifacts that look like real content. If you only check HTTP status codes, you’ll embed bad output.</p>
+<p>Third, reruns are expensive and dangerous. Pipelines get reprocessed when you change chunking rules, update normalization, or fix a bug. If your pipeline is not idempotent, reruns can create multiple versions of “the same” document in your vector store.</p>
+<p>Fourth, quality drift is inevitable. Even if you never change your code, converter versions and upstream document formats evolve. Without validation gates and evidence, you won’t notice retrieval regressions until users complain.</p>
+<p>This article addresses the operational problem: how to build a document-to-Markdown pipeline that stays correct under load, fails safely, and produces evidence you can trust.</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Document-to-Markdown conversion has existed for years as a convenience step. What changed in the last 18–24 months is the role of Markdown in AI knowledge bases.</p>
+<p>Markdown is now treated as an intermediate contract between extraction and retrieval. That contract matters because chunkers and embedding models respond to structure: headings delimit sections, tables preserve relationships, and provenance anchors support citations.</p>
+<p>As a result, the engineering focus shifted from “can we convert?” to “can we convert reliably, repeatedly, and measurably?” Batch conversion at scale is the natural next step once you move from a handful of documents to a living knowledge base.</p>
+
+<h2>3. Definition / What It Is</h2>
+<p><strong>Definition.</strong> A document-to-Markdown pipeline for an AI knowledge base is an orchestrated system that converts heterogeneous documents into deterministic, normalized Markdown, validates output against structural quality signals, and produces versioned artifacts for chunking and indexing.</p>
+<p>A pipeline is not a single converter call. It is a chain of stages with explicit contracts:</p>
+<ul>
+  <li>Routing contract: choose the right conversion path based on document type and complexity.</li>
+  <li>Normalization contract: transform raw Markdown into canonical patterns.</li>
+  <li>Validation contract: verify structural invariants and quality signals.</li>
+  <li>Idempotency contract: ensure stable outputs per document version.</li>
+  <li>Replay contract: allow safe reprocessing when rules change.</li>
+</ul>
+
+<h2>4. Architecture / How It Works</h2>
+<p>Below is a reference architecture for batch conversion at scale.</p>
+<pre><code>flowchart TD
+  A[Document source: S3/GCS/URL] --&gt; B[Ingestion queue]
+  B --&gt; C[Job creation + idempotency key]
+  C --&gt; D[Router: type + complexity detection]
+  D --&gt; E1[Conversion worker: PDF/DOCX/HTML]
+  D --&gt; E2[OCR worker (if needed)]
+  E1 --&gt; F[Normalization to canonical Markdown]
+  E2 --&gt; F
+  F --&gt; G[Validation gate + quality scoring]
+  G --&gt;|pass| H[Chunking + metadata]
+  G --&gt;|fail| I[Quarantine + reason codes]
+  H --&gt; J[Embeddings + indexing]
+  I --&gt; K[Replay with adjusted settings or review]</code></pre>
+
+<h3>The pipeline’s “contracts” in practice</h3>
+<p>A pipeline becomes reliable when each stage produces artifacts that downstream stages can reason about.</p>
+<ul>
+  <li>The router emits a conversion plan (e.g., “text-based PDF extraction with table mode on”).</li>
+  <li>The converter emits raw Markdown plus conversion metadata (e.g., page count, OCR used, table extraction mode).</li>
+  <li>The normalizer emits canonical Markdown plus a normalization version.</li>
+  <li>The validator emits pass/fail plus structured reasons (e.g., “heading coverage below threshold”).</li>
+</ul>
+<p>This is what makes batch conversion debuggable.</p>
+
+<h2>5. Components &amp; Workflow</h2>
+<p>This section describes a concrete workflow you can implement.</p>
+
+<h3>1) Ingestion and job creation</h3>
+<p>Batch conversion starts with ingestion. You store the original document bytes in object storage and create a job record.</p>
+<p>Your job payload should include:</p>
+<pre><code>document_id: stable identifier (not a filename)
+source_type: pdf, docx, html, url, scanned_pdf
+source_uri: object storage key or URL
+requested_output: markdown (optionally markdown+json)
+pipeline_version: version of your normalization + validation rules
+converter_version: version of the conversion engine
+idempotency_key: derived from (document_id, source_hash, pipeline_version, converter_version)</code></pre>
+<p><strong>Why the idempotency key matters:</strong> if the same document is re-ingested, you should either reuse the existing artifact or create a new artifact only when the pipeline inputs truly changed.</p>
+
+<h3>2) Router: type and complexity detection</h3>
+<p>Routing reduces both latency and cost. It also reduces failure rates by selecting the right extraction strategy.</p>
+<p>A practical router uses cheap signals:</p>
+
+<ul>
+  <li>For PDFs: detect whether the PDF has extractable text or is image-only.</li>
+  <li>For DOCX: detect whether tables and nested lists are present.</li>
+  <li>For HTML: detect whether the page is content-heavy or navigation-heavy.</li>
+  <li>For all types: sample a small portion to estimate <em>structure density</em> (how many headings/tables per page).</li>
+</ul>
+<p>The router outputs a conversion plan, not just a type.</p>
+
+<h2>3) Conversion workers (async)</h2>
+<p>Conversion should run asynchronously with backpressure.</p>
+<p><strong>Operational requirements:</strong></p>
+<ul>
+  <li>Limit concurrent conversions per worker type.</li>
+  <li>Use a queue with visibility timeouts so jobs don’t get stuck.</li>
+  <li>Retry only transient failures (network timeouts, temporary service errors).</li>
+  <li>For deterministic failures (corrupt files, unsupported formats), quarantine immediately.</li>
+</ul>
+<p>A conversion worker should emit:</p>
+<ul>
+  <li><strong>raw_markdown</strong> (or a pointer to stored output)</li>
+  <li><strong>conversion_metadata</strong> (OCR used, extraction mode, page count)</li>
+  <li><strong>artifact_hash</strong> (hash of raw output)</li>
+</ul>
+
+<h2>4) Normalization to canonical Markdown</h2>
+<p>Normalization is where you eliminate structure drift.</p>
+<p>Normalization should:</p>
+<ul>
+  <li>Canonicalize heading levels (e.g., ensure consistent #/## mapping).</li>
+  <li>Normalize tables into a consistent Markdown table schema.</li>
+  <li>Remove repeated headers/footers when they are clearly boilerplate.</li>
+  <li>Standardize list formatting so chunkers can detect list boundaries.</li>
+  <li>Preserve provenance anchors in a consistent format.</li>
+</ul>
+<p>Crucially, normalization must be versioned. If you change normalization rules, you should treat it as a new pipeline version.</p>
+
+<h2>5) Validation gate + quality scoring</h2>
+<p>Validation is the cost lever. It prevents bad Markdown from reaching embeddings.</p>
+<p>A validation gate should compute measurable signals. Examples:</p>
+<ul>
+  <li>Heading coverage: expected heading density vs. observed.</li>
+  <li>Table integrity: consistent column counts and presence of header rows.</li>
+  <li>List integrity: list markers and indentation patterns.</li>
+  <li>Provenance presence: required anchors exist for citations.</li>
+  <li>OCR artifact rate: detect common OCR noise patterns.</li>
+</ul>
+<p>The validator outputs:</p>
+<ul>
+  <li><strong>status</strong>: pass, fail, or quarantine</li>
+  <li><strong>quality_score</strong>: numeric score for monitoring</li>
+  <li><strong>failure_reasons</strong>: structured codes (e.g., MISSING_HEADINGS, TABLE_SCHEMA_DRIFT)</li>
+</ul>
+
+<h2>6) Quarantine + replay</h2>
+<p>Quarantine is not a dead end. It’s a controlled path to improvement.</p>
+<p>When validation fails, you store:</p>
+<ul>
+  <li>the raw conversion artifact</li>
+  <li>the normalized Markdown artifact (if produced)</li>
+  <li>the failure reasons</li>
+  <li>the pipeline version and converter version</li>
+</ul>
+<p>Then you replay with adjusted settings or route to review.</p>
+<p><strong>Replay strategies:</strong></p>
+<ul>
+  <li>If OCR was skipped but needed: rerun with OCR enabled.</li>
+  <li>If tables are broken: rerun with table extraction mode tuned.</li>
+  <li>If headings are missing: rerun with a different heading inference strategy.</li>
+</ul>
+
+<h2>7) Chunking + metadata</h2>
+<p>Chunking should use the canonical Markdown structure.</p>
+<p>Your chunk metadata should include:</p>
+<ul>
+  <li><strong>document_id</strong></li>
+  <li><strong>pipeline_version</strong></li>
+  <li><strong>chunk_index</strong></li>
+  <li><strong>heading_path</strong> (e.g., Section 4 &gt; 4.2 &gt; 4.2(a))</li>
+  <li><strong>provenance_anchor</strong> (page/offset)</li>
+  <li><strong>table_id</strong> (if chunk contains a table)</li>
+</ul>
+<p>This metadata is what makes retrieval explainable.</p>
+
+<h2>8) Embeddings + indexing</h2>
+<p>Embeddings should only run for validated artifacts.</p>
+<p><strong>Operationally:</strong></p>
+<ul>
+  <li>Use batch embedding jobs.</li>
+  <li>Store embedding model version.</li>
+  <li>Store index version.</li>
+  <li>If you reprocess a corpus, you can rebuild indexes deterministically.</li>
+</ul>
+
+<h2>6. Configuration / Setup</h2>
+<p>Here’s a practical configuration model for batch conversion.</p>
+
+<h3>Pipeline configuration</h3>
+<ul>
+  <li><strong>pipeline_version</strong>: semantic version (e.g., 1.4.0)</li>
+  <li><strong>normalization_ruleset</strong>: identifier for canonicalization logic</li>
+  <li><strong>validation_thresholds</strong>: numeric thresholds for quality signals</li>
+  <li><strong>quarantine_policy</strong>: what to do on fail (quarantine vs. retry)</li>
+  <li><strong>routing_rules</strong>: thresholds for selecting conversion paths</li>
+</ul>
+
+<h3>Worker configuration</h3>
+<ul>
+  <li><strong>max_concurrency</strong>: per worker type</li>
+  <li><strong>timeout_seconds</strong>: conversion and OCR timeouts</li>
+  <li><strong>retry_policy</strong>: transient vs. deterministic failure handling</li>
+  <li><strong>artifact_storage</strong>: where to store raw and normalized outputs</li>
+</ul>
+
+<h3>Idempotency configuration</h3>
+<ul>
+  <li><strong>source_hash_algorithm</strong>: e.g., SHA-256</li>
+  <li><strong>idempotency_key_format</strong>: stable string format</li>
+  <li><strong>artifact_retention</strong>: how long to keep raw artifacts for replay</li>
+</ul>
+
+<h2>7. Examples</h2>
+
+<h3>Example 1: Mixed corpus ingestion</h3>
+<p>You ingest a folder containing:</p>
+<ul>
+  <li>2,000 PDFs (some scanned)</li>
+  <li>500 DOCX files with tables</li>
+  <li>300 HTML pages</li>
+</ul>
+<p>The router detects per-document complexity and emits plans:</p>
+<ul>
+  <li>scanned PDFs -&gt; OCR path</li>
+  <li>table-heavy DOCX -&gt; table extraction mode on</li>
+  <li>HTML -&gt; content extraction mode with boilerplate removal</li>
+</ul>
+<p>Validation then quarantines the subset where heading coverage is too low or table schema drift is detected.</p>
+
+<h3>Example 2: Safe rerun after normalization update</h3>
+<p>You update normalization rules to improve heading inference.</p>
+<p>Because the pipeline version changes, the idempotency key changes. That means:</p>
+<ul>
+  <li>existing artifacts remain untouched</li>
+  <li>new artifacts are produced under the new pipeline version</li>
+  <li>you can compare quality scores across versions before rebuilding the index</li>
+</ul>
+<p>This is how you avoid “silent regressions.”</p>
+
+<h3>Example 3: Quarantine-driven improvement loop</h3>
+<p>Suppose 7% of documents fail validation due to table schema drift.</p>
+<p>You inspect quarantined artifacts and discover a pattern:</p>
+<ul>
+  <li>tables with multi-level headers are being flattened incorrectly</li>
+</ul>
+<p>You adjust the table normalization strategy and replay only quarantined documents. Throughput stays high because you don’t block the entire corpus.</p>
+
+<h2>8. Performance &amp; Benchmarks</h2>
+<p>This section focuses on how to measure batch conversion performance in a way that correlates with downstream value.</p>
+
+<h3>Metrics that matter</h3>
+<p>Track these metrics per pipeline version:</p>
+<ul>
+  <li>Throughput: documents/minute and pages/minute</li>
+  <li>Latency distribution: p50/p95 conversion time</li>
+  <li>Quarantine rate: percent of documents failing validation</li>
+  <li>Pass rate by reason: which failure codes dominate</li>
+  <li>Cost per usable document: conversion + normalization + embedding divided by number of validated documents</li>
+  <li>Chunk yield: average chunks per document for validated outputs</li>
+</ul>
+
+<h3>A simple benchmark harness</h3>
+<p>Run a benchmark on a representative sample (e.g., 200–500 documents) and compute:</p>
+<ul>
+  <li>average conversion time</li>
+  <li>average quality score</li>
+  <li>quarantine rate</li>
+  <li>table integrity pass rate</li>
+</ul>
+<p>Then compare pipeline versions.</p>
+
+<h3>Evidence-driven tuning</h3>
+<p>When you tune thresholds, you should expect tradeoffs:</p>
+<ul>
+  <li>Lower thresholds increase pass rate but may embed noisier content.</li>
+  <li>Higher thresholds reduce quarantine but can block too many documents.</li>
+</ul>
+<p>The goal is to find a threshold that maximizes retrieval quality downstream, not just conversion success.</p>
+
+<h3>A tiny quality gate example (CLI output)</h3>
+<p>When you run validation, you want structured output you can aggregate in dashboards.</p>
+<p>Example validator output for a single document:</p>
+<pre><code>&#123;
+  "document_id": "doc_9f3a",
+  "pipeline_version": "1.4.0",
+  "converter_version": "pdf-extractors-2.1.3",
+  "status": "pass",
+  "quality_score": 0.87,
+  "signals": &#123;
+    "heading_coverage": &#123;"observed": 0.92, "min": 0.75&#125;,
+    "table_schema_integrity": &#123;"observed": 1.0, "min": 0.95&#125;,
+    "provenance_anchors": &#123;"observed": 12, "min": 8&#125;
+  &#125;,
+  "artifact_hash": "sha256:3b1c...a9e2"
+&#125;</code></pre>
+<p>This is the kind of evidence you can use to compare pipeline versions and to explain why a document was quarantined.</p>
+
+<h2>9. Security Considerations</h2>
+<p>Batch conversion pipelines process untrusted inputs. Treat them as hostile.</p>
+<p><strong>Key practices:</strong></p>
+<ul>
+  <li>Validate file types and reject malformed inputs early.</li>
+  <li>Strip or sandbox embedded objects and macros.</li>
+  <li>Limit resource usage per job (CPU time, memory, output size).</li>
+  <li>Store artifacts with access controls.</li>
+  <li>Log provenance and pipeline versions for auditability.</li>
+</ul>
+<p>If your pipeline supports URLs, also consider SSRF protections and allowlist policies.</p>
+
+<h2>10. Troubleshooting</h2>
+
+<h3>Symptom: Throughput collapses during bursts</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>too many concurrent conversions</li>
+  <li>OCR jobs dominating worker capacity</li>
+  <li>queue visibility timeouts too short</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>add backpressure by worker type</li>
+  <li>separate OCR queue from text extraction queue</li>
+  <li>tune concurrency and timeouts</li>
+</ul>
+
+<h3>Symptom: Many documents fail validation</h3>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>normalization rules changed but validation thresholds weren’t updated</li>
+  <li>converter version changed output patterns</li>
+  <li>routing misclassified document types</li>
+</ul>
+<p><strong>Fix:</strong></p>
+
+<ul>
+  <li>compare quality score distributions across pipeline versions</li>
+  <li>inspect top failure reasons and adjust routing/normalization</li>
+</ul>
+<p><strong>Symptom:</strong> Reruns create duplicates in the vector store</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>idempotency key not stable</li>
+  <li>artifact hashes not used to dedupe</li>
+  <li>index rebuild logic not versioned</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>enforce idempotency at job creation time</li>
+  <li>store pipeline version and artifact hash in metadata</li>
+  <li>rebuild indexes deterministically per pipeline version</li>
+</ul>
+
+<h2>11. Best Practices</h2>
+<p><strong>Version everything:</strong> converter version, normalization ruleset, validation thresholds, and chunking logic</p>
+<p>Treat every transformation step like a “schema” that can change over time.</p>
+<p><strong>Converter version:</strong> If you upgrade the PDF/DOCX/HTML extraction engine, output structure can shift (tables, headings, whitespace, OCR behavior). Store the exact version used per document.</p>
+<p><strong>Normalization ruleset:</strong> Normalization is where you enforce canonical Markdown patterns. If you change heading mapping, table formatting, or boilerplate removal, you must bump the ruleset version.</p>
+<p><strong>Validation thresholds:</strong> If you tighten or loosen quality gates (e.g., minimum heading coverage), the pass/fail outcome changes. Version thresholds so you can explain why a document was accepted or quarantined.</p>
+<p><strong>Chunking logic:</strong> Chunk boundaries and metadata shape retrieval. If chunking changes (window size, overlap, heading-based splitting), you should treat it as a new version and rebuild indexes accordingly.</p>
+<p>Operationally, this means every artifact (raw Markdown, normalized Markdown, validation report, chunks, embeddings) should carry metadata like pipeline_version, converter_version, and chunking_version. That enables deterministic replays and prevents “silent regressions.”</p>
+
+<p><strong>Make validation structured:</strong> failure reasons should be codes, not free text</p>
+<p>Validation should produce machine-readable outputs so you can aggregate, alert, and route remediation.</p>
+<ul>
+  <li>Use failure codes like MISSING_HEADINGS, TABLE_SCHEMA_DRIFT, PROVENANCE_ANCHOR_MISSING, OCR_ARTIFACT_SPIKE.</li>
+  <li>Store signal values (observed vs. min/max) so you can understand why it failed.</li>
+  <li>Keep human-readable messages optional, but don’t rely on them for automation.</li>
+</ul>
+<p><strong>Why this matters:</strong> if you only log free-form text, you can’t reliably compute “top failure reasons,” you can’t build dashboards, and you can’t automatically decide whether to replay with OCR enabled vs. adjust table extraction.</p>
+
+<p><strong>Quarantine early:</strong> don’t wait until after embeddings to discover bad output</p>
+<p>Embeddings are expensive and they “lock in” bad content into your retrieval layer.</p>
+<ul>
+  <li>Run validation immediately after normalization (or after the minimal required transformation).</li>
+  <li>If validation fails, route to quarantine instead of continuing to chunking/embeddings.</li>
+  <li>Optionally allow a controlled exception: only embed partial content if your validator can prove which sections are reliable (otherwise you risk mixing correct and incorrect context).</li>
+</ul>
+<p>This reduces cost and prevents polluted vector stores that are hard to clean later.</p>
+
+<p><strong>Keep raw artifacts for replay:</strong> you can’t debug what you deleted</p>
+<p>If you delete raw outputs, you lose the ability to diagnose converter/normalizer issues and to re-run with improved logic.</p>
+<p>Keep at least:</p>
+<ul>
+  <li>raw conversion artifact (or a pointer to it)</li>
+  <li>normalized Markdown artifact (if produced)</li>
+  <li>conversion metadata (OCR used, extraction mode, page count)</li>
+  <li>validation report (quality score + failure codes)</li>
+  <li>artifact hash (so you can confirm integrity and dedupe)</li>
+</ul>
+<p><strong>Retention policy guidance:</strong></p>
+<ul>
+  <li>Keep raw artifacts long enough to support at least one or two pipeline evolution cycles (e.g., until you’ve validated a new normalization ruleset).</li>
+  <li>If storage cost is a concern, store raw artifacts for quarantined items longer than for pass items.</li>
+</ul>
+
+<p><strong>Use routing plans:</strong> “PDF” is not enough; you need extraction strategy</p>
+<p>Routing should decide how to convert, not just what type it is.</p>
+<p>A good router outputs a conversion plan such as:</p>
+<ul>
+  <li>“PDF text extraction mode: fast; table extraction: on; OCR: off”</li>
+  <li>“Scanned PDF: OCR enabled; table reconstruction: strict; heading inference: aggressive”</li>
+  <li>“HTML: boilerplate removal: on; link stripping: on; content extraction: main-article only”</li>
+</ul>
+<p><strong>Why this matters:</strong></p>
+<ul>
+  <li>Different documents fail differently.</li>
+  <li>Table-heavy DOCX and scanned PDFs require different extraction strategies.</li>
+  <li>Routing reduces both cost (avoid unnecessary OCR) and failure rate (use the right table/OCR mode).</li>
+</ul>
+
+<h2>12. Common Mistakes</h2>
+<p><strong>Checking only HTTP status codes</strong></p>
+<p>HTTP success (200/OK) only tells you the request succeeded, not that the content is correct.</p>
+<p><strong>What goes wrong:</strong></p>
+<ul>
+  <li>Converter returns Markdown with missing headings or broken tables.</li>
+  <li>OCR output is garbled but still “successful.”</li>
+  <li>Output is empty or mostly boilerplate.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Validate structural signals (headings, tables, provenance anchors) and quarantine on failure.</li>
+</ul>
+
+<p><strong>Treating Markdown as a final product instead of an intermediate contract</strong></p>
+<p>Markdown in this pipeline is an intermediate representation that must satisfy downstream assumptions.</p>
+<p><strong>What goes wrong:</strong></p>
+<ul>
+  <li>You optimize for “looks readable” rather than “is structurally consistent.”</li>
+  <li>Chunkers and retrieval depend on headings/tables/provenance patterns; if those drift, retrieval quality drops.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Define a canonical Markdown contract (normalization rules) and enforce it with validation.</li>
+</ul>
+
+<p><strong>Reprocessing without idempotency keys</strong></p>
+<p>Without idempotency, reruns can create duplicates or conflicting artifacts.</p>
+<p><strong>What goes wrong:</strong></p>
+<ul>
+  <li>Same document processed twice under the same pipeline version.</li>
+  <li>Vector store ends up with multiple embeddings for “the same” content.</li>
+  <li>Debugging becomes impossible because you can’t tell which artifact is authoritative.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Use an idempotency key derived from (document_id, source_hash, pipeline_version, converter_version) and dedupe by artifact hash.</li>
+</ul>
+
+<p><strong>Embedding unvalidated output</strong></p>
+<p>If you embed before validation, you pay for bad content and degrade retrieval.</p>
+<p><strong>What goes wrong:</strong></p>
+<ul>
+  <li>Bad tables become misleading context.</li>
+  <li>OCR artifacts become “facts” in embeddings.</li>
+  <li>Missing provenance anchors reduce citation quality.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Only embed after validation passes (or after a narrowly defined partial-validation exception).</li>
+</ul>
+
+<p><strong>Changing normalization rules without versioning and evidence</strong></p>
+<p>If you update normalization but don’t version it, you can’t attribute retrieval changes to a specific change.</p>
+<p><strong>What goes wrong:</strong></p>
+<ul>
+  <li>Quality drift appears “mysteriously.”</li>
+  <li>You can’t compare before/after outcomes.</li>
+  <li>Rollbacks are hard because you don’t know which rule change caused the regression.</li>
+</ul>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Bump pipeline_version when normalization/validation/chunking changes.</li>
+  <li>Compare quality scores and quarantine rates across versions.</li>
+</ul>
+
+<h2>13. Alternatives &amp; Comparison</h2>
+
+<h3>DIY conversion scripts</h3>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>Fast to start for small corpora.</li>
+  <li>You control the whole pipeline and can tailor it to your formats.</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>Hard to make reliable across messy real-world documents.</li>
+  <li>Validation is often an afterthought, so output quality varies.</li>
+  <li>Debugging at scale becomes expensive because you lack structured evidence and quarantine/replay workflows.</li>
+</ul>
+<p><strong>When DIY works:</strong></p>
+<ul>
+  <li>Early prototypes, internal datasets, or when you can tolerate manual cleanup.</li>
+</ul>
+
+<h3>Hosted conversion APIs</h3>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>Faster time to production.</li>
+  <li>Less maintenance of heavy extraction logic.</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>You still need orchestration around the API: queues, retries, backpressure, idempotency.</li>
+  <li>You still need normalization and validation to enforce your canonical Markdown contract.</li>
+  <li>Output formats can vary by provider/version, so you must version and validate anyway.</li>
+</ul>
+<p><strong>When hosted APIs work:</strong></p>
+<ul>
+  <li>When you want to outsource extraction but keep your pipeline contracts and evidence in-house.</li>
+</ul>
+
+<h3>Hybrid approach</h3>
+<p><strong>Pros</strong></p>
+<ul>
+  <li>Use hosted conversion for heavy lifting (PDF extraction/OCR/table extraction).</li>
+  <li>Keep normalization/validation/chunking in your pipeline so output stays consistent.</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+  <li>Requires careful contract design: you must normalize provider output into your canonical Markdown.</li>
+  <li>You need robust validation because provider output quality can vary by document type.</li>
+</ul>
+<p><strong>When hybrid works:</strong></p>
+
+<p>When you want speed without sacrificing retrieval consistency.</p>
+
+<h2>14. Enterprise / Cloud Deployment</h2>
+
+<h3>Typical enterprise deployment components</h3>
+<p>A production deployment usually looks like this:</p>
+<ul>
+  <li>
+    <strong>Object storage for source and artifacts</strong>
+    <p>Store original documents and conversion outputs (raw + normalized).</p>
+    <p>Use stable keys and include metadata for traceability.</p>
+  </li>
+  <li>
+    <strong>Durable queue for job orchestration</strong>
+    <p>Holds conversion jobs and supports retries.</p>
+    <p>Enables backpressure and worker scaling.</p>
+  </li>
+  <li>
+    <strong>Separate worker pools for conversion and OCR</strong>
+    <p>OCR is slower and more expensive; separating pools prevents OCR from starving text extraction.</p>
+    <p>Lets you tune concurrency independently per worker type.</p>
+  </li>
+  <li>
+    <strong>Metadata store for job records and artifact hashes</strong>
+    <p>Tracks job status, idempotency keys, artifact hashes, pipeline versions.</p>
+    <p>Enables dedupe and deterministic replays.</p>
+  </li>
+  <li>
+    <strong>Index rebuild pipeline per pipeline version</strong>
+    <p>When you change chunking/normalization/validation, rebuild indexes deterministically.</p>
+    <p>Avoids mixing artifacts from different pipeline versions.</p>
+  </li>
+</ul>
+
+<h3>Operational requirements (what you want in practice)</h3>
+<ul>
+  <li>
+    <strong>Audit logs for every conversion and replay</strong>
+    <p>Record: document id, source hash, pipeline version, converter version, timestamps, validation outcomes, quarantine reasons.</p>
+    <p>This is essential for compliance and for debugging quality regressions.</p>
+  </li>
+  <li>
+    <strong>Retention policies for raw artifacts</strong>
+    <p>Keep raw conversion outputs long enough to support replay and investigation.</p>
+    <p>Often keep quarantined artifacts longer than pass artifacts.</p>
+  </li>
+  <li>
+    <strong>Access controls for sensitive documents</strong>
+    <p>Restrict who/what can read source documents and artifacts.</p>
+    <p>Ensure logs don’t leak sensitive content, especially if you store excerpts or OCR text.</p>
+  </li>
+</ul>
+
+<h2>15. FAQs</h2>
+
+<h3>Q: What’s the difference between a converter and a pipeline?</h3>
+<p><strong>A:</strong> A converter is a single transformation step: it takes one input document (PDF/DOCX/HTML) and produces Markdown (plus some metadata). A pipeline is the system around that step, designed for a whole corpus and for long-term reliability. In a pipeline, you add routing (choose the right extraction strategy), normalization (convert raw Markdown into a canonical contract), validation (check structural quality signals), and artifact management (versioned outputs for chunking and indexing). That’s why a pipeline can be rerun safely, quarantine failures, and prevent quality drift—capabilities a standalone converter usually doesn’t provide.</p>
+
+<h3>Q: Why do I need idempotency if I already store outputs?</h3>
+<p><strong>A:</strong> Because reruns are inevitable in production: you’ll reprocess documents when you fix bugs, update normalization rules, change validation thresholds, or upgrade the converter. Without idempotency keys tied to the true inputs (like a source hash) and the true processing configuration (pipeline version + converter version), the same document can generate multiple “different” artifacts that look similar but aren’t identical. That leads to duplicate embeddings, inconsistent retrieval results, and hard-to-debug quality regressions. Idempotency ensures that “same document + same processing inputs” maps to “same artifact,” so reruns become safe and predictable rather than destructive.</p>
+
+<h3>Q: What should validation check if Markdown “looks fine”?</h3>
+<p><strong>A:</strong> Markdown can be syntactically valid while still being structurally wrong for retrieval. Validation should therefore focus on measurable invariants that reflect what downstream systems depend on. For example: heading coverage (are the expected sections present and correctly leveled?), table integrity (are column counts consistent, are header rows preserved, are multi-level headers handled correctly?), list integrity (are list markers and indentation consistent so chunkers don’t break structure?), and provenance anchors (do you have page/offset anchors or other citation hooks required for explainable answers). The key is that validation should output structured signals and failure codes, not just “looks good,” so you can quantify quality and automate remediation.</p>
+
+<h3>Q: How do quarantine and replay improve quality without slowing everything down?</h3>
+<p><strong>A:</strong> Quarantine and replay turn failures into a controlled improvement loop. Quarantine means you stop bad outputs from moving forward to chunking/embeddings, so the rest of the corpus continues processing at full throughput. Replay means you take only the quarantined subset and rerun it with adjusted settings (e.g., enable OCR, change table extraction mode, switch heading inference strategy) or improved rules. This avoids the common failure mode where teams either (a) block the entire pipeline waiting for manual fixes or (b) blindly retry everything and waste compute. With quarantine + replay, you converge toward higher overall quality while keeping the system fast and stable.</p>
+
+<h3>Q: Do I need OCR for every document?</h3>
+<p><strong>A:</strong> No. OCR is expensive and can introduce noise (misread characters, broken numbers, garbled layout). A good pipeline uses routing to decide when OCR is necessary. For example, if a PDF has extractable text, you can often skip OCR and use text extraction directly. If the PDF is image-only or the text layer is missing/empty, OCR becomes necessary. Similarly, scanned documents or image-heavy pages should trigger OCR, while text-based documents should avoid it. This routing approach reduces cost and improves quality by using OCR only where it adds value.</p>
+
+<h3>Q: How do pipeline versions help with quality drift?</h3>
+<p><strong>A:</strong> Quality drift happens when any part of the pipeline changes: converter upgrades, normalization rule updates, validation threshold tuning, or chunking logic adjustments. Pipeline versions solve the “attribution” problem: when you bump the pipeline version, you can treat the new behavior as a new, trackable configuration. That means you can compare quality scores across versions, measure quarantine/pass-rate changes, and rebuild indexes deterministically for the new version. Without versioning, you can’t reliably tell whether retrieval quality changed because of new content, a converter update, or a normalization tweak—so regressions become hard to detect and even harder to roll back.</p>
+
+<h3>Q: What’s a good starting threshold for validation?</h3>
+<p><strong>A:</strong> Start with conservative thresholds that catch obviously broken outputs early, then tune using evidence from your corpus. A practical approach is to define “must-have” invariants (e.g., minimum heading coverage, table schema consistency, required provenance anchors) and set thresholds so that clearly unusable documents are quarantined. Then, as you observe real pass/fail outcomes and downstream retrieval quality, you adjust thresholds to balance two competing goals: higher pass rate (more documents embedded) versus higher precision (fewer noisy documents embedded). The best threshold is the one that maximizes downstream retrieval usefulness, not the one that maximizes conversion success.</p>
+
+<h3>Q: Can I embed partial outputs when validation fails?</h3>
+<p><strong>A:</strong> Sometimes, but only if your validation can prove which parts are reliable. If validation fails because of a localized issue (for example, one table is malformed but the surrounding headings and paragraphs are intact), you might embed only the reliable sections. However, if validation fails due to systemic structural problems (e.g., heading structure is missing across the document, provenance anchors are largely absent, or OCR artifacts are widespread), partial embeddings can degrade retrieval by mixing correct and incorrect context. The safe rule is: embed partial content only when your validator can produce section-level confidence or structured evidence that isolates the bad parts.</p>
+
+<p><strong>Q: How do I measure “usable” output?</strong></p>
+<p>Define “usable” in terms of what downstream retrieval requires, not just whether conversion succeeded. A common definition is: the output passes validation and produces a minimum chunk yield with required metadata. For example, you might require that each chunk has a valid heading path and provenance anchor, and that the document produces at least N chunks above a quality score threshold. Then you can compute cost per usable document by dividing total pipeline cost (conversion + normalization + validation + embedding) by the number of documents that meet the usable criteria. This gives you a fair way to compare pipeline versions and tuning changes.</p>
+
+<p><strong>Q: What metadata should I store alongside chunks?</strong></p>
+<p>Store metadata that makes retrieval explainable and debugging possible. At minimum, keep identifiers and structural context such as: document_id, pipeline_version, heading_path (so you know where the chunk belongs), provenance_anchor (page/offset or equivalent citation hook), and table_id when a chunk contains a table. This metadata supports better citations, enables filtering (for example, by document or section), and helps you trace retrieval issues back to the exact conversion, normalization, and validation artifacts that produced the chunk.</p>
+
+<p><strong>Q: How do I prevent sensitive data leakage in artifacts?</strong></p>
+<p>Treat conversion artifacts as sensitive because they may contain raw text, OCR output, or extracted content from confidential documents. Apply access controls to artifact storage so only authorized services and users can read them. Strip or sandbox embedded objects and macros during ingestion and conversion to reduce the risk of malicious payloads. Also ensure logs do not include sensitive content—log identifiers and hashes, not full extracted text. Finally, enforce retention policies: keep raw artifacts only as long as needed for replay and audit, and protect them accordingly.</p>
+
+<p><strong>Q: What’s the fastest way to improve a failing pipeline?</strong></p>
+<p>Use the evidence you already have: validation failure reasons and quarantine statistics. The fastest improvement loop is to inspect the top quarantine reasons, identify the dominant failure modes (for example, table schema drift, missing headings, provenance anchor absence, OCR artifact spikes), adjust routing or normalization specifically for those modes, and then replay only the quarantined subset affected by the changes. This is faster than broad changes because it targets the highest-impact problems first and uses measurable outcomes (quality scores, pass rates, quarantine rates) to confirm improvement.</p>
+
+<h2>16. References</h2>
+<ul>
+  <li>Ollagraph internal guides: Scaling Document-to-Markdown for AI: Performance, Reliability, and Cost</li>
+  <li>Ollagraph internal guides: PDF to Markdown for RAG: Preserve Tables, Layout, and Document Structure</li>
+  <li>Ollagraph internal guides: DOCX to Markdown for RAG: Convert Word Documents into AI-Ready Knowledge</li>
+</ul>
+<p><strong>Additional reading:</strong></p>
+<ul>
+  <li>Markdown as an intermediate contract for retrieval pipelines (general concept)</li>
+  <li>Idempotency patterns for distributed job processing (general concept)</li>
+</ul>
+
+<h2>17. Conclusion</h2>
+<p>Batch conversion at scale is not primarily a “conversion” problem—it’s an engineering system problem. Once you move from a handful of documents to a living knowledge base, the real risks shift from whether you can produce Markdown to whether that Markdown stays correct, consistent, and trustworthy over time. Documents arrive in different formats, with different levels of structure, and with different failure modes (scanned pages, broken tables, noisy OCR, navigation-heavy HTML, corrupted inputs). Meanwhile, your downstream AI systems assume the output follows stable structural expectations for chunking, embeddings, and citations.</p>
+
+<p>The winning approach is to treat document-to-Markdown conversion as a pipeline with explicit contracts between stages. Instead of thinking of the converter as the “main thing,” you design the whole flow so each stage produces artifacts that the next stage can rely on:</p>
+
+<ul>
+  <li>Routing ensures you choose the right extraction strategy for the document’s actual characteristics, not just its file extension.</li>
+  <li>Deterministic normalization turns raw, inconsistent Markdown into a canonical contract that your chunkers and validators can reason about.</li>
+  <li>Validation gates prevent bad structure from becoming bad embeddings by checking measurable invariants (headings, tables, lists, provenance anchors) and producing structured failure reasons.</li>
+  <li>Idempotency makes reruns safe by tying outputs to stable inputs and versioned processing configuration, preventing duplicates and conflicting artifacts.</li>
+  <li>Quarantine isolates failures so the rest of the corpus keeps moving, preserving throughput and operational stability.</li>
+  <li>Replay turns quarantined failures into an improvement loop, letting you refine routing and normalization and reprocess only what needs attention.</li>
+</ul>
+
+<p>When you build the pipeline this way, you stop guessing. You gain observability: you can quantify pass rates, quarantine rates, and quality scores; you can see which failure codes dominate; and you can compare outcomes across pipeline versions. That evidence is what lets you evolve the system safely—upgrading converters, changing normalization rules, tuning thresholds—without accidentally degrading retrieval quality.</p>
+
+<p>Most importantly, this approach protects your knowledge base from silent drift. Without contracts and versioning, small changes can subtly alter structure, chunk boundaries, or citation anchors, and those changes can propagate into embeddings and retrieval results. With contracts, validation, and replay, you can detect regressions early, attribute them to specific versions, and correct them with targeted reprocessing.</p>
+</Article>
