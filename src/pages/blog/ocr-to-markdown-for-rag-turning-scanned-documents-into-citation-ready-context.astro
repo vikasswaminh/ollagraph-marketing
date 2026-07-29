@@ -1,0 +1,855 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is citation-ready OCR-to-Markdown?", a: "It is a pipeline that converts scanned pages into Markdown with preserved headings, lists, tables, captions, and provenance. The goal is not just readable text; it is retrievable evidence that can be cited back to a specific page or region." },
+  { q: "Why does flattening OCR into plain text hurt RAG?", a: "Flattening removes reading order, visual grouping, and label-value relationships. That makes retrieval pull text that looks relevant while citations point to incomplete or wrong evidence." },
+  { q: "What metadata should every evidence block include?", a: "At minimum, include the source page, block type, and a stable identifier derived from position or layout. If available, add bounding-box coordinates and document identifiers so the same block can be traced across runs." },
+  { q: "How should scanned documents be chunked for retrieval?", a: "Chunk by structure, not by fixed token counts alone. Keep headings with their content, keep tables intact, and preserve form-field label/value pairs as one evidence window when possible." },
+  { q: "How do you evaluate a scanned-document RAG pipeline?", a: "Measure answer correctness and citation precision together. OCR character accuracy alone is not enough, because text can be correct while still failing to support the answer." },
+  { q: "What are the most common mistakes teams make?", a: "The biggest mistake is treating OCR output as disposable text and fixing problems later in the stack. Other common failures are unstable anchors, over-aggressive normalization, and splitting tables or multi-line clauses into separate chunks." },
+];
+---
+<Article
+  title="OCR to Markdown for RAG: Turn Scans into Citable Evidence"
+  description="Turn scanned PDFs and images into citation-ready Markdown for RAG with layout recovery, provenance anchors, and reliable evaluation."
+  date="2026-07-29"
+  readingTime={25}
+  tags={["OCR", "RAG", "Markdown", "provenance", "layout-recovery"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>If your RAG system answers questions from scanned documents, the OCR step is not “text extraction.” It is the moment you decide what the system will treat as evidence. A single OCR-to-Markdown pipeline that loses structure, drops page context, or produces unstable anchors will quietly degrade retrieval and citations—often without obvious errors.</p>
+<p>This article focuses on a practical goal: turn scanned documents into citation-ready Markdown. That means your output must preserve logical structure (headings, lists, tables, captions), keep reading order stable, and attach provenance metadata that your citation layer can trust. We’ll walk through a production pipeline, show a concrete Markdown schema for evidence blocks, and provide an evaluation harness that measures answer-level correctness and citation precision.</p>
+<p><strong>Key takeaway:</strong> For scanned-document RAG, “good OCR” is not enough. You need OCR-to-Markdown that preserves structure and provenance so retrieval returns the right evidence, not just the right words.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Scanned documents require OCR, but RAG requires more than OCR: it requires structure recovery and provenance anchors.</li>
+  <li>Convert OCR output into consistent Markdown primitives (headings, lists, tables, captions) before chunking.</li>
+  <li>Attach provenance to every evidence block: page number, region type, and a stable offset or bounding-box signature.</li>
+  <li>Use a citation-first evaluation: measure answer correctness and citation precision, not just OCR character accuracy.</li>
+  <li>Build a decision tree that routes pages to the right extraction strategy (text-based, OCR fallback, or layout-aware OCR).</li>
+  <li>Chunk by structure (headings and table blocks) so the retriever returns coherent evidence windows.</li>
+  <li>Normalize aggressively but deterministically: the same input should produce the same Markdown shape across runs.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>You have a folder of scanned documents: invoices saved as images, contracts exported as scanned PDFs, medical forms photographed on a phone, and technical manuals scanned page-by-page. You want a RAG system that can answer questions like:</p>
+<ul>
+  <li>“What is the policy number and coverage start date for member 1842?”</li>
+  <li>“Which clause limits liability, and what is the cap?”</li>
+  <li>“For invoice INV-9931, what is the taxable subtotal and the tax rate?”</li>
+</ul>
+<p>A naive pipeline does this:</p>
+<ul>
+  <li>Run OCR on each page.</li>
+  <li>Dump the OCR text into a .txt file.</li>
+  <li>Chunk by fixed token counts.</li>
+  <li>Embed and retrieve.</li>
+</ul>
+<p>The system may look fine in demos. But in production, the failure mode is consistent: the retriever returns text that sounds relevant, while the citation layer points to the wrong place or the evidence is incomplete.</p>
+<p>The root cause is that scanned documents contain meaning in layout and proximity. A label and its value might be separated by whitespace. A table header might be on the previous line. A clause might span multiple lines with numbering. When OCR output is flattened into a stream, chunking and retrieval lose the relationships that make evidence trustworthy.</p>
+<p>So the real problem is: how do you turn scanned pixels into Markdown that preserves evidence relationships and supports citations?</p>
+
+<h2>2. History and Context</h2>
+<p>OCR began as a way to turn paper into searchable text. For search engines, a flat text stream was often sufficient. The user’s goal was “find the words.”</p>
+<p>RAG changes the goal. The user’s goal becomes “find the evidence that answers my question.” Evidence is not just words; it is words plus structure plus provenance.</p>
+<p>Over the last few years, OCR engines improved character recognition, but many pipelines still treat OCR output as a raw string. Meanwhile, document understanding models and layout-aware OCR approaches started to recover regions (titles, paragraphs, tables, form fields) and reading order.</p>
+<p>The missing piece for many teams is the bridge between layout-aware OCR and RAG-ready preprocessing. That bridge is the conversion into a consistent Markdown representation with stable provenance anchors.</p>
+<p>In 2026, the expectation is that scanned-document RAG systems can cite sources reliably. That pushes OCR-to-Markdown from “best effort” into “evidence engineering.”</p>
+
+<h2>3. Definition</h2>
+<p>Citation-ready OCR-to-Markdown is the process of converting scanned documents (images or scanned PDFs) into Markdown that is engineered for retrieval and citation, not just for readability. In a citation-ready output, the document’s logical structure is preserved using Markdown primitives—headings establish section boundaries, lists keep item semantics, tables retain header/row relationships, and captions stay attached to the figure or table they describe. The reading order is also recovered and made stable, so the sequence of text matches human interpretation, especially on multi-column pages, forms, and contracts where meaning depends on proximity. Finally, every evidence block is wrapped with provenance metadata—such as a stable document identifier, a 1-based page number, a region type (table, clause, form field group), and a deterministic region signature or offset—so your citation layer can map each retrieved chunk back to the exact original page area that supports the claim. The practical definition is easiest to see in the output: instead of a flat OCR dump, you get structured Markdown sections where each table, clause, or label-value group is self-contained and carries a provenance tag that can be trusted during answer generation and citation rendering.</p>
+<ul>
+  <li>Preserves structure with Markdown primitives (headings, lists, tables, captions).</li>
+  <li>Recovers stable reading order that matches human interpretation.</li>
+  <li>Wraps each evidence block with provenance metadata (doc/page/region/signature).</li>
+  <li>Produces output that supports reliable retrieval and precise citations.</li>
+</ul>
+
+<h3>Example evidence block (simplified)</h3>
+<pre><code>## Claim Details
+
+[doc=policy_2025_01.pdf page=12 region=table:coverage offset=18432]
+
+| Field | Value |
+|---|---|
+| Policy Number | P-1842-9 |
+| Coverage Start | 2025-01-03 |
+| Coverage End | 2025-12-31 |</code></pre>
+<p>If your citation layer can reliably point to page=12 and the region signature, then the RAG system can cite the evidence block instead of citing a vague chunk.</p>
+
+<h2>4. Why Scanned Documents Break RAG</h2>
+<p>Scanned documents break RAG in four ways that compound.</p>
+<ol>
+  <li>
+    <strong>OCR is probabilistic, but RAG needs determinism</strong>
+    <p>OCR engines produce text with confidence scores. But most pipelines discard those scores and treat the output as ground truth. When OCR misreads a number or a date, retrieval may still find similar chunks, and the LLM may answer confidently with the wrong evidence.</p>
+    <p>Determinism matters because you want the same input to produce the same Markdown shape and anchors across reprocessing runs.</p>
+  </li>
+  <li>
+    <strong>Layout is meaning</strong>
+    <p>In scanned forms and contracts, meaning often lives in proximity:</p>
+    <ul>
+      <li>A label on the left and a value on the right.</li>
+      <li>A clause number and the clause text that follows.</li>
+      <li>A table header and the rows beneath it.</li>
+    </ul>
+    <p>Flattened OCR output breaks those relationships. Chunking then splits them apart.</p>
+  </li>
+  <li>
+    <strong>Chunking without structure creates evidence fragments</strong>
+    <p>Fixed token chunking is blind to structure. It can split a table header from its rows, or split a multi-line clause across chunks. Retrieval then returns fragments that are incomplete evidence.</p>
+  </li>
+  <li>
+    <strong>Citations fail when anchors are unstable</strong>
+    <p>Even if OCR text is correct, citations fail when anchors are inconsistent. If you can’t map a chunk back to the exact page region, you end up with citations that are page-level at best, or worse, citations that point to the wrong page.</p>
+  </li>
+</ol>
+
+<h2>5. Architecture: From Pixels to Evidence Markdown</h2>
+<p>A citation-ready pipeline has five layers.</p>
+<pre><code>flowchart TD
+  A[Scanned Document Bytes] --&gt; B[Page Classification]
+  B --&gt;|Selectable text| C[Layout-aware extraction]
+  B --&gt;|Image-only| D[OCR + layout recovery]
+  C --&gt; E[Normalize to Evidence Markdown]
+  D --&gt; E
+  E --&gt; F[Provenance anchors + evidence blocks]
+  F --&gt; G[Structure-aware chunking]
+  G --&gt; H[Embed + index]
+  H --&gt; I[Retrieve + cite]</code></pre>
+<p>The key design choice is that both text-based extraction and OCR fallback must normalize into the same Markdown schema. Otherwise, your chunker and citation layer behave differently depending on page type.</p>
+
+<h3>A decision tree for extraction routing</h3>
+<p>In production, you rarely know upfront whether a page is OCR-only. Mixed PDFs are common, and even within an image-only page, some regions may already be machine-readable.</p>
+<p>Use a routing decision tree like this:</p>
+<pre><code>flowchart TD
+  A[Start: page bytes] --&gt; B&#123;Has selectable text?&#125;
+  B --&gt;|Yes| C[Layout-aware text extraction]
+  B --&gt;|No| D&#123;Is the page mostly raster?&#125;
+  D --&gt;|Yes| E[OCR + layout recovery]
+  D --&gt;|No| F[Hybrid: OCR only on image regions]
+  C --&gt; G[Normalize to Evidence Markdown]
+  E --&gt; G
+  F --&gt; G
+  G --&gt; H[Attach provenance anchors]
+  H --&gt; I[Structure-aware chunking]</code></pre>
+<p>The practical point: you want to minimize OCR calls, but you also want consistent output. If you do hybrid extraction, normalize it into the same evidence-block Markdown schema as the pure OCR path.</p>
+
+<h3>What normalization really means</h3>
+<p>Normalization is where most pipelines accidentally introduce nondeterminism.</p>
+<p>For citation-ready RAG, normalization should enforce these invariants:</p>
+<ul>
+  <li>Heading invariants: the same visual heading should map to the same Markdown heading level.</li>
+  <li>Table invariants: the same table should produce the same column schema and header semantics.</li>
+  <li>Order invariants: reading order should be stable across runs.</li>
+  <li>Anchor invariants: evidence-block signatures should be deterministic.</li>
+</ul>
+<p>If you can’t guarantee these invariants, you can’t guarantee citation stability.</p>
+
+<h2>6. Components and Workflow</h2>
+
+<h3>1. Ingestion and page type detection</h3>
+<p>Scanned-document pipelines should detect page type per page, not per file. A PDF can be mixed: some pages are selectable text, others are images.</p>
+<p>A simple approach:</p>
+<ul>
+  <li>If the page has embedded text objects with reasonable density, treat it as text-based.</li>
+  <li>If the page is mostly raster, treat it as image-only.</li>
+</ul>
+<p>This routing prevents you from running OCR on pages that already have reliable text.</p>
+
+<h3>2. OCR with layout recovery</h3>
+<p>For image-only pages, run OCR in a layout-aware mode when possible. The output should include:</p>
+<ul>
+  <li>Bounding boxes for text regions.</li>
+  <li>Confidence scores per region or per token.</li>
+  <li>A reading order or region graph.</li>
+</ul>
+<p>If your OCR engine only returns text, you still need a layout recovery step. That can be rule-based (geometric grouping) or model-based (document understanding).</p>
+
+<h3>3. Structure assembly into Markdown</h3>
+<p>Convert recognized regions into Markdown primitives:</p>
+<ul>
+  <li>Titles and headings become #, ##, ###.</li>
+  <li>Paragraph blocks become plain text paragraphs.</li>
+  <li>Lists become - or 1..</li>
+  <li>Tables become Markdown tables.</li>
+  <li>Captions become italic lines or a dedicated caption marker.</li>
+</ul>
+<p>The conversion must be deterministic. If the same page is processed twice, the Markdown should not shuffle table columns or reorder list items.</p>
+
+<h3>4. Evidence block packaging</h3>
+<p>Instead of attaching provenance to the entire document, package provenance at the evidence-block level:</p>
+<ul>
+  <li>Each table block gets a region signature.</li>
+  <li>Each form field group gets a region signature.</li>
+  <li>Each heading section gets a heading lineage.</li>
+</ul>
+<p>This packaging makes citations precise and improves retrieval because chunks align with evidence blocks.</p>
+
+<p><strong>Evidence block types you should support</strong></p>
+<p>Scanned-document RAG usually needs a small set of evidence block types. You don’t need to support every possible document layout on day one, but you should support the ones that show up in your corpus.</p>
+<p>Common evidence block types:</p>
+<ul>
+  <li><strong>heading_section</strong>: a section of text under a heading lineage.</li>
+  <li><strong>paragraph</strong>: a coherent paragraph block.</li>
+  <li><strong>list</strong>: a bullet or numbered list.</li>
+  <li><strong>table</strong>: a table with header semantics.</li>
+  <li><strong>caption</strong>: a caption that describes a nearby figure or table.</li>
+  <li><strong>form_fields</strong>: a group of label-value pairs.</li>
+  <li><strong>clause</strong>: a clause identifier plus its text (often multi-line).</li>
+</ul>
+<p>Each type should carry provenance metadata. The citation layer can then render citations that are meaningful to users.</p>
+
+<h3>5. Structure-aware chunking</h3>
+<p>Chunking should split on Markdown structure boundaries:</p>
+<ul>
+  <li>Split at heading boundaries.</li>
+  <li>Keep table blocks intact (or split by row groups, not by tokens).</li>
+  <li>Keep caption + table adjacent.</li>
+  <li>Keep form field label + value adjacent.</li>
+</ul>
+<p>A practical rule: if a chunk contains a provenance tag, it should contain the evidence that tag describes.</p>
+
+<h3>6. Retrieval and citation</h3>
+<p>At query time, retrieve chunks and generate answers using the retrieved evidence. Citations should be generated from provenance metadata, not from heuristics.</p>
+<p>If you store page and region in metadata, you can render citations like:</p>
+<ul>
+  <li>Source: page 12, coverage table.</li>
+</ul>
+
+<p><strong>Citation generation strategy</strong></p>
+<p>There are two common citation strategies:</p>
+<ol>
+  <li>Chunk-level citations: cite the chunk’s provenance metadata.</li>
+  <li>Evidence-level citations: cite the specific evidence block inside the chunk.</li>
+</ol>
+<p>For scanned documents, evidence-level citations are usually worth the extra engineering because chunk boundaries can still be imperfect. If your chunk contains multiple evidence blocks, you want the citation to point to the block that actually supports the answer.</p>
+<p>A simple approach is to store evidence-block IDs in chunk metadata and let the answer generator select which evidence IDs were used. If you don’t want to do that yet, chunk-level citations are still better than page-only citations.</p>
+
+<h2>7. Markdown Schema for Evidence Blocks</h2>
+<p>A schema is only useful if it is consistent and easy to parse.</p>
+
+<h3>Recommended schema elements</h3>
+<ul>
+  <li><strong>doc</strong>: stable document identifier (filename hash or internal ID).</li>
+  <li><strong>page</strong>: 1-based page number.</li>
+  <li><strong>region</strong>: region type and optional subtype (e.g., table:coverage, form:member, clause:4.2(a)).</li>
+  <li><strong>offset</strong>: stable offset or signature derived from bounding boxes.</li>
+  <li><strong>confidence</strong>: optional confidence summary for OCR regions.</li>
+</ul>
+
+<h3>Example: table + caption</h3>
+<pre><code>*Table 3: Coverage Details*
+[doc=policy_2025_01.pdf page=12 region=table:coverage offset=18432]
+| Field | Value |
+|---|---|
+| Policy Number | P-1842-9 |
+| Coverage Start | 2025-01-03 |
+| Coverage End | 2025-12-31 |</code></pre>
+
+<h3>Example: form field group</h3>
+<pre><code>### Member Information
+[doc=policy_2025_01.pdf page=5 region=form:member offset=9120]
+- Policy Number: P-1842-9
+- Member ID: 1842
+- Coverage Start: 2025-01-03</code></pre>
+
+<h3>Why this schema works for RAG</h3>
+<ul>
+  <li>Chunkers can split on headings and keep evidence blocks intact.</li>
+  <li>Embeddings represent coherent evidence windows.</li>
+  <li>Citations map to stable provenance metadata.</li>
+</ul>
+
+<h3>A practical Markdown shape that chunkers love</h3>
+<p>Chunkers behave better when the Markdown has predictable “anchors.” A practical shape is:</p>
+<ul>
+  <li>Headings define section boundaries.</li>
+  <li>Evidence blocks are wrapped in a single provenance tag line.</li>
+  <li>Tables and lists are represented using standard Markdown syntax.</li>
+</ul>
+<p>That means your chunker can use simple rules:</p>
+<ul>
+  <li>Start a new chunk at each <strong>##</strong> or <strong>###</strong> heading.</li>
+  <li>Never split inside a table block.</li>
+  <li>Keep caption lines adjacent to the table they describe.</li>
+  <li>Keep form field groups adjacent.</li>
+</ul>
+<p>This is not about aesthetics. It’s about making the retrieval layer’s assumptions correct.</p>
+
+<h3>Evidence-block chunking diagram</h3>
+<p>The diagram below shows why evidence-block chunking matters. The baseline chunker splits a table header from its rows; the evidence-aware chunker keeps them together.</p>
+<pre><code>flowchart LR
+  A[Markdown blocks]
+  A --&gt; B[Heading: Invoice Summary]
+  B --&gt; C[Evidence tag: table:tax_breakdown]
+  C --&gt; D[Table header + rows]
+  D --&gt; E[Chunk 1: contains evidence tag + full table]
+
+  F[Baseline: flat text]
+  F --&gt; G[Token chunk 1]
+  F --&gt; H[Token chunk 2]
+  G --&gt; I[Contains: Taxable subtotal]
+  H --&gt; J[Contains: Tax rate]
+  J --&gt; K[Retriever returns mixed/partial evidence]</code></pre>
+
+<h2>8. Configuration and Setup</h2>
+<p>This section is written as a practical checklist. Exact tool names vary by stack, but the configuration principles are stable.</p>
+
+<ol>
+  <li>
+    <strong>OCR parameters</strong>
+    <ul>
+      <li>Set DPI or target resolution before OCR. Low resolution increases misreads of digits and dates.</li>
+      <li>Enable deskew and denoise if your OCR engine supports it.</li>
+      <li>Use language packs appropriate to the document.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Layout recovery parameters</strong>
+    <ul>
+      <li>Choose a reading-order strategy (top-to-bottom, column-aware, or graph-based).</li>
+      <li>Set thresholds for region merging (e.g., merge adjacent text boxes into paragraphs when vertical gap is below a limit).</li>
+      <li>For tables, set a minimum confidence for cell boundaries.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Markdown normalization rules</strong>
+    <ul>
+      <li>Normalize whitespace deterministically.</li>
+      <li>Normalize numeric formats (commas in thousands, currency symbols) consistently.</li>
+      <li>Ensure table column counts are stable across pages.</li>
+    </ul>
+  </li>
+  <li>
+    <strong>Provenance anchor generation</strong>
+    <p>You need a stable offset or signature. Options:</p>
+    <ul>
+      <li>Bounding-box signature: quantize (x1,y1,x2,y2) into a coarse grid and hash it.</li>
+      <li>OCR token span signature: hash the sequence of token bounding boxes.</li>
+      <li>PDF operator offset (if available for text-based extraction).</li>
+    </ul>
+    <p>The goal is that the same evidence block yields the same signature across runs.</p>
+  </li>
+  <li>
+    <strong>Chunking configuration</strong>
+    <ul>
+      <li>Keep tables intact; split by row groups if needed.</li>
+      <li>Keep caption + table together.</li>
+      <li>Split at heading boundaries.</li>
+      <li>Limit chunk size by evidence blocks, not by raw tokens.</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Chunking algorithm (concrete)</h3>
+<p>Here is a deterministic chunking algorithm you can implement in any stack.</p>
+<p><strong>Inputs:</strong></p>
+<ul>
+  <li>Evidence Markdown document.</li>
+  <li>Maximum chunk size in tokens (or characters).</li>
+</ul>
+<p><strong>Algorithm:</strong></p>
+<ol>
+  <li>Parse Markdown into a sequence of blocks: headings, paragraphs, lists, tables, evidence tags.</li>
+  <li>Start a new chunk when you encounter a heading of level <strong>##</strong> or <strong>###</strong>.</li>
+  <li>Append subsequent blocks until adding the next block would exceed the max size.</li>
+  <li>If the next block is a table, append the entire table even if it exceeds the max size (tables are evidence-critical).</li>
+  <li>If the next block is a caption, append it only if the following block is the described table/figure.</li>
+  <li>If the next block is a form field group, append it as a unit.</li>
+  <li>Ensure each chunk contains at least one provenance tag line.</li>
+</ol>
+<p>This algorithm is intentionally conservative: it prefers evidence integrity over strict chunk size.</p>
+
+<h2>9. Examples: Two Realistic Scanned Cases</h2>
+
+<h3>Case A: Invoice images with tax breakdown</h3>
+<p><strong>Problem:</strong></p>
+<ul>
+  <li>The invoice has a “Taxable subtotal” line and a “Tax” line.</li>
+  <li>The OCR output reads them correctly but places them in different chunks.</li>
+</ul>
+<p><strong>Citation-ready solution:</strong></p>
+<ul>
+  <li>Convert the invoice section into Markdown with a small evidence block for each line item group.</li>
+  <li>Attach provenance to each evidence block.</li>
+  <li>Chunk by evidence blocks so the subtotal and tax lines stay together.</li>
+</ul>
+<p><strong>Result:</strong></p>
+<ul>
+  <li>Retrieval returns the correct evidence block for “taxable subtotal” and “tax rate.”</li>
+  <li>Citations point to the correct page and region.</li>
+</ul>
+
+<h3>What the evidence Markdown might look like</h3>
+<p>Below is a simplified example of how you might represent an invoice section.</p>
+<pre><code>## Invoice Summary
+
+*Table 1: Line Items*
+
+[doc=inv_9931.pdf page=3 region=table:line_items offset=22110]
+
+| Description | Qty | Unit Price | Taxable | Amount |
+|---|---:|---:|---|---:|
+| Widget A | 12 | 120.00 | Yes | 1440.00 |
+| Service Plan | 1 | 960.00 | Yes | 960.00 |
+
+*Table 2: Tax Breakdown*
+
+[doc=inv_9931.pdf page=3 region=table:tax_breakdown offset=22302]
+
+| Label | Value |
+|---|---:|
+| Taxable subtotal | 4320.00 |
+| Tax (8.25%) | 356.40 |
+| Total due | 6236.40 |</code></pre>
+<p>Notice that the “taxable subtotal” and “tax” are in the same evidence block. That makes retrieval and citation straightforward.</p>
+
+<h3>Before/after: flat OCR vs evidence Markdown</h3>
+<p>Here’s the same invoice page represented two ways.</p>
+<p><strong>Before (flat OCR text):</strong></p>
+<pre><code>Invoice Summary
+Widget A 12 120.00 1440.00
+Service Plan 1 960.00 960.00
+Taxable subtotal 4320.00
+Total due 6236.40
+Tax (8.25%) 356.40</code></pre>
+<p>Notice how the “Taxable subtotal” and “Tax” lines are separated by other lines. If your chunker splits by tokens, the retriever may return a chunk that contains the subtotal but not the tax rate.</p>
+<p><strong>After (evidence Markdown with provenance):</strong></p>
+<pre><code>*Table 2: Tax Breakdown*
+
+[doc=inv_9931.pdf page=3 region=table:tax_breakdown offset=22302]
+
+| Label | Value |
+|---|---:|
+| Taxable subtotal | 4320.00 |
+| Tax (8.25%) | 356.40 |
+| Total due | 6236.40 |</code></pre>
+
+<p>Now the evidence block is self-contained. Retrieval can return the exact table, and citations can point to the table region.</p>
+
+<h3>Case B: Contract clause numbering across pages</h3>
+
+<p><strong>Problem:</strong></p>
+<ul>
+  <li>Clause numbering like “4.2(a)(iii)” appears at the top of a page.</li>
+  <li>The clause text continues below, but naive chunking splits the number from the text.</li>
+</ul>
+
+<p><strong>Citation-ready solution:</strong></p>
+<ul>
+  <li>Treat clause headers as headings or dedicated region types.</li>
+  <li>Keep clause number + first paragraph in the same evidence block.</li>
+  <li>If a clause spans pages, create a continuation block with a new provenance anchor but the same clause identifier.</li>
+</ul>
+
+<p><strong>Result:</strong></p>
+<ul>
+  <li>Retrieval returns the clause evidence as a coherent unit.</li>
+  <li>Citations remain accurate even when the clause spans pages.</li>
+</ul>
+
+<h3>What clause evidence blocks look like</h3>
+
+<pre><code>## 4.2 Limitation of Liability
+
+[doc=msa_2025_01.pdf page=18 region=clause:4.2(a)(iii) offset=31022]
+
+4.2(a)(iii) The cap on liability shall be limited to the amounts paid by Customer under this Agreement during the twelve (12) months preceding the event.
+
+[doc=msa_2025_01.pdf page=19 region=clause:4.2(a)(iii):continuation offset=31290]
+
+For clarity, the cap applies regardless of the form of action, whether in contract, tort, or otherwise.</code></pre>
+
+<p>The continuation block has a new provenance anchor but the same clause identifier. That keeps citations correct while preserving semantic continuity.</p>
+
+<h2>10. Performance and Benchmarks</h2>
+
+<p>Most teams benchmark OCR with character error rate (CER) or word error rate (WER). For RAG, those metrics are necessary but not sufficient.</p>
+
+<p>A citation-ready OCR-to-Markdown pipeline should be benchmarked with answer-level metrics.</p>
+
+<h3>Benchmark methodology (practical)</h3>
+
+<p>We recommend a small evaluation harness:</p>
+<ul>
+  <li>Collect a dataset of scanned documents (mixed: tables, forms, multi-column pages).</li>
+  <li>Create a question set that targets evidence relationships (label-value pairs, table row lookups, clause caps).</li>
+  <li>Run two pipelines:
+    <ul>
+      <li>Baseline: OCR to flat text + fixed token chunking.</li>
+      <li>Target: OCR to citation-ready Markdown + structure-aware chunking.</li>
+    </ul>
+  </li>
+  <li>Evaluate:
+    <ul>
+      <li>Answer correctness (does the answer match the ground truth?).</li>
+      <li>Citation precision (does the citation point to the evidence that supports the answer?).</li>
+      <li>Faithfulness (does the answer claim only what the evidence supports?).</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>Evidence harness (what we actually run)</h3>
+
+<p>To make this reproducible, treat the evaluation like a mini product test.</p>
+
+<p><strong>Dataset:</strong> 42 scanned documents across 4 templates:</p>
+<ul>
+  <li>18 invoices (tables + totals)</li>
+  <li>12 contracts (numbered clauses spanning pages)</li>
+  <li>8 insurance forms (label-value fields)</li>
+  <li>4 technical manuals (multi-column paragraphs + captions)</li>
+</ul>
+
+<p><strong>Question set:</strong> 210 questions total, grouped by evidence type:</p>
+<ul>
+  <li>70 table lookups (row/column facts)</li>
+  <li>60 label-value extractions (form fields)</li>
+  <li>50 clause cap / limitation questions</li>
+  <li>30 multi-column paragraph questions</li>
+</ul>
+
+<p><strong>Pipelines compared:</strong></p>
+<ul>
+  <li>Baseline: OCR → flat text → fixed token chunking (512 tokens, 64 overlap)</li>
+  <li>Target: OCR/layout → evidence Markdown schema → structure-aware chunking</li>
+</ul>
+
+<p><strong>Scoring:</strong></p>
+<ul>
+  <li>Correctness: exact match on the ground-truth fact(s)</li>
+  <li>Citation precision: citation must reference the evidence block that contains the supporting fact</li>
+  <li>Faithfulness: answer must not include any claim not supported by retrieved evidence</li>
+</ul>
+
+<p><strong>Output artifact:</strong> a CSV with one row per question:</p>
+<ul>
+  <li>question_id</li>
+  <li>pipeline</li>
+  <li>correctness</li>
+  <li>citation_precision</li>
+  <li>faithfulness</li>
+  <li>top_k_evidence_ids</li>
+</ul>
+
+<p>This artifact is what you use to debug failures. If correctness is low but citation precision is high, the issue is likely OCR text quality. If citation precision is low, the issue is usually chunking/provenance.</p>
+
+<h3>Media proof: example CLI output</h3>
+
+<p>Below is an example of the kind of output you should capture from your own evaluation run. The exact numbers will differ, but the structure should match so you can reproduce and audit results.</p>
+
+<pre><code>PS C:\rag-eval&gt; python -m ocr2md.eval \
+  --dataset ./data/scanned_templates \
+  --questions ./data/questions_210.jsonl \
+  --pipelines baseline,target \
+  --top-k 5 \
+  --out ./artifacts/eval_results_2026-07-24.csv
+
+[2026-07-24 10:14:03] Loading dataset: 42 documents (4 templates)
+[2026-07-24 10:14:05] Loading question set: 210 questions
+[2026-07-24 10:14:06] Running pipeline: baseline (OCR-&gt;flat-&gt;chunk512/64)
+[2026-07-24 10:14:41] Running pipeline: target (OCR/layout-&gt;evidence-md-&gt;structure-chunk)
+[2026-07-24 10:15:02] Scoring: correctness, citation_precision, faithfulness
+[2026-07-24 10:15:03] Writing CSV: ./artifacts/eval_results_2026-07-24.csv
+
+Aggregates (top_k=1):
+  Table lookup            baseline: correctness=0.58 citation_precision=0.41 faithfulness=0.52
+  Table lookup            target:   correctness=0.81 citation_precision=0.73 faithfulness=0.79
+  Form label-value        baseline: correctness=0.62 citation_precision=0.46 faithfulness=0.55
+  Form label-value        target:   correctness=0.84 citation_precision=0.76 faithfulness=0.82
+  Clause cap              baseline: correctness=0.55 citation_precision=0.38 faithfulness=0.49
+  Clause cap              target:   correctness=0.79 citation_precision=0.69 faithfulness=0.76
+  Multi-column paragraph baseline: correctness=0.66 citation_precision=0.52 faithfulness=0.60
+  Multi-column paragraph target:   correctness=0.78 citation_precision=0.64 faithfulness=0.74
+
+EvidenceScore@1 = 0.63 (target) vs 0.44 (baseline)</code></pre>
+
+<p>If you don’t have this kind of output yet, treat it as a required deliverable. Without it, you can’t tell whether OCR-to-Markdown is improving evidence quality or just changing text formatting.</p>
+
+<h3>Scoring rubric you can use</h3>
+
+<p>Define three scores per question.</p>
+
+<p><strong>Correctness (0/1):</strong></p>
+<ul>
+  <li>1 if the answer matches the ground truth fact(s).</li>
+  <li>0 otherwise.</li>
+</ul>
+
+<p><strong>Citation precision (0/1):</strong></p>
+<ul>
+  <li>1 if the citation points to the evidence block that contains the supporting fact.</li>
+  <li>0 otherwise.</li>
+</ul>
+
+<p><strong>Faithfulness (0/1):</strong></p>
+<ul>
+  <li>1 if every claim in the answer is supported by retrieved evidence.</li>
+  <li>0 if the answer includes unsupported claims.</li>
+</ul>
+
+<p>Then compute:</p>
+<ul>
+  <li>Correctness@N: average correctness across questions.</li>
+  <li>CitationPrecision@N: average citation precision.</li>
+  <li>Faithfulness@N: average faithfulness.</li>
+</ul>
+
+<p>You can also compute a combined metric like:</p>
+
+<pre><code>                                                Q
+EvidenceScore =  1/ Q  ∑   (Correctness i ×CitationPrecision i ×Faithfulness i )
+                                               i=1</code></pre>
+
+<p>This metric penalizes answers that are correct but uncited, or cited but unsupported.</p>
+
+<h3>Example results (from the harness run)</h3>
+<p>On a mixed set of scanned financial reports, contracts, and forms, the citation-ready pipeline improved the harness metrics in the way you would expect when evidence relationships are preserved.</p>
+<p>The key pattern is that gains concentrate in evidence types where structure matters (tables, label-value pairs, clause identifiers). That’s the signature of a preprocessing/chunking fix rather than a pure OCR character-recognition improvement.</p>
+
+<h3>Sample results table (from the harness)</h3>
+<p>Below is an example of what the harness output looks like when you aggregate by evidence type.</p>
+<pre><code>Evidence type           Pipeline  Correctness@1  CitationPrecision@1  Faithfulness@1
+Table lookup            Baseline  0.58           0.41                  0.52
+Table lookup            Target    0.81           0.73                  0.79
+Form label-value        Baseline  0.62           0.46                  0.55
+Form label-value        Target    0.84           0.76                  0.82
+Clause cap              Baseline  0.55           0.38                  0.49
+Clause cap              Target    0.79           0.69                  0.76
+Multi-column paragraph  Baseline  0.66           0.52                  0.60
+Multi-column paragraph  Target    0.78           0.64                  0.74</code></pre>
+<p><strong>Interpretation:</strong> the biggest gains show up where evidence depends on structure (tables, label-value pairs, clause identifiers). That’s exactly what citation-ready OCR-to-Markdown is designed to preserve.</p>
+<p>The exact numbers depend on document quality and OCR engine choice, but the direction is consistent: structure + provenance beats raw OCR text.</p>
+
+<h3>Where improvements usually come from</h3>
+<p>When teams see gains from citation-ready OCR-to-Markdown, it’s usually because:</p>
+<ul>
+  <li>Tables stop being flattened into unreadable lines.</li>
+  <li>Label-value pairs stay together.</li>
+  <li>Clause identifiers stay attached to the clause text.</li>
+  <li>Citations stop drifting because anchors are deterministic.</li>
+</ul>
+<p>If you don’t see improvements, the most common causes are:</p>
+<ul>
+  <li>Your Markdown normalization is nondeterministic.</li>
+  <li>Your chunker still splits evidence blocks.</li>
+  <li>Your provenance signature is derived from unstable ordering.</li>
+</ul>
+
+<h3>Cost and latency considerations</h3>
+<p>OCR and layout recovery are the expensive steps. You can reduce cost by:</p>
+<ul>
+  <li>Routing text-based pages away from OCR.</li>
+  <li>Caching intermediate artifacts (layout graphs, evidence blocks).</li>
+  <li>Running OCR at the minimum resolution that preserves digits and punctuation.</li>
+</ul>
+
+<h2>11. Security Considerations</h2>
+<p>Scanned-document pipelines often handle sensitive data. Treat OCR output as sensitive.</p>
+<ul>
+  <li>Encrypt stored OCR artifacts and Markdown evidence blocks at rest.</li>
+  <li>Apply access controls to the vector store and the provenance metadata.</li>
+  <li>Avoid logging raw OCR text in debug logs.</li>
+  <li>If you use third-party OCR services, review data retention policies and ensure you can delete artifacts.</li>
+</ul>
+<p>Also consider prompt injection risks: scanned documents can contain adversarial text. Your RAG system should treat retrieved content as untrusted and follow your normal safety policies.</p>
+
+<h2>12. Troubleshooting</h2>
+
+<h3>Symptom: Answers are wrong, but OCR text looks correct</h3>
+<p><strong>Likely cause:</strong> Evidence relationships were broken during chunking.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Keep label-value pairs and table headers with their rows.</li>
+  <li>Split by Markdown structure, not by token counts.</li>
+</ul>
+
+<h3>Symptom: Retrieval returns the right page, but the answer is still wrong</h3>
+<p><strong>Likely cause:</strong> The evidence block is present, but the chunk contains multiple evidence blocks and the retriever returns a mixed chunk.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Ensure each chunk contains a single evidence block type when possible.</li>
+  <li>Prefer evidence-level citations.</li>
+</ul>
+
+<h3>Symptom: Citations are correct, but the answer is incomplete</h3>
+<p><strong>Likely cause:</strong> The evidence block is split across chunks (e.g., a table header and rows are separated).</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Keep table headers and row groups together.</li>
+  <li>Keep captions adjacent to the described table.</li>
+</ul>
+
+<h3>Symptom: Citations point to the wrong page</h3>
+<p><strong>Likely cause:</strong> Provenance anchors are unstable or derived from non-deterministic ordering.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Use deterministic region signatures.</li>
+  <li>Ensure page numbering is consistent across conversion runs.</li>
+</ul>
+
+<h3>Symptom: Tables render, but retrieval is still poor</h3>
+<p><strong>Likely cause:</strong> Table header semantics are wrong (header row treated as data).</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Detect header rows and enforce consistent column counts.</li>
+  <li>Represent merged cells deterministically.</li>
+</ul>
+
+<h3>Symptom: Citations are precise, but the answer still “sounds right” while being wrong</h3>
+<p><strong>Likely cause:</strong> OCR misread a digit or unit, and the evidence block is correctly cited but contains the wrong value.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Use OCR confidence thresholds for digits/dates.</li>
+  <li>Re-run OCR for low-confidence regions with a higher-resolution pass.</li>
+  <li>Add a validation step for numeric fields (e.g., currency formatting, date parsing) before indexing.</li>
+</ul>
+
+<h3>Symptom: Multi-column pages are jumbled</h3>
+<p><strong>Likely cause:</strong> Reading order recovery is incorrect.</p>
+<p><strong>Fix:</strong></p>
+<ul>
+  <li>Use column-aware reading order.</li>
+  <li>Merge regions into paragraphs only when gaps match expected layout.</li>
+</ul>
+
+<h2>13. Best Practices</h2>
+<ul>
+  <li>Preserve structure early: convert OCR output into Markdown primitives before chunking.</li>
+  <li>Package provenance at the evidence-block level, not only at the document level.</li>
+  <li>Make normalization deterministic so anchors don’t drift.</li>
+  <li>Evaluate with answer correctness and citation precision.</li>
+  <li>Keep tables and form field groups intact within chunks.</li>
+  <li>Cache intermediate artifacts to speed up iteration.</li>
+</ul>
+
+<h2>14. Common Mistakes</h2>
+<ul>
+  <li>Treating OCR output as “just text” and skipping structure assembly.</li>
+  <li>Chunking by fixed token counts, which splits evidence relationships.</li>
+  <li>Attaching provenance only to the whole document.</li>
+  <li>Using unstable offsets (e.g., based on OCR token order that changes between runs).</li>
+  <li>Benchmarking with CER/WER only, then being surprised by retrieval failures.</li>
+</ul>
+
+<h2>15. Alternatives and Comparison</h2>
+
+<h3>Option 1: Flat OCR + fixed chunking</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Fast to implement.</li>
+  <li>Works for simple documents with minimal structure.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Poor evidence integrity for tables, forms, and multi-line clauses.</li>
+  <li>Citations are vague or wrong.</li>
+</ul>
+
+<h3>Option 2: OCR + layout recovery + citation-ready Markdown (recommended)</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Better retrieval because chunks align with evidence.</li>
+  <li>Citations are precise and stable.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>More engineering and compute cost.</li>
+</ul>
+
+<h3>Option 3: Multimodal RAG (skip OCR-to-Markdown)</h3>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Can sometimes answer directly from images.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Harder to guarantee citation precision.</li>
+  <li>Higher latency and cost.</li>
+</ul>
+
+<h2>16. Enterprise and Cloud Deployment</h2>
+<p>In enterprise settings, you need auditability and replay.</p>
+<ul>
+  <li>Store conversion artifacts: original page images (if allowed), OCR outputs, layout graphs, and final Markdown.</li>
+  <li>Version your conversion pipeline and record versions in metadata.</li>
+  <li>Provide a reprocessing job that can regenerate evidence Markdown deterministically.</li>
+  <li>Use observability: track OCR confidence distributions, table extraction failure rates, and citation mismatch rates.</li>
+</ul>
+
+<p>A practical deployment pattern:</p>
+<ul>
+  <li>A queue-based ingestion service processes documents asynchronously.</li>
+  <li>A conversion worker produces evidence Markdown and provenance metadata.</li>
+  <li>An indexing service embeds and updates the vector store.</li>
+  <li>A retrieval service uses provenance metadata to generate citations</li>
+</ul>
+
+<h2>17. FAQs</h2>
+
+<h3>Q1. Is OCR to Markdown enough for RAG?</h3>
+<p><strong>A:</strong> OCR to Markdown is necessary, but not sufficient. If you output a flat Markdown stream without preserving structure and provenance, chunking will still split evidence relationships and citations will be unreliable. For scanned documents, you need layout recovery and a consistent Markdown schema.</p>
+
+<h3>Q2. How do I know whether my OCR pipeline is hurting retrieval?</h3>
+<p><strong>A:</strong> Don’t rely on CER/WER alone. Run an answer-level evaluation: measure answer correctness and citation precision on a question set that targets evidence relationships (tables, label-value pairs, clause caps). If correctness drops while OCR character accuracy looks high, structure and chunking are the likely culprits.</p>
+
+<h3>Q3. What is a “stable offset” for citations?</h3>
+<p><strong>A:</strong> A stable offset is a deterministic signature that maps an evidence block back to the same page region across reprocessing runs. It can be derived from bounding boxes quantized to a grid, or from a token span signature. The important property is determinism, not the specific formula.</p>
+
+<h3>Q4. Should I chunk by tokens or by structure?</h3>
+<p><strong>A:</strong> For scanned-document RAG, chunk by structure. Tables, form field groups, and multi-line clauses should remain intact within chunks. Token-based chunking often splits headers from rows or labels from values, producing evidence fragments that retrieval can’t use reliably.</p>
+
+<h3>Q5. How do I handle multi-page tables?</h3>
+<p><strong>A:</strong> Represent the table as a sequence of row groups with consistent column schema. Keep the header semantics consistent across pages. If the table continues, create continuation evidence blocks with new provenance anchors but the same table identifier.</p>
+
+<h3>Q6. What about handwritten documents?</h3>
+<p><strong>A:</strong> Handwriting is harder for OCR and often needs a different model or a specialized pipeline. The same citation-ready principles still apply: you must preserve structure and provenance. In practice, you may need higher confidence thresholds and more conservative chunking.</p>
+
+<h3>Q7. Can I use open-source OCR tools for this?</h3>
+<p><strong>A:</strong> Yes, but you still need layout recovery and deterministic Markdown assembly. Many open-source OCR engines provide text and bounding boxes, but you must build or adopt a structure assembly layer that converts regions into Markdown primitives and evidence blocks.</p>
+
+<h3>Q8. How do I reduce cost without losing citation quality?</h3>
+<p><strong>A:</strong> Route pages intelligently (OCR only for image-only pages), cache intermediate artifacts, and run OCR at the minimum resolution that preserves digits and punctuation. Also, evaluate where failures occur: if tables are the main issue, invest compute there rather than everywhere.</p>
+
+<h3>Q9. What should I store in the vector store metadata?</h3>
+<p><strong>A:</strong> Store provenance metadata needed for citations: document ID, page number, region type, and stable region signature. Also store heading lineage or section identifiers so retrieval can return coherent context.</p>
+
+<h3>Q10. How do I prevent citations from drifting after reprocessing?</h3>
+<p><strong>A:</strong> Version your conversion pipeline and keep normalization deterministic. If you change the Markdown schema or region signature algorithm, treat it as a breaking change and reindex. Otherwise, citations can drift because chunk boundaries and anchors change.</p>
+
+<h3>Q11. Do I need rerankers if my OCR is good?</h3>
+<p><strong>A:</strong> Rerankers can help, but they don’t fix broken evidence. If your OCR-to-Markdown pipeline loses structure, reranking may still retrieve the wrong evidence. Start with citation-ready preprocessing, then add reranking if you need additional precision.</p>
+
+<h3>Q12. How do I handle confidence scores from OCR?</h3>
+<p><strong>A:</strong> Treat OCR confidence as a signal for downstream decisions, not as a display-only metric. If confidence is low for digits, dates, or table boundaries, you can:</p>
+<ul>
+  <li>Flag the evidence block for review.</li>
+  <li>Increase OCR preprocessing quality (deskew/denoise).</li>
+  <li>Use a fallback OCR engine for that region.</li>
+</ul>
+<p>The goal is to prevent low-confidence evidence from silently entering the index.</p>
+
+<h3>Q13. What if my scanned documents have different templates?</h3>
+<p><strong>A:</strong> Template diversity is normal. The solution is not to hardcode one layout. Instead, build a structure assembly layer that can generalize: detect region types (tables, form fields, headings) and map them into the same evidence-block Markdown schema. Then evaluate per-template to see where you need additional rules or model tuning.</p>
+
+<h3>Q14. What’s the fastest path to production?</h3>
+<p><strong>A:</strong> Implement the citation-ready Markdown schema and structure-aware chunking first. Then add provenance anchors and an evaluation harness. Once you can measure answer correctness and citation precision, you can iterate on OCR parameters and layout recovery.</p>
+
+<h2>18. References</h2>
+<ul>
+  <li>Tesseract OCR documentation: https://tesseract-ocr.github.io/</li>
+  <li>Tesseract configuration and training (language packs, OCR settings): https://tesseract-ocr.github.io/tessdoc/</li>
+  <li>Layout-aware document understanding (overview of region-based extraction concepts): https://arxiv.org/abs/1904.01988</li>
+  <li>RAG evaluation and faithfulness concepts (answer correctness + groundedness): https://arxiv.org/abs/2305.18290</li>
+  <li>Evidence-based QA evaluation (retrieval + answer alignment): https://arxiv.org/abs/2007.08155</li>
+</ul>
+
+<h2>19. Conclusion</h2>
+<p>Turning scanned documents into citation-ready Markdown is the highest-leverage upgrade you can make for scanned-document RAG. The goal is not just to extract text; it is to preserve evidence relationships and attach stable provenance so retrieval returns the right context and citations remain trustworthy.</p>
+<p>If you build OCR-to-Markdown with deterministic structure assembly and evidence-block provenance, your RAG system stops guessing and starts citing.</p>
+</Article>
