@@ -1,0 +1,741 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What makes extracted JSON \"validated\"?", a: "Validated JSON has passed deterministic checks before it is emitted. That includes schema validation, structural invariants, and quality gates that catch missing fields, type mismatches, and inconsistent values. If the output fails those checks, it should be quarantined rather than ingested." },
+  { q: "Why is a schema contract necessary?", a: "A schema contract defines exactly what the extraction API must return: field types, required fields, allowed values, and normalization rules. It prevents silent drift by making bad structure fail fast. Without it, data can look correct while still breaking downstream systems." },
+  { q: "What is an evidence packet?", a: "An evidence packet is the debug trail for an extraction run. It typically includes fetched HTML, rendered DOM snapshots when needed, extracted spans, final field values, and validation errors. With that context, failures are diagnosable instead of opaque." },
+  { q: "When should an extraction pipeline retry?", a: "Retry only when the failure mode suggests the first attempt was incomplete or the strategy was wrong, such as a rendering miss or a transient fetch issue. A retry decision tree helps route each failure to the cheapest effective recovery path. If the record is structurally invalid after validation, retrying blindly usually just burns compute." },
+  { q: "How does quality scoring improve trust?", a: "Quality scoring measures how complete, consistent, and source-aligned the extracted record is. It gives you a second signal beyond schema pass/fail, so borderline outputs can be flagged or quarantined. That reduces the risk of feeding weak data into search, analytics, or retrieval." },
+  { q: "What are the most common mistakes teams make?", a: "The biggest mistake is treating extraction as the final step instead of the beginning of validation. Teams also overfit the schema, skip evidence collection, or ingest low-confidence records without quarantine rules. The result is data that appears structured but is not dependable." },
+];
+---
+<Article
+  title="Structured Data Extraction API for Validated JSON"
+  description="Turn messy web pages into validated JSON with schema contracts, evidence packets, and quality gates. Built for trust in downstream systems."
+  date="2026-07-30"
+  readingTime={25}
+  tags={["extraction", "json", "schema", "validation", "web-scraping"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>A structured data extraction API becomes reliable only when it emits validated JSON—output that has passed deterministic schema checks and quality gates.</p>
+<p>In this post, you’ll see a production-grade pipeline: define a schema contract, extract candidates (with rendering and anti-bot handling when needed), validate with deterministic gates, score quality, and route failures through a retry decision tree.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Validated JSON is a contract: types, required fields, allowed values, and structural invariants.</li>
+  <li>Evidence packets make extraction debuggable: you store intermediate artifacts (fetched HTML, rendered DOM snapshot, extracted spans, validation errors).</li>
+  <li>Validation gates prevent silent corruption: you quarantine bad outputs before embedding or indexing.</li>
+  <li>Quality scoring measures completeness, consistency, and alignment with page signals.</li>
+  <li>A retry decision tree reduces cost by retrying with the right strategy for the specific failure mode.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>You can extract JSON from a web page and still end up with unusable data.</p>
+<p>The failure mode is usually subtle: the API returns a JSON object that “looks right” but violates the assumptions your downstream system relies on. Maybe a price is missing currency, a date is in the wrong format, a product variant list is truncated, or an author field is populated with a navigation label.</p>
+<p>When that happens, the pipeline doesn’t crash immediately. It quietly embeds the wrong facts, and the first time you notice is when retrieval answers start drifting.</p>
+<p>So the real requirement is not extraction. It’s validated extraction.</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Web extraction started with selectors: grab HTML, run CSS/XPath, parse strings, and hope the DOM stays stable.</p>
+<p>Then sites got more dynamic. Data moved into JavaScript, lists became paginated or infinite scroll, and anti-bot defenses became common. Teams responded by adding headless browsers, proxies, and retries.</p>
+<p>But the next bottleneck arrived: quality.</p>
+<p>As soon as you scale beyond a handful of pages, you need a system that can answer three questions for every record:</p>
+<ul>
+  <li>Did we extract the right fields?</li>
+  <li>Did we extract them with the right structure and types?</li>
+  <li>Can we prove it with evidence?</li>
+</ul>
+<p>Validated JSON is the answer.</p>
+
+<h2>3. Definition / What It Is</h2>
+<p>A structured data extraction API is an API that takes a URL (and often rendering hints) plus a schema contract, then returns structured data.</p>
+<p>In this post, “validated JSON” means the API output has passed a validation layer that enforces:</p>
+<ul>
+  <li>Schema correctness: required fields exist, types match, and nested objects follow the contract.</li>
+  <li>Structural invariants: lists are not truncated, identifiers are present when needed, and cross-field consistency holds.</li>
+  <li>Quality gates: extracted values meet confidence thresholds and alignment checks.</li>
+  <li>Evidence availability: the response includes enough artifacts to debug failures.</li>
+</ul>
+<p>If you want a one-sentence mental model:</p>
+<p>Validated JSON out of an extraction API is like a compiler output—only emitted after the checks pass.</p>
+
+<h2>4. Architecture / How It Works</h2>
+<p>Below is the control flow you want in production.</p>
+<pre><code>flowchart TD
+  A[Input: URL + schema contract] --&gt; B[Fetch + optional rendering]
+  B --&gt; C[Extract candidate fields]
+  C --&gt; D[Build evidence packet]
+  D --&gt; E[Validate JSON against schema]
+  E --&gt; F&#123;Validation pass?&#125;
+  F -- Yes --&gt; G[Quality score + emit validated JSON]
+  F -- No --&gt; H[Classify failure mode]
+  H --&gt; I[Retry decision tree]
+  I --&gt; B
+  F -- No (quarantine) --&gt; J[Return error + evidence]</code></pre>
+<p>The key is that validation is not an afterthought. It is the gate that decides whether the JSON is safe to ingest.</p>
+
+<h2>5. Components &amp; Workflow</h2>
+
+<h3>1) Schema contract (what you ask for)</h3>
+<p>A schema contract is more than a JSON Schema file. In practice, you define:</p>
+<ul>
+  <li>Field types (string, number, boolean, arrays, objects)</li>
+  <li>Required fields and optional fields</li>
+  <li>Constraints (min/max, regex patterns, enumerations)</li>
+  <li>Normalization rules (currency symbols removed, dates normalized to ISO-8601)</li>
+  <li>Identifier strategy (when to require stable IDs)</li>
+</ul>
+<p>A good contract is strict enough to catch silent corruption, but not so strict that it rejects legitimate formatting differences.</p>
+
+<h3>2) Extraction engine (how candidates are produced)</h3>
+<p>The extraction engine typically does four things:</p>
+<ul>
+  <li>Fetches the page (and handles redirects)</li>
+  <li>Renders when needed (JavaScript execution, lazy content)</li>
+  <li>Locates candidate spans for each field</li>
+  <li>Normalizes values into the schema’s expected formats</li>
+</ul>
+<p>You should treat extraction as producing candidates, not final truth.</p>
+
+<h3>3) Evidence packet (why you trust it)</h3>
+<p>Evidence packets are the difference between “it failed” and “we can fix it.”</p>
+<p>A minimal evidence packet includes:</p>
+<ul>
+  <li>fetch: final URL, HTTP status, content-type</li>
+  <li>render: whether rendering was used, render duration, and a DOM snapshot reference</li>
+  <li>extraction: which selectors/strategies produced each field</li>
+  <li>validation: which checks failed and why</li>
+</ul>
+<p>In practice, evidence packets should be stable enough that you can diff them across runs. That means:</p>
+<ul>
+  <li>Use consistent check IDs (e.g., required_fields_present, types_match).</li>
+  <li>Include a schema contract version (contract.v1) so you know what rules were applied.</li>
+  <li>Store enough extraction provenance to reproduce the candidate selection (strategy name + source hint).</li>
+</ul>
+<p>When you store evidence, debugging becomes a deterministic workflow instead of a guessing game.</p>
+
+<h3>4) Validation gate (the correctness boundary)</h3>
+<p>Validation gates should be deterministic and fast.</p>
+<p>Common gates include:</p>
+<ul>
+  <li>JSON Schema validation (types, required fields)</li>
+  <li>Cross-field checks (e.g., endDate &gt;= startDate)</li>
+  <li>Completeness checks (e.g., at least N items in a list)</li>
+  <li>Alignment checks (e.g., extracted currency matches the page’s currency context)</li>
+</ul>
+<p>Here’s a concrete failure example you can wire into your pipeline:</p>
+<pre><code>&#123;
+  "validation": &#123;
+    "passed": false,
+    "schema_version": "contract.v1",
+    "checks": [
+      &#123; "id": "required_fields_present", "passed": false, "error": "missing: price.currency" &#125;,
+      &#123; "id": "types_match", "passed": true &#125;,
+      &#123; "id": "cross_field_consistency", "passed": false, "error": "currency_ambiguous" &#125;
+    ]
+  &#125;
+&#125;</code></pre>
+<p>Notice what’s missing: there’s no “best effort” currency. The pipeline can quarantine this record and retry with a strategy that targets currency context.</p>
+
+<p>If validation fails, you do not emit “best effort JSON.” You quarantine it.</p>
+
+<h2>5. Quality scoring (how good it is)</h2>
+<p>Quality scoring answers: even if it passes validation, how confident are we?</p>
+<p>A practical scoring model might include:</p>
+<ul>
+  <li><strong>Completeness score:</strong> fraction of required fields present</li>
+  <li><strong>Consistency score:</strong> cross-field invariants satisfied</li>
+  <li><strong>Confidence score:</strong> extraction confidence signals</li>
+  <li><strong>Evidence score:</strong> evidence packet completeness</li>
+</ul>
+<p>You can use the score to decide whether to accept, retry, or route to a human review queue.</p>
+
+<h2>6. Retry decision tree (how you recover)</h2>
+<p>Retries should be strategy-aware.</p>
+<p>Instead of “retry the same call,” classify the failure mode:</p>
+<ul>
+  <li><strong>Empty extraction:</strong> try rendering or a different main-content strategy</li>
+  <li><strong>Truncated lists:</strong> switch pagination mode or increase scroll depth</li>
+  <li><strong>Type mismatch:</strong> tighten normalization rules or adjust parsing strategy</li>
+  <li><strong>Identifier missing:</strong> require stable IDs and re-run with stricter entity linking</li>
+</ul>
+<p>This is where cost drops and success rate rises.</p>
+
+<h3>Failure mode to retry strategy (decision table)</h3>
+<p>Use a table like this to keep retries deterministic.</p>
+<pre><code>Failure mode (validation check) | What it usually means | First retry strategy | Second retry strategy
+required_fields_present (missing field) | Layout changed or extraction missed a span | Switch to rendered DOM extraction | Switch to alternate source hints (meta tags / JSON blobs)
+types_match (type mismatch) | Normalization rules don’t match page formatting | Tighten normalization (e.g., strip symbols) | Add locale-aware parsing
+cross_field_consistency (invariant broken) | Extracted values disagree across page sections | Re-extract with stricter entity linking | Enforce stricter “same section” constraints
+list_truncation_suspected | Pagination/infinite scroll not fully loaded | Increase scroll depth / render time | Switch pagination mode (nextPageUrl vs crawl)
+currency_ambiguous / date_ambiguous | Multiple candidates exist | Prefer visible text spans | Prefer structured hints (meta tags, JSON-LD)</code></pre>
+
+<h2>6. Configuration / Setup</h2>
+<p>This section is written as a generic contract you can map to Ollagraph.</p>
+
+<h3>Input contract</h3>
+<ul>
+  <li><strong>url:</strong> the page to extract</li>
+  <li><strong>schema:</strong> the JSON schema contract (or a schema ID)</li>
+  <li><strong>rendering:</strong> auto | never | always plus optional timeouts</li>
+  <li><strong>pagination:</strong> auto | first_page_only | crawl_until_limit</li>
+  <li><strong>validation:</strong> strictness level and quality thresholds</li>
+  <li><strong>evidence:</strong> minimal | full</li>
+</ul>
+
+<h3>Output contract</h3>
+<p>A validated response should include:</p>
+<ul>
+  <li><strong>data:</strong> the validated JSON object</li>
+  <li><strong>validation:</strong> pass/fail plus error details when failing</li>
+  <li><strong>quality:</strong> score breakdown</li>
+  <li><strong>evidence:</strong> references or embedded artifacts</li>
+</ul>
+<p>If your API doesn’t return validation details, you’re blind when something breaks.</p>
+
+<h3>Validation Contract Design</h3>
+<p>Most teams start with a schema that checks types. That’s necessary, but it’s not sufficient.</p>
+<p>To reach “validated JSON” quality, design your contract around invariants that reflect downstream truth:</p>
+<ul>
+  <li><strong>Normalization invariants:</strong> dates are ISO-8601, prices are numeric with explicit currency.</li>
+  <li><strong>Completeness invariants:</strong> lists meet minimum expected lengths when the page indicates more.</li>
+  <li><strong>Identity invariants:</strong> if you need stable IDs, require them and fail when missing.</li>
+  <li><strong>Consistency invariants:</strong> cross-field relationships (e.g., endDate &gt;= startDate).</li>
+</ul>
+<p>This is also where you decide what “strict” means. Strictness is a cost lever: stricter contracts reduce silent corruption but increase quarantines. The right balance depends on how expensive wrong data is for your use case.</p>
+
+<h2>7. Examples</h2>
+
+<h3>Example 1: Product page to validated JSON</h3>
+<p>Imagine you want a product record with:</p>
+<ul>
+  <li>name</li>
+  <li>price.amount</li>
+  <li>price.currency</li>
+  <li>availability</li>
+  <li>variants[] (optional)</li>
+</ul>
+<p>A validated JSON output might look like:</p>
+<pre><code>&#123;
+  "name": "Ollagraph Web Scraping API",
+  "price": &#123; "amount": 49.0, "currency": "USD" &#125;,
+  "availability": "in_stock",
+  "variants": [
+    &#123; "label": "Monthly", "billingPeriod": "P1M" &#125;
+  ]
+&#125;</code></pre>
+<p>If the page shows “$49” but the currency context is ambiguous, the validation gate can fail with a structured error like:</p>
+<pre><code>currency_missing_or_ambiguous</code></pre>
+<p>Then the retry decision tree can switch strategies (e.g., extract currency from a meta tag or locale block).</p>
+<p>Here’s the “quarantine” behavior you want when validation fails:</p>
+<pre><code>&#123;
+  "data": null,
+  "validation": &#123;
+    "passed": false,
+    "checks": [
+      &#123; "id": "required_fields_present", "passed": false, "error": "missing: price.currency" &#125;
+    ]
+  &#125;,
+  "evidence": &#123;
+    "fetch": &#123; "final_url": "https://example.com/product", "status": 200 &#125;,
+    "render": &#123; "used": true, "render_ms": 1420 &#125;,
+    "extraction": &#123; "price": &#123; "strategy": "rendered_dom_span", "source_hint": "text: $49" &#125; &#125;
+  &#125;
+&#125;</code></pre>
+
+<h3>Example 2: Research article to validated citation metadata</h3>
+<p>For an article page, you might require:</p>
+<ul>
+  <li>title</li>
+  <li>authors[] with name and optional orcid</li>
+  <li>publicationDate normalized to ISO-8601</li>
+  <li>publisher</li>
+  <li>doi (optional but strongly preferred)</li>
+</ul>
+<p>A common corruption is date formatting drift. Validation should enforce ISO-8601 and reject ambiguous formats.</p>
+<p>When validation fails, evidence packets let you see whether the extracted date came from the visible page or from a hidden template.</p>
+
+<h3>Example 3: Paginated list to validated array</h3>
+<p>For job listings or product catalogs, you often need:</p>
+<ul>
+  <li>items[] with stable IDs</li>
+  <li>pagination.nextPageUrl (or a crawl limit)</li>
+</ul>
+<p>Validation gates should detect truncation:</p>
+<p>If the page indicates more results but the extracted list is shorter than expected, fail with <em>list_truncation_suspected</em>.</p>
+<p>Then retry with a pagination strategy that matches the site’s behavior.</p>
+
+<h2>8. Performance &amp; Benchmarks</h2>
+<p>You can’t optimize what you don’t measure.</p>
+<p>A useful benchmark set for validated extraction includes:</p>
+<ul>
+  <li><strong>Success rate:</strong> percentage of calls that pass validation</li>
+  <li><strong>Validation failure rate:</strong> percentage quarantined</li>
+  <li><strong>Retry rate:</strong> average retries per successful record</li>
+  <li><strong>Latency:</strong> p50/p95 end-to-end time</li>
+  <li><strong>Evidence overhead:</strong> size/time impact of evidence packets</li>
+</ul>
+<p>To make benchmarks actionable, measure by failure mode, not just overall pass rate.</p>
+
+<h3>Benchmark dataset design (what to include)</h3>
+<p>Build a dataset that covers the failure modes you actually see:</p>
+<ul>
+  <li>Static pages with stable DOM</li>
+  <li>JavaScript-rendered pages where content appears only after render</li>
+  <li>Paginated lists (next page links)</li>
+  <li>Infinite scroll lists</li>
+  <li>Pages with multiple currency/date formats</li>
+  <li>Pages with partial blocks (e.g., “out of stock” variants)</li>
+</ul>
+<p>Then run the same schema contract across the dataset and record:</p>
+<ul>
+  <li>pass rate</li>
+  <li>quarantine rate</li>
+  <li>retry rate</li>
+  <li>top 5 validation check failures</li>
+</ul>
+<p>A practical way to report results:</p>
+<ul>
+  <li>Run the same schema contract across a fixed dataset of URLs</li>
+  <li>Track outcomes per failure mode</li>
+  <li>Compare strategies: rendering=auto vs rendering=always, evidence minimal vs full</li>
+</ul>
+
+<h3>Example benchmark table (template)</h3>
+<pre><code>Strategy | Validation pass rate | p95 latency | Avg retries | Notes
+rendering=auto, evidence=minimal | 0.86 | 2.1s | 0.22 | Best cost/quality
+rendering=always, evidence=minimal | 0.90 | 3.4s | 0.18 | Higher cost
+rendering=auto, evidence=full | 0.86 | 2.3s | 0.22 | Debuggable failures</code></pre>
+
+<h3>A simple “cost per validated record” metric</h3>
+<p>If you want a single number to compare strategies, compute:</p>
+<pre><code>cost_per_validated_record = total_api_cost / number_of_records_that_pass_validation</code></pre>
+<p>This metric forces you to account for retries and quarantines. A strategy with a higher pass rate can still be worse if it’s too expensive per attempt.</p>
+<p>In production, the goal is not maximum pass rate. The goal is maximum validated throughput at acceptable cost.</p>
+
+<h2>9. Security Considerations</h2>
+<p>Validated extraction still touches untrusted content.</p>
+<p>Key security practices:</p>
+<ul>
+  <li>Treat fetched HTML as untrusted input; never execute it in your own environment.</li>
+  <li>Sanitize logs and evidence packets (avoid storing secrets from authenticated pages).</li>
+  <li>Enforce allowlists for domains when possible.</li>
+  <li>Rate-limit and apply abuse detection.</li>
+  <li>Validate schema contracts server-side to prevent injection via schema definitions.</li>
+  <li>If you store evidence packets, apply retention policies and access controls.</li>
+</ul>
+
+<h2>10. Troubleshooting</h2>
+
+<p>When validated JSON fails, you want a fast path to root cause.</p>
+
+<p><strong>Symptom:</strong> validation fails with missing required fields</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>The page layout changed</li>
+  <li>The extraction strategy didn’t render dynamic content</li>
+  <li>The schema contract is too strict for real-world formatting</li>
+</ul>
+<p><strong>What to do:</strong></p>
+<ul>
+  <li>Inspect evidence packet validation errors</li>
+  <li>Check whether rendering was used</li>
+  <li>Adjust normalization rules or relax constraints where appropriate</li>
+</ul>
+
+<p><strong>Symptom:</strong> validation passes but data is wrong</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>Validation gates are too shallow (types match, but semantics don’t)</li>
+  <li>Cross-field invariants are missing</li>
+  <li>Confidence thresholds are too low</li>
+</ul>
+<p><strong>What to do:</strong></p>
+<ul>
+  <li>Add cross-field checks (e.g., currency context)</li>
+  <li>Increase quality thresholds</li>
+  <li>Add alignment checks based on page signals</li>
+</ul>
+
+<p><strong>Symptom:</strong> list truncation</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>Pagination mode mismatch</li>
+  <li>Infinite scroll not fully loaded</li>
+  <li>Anti-bot throttling mid-crawl</li>
+</ul>
+<p><strong>What to do:</strong></p>
+<ul>
+  <li>Switch pagination strategy</li>
+  <li>Increase render/scroll depth within limits</li>
+  <li>Use evidence to confirm whether more items existed on the page</li>
+</ul>
+
+<p><strong>Symptom:</strong> validation fails with type mismatch</p>
+<p><strong>Likely causes:</strong></p>
+<ul>
+  <li>Normalization rules don’t match the page’s formatting (e.g., “$1,299.00” vs “1299.00”).</li>
+  <li>Locale differences (decimal separators, thousands separators).</li>
+  <li>The field is present but extracted from the wrong DOM region.</li>
+</ul>
+<p><strong>What to do:</strong></p>
+<ul>
+  <li>Inspect the evidence packet for the failing check (usually types_match).</li>
+  <li>Tighten normalization (strip currency symbols, unify decimal separators).</li>
+  <li>If the wrong region is being targeted, adjust the extraction strategy to prefer structured hints (meta tags, JSON-LD) over visible text.</li>
+</ul>
+
+<h2>11. Best Practices</h2>
+
+<ol>
+  <li>
+    <p><strong>Treat the schema contract as a correctness boundary</strong></p>
+    <p>Start strict where downstream systems need certainty, and flexible where formatting varies.</p>
+    <ul>
+      <li>Make required fields truly required for meaning-critical use cases (e.g., price.amount + price.currency, publicationDate in ISO-8601, stable id when you need entity linking).</li>
+      <li>Keep optional fields optional, but still normalize them consistently when present (e.g., trim whitespace, unify decimal separators, map “in stock” variants to a canonical enum).</li>
+      <li>Encode invariants that reflect truth, not just shape. Examples:
+        <ul>
+          <li>Cross-field: endDate &gt;= startDate.</li>
+          <li>Completeness: if the page indicates multiple variants, require variants.length &gt;= 2.</li>
+          <li>Identity: if you need deduplication, require an identifier or fail with identifier_missing.</li>
+        </ul>
+      </li>
+    </ul>
+    <p>Practical rule: if a missing/incorrect value would silently degrade answers, it should be required and validated.</p>
+  </li>
+
+  <li>
+    <p><strong>Include evidence packets early, then make them selective</strong></p>
+    <p>Evidence packets are how you debug extraction failures without re-running expensive steps.</p>
+    <p>In non-production (staging, QA, early rollout), default to evidence=full so you can inspect:</p>
+    <ul>
+      <li>fetch outcome (final URL, status, content-type)</li>
+      <li>whether rendering was used and how long it took</li>
+      <li>extraction provenance per field (strategy + source hint)</li>
+      <li>validation check failures (check IDs + error reasons)</li>
+    </ul>
+    <p>In production, reduce overhead by using evidence=minimal for pass cases and evidence=full for failures or low-quality records.</p>
+    <p>Practical rule: evidence should be “cheap enough to keep,” but “rich enough to fix.”</p>
+  </li>
+
+  <li>
+    <p><strong>Quarantine failures; never ingest “best effort” as if it were correct</strong></p>
+    <p>Quarantine means you separate “extraction happened” from “data is safe.”</p>
+    <p>If validation fails, do not write the extracted data into your canonical store.</p>
+    <p>Instead, store:</p>
+    <ul>
+      <li>the validation result (which checks failed)</li>
+      <li>the evidence packet (what the system saw)</li>
+      <li>the retry plan (what you attempted next)</li>
+    </ul>
+    <p>Route quarantined records to one of:</p>
+    <ul>
+      <li>automated retry (strategy-aware)</li>
+      <li>human review queue (when the failure mode is rare or ambiguous)</li>
+      <li>schema contract update (when the contract is too strict or missing invariants)</li>
+    </ul>
+    <p>Practical rule: “best effort” is fine for exploration, not for ingestion.</p>
+  </li>
+
+  <li>
+    <p><strong>Use a retry decision tree keyed by failure mode</strong></p>
+    <p>Retries should be deterministic and explainable.</p>
+    <p>Build a small taxonomy of failure modes based on validation checks, then map each mode to the next strategy.</p>
+    <p>Example mappings:</p>
+    <ul>
+      <li><strong>required_fields_present failed</strong><br />Usually means the extraction missed spans or the page layout changed.<br />Retry strategy: switch from visible-text extraction to rendered DOM extraction, or switch to structured hints (meta tags / JSON blobs).</li>
+      <li><strong>types_match failed</strong><br />Usually means normalization rules don’t match the page’s formatting.<br />Retry strategy: tighten normalization (strip symbols, unify separators) or add locale-aware parsing.</li>
+      <li><strong>list_truncation_suspected</strong><br />Usually means pagination/infinite scroll didn’t fully load.<br />Retry strategy: increase scroll depth or switch pagination mode (next-page URL vs crawl).</li>
+      <li><strong>currency_ambiguous / date_ambiguous</strong><br />Usually means multiple candidates exist.<br />Retry strategy: prefer structured hints first, then visible spans, and enforce “single-candidate” rules.</li>
+    </ul>
+    <p>Practical rule: retry should change one controlled variable at a time (rendering strategy, pagination strategy, or extraction hint source), not “try everything.”</p>
+  </li>
+
+  <li>
+    <p><strong>Score quality and route low-score records</strong></p>
+    <p>Validation answers “pass/fail.” Quality scoring answers “how trustworthy is it?”</p>
+    <p>Use quality scoring to decide whether to accept, retry, or review even when validation passes.</p>
+    <p>Common scoring inputs:</p>
+    <ul>
+      <li>Completeness: fraction of required fields present and non-empty.</li>
+      <li>Consistency: cross-field invariants satisfied.</li>
+      <li>Confidence signals: extraction confidence, candidate uniqueness, and evidence coverage.</li>
+      <li>Evidence completeness: did you capture the provenance needed to trust the result?</li>
+    </ul>
+    <p>Routing examples:</p>
+    <ul>
+      <li>High score: ingest into canonical store.</li>
+      <li>Medium score: ingest but mark for background re-extraction.</li>
+      <li>Low score: quarantine and retry with a more expensive strategy (often rendering or alternate hints).</li>
+    </ul>
+    <p>Practical rule: quality scoring prevents “valid but weak” records from silently degrading downstream retrieval.</p>
+  </li>
+</ol>
+
+<h2>12. Common Mistakes</h2>
+
+<ol>
+  <li>
+    <p><strong>Treating “JSON returned” as correctness</strong></p>
+    <p>Mistake: you accept the output because it parses.</p>
+    <p>Why it fails: parsing only proves syntax. You can still have missing required fields, wrong types, truncated lists, or values that violate invariants.</p>
+    <p>Fix: require deterministic validation gates and quarantine failures.</p>
+  </li>
+
+  <li>
+    <p><strong>Contracts that only validate types</strong></p>
+    <p>Mistake: the schema checks that fields are strings/numbers, but doesn’t encode meaning.</p>
+    <p>Why it fails: you’ll pass records where the structure is correct but the semantics are wrong (e.g., date ordering, currency ambiguity, swapped fields).</p>
+    <p>Fix: add cross-field invariants and normalization invariants that reflect downstream truth.</p>
+  </li>
+
+  <li>
+    <p><strong>Blind retries that don’t change strategy intentionally</strong></p>
+    <p>Mistake: “retry the same call” or “retry with everything enabled.”</p>
+    <p>Why it fails: you waste cost and still fail the same invariant. Worse, you can create non-deterministic outcomes that are hard to debug.</p>
+    <p>Fix: classify failure mode using check IDs, then route to a decision tree that changes the right strategy.</p>
+  </li>
+
+  <li>
+    <p><strong>Evidence packets without governance</strong></p>
+    <p>Mistake: you store evidence packets indefinitely, or you log raw content that may include secrets.</p>
+    <p>Why it fails: evidence is operationally valuable, but it can become a security liability.</p>
+    <p>Fix:</p>
+    <ul>
+      <li>Apply retention policies (shorter for pass cases, longer for failures).</li>
+      <li>Use access controls and audit logging.</li>
+      <li>Sanitize logs and avoid persisting sensitive page content.</li>
+    </ul>
+  </li>
+
+  <li>
+    <p><strong>Treating rendering as a simple on/off switch</strong></p>
+    <p>Mistake: you either always render or never render.</p>
+    <p>Why it fails: rendering is expensive and can introduce variability (timing, dynamic content, A/B tests). It should be a strategy, not a toggle.</p>
+    <p>Fix: use rendering=auto by default, then force rendering only when evidence indicates missing content or when the site is known to require it.</p>
+  </li>
+</ol>
+
+<h3>6) Not measuring outcomes by failure mode</h3>
+<p><strong>Mistake:</strong> you track only overall pass rate.</p>
+<p><strong>Why it fails:</strong> you can improve pass rate while making a specific failure mode worse (e.g., type mismatches become more frequent but are hidden by retries).</p>
+<p><strong>Fix:</strong> break metrics down by top validation check failures and route engineering effort to the highest-impact failure modes.</p>
+
+<h2>13. Alternatives &amp; Comparison</h2>
+<p>When teams compare approaches, they usually compare “how to extract,” not “how to trust.” For validated extraction, trust is the differentiator.</p>
+
+<h3>Selector-based scraping</h3>
+<p>Selector-based scraping is the classic approach: you define CSS/XPath selectors, extract strings, and parse them into JSON.</p>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Cheap for stable pages where the DOM structure rarely changes.</li>
+  <li>Fast and predictable latency when the content is already present in HTML.</li>
+  <li>Easy to reason about for a small number of templates.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Brittle under layout changes (class names, nesting, or A/B variants).</li>
+  <li>Validation is often shallow: you can validate types, but semantic correctness is harder (e.g., “price” might come from the wrong block).</li>
+  <li>Maintenance cost grows quickly because every site change becomes a code change.</li>
+</ul>
+<p><strong>Where it fits best:</strong></p>
+<ul>
+  <li>Internal sites or partner sites with stable markup.</li>
+  <li>Early prototypes where you want quick wins and can tolerate occasional breakage.</li>
+</ul>
+
+<h3>LLM-only extraction</h3>
+<p>LLM-only extraction asks a model to read the page (or a representation of it) and output JSON directly.</p>
+<p><strong>Pros:</strong></p>
+<ul>
+  <li>Flexible when the structure is unclear or when selectors are hard to maintain.</li>
+  <li>Can infer intent from surrounding text.</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+  <li>Probabilistic output: even with “JSON mode,” the model can produce plausible-but-wrong values.</li>
+  <li>Without deterministic validation gates, you can’t reliably distinguish “correct” from “confidently wrong.”</li>
+  <li>Debugging is harder: you need to reconstruct why the model chose a value, not just why a selector failed.</li>
+</ul>
+<p><strong>Where it fits best:</strong></p>
+<ul>
+  <li>Exploratory extraction where you’re still learning the schema contract.</li>
+  <li>Cases where you can tolerate a quarantine/review workflow.</li>
+</ul>
+
+<h3>Hybrid approach (recommended): candidates first, deterministic validation second</h3>
+<p>The hybrid approach separates concerns:</p>
+<ul>
+  <li>Extraction strategies produce candidates (from rendered DOM, structured hints, or targeted text spans).</li>
+  <li>Deterministic validation gates decide whether the candidates are safe to ingest.</li>
+</ul>
+<p>This is the core idea behind “validated JSON out.”</p>
+<p>Here’s a comparison that focuses on trust and operations:</p>
+<pre><code>Approach              Extraction reliability                                Validation strength                           Debuggability                            Maintenance cost   Best use case
+Selector-based        High on stable DOMs, drops on layout changes          Often shallow unless you add invariants       Medium (selector failures are visible)   High at scale      Stable templates
+LLM-only              Variable (depends on prompt + page representation)     Usually weak unless you add strict post-checks Low to medium (reasoning is opaque)      Medium to high     Unstructured pages
+Hybrid (recommended)  High when candidates are well-targeted                Deterministic gates with check IDs            High (evidence + failing checks)         Lower (contract-driven) Production ingestion</code></pre>
+<p><strong>Decision guidance:</strong></p>
+<ul>
+  <li>If you need correctness guarantees and auditability, hybrid wins.</li>
+  <li>If you only need “good enough” for exploration, LLM-only can be faster to prototype.</li>
+  <li>If the DOM is stable and you can invest in selector maintenance, selector-based can be cost-effective.</li>
+</ul>
+
+<h2>14. Enterprise / Cloud Deployment</h2>
+<p>At enterprise scale, validated extraction stops being a “script” and becomes an operational system.</p>
+<p>The goal is to make outcomes measurable, retries safe, and evidence auditable—without turning validation into a bottleneck.</p>
+
+<h3>Reference architecture (practical separation of concerns)</h3>
+<p>Use separate services so each part can scale independently:</p>
+<p><strong>API Gateway / Ingestion Service</strong></p>
+<ul>
+  <li>Accepts url, schema contract ID, and extraction options (rendering/pagination/evidence level).</li>
+  <li>Performs request validation and rate limiting.</li>
+  <li>Writes a job record with a correlation ID.</li>
+</ul>
+<p><strong>Extraction Workers</strong></p>
+<ul>
+  <li>Fetch and optionally render pages.</li>
+  <li>Produce candidate JSON plus provenance (what strategy produced each field).</li>
+  <li>Emit an evidence packet (or a pointer to evidence artifacts) for downstream validation.</li>
+</ul>
+<p><strong>Validation Service</strong></p>
+<ul>
+  <li>Runs deterministic schema validation and invariant checks.</li>
+  <li>Produces a structured validation result (pass/fail, check IDs, error reasons).</li>
+  <li>Applies quality scoring and routing rules.</li>
+</ul>
+<p><strong>Orchestration / Retry Router</strong></p>
+<ul>
+  <li>Classifies failure mode from validation check IDs.</li>
+  <li>Selects the next strategy from the retry decision tree.</li>
+  <li>Schedules retries with backoff and caps.</li>
+</ul>
+<p><strong>Storage Layer</strong></p>
+<ul>
+  <li>Canonical store for validated data.</li>
+  <li>Quarantine store for failed records (with evidence pointers).</li>
+  <li>Evidence object store (HTML snapshots, rendered DOM references, logs).</li>
+</ul>
+
+<h3>Durable queues and safe retries</h3>
+<p>Retries are where systems get expensive and messy if you don’t design for it.</p>
+<ul>
+  <li>Use durable queues so jobs survive worker restarts.</li>
+  <li>Make retries idempotent using a job correlation ID and attempt number.</li>
+  <li>Cap retries per failure mode to prevent infinite loops.</li>
+  <li>Apply backoff when anti-bot throttling is detected (based on fetch status patterns and evidence).</li>
+</ul>
+
+<h3>Evidence storage with lifecycle policies</h3>
+<p>Evidence packets are your audit trail, but they must be governed.</p>
+<ul>
+  <li>Store evidence in an object store (e.g., S3-compatible) with lifecycle policies.</li>
+  <li>Keep full evidence longer for failures than for pass cases.</li>
+  <li>Redact or avoid storing sensitive content from authenticated pages.</li>
+</ul>
+
+<h3>Dashboards by failure mode (turn failures into engineering work)</h3>
+<p>If you only track “pass rate,” you’ll miss where engineering effort should go.</p>
+<p>Build dashboards that break down:</p>
+<ul>
+  <li>Top failing validation checks (e.g., required_fields_present, types_match, list_truncation_suspected).</li>
+  <li>Quarantine rate by schema contract version.</li>
+  <li>Retry success rate by failure mode and strategy.</li>
+  <li>Latency percentiles by rendering/pagination mode.</li>
+</ul>
+<p>This turns validated extraction into a feedback loop: contract updates and strategy improvements become measurable.</p>
+
+<h3>Auditability and compliance</h3>
+<p>If you need auditability, evidence packets are your audit trail.</p>
+<ul>
+  <li>Persist the validation result alongside the validated data.</li>
+  <li>Store evidence pointers (not necessarily full artifacts) for long-term audit.</li>
+  <li>Ensure access controls and audit logs for evidence retrieval.</li>
+</ul>
+
+<h2>15. FAQs</h2>
+<h3>Q1. What’s the difference between “structured output” and “validated JSON”?</h3>
+<p>Structured output means the API returns JSON that matches the shape you asked for (or at least parses as JSON). Validated JSON means the output passed deterministic checks that enforce correctness boundaries. In a validated extraction pipeline, that typically includes schema correctness, structural invariants, and quality gates. Without validation, you can ingest records that “look right” but violate invariants your downstream system assumes are true.</p>
+
+<h3>Q2. Do I need JSON Schema for validation?</h3>
+<p>JSON Schema is a common baseline because it standardizes types, required fields, and basic constraints. But JSON Schema alone usually isn’t enough for validated extraction. You typically also need deterministic checks that go beyond syntax, such as cross-field invariants, normalization invariants, and completeness invariants. So: JSON Schema helps, but validated extraction should include invariants and quality gates that reflect downstream truth.</p>
+
+<h3>Q3. How do evidence packets help when extraction fails?</h3>
+<p>Evidence packets make failures reproducible. When extraction fails (or validation fails), you want to answer four questions quickly: what the system fetched, whether it rendered (and how long), what candidates it extracted (strategy + source hint), and which validation checks failed (check IDs + error reasons). With that, you can decide whether the fix is a rendering/pagination change, a normalization rule update, a schema contract adjustment, or a targeted extraction hint change.</p>
+
+<h3>Q4. Can validated extraction reduce hallucinations in downstream LLMs?</h3>
+<p>Yes—indirectly, but in a way that matters. Downstream hallucinations often happen when the model is given incorrect or fabricated facts as context. Validated extraction reduces that risk by ensuring only records that pass deterministic correctness checks are emitted to your knowledge base. Quarantine prevents “plausible but wrong” facts from entering the system, and evidence/check IDs help you improve the extraction pipeline so the same failure mode doesn’t keep recurring. The result isn’t that the LLM becomes perfect; it’s that the grounding layer becomes more trustworthy, which reduces incorrect answers.</p>
+
+<h3>Q5. What should I do when validation fails frequently?</h3>
+<p>Don’t start by changing everything. Start by classifying the failure mode using the validation check IDs. Then apply the smallest strategy change that targets that failure: for empty extraction, try rendering or switch main-content strategy; for truncation, adjust pagination mode or increase scroll/render depth; for type mismatch, tighten normalization and add locale-aware parsing; for cross-field invariant failures, refine invariants and re-extract with stricter constraints. Finally, measure whether the change reduces the specific failing check rate—not just overall pass rate.</p>
+
+<h3>Q6. Is rendering always required?</h3>
+<p>No. Rendering is expensive and can introduce variability. Use rendering as a strategy: default to rendering=auto, force rendering when evidence indicates missing content, and force rendering for known JavaScript-heavy sites or failure modes like infinite scroll. Practical approach: run a small benchmark on your target domains to determine which ones actually require rendering to pass validation reliably.</p>
+
+<h3>Q7. How do I choose quality thresholds?</h3>
+<p>Quality thresholds are a cost/benefit decision. Start conservative so you prioritize correctness: require high confidence for meaning-critical fields and route borderline cases to re-extraction or review. Then tune using a fixed dataset and track pass rate/quarantine rate, retry rate/average retries per validated record, and downstream impact (like retrieval accuracy or answer grounding improvements). Adjust thresholds based on the cost of wrong data versus the cost of retries—if wrong data is expensive, bias toward stricter thresholds.</p>
+
+<h3>Q8. What about rate limits and anti-bot defenses?</h3>
+<p>In production, anti-bot handling must be part of the extraction workflow, not an afterthought. Recommended practices include applying backoff and retry caps when throttling is detected, using rendering/pagination strategies that minimize repeated requests, and detecting blocked responses early (status codes and content patterns) to fail fast into quarantine. Validation still matters because blocked pages can produce partial HTML that “looks parseable” but fails invariants (missing required fields, truncated lists, ambiguous values). Quarantine prevents those partial records from entering your canonical store.</p>
+
+<h3>Q9. Can I validate nested arrays and complex objects?</h3>
+<p>Yes. Nested validation is where contracts become powerful. Typical nested checks include array constraints (min/max length, uniqueness rules, required fields per element), nested required fields (e.g., each variant must include label and billingPeriod), and cross-field consistency across nested objects (e.g., variant pricing currency matches the parent product currency). When a nested element fails, evidence packets should point you to the failing element and the check ID so debugging stays targeted.</p>
+
+<h3>Q10. How do I store validated JSON for long-term use?</h3>
+<p>Store three things together: the validated data (canonical output), the validation result (pass/fail, schema contract version, check IDs, and error reasons when failing), and evidence references (pointers to stored artifacts; you don’t always need full raw content). This gives reproducibility (compare validation outcomes on re-runs) and auditability (trace which contract version and checks were applied). It also helps incident response by quickly identifying whether issues came from extraction, validation, or contract drift.</p>
+
+<h3>Q11. What’s a good first schema contract?</h3>
+<p>Start with the fields that downstream systems truly depend on. Make those required and strict by choosing invariants that reflect meaning (not formatting) and normalizing values into canonical formats (ISO-8601 dates, numeric prices, canonical enums). Then add optional fields once you can validate them consistently across your failure-mode dataset. Practical rule: don’t expand the contract faster than you can validate it—evidence and quarantine rates tell you when it’s safe to add more required fields.</p>
+
+<h3>Q12. How do I measure success beyond pass/fail?</h3>
+<p>Pass/fail is necessary, but not sufficient. Measure success using failure mode distribution (which check IDs fail most often), completeness (fraction of required fields present and non-empty), quality score (how trustworthy the record is even when it passes), retry efficiency (retries per validated record and time-to-success), and downstream impact (retrieval accuracy, answer grounding, or business KPIs). This prevents the trap of improving pass rate while quietly degrading the quality of what you ingest.</p>
+
+<h3>Q13. What if my schema contract is too strict?</h3>
+<p>When the contract is too strict, you’ll see high quarantine rates and repeated failures on the same checks. Relax constraints that reflect formatting differences (whitespace variations, thousands separators, currency symbol placement) while keeping invariants that reflect meaning (numeric price must pair with explicit currency, dates must be normalized into a single canonical format, required identifiers must be present when you need stable entity linking). If you relax too much, you’ll pass corrupted records; if you relax too little, you’ll quarantine everything. Evidence packets tell you which fields are failing and why, so you can adjust the contract with confidence.</p>
+
+<h2>16. References</h2>
+<ul>
+  <li>JSON Schema specification (for schema validation concepts)
+    <p>https://json-schema.org/</p>
+  </li>
+  <li>Ajv (Another JSON Schema Validator) documentation (practical JSON Schema validation patterns)
+    <p>https://ajv.js.org/</p>
+  </li>
+  <li>Fastify / Zod / TypeBox style schema validation references (contract-first validation approaches)
+    <ul>
+      <li>Zod: https://zod.dev/</li>
+      <li>TypeBox: https://github.com/sinclairzx81/typebox</li>
+      <li>Fastify schema validation: https://www.fastify.io/docs/latest/Reference/Validation-and-Serialization/</li>
+    </ul>
+  </li>
+  <li>schema.org structured data guidance (entity modeling patterns and structured fields)
+    <p>https://schema.org/</p>
+  </li>
+  <li>Google Search Central: Structured data / schema markup documentation (how search engines interpret structured data)
+    <p>https://developers.google.com/search/docs/appearance/structured-data</p>
+  </li>
+  <li>MDN Web Docs: DOM, parsing, and rendering fundamentals (what “rendered DOM” means operationally)
+    <p>https://developer.mozilla.org/</p>
+  </li>
+  <li>Playwright documentation (reliable headless rendering and DOM inspection for extraction)
+    <p>https://playwright.dev/</p>
+  </li>
+</ul>
+
+<h2>17. Conclusion</h2>
+<p>Validated JSON out of a structured data extraction API is what turns web scraping into reliable infrastructure.</p>
+
+<p>Scraping alone answers the question, “did we manage to pull something from the page?” Validated extraction answers the harder question: “is what we pulled actually safe to trust?” That’s why the pipeline is built around candidates first, then deterministic validation gates, and finally evidence packets that make failures explainable. When validation fails, you quarantine instead of ingesting “best effort” data, so downstream systems do not quietly accumulate corrupted facts.</p>
+
+<p>This approach also changes how you operate the system. With evidence packets and structured validation results—check IDs, error reasons, and provenance—debugging becomes targeted: you can identify whether the problem is rendering, pagination, normalization, schema contract drift, or extraction strategy selection. Add quality scoring on top of validation, and you can route records based on trust level, not just pass/fail, so “valid but weak” outputs do not degrade retrieval quality over time.</p>
+
+<p>Finally, a retry decision tree keyed by failure mode makes recovery cost-aware. Instead of retrying blindly, you retry with the strategy most likely to fix the specific invariant that failed. That improves validated throughput while keeping latency and spend under control.</p>
+
+<p>If you’re building ingestion for AI agents, RAG, or analytics, this is the control layer you want before you scale: a pipeline that prevents silent corruption, produces auditable outputs, and gives you measurable feedback loops to continuously improve extraction quality.</p>
+</Article>
