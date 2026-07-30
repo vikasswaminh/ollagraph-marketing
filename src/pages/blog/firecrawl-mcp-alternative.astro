@@ -8,11 +8,11 @@ const faqs = [
   },
   {
     q: "What is the best Firecrawl MCP alternative in 2026?",
-    a: "For teams that want more than scrape-and-markdown from one MCP server, Ollagraph is the closest full-stack alternative: its MCP server exposes every Ollagraph endpoint — 228 of them — as tools, so an agent can scrape, crawl, extract structured data, run AEO audits, and pull DNS/WHOIS/SSL intelligence and vertical-actor data through one bearer token. Crawl4AI's MCP is the leading option for self-hosting; Apify's MCP exposes its actor marketplace.",
+    a: "For teams that want more than scrape-and-markdown from one MCP server, Ollagraph is the closest full-stack alternative: its MCP server exposes every Ollagraph endpoint — 221 of them — as tools, so an agent can scrape, crawl, extract structured data, run AEO audits, and pull DNS/WHOIS/SSL intelligence and vertical-actor data through one bearer token. Crawl4AI's MCP is the leading option for self-hosting; Apify's MCP exposes its actor marketplace.",
   },
   {
     q: "How many tools does the Ollagraph MCP server expose?",
-    a: "All 228 Ollagraph API operations, auto-generated from the live OpenAPI spec. Because the server reads the spec at startup, the moment we ship a new endpoint it becomes a new tool — you restart the server and your agent has it, with no manual tool definitions to maintain.",
+    a: "All 221 Ollagraph API operations, auto-generated from the live OpenAPI spec. Because the server reads the spec at startup, the moment we ship a new endpoint it becomes a new tool — you restart the server and your agent has it, with no manual tool definitions to maintain.",
   },
   {
     q: "How do I add the Ollagraph MCP server to Claude Desktop or Cursor?",
@@ -34,7 +34,7 @@ const faqs = [
 ---
 <Article
   title="The best Firecrawl MCP alternative in 2026"
-  description="Firecrawl's MCP server gives your AI agent scrape, crawl, and extract. See how the Ollagraph MCP server compares — 228 tools, one key, intelligence and vertical actors included — and how to switch in minutes."
+  description="Firecrawl's MCP server gives your AI agent scrape, crawl, and extract. See how the Ollagraph MCP server compares — 221 tools, one key, intelligence and vertical actors included — and how to switch in minutes."
   date="2026-06-21"
   readingTime={13}
   tags={["MCP", "Firecrawl", "AI agents", "web scraping"]}
@@ -61,7 +61,7 @@ const faqs = [
   <p>If your agent's entire web need is markdown for retrieval — read a doc, summarize a page, pull text into a RAG step — the Firecrawl MCP server serves that job well, and you can stop reading here. The reasons teams add or switch to a second server are narrow and specific, and they all come down to one thing: wanting more than markdown from the same tool surface.</p>
 
   <h2>Where the Ollagraph MCP server goes further</h2>
-  <p>The Ollagraph MCP server is built on the same idea but a wider surface. Instead of a hand-picked set of scraping tools, it reads the live Ollagraph OpenAPI spec at startup and turns <strong>every one of the 228 endpoints</strong> into an MCP tool. That has four practical consequences for an agent.</p>
+  <p>The Ollagraph MCP server is built on the same idea but a wider surface. Instead of a hand-picked set of scraping tools, it reads the live Ollagraph OpenAPI spec at startup and turns <strong>every one of the 221 endpoints</strong> into an MCP tool. That has four practical consequences for an agent.</p>
 
   <ul>
     <li><strong>A full intelligence layer, not just pages.</strong> Alongside scrape and crawl, the agent gets DNS, WHOIS, SSL, GeoIP and ASN, tech-stack, contacts, and email verification as tools. When an agent reads a company's site, it can enrich the domain in the same breath — no second server, no second key.</li>
@@ -80,7 +80,7 @@ const faqs = [
     <tbody>
       <tr><td>Scrape URL to clean markdown</td><td>Native, excellent</td><td>Native</td></tr>
       <tr><td>Full-site crawl</td><td>Yes</td><td>Yes</td></tr>
-      <tr><td>Tools exposed</td><td>Core scraping set</td><td>All 228 endpoints (auto-generated)</td></tr>
+      <tr><td>Tools exposed</td><td>Core scraping set</td><td>All 221 endpoints (auto-generated)</td></tr>
       <tr><td>Structured data (JSON-LD / OpenGraph)</td><td>Extract endpoint</td><td>Native</td></tr>
       <tr><td>Domain intelligence (DNS / WHOIS / SSL)</td><td>Not offered</td><td>Included</td></tr>
       <tr><td>Vertical actors (Google Maps, LinkedIn)</td><td>Generic scrape</td><td>Dedicated extractors</td></tr>
@@ -147,7 +147,7 @@ pipx run ollagraph-mcp</code></pre>
   <p>The honest summary: Crawl4AI's MCP if you want to self-host, Apify's MCP if you want the marketplace's breadth, and the Ollagraph MCP server if you want a curated full-stack surface — scrape, intelligence, actors, and audits — behind one managed key.</p>
 
   <h2>How the auto-generated tool surface works, and why it stays current</h2>
-  <p>The reason the Ollagraph MCP server exposes 228 tools without 212 hand-written definitions is worth understanding, because it is also why the surface never drifts from the API. At startup the server fetches the live OpenAPI spec from <code>api.ollagraph.com/openapi.json</code> and builds one MCP tool per operation. Each tool inherits its description from the operation's summary and its input schema from the request model, so the text the model reads to choose a tool is the same documentation a human reads — no separate, stale copy to maintain.</p>
+  <p>The reason the Ollagraph MCP server exposes 221 tools without 212 hand-written definitions is worth understanding, because it is also why the surface never drifts from the API. At startup the server fetches the live OpenAPI spec from <code>api.ollagraph.com/openapi.json</code> and builds one MCP tool per operation. Each tool inherits its description from the operation's summary and its input schema from the request model, so the text the model reads to choose a tool is the same documentation a human reads — no separate, stale copy to maintain.</p>
 
   <p>Two design choices make this pleasant in practice. Tool names are cleaned from the spec's operation identifiers into short, readable forms — <code>scrape</code>, <code>extract_clean</code>, <code>aeo_page_audit</code> — rather than the verbose machine identifiers, so the model picks among names that read like intentions. And authentication is handled entirely server-side: you set <code>OLLAGRAPH_API_KEY</code> once, the server injects the Bearer header on every outbound call, and the language model never sees the credential. That last point matters for safety — a tool surface the model can call is not a surface that can leak your key.</p>
 
