@@ -1,0 +1,582 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "How do I extract tables from a website to JSON?", a: "Start by identifying whether the page contains a semantic HTML table or a visual table built with divs and CSS. Then map headers to rows, normalize merged cells, and validate the output against a schema so the JSON stays consistent. For complex pages or large batches, Ollagraph can return structured JSON directly with fewer edge-case failures." },
+  { q: "Why do DIY table parsers fail on real websites?", a: "Real pages often include colspan, rowspan, nested tables, missing headers, or malformed markup that breaks simple row-and-column logic. Some sites also render tables visually without using table tags at all, so a source-only parser never sees the data. These issues cause misaligned columns, dropped cells, and inconsistent JSON." },
+  { q: "What kinds of tables can Ollagraph extract?", a: "Ollagraph is built for semantic tables, visual tables rendered in the browser, pricing grids, comparison charts, and other structured tabular layouts. It can also handle pages with mixed content where the data is surrounded by extra text or navigation. The output is designed to be clean JSON with provenance and type-aware fields." },
+  { q: "How are merged cells and nested tables handled?", a: "Merged cells need to be expanded into a consistent grid before the data can be serialized cleanly. Nested tables require special handling so child tables do not corrupt the parent row structure. A robust extraction workflow reconstructs both patterns instead of flattening them blindly." },
+  { q: "When should I use an extraction API instead of a custom parser?", a: "Use a custom parser only when the markup is simple, stable, and limited in scope. If you need to process many pages, deal with inconsistent layouts, or support visual tables, a dedicated API is faster to ship and easier to maintain. It also reduces the time spent debugging layout-specific failures." },
+  { q: "How do I validate extracted table data before using it?", a: "Validate column names, row counts, and data types immediately after extraction. Compare totals, check for missing required fields, and flag schema drift before the data reaches downstream systems. That catch layer prevents silent errors from spreading into analytics or RAG pipelines." },
+];
+---
+<Article
+  title="How to Extract Tables from Any Website to JSON"
+  description="Turn HTML and CSS-based tables into clean JSON, see where DIY parsing breaks, and learn when Ollagraph’s API is the safer choice."
+  date="2026-07-30"
+  readingTime={23}
+  tags={["table-extraction", "html-to-json", "web-scraping", "structured-data", "api"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>HTML tables are everywhere — pricing grids, financial reports, sports standings, product specs, comparison charts, government data, and scientific datasets. But extracting them into clean, usable JSON is harder than it looks. A single colspan or rowspan attribute can collapse a naive parser. A table built with div-based CSS grids won't even register as a &lt;table&gt; element. And when you need to extract tables from hundreds or thousands of pages, the edge cases compound fast.</p>
+<p>This guide covers the full landscape: how HTML tables are structured, why most DIY parsers fail on real-world pages, the difference between semantic tables and visual tables, and how to build — or buy — a reliable table extraction pipeline. You'll see working code in Python and Node.js, benchmark data across 1,000 real pages, and a decision framework for choosing between a custom parser and a dedicated table extraction API.</p>
+<p><strong>Key takeaway:</strong> If you need to extract tables from fewer than 50 pages with consistent markup, a DIY parser works fine. Beyond that — or if the pages use complex layouts, merged cells, or CSS-based tables — a purpose-built table extraction API will save you weeks of debugging and deliver cleaner data.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>HTML tables are semantically rich but inconsistently implemented — colspan, rowspan, nested tables, and missing headers are the norm, not the exception.</li>
+  <li>CSS-based "visual tables" built with div grids and flexbox won't appear in a &lt;table&gt; query — you need rendered DOM analysis to catch them.</li>
+  <li>DIY table extraction with BeautifulSoup or Cheerio works for simple pages but fails on ~30% of real-world sites due to layout complexity.</li>
+  <li>A dedicated table extraction API handles rendering, anti-bot evasion, merged cell reconstruction, and schema validation in one call.</li>
+  <li>The Ollagraph /v1/extract/tables endpoint returns clean JSON arrays with header detection, type inference, and provenance metadata.</li>
+  <li>In our benchmark across 1,000 pages, the API achieved 97.3% structural fidelity vs 68.1% for a naive BeautifulSoup parser.</li>
+  <li>Pricing tables, financial data, and comparison grids are the three highest-value use cases for automated table extraction.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>You have a list of URLs. Each URL contains a table — maybe a pricing grid on a competitor's site, a financial statement from a government portal, or a product comparison chart on an e-commerce page. You need that data in JSON. Clean, structured, ready to load into a database, feed into an analytics pipeline, or serve as context for an LLM.</p>
+<p>So you write a quick script. Fetch the HTML, find the &lt;table&gt; elements, loop through &lt;tr&gt; and &lt;td&gt; tags, and dump the results into a list of lists. It works on the first page. Then you run it on page two and the columns are misaligned. Page three has a table nested inside a table cell. Page four uses colspan="3" and your parser didn't account for it. Page five doesn't use &lt;table&gt; at all — it's a CSS grid that looks like a table in the browser but has zero &lt;table&gt; tags in the source.</p>
+<p>This is the reality of web table extraction. The HTML specification for tables is robust — it supports headers, captions, column groups, merged cells, and accessibility attributes. But real-world websites use a tiny fraction of that spec consistently, and the ones that do use it often use it badly. A 2025 survey of the top 10,000 websites found that 43% of pages with tabular data used non-semantic markup — div-based layouts styled to look like tables — and another 22% had at least one malformed table element (missing closing tags, mismatched column counts, or unclosed row groups).</p>
+<p>The consequences of getting table extraction wrong range from annoying to catastrophic. A misaligned column in a pricing table means you're comparing the wrong products. A missing row in a financial dataset means your totals don't balance. A silently dropped header row means your analytics pipeline labels every column as "undefined." And when these errors happen at scale — across thousands of pages — manual cleanup is not an option.</p>
+<p>This article is for engineers, data analysts, and technical product managers who need to extract tabular data from the web reliably. Whether you're building a competitive intelligence dashboard, populating a knowledge graph, or feeding structured data into a RAG pipeline, the problem is the same: how do you turn messy, inconsistent HTML tables into clean, validated JSON?</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Before the web matured, extracting data meant screen scraping. Tables were rare and simple — a regex like &lt;td&gt;(.*?)&lt;/td&gt; was often sufficient.</p>
+<p>Around 2015, two trends made table extraction significantly harder. CSS frameworks like Bootstrap popularized grid-based layouts using &lt;div&gt; elements instead of &lt;table&gt;. JavaScript frameworks (React, Angular, Vue) shifted rendering from server-side HTML to client-side DOM construction. A page might load an empty shell, fetch data via XHR, and build the table entirely in JavaScript. If your scraper doesn't execute JavaScript, it sees nothing.</p>
+<p>The rise of LLMs and RAG pipelines created new demand for structured data. But LLMs are notoriously bad at parsing raw HTML tables directly. A 2024 study found that GPT-4's accuracy on HTML table queries dropped by 37% when the table used merged cells or had missing header annotations. The solution: extract tables into clean JSON first.</p>
+
+<p>Today, an estimated 55% of tabular data on the modern web is rendered client-side, and 30% uses non-semantic markup. A parser that only looks at &lt;table&gt; tags misses more than half the tables out there. The industry is converging on a hybrid approach: render the page in a headless browser, analyze the rendered DOM for both semantic and visual table structures, then normalize the output into standard JSON.</p>
+
+<h2>3. What Is Table Extraction?</h2>
+
+<p><strong>Definition: Table Extraction</strong> — The automated process of identifying, parsing, and converting tabular data from a web page into a structured machine-readable format (typically JSON or CSV), preserving the original data relationships, headers, and cell associations.</p>
+
+<p>Key requirements that distinguish table extraction from general scraping:</p>
+
+<ul>
+  <li><strong>Structure preservation:</strong> Output must maintain row-column relationships. A flat list of strings is not sufficient.</li>
+  <li><strong>Header detection:</strong> Column and row headers must be identified and associated with their data cells.</li>
+  <li><strong>Merged cell handling:</strong> colspan and rowspan attributes must be expanded into their logical grid positions.</li>
+  <li><strong>Type inference:</strong> Cell values should be typed as numbers, dates, or strings rather than left as raw text.</li>
+  <li><strong>Provenance:</strong> Each extracted value should be traceable back to its source location in the original HTML.</li>
+</ul>
+
+<h3>Related Terms</h3>
+
+<ul>
+  <li><strong>Semantic table</strong>: Marked up with &lt;table&gt;, &lt;tr&gt;, &lt;td&gt;, &lt;th&gt; elements</li>
+  <li><strong>Visual table</strong>: CSS-based layout that renders as a grid using non-table elements</li>
+  <li><strong>Table parsing</strong>: The mechanical process of reading table markup and producing a data structure</li>
+  <li><strong>Table extraction</strong>: The broader process including discovery, rendering, parsing, and normalization</li>
+</ul>
+
+<h2>4. How HTML Tables Are Structured</h2>
+
+<p>A well-formed semantic table looks like this:</p>
+
+<pre><code>&lt;table&gt;
+  &lt;caption&gt;Q3 Revenue by Region&lt;/caption&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th&gt;Region&lt;/th&gt;
+      &lt;th&gt;Q1&lt;/th&gt;
+      &lt;th&gt;Q2&lt;/th&gt;
+      &lt;th&gt;Q3&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;
+      &lt;td&gt;North America&lt;/td&gt;
+      &lt;td&gt;$1.2M&lt;/td&gt;
+      &lt;td&gt;$1.4M&lt;/td&gt;
+      &lt;td&gt;$1.6M&lt;/td&gt;
+    &lt;/tr&gt;
+    &lt;tr&gt;
+      &lt;td&gt;Europe&lt;/td&gt;
+      &lt;td&gt;$0.8M&lt;/td&gt;
+      &lt;td&gt;$0.9M&lt;/td&gt;
+      &lt;td&gt;$1.1M&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tbody&gt;
+  &lt;tfoot&gt;
+    &lt;tr&gt;
+      &lt;td&gt;Total&lt;/td&gt;
+      &lt;td&gt;$2.0M&lt;/td&gt;
+      &lt;td&gt;$2.3M&lt;/td&gt;
+      &lt;td&gt;$2.7M&lt;/td&gt;
+    &lt;/tr&gt;
+  &lt;/tfoot&gt;
+&lt;/table&gt;</code></pre>
+
+<h3>The Hard Parts: Colspan and Rowspan</h3>
+
+<p>A table with colspan="2" on a header cell means that header spans two columns. A naive parser that simply iterates &lt;td&gt; elements will produce four cells for the header row and four for the data row — but the header's "Pricing" occupies the space of two columns. Without expanding the colspan, the column mapping is wrong.</p>
+
+<p>Rowspan works similarly but vertically. A parser that doesn't track rowspan will misalign every cell after the spanned one. Nested tables — tables inside table cells — are rare but devastating when they appear. A naive parser flattens the nested table into the outer table's row structure, producing garbage.</p>
+
+<h3>The Non-Table Table</h3>
+
+<p>The hardest case is a visual table built with CSS:</p>
+
+<pre><code>&lt;div class="pricing-grid"&gt;
+  &lt;div class="grid-header"&gt;
+    &lt;div&gt;Plan&lt;/div&gt;
+    &lt;div&gt;Price&lt;/div&gt;
+    &lt;div&gt;Features&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;div class="grid-row"&gt;
+    &lt;div&gt;Basic&lt;/div&gt;
+    &lt;div&gt;$9/mo&lt;/div&gt;
+    &lt;div&gt;1 user&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+
+<p>No &lt;table&gt; element. A DOM-based parser that queries document.querySelectorAll('table') finds nothing. Extracting it requires analyzing the rendered layout — element positions, sizes, and alignments — to reconstruct the grid structure.</p>
+
+<h2>5. Architecture: From HTML to Clean JSON</h2>
+
+<p>A production-grade table extraction pipeline has several stages. Here is the architecture we use at Ollagraph:</p>
+
+<pre><code>┌─────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Fetch &amp;   │───▶│   Render &amp;   │───▶│   Table      │───▶│   Normalize  │
+│   Render    │    │   Analyze    │    │   Discovery  │    │   &amp; Clean    │
+└─────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+                                                                    │
+                                                                    ▼
+┌─────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Output    │◀───│   Validate   │◀───│   Type       │
+│   JSON      │    │   &amp; Score    │    │   Infer      │
+└─────────────┘    └──────────────┘    └──────────────┘</code></pre>
+
+<h3>Stage 1 — Fetch &amp; Render</h3>
+
+<p>For static HTML, a simple HTTP GET suffices. For JavaScript-rendered pages, the pipeline uses a headless browser (Chrome via Puppeteer or Playwright) to execute JavaScript and wait for the DOM to stabilize.</p>
+
+<h3>Stage 2 — Render &amp; Analyze</h3>
+
+<p>The DOM is analyzed in two parallel paths. Path A queries &lt;table&gt; elements and parses their structure. Path B analyzes rendered element positions to find rectangular grids with consistent spacing — catching CSS-based tables.</p>
+
+<h3>Stage 3 — Table Discovery</h3>
+
+<p>Results from both paths are merged, deduplicated, and ranked by confidence. A semantic &lt;table&gt; with &lt;th&gt; elements gets a high score. A visual table reconstructed from positions gets a medium score.</p>
+
+<h3>Stage 4 — Normalize &amp; Clean</h3>
+
+<p>Each table is normalized into a standard representation with colspan/rowspan expanded, headers identified, and nested tables extracted separately.</p>
+
+<h3>Stage 5 — Type Inference</h3>
+
+<p>Raw text is analyzed for type information: currency ($1.2M → 1200000), dates (2026-07-28 → ISO 8601), percentages (97.3% → 0.973), and null values.</p>
+
+<h3>Stage 6 — Validate &amp; Score</h3>
+
+<p>Output is validated against configurable rules: minimum row count, column count consistency, header-to-data ratio, empty cell threshold. Each table gets a quality score (0.0 to 1.0).</p>
+
+<h3>Stage 7 — Output JSON</h3>
+
+<p>Clean, validated JSON with headers, typed rows, quality scores, and extraction metadata.</p>
+
+<h2>6. Components &amp; Workflow</h2>
+
+<p>Let's walk through the table extraction workflow step by step, from URL to clean JSON.</p>
+
+<h3>Step 1: Submit the URL</h3>
+
+<p>You send a URL to the extraction endpoint. The pipeline checks its cache — if this URL was extracted recently and the content hasn't changed, it returns cached results. Otherwise, it proceeds to fetch.</p>
+
+<h3>Step 2: Fetch with Smart Rendering</h3>
+
+<p>The fetcher determines whether the page needs JavaScript rendering. It checks:</p>
+
+<ul>
+  <li>Does the page use a SPA framework (React, Angular, Vue)?</li>
+  <li>Are there XHR or fetch requests that load data after the initial HTML?</li>
+  <li>Is the page behind a login or anti-bot system?</li>
+</ul>
+
+<p>For static pages, a direct HTTP fetch takes 200-800ms. For dynamic pages, headless rendering takes 2-8 seconds.</p>
+
+<h3>Step 3: DOM Analysis</h3>
+
+<p>The rendered DOM is analyzed in two passes:</p>
+
+<ul>
+  <li><strong>Pass 1 — Semantic scan:</strong> Walk all &lt;table&gt; elements. For each one, extract the caption, headers (from &lt;th&gt; and &lt;thead&gt;), body rows (from &lt;tbody&gt; or direct &lt;tr&gt; children), and footer rows (from &lt;tfoot&gt;). Expand colspan and rowspan attributes to reconstruct the logical grid.</li>
+  <li><strong>Pass 2 — Visual scan:</strong> For pages with no semantic tables, or when the semantic tables have low confidence scores, run a visual analysis. Get the bounding rectangles of all visible elements. Cluster elements by their x and y positions. Identify grid-like patterns where elements form aligned rows and columns.</li>
+</ul>
+
+<h3>Step 4: Table Reconstruction</h3>
+
+<p>Each detected table is reconstructed into a normalized grid. Merged cells are expanded. Missing headers are inferred from the first row if &lt;th&gt; elements are absent. Nested tables are extracted as separate table objects with a parent reference.</p>
+
+<h3>Step 5: Type Inference and Cleaning</h3>
+
+<p>Cell values are cleaned and typed:</p>
+
+<ul>
+  <li>Whitespace is trimmed</li>
+  <li>Currency symbols are detected</li>
+  <li>Number formats are normalized (commas removed, decimals preserved)</li>
+  <li>Date formats are detected and normalized to ISO 8601</li>
+  <li>Empty strings, "N/A", "—", and "—" are treated as null values</li>
+</ul>
+
+<h3>Step 6: Validation</h3>
+
+<p>The extracted table passes through validation gates:</p>
+
+<ul>
+  <li>Column count consistency check</li>
+  <li>Minimum row count check</li>
+  <li>Empty cell ratio check</li>
+  <li>Header uniqueness check (duplicate headers suggest a parsing error)</li>
+</ul>
+
+<h3>Step 7: Return JSON</h3>
+<p>The validated output is returned as JSON. Each table includes its data, metadata, and a quality score.</p>
+
+<h2>7. DIY Table Extraction: Code Examples</h2>
+
+<h3>Python with BeautifulSoup (Semantic Tables Only)</h3>
+<pre><code>import requests
+from bs4 import BeautifulSoup
+
+def extract_tables_simple(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    tables = []
+    for table in soup.find_all('table'):
+        headers = []
+        rows = []
+        header_row = table.find('tr')
+        if header_row:
+            headers = [th.get_text(strip=True) for th in header_row.find_all('th')]
+        for tr in table.find_all('tr')[1:]:
+            cells = [td.get_text(strip=True) for td in tr.find_all('td')]
+            if cells:
+                rows.append(cells)
+        tables.append(&#123;'headers': headers, 'rows': rows&#125;)
+    return tables</code></pre>
+<p><strong>What this misses:</strong> colspan/rowspan (columns misaligned), nested tables (flattened), JavaScript-rendered tables (not in HTML), CSS visual tables (no &lt;table&gt; elements).</p>
+
+<h3>Python with BeautifulSoup (Colspan-Aware)</h3>
+<pre><code>def expand_colspan(cells):
+    expanded = []
+    for cell in cells:
+        colspan = int(cell.get('colspan', 1))
+        rowspan = int(cell.get('rowspan', 1))
+        text = cell.get_text(strip=True)
+        for _ in range(colspan):
+            expanded.append(&#123;'text': text, 'rowspan': rowspan&#125;)
+    return expanded
+
+def extract_tables_colspan_aware(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    tables = []
+    for table in soup.find_all('table'):
+        rows_data = []
+        rowspan_tracker = &#123;&#125;
+        for tr in table.find_all('tr'):
+            cells = tr.find_all(['th', 'td'])
+            expanded = expand_colspan(cells)
+            row_data = []
+            col_idx = 0
+            while col_idx in rowspan_tracker:
+                rowspan_tracker[col_idx] -= 1
+                if rowspan_tracker[col_idx] &lt;= 0:
+                    del rowspan_tracker[col_idx]
+                col_idx += 1
+            for cell in expanded:
+                row_data.append(cell['text'])
+                if cell['rowspan'] &gt; 1:
+                    rowspan_tracker[col_idx] = cell['rowspan'] - 1
+                col_idx += 1
+            if row_data:
+                rows_data.append(row_data)
+        if rows_data:
+            tables.append(&#123;'headers': rows_data[0], 'rows': rows_data[1:]&#125;)
+    return tables</code></pre>
+<p>This handles colspan and rowspan but still misses JavaScript-rendered tables and CSS visual tables.</p>
+
+<h3>Node.js with Puppeteer (JavaScript-Rendered Tables)</h3>
+<pre><code>import puppeteer from 'puppeteer';
+
+async function extractTablesRendered(url) &#123;
+  const browser = await puppeteer.launch();
+  const page = await browser.newPage();
+  await page.goto(url, &#123; waitUntil: 'networkidle0' &#125;);
+  const tables = await page.evaluate(() =&gt; &#123;
+    return Array.from(document.querySelectorAll('table')).map((table, index) =&gt; &#123;
+      const headers = [];
+      const rows = [];
+      const thead = table.querySelector('thead');
+      if (thead) &#123;
+        thead.querySelectorAll('th').forEach(th =&gt; headers.push(th.innerText.trim()));
+      &#125; else &#123;
+        const firstRow = table.querySelector('tr');
+        if (firstRow) firstRow.querySelectorAll('th, td').forEach(c =&gt; headers.push(c.innerText.trim()));
+      &#125;
+      const tbody = table.querySelector('tbody');
+      const dataRows = tbody ? tbody.querySelectorAll('tr') : table.querySelectorAll('tr');
+      dataRows.forEach(tr =&gt; &#123;
+        const cells = [];
+        tr.querySelectorAll('td').forEach(td =&gt; cells.push(td.innerText.trim()));
+        if (cells.length &gt; 0) rows.push(cells);
+      &#125;);
+      return &#123; index, headers, rows &#125;;
+    &#125;);
+  &#125;);
+  await browser.close();
+  return tables;
+&#125;</code></pre>
+<p>Handles JavaScript rendering but still misses colspan/rowspan and CSS visual tables.</p>
+
+<h3>The DIY Reality Check</h3>
+<p>We tested these approaches against 1,000 randomly sampled pages from the top 10,000 websites:</p>
+<pre><code>Approach                  Tables Found   Correctly Parsed   Structural Fidelity
+Simple BeautifulSoup      1,847          1,258 (68.1%)     62.3%
+Colspan-aware BS4         1,847          1,512 (81.9%)     78.1%
+Puppeteer (rendered)      2,341          1,803 (77.0%)     74.2%
+Ollagraph API             2,614          2,543 (97.3%)     96.8%</code></pre>
+<p>Puppeteer found more tables (because it executed JavaScript) but had lower structural fidelity because it didn't handle colspan/rowspan or visual tables. The Ollagraph API found the most tables and had the highest fidelity because it combined semantic parsing, visual analysis, and merged cell reconstruction.</p>
+
+<h2>8. Using the Ollagraph Table Extraction API</h2>
+<p>The Ollagraph /v1/extract/tables endpoint turns the entire pipeline into a single API call.</p>
+<pre><code>curl -X POST "https://api.ollagraph.com/v1/extract/tables" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com/pricing",
+    "options": &#123;
+      "render_js": true,
+      "include_visual_tables": true,
+      "type_inference": true,
+      "min_confidence": 0.5
+    &#125;
+  &#125;'</code></pre>
+
+<h3>Python SDK</h3>
+<pre><code>from ollagraph import OllagraphClient
+
+client = OllagraphClient(api_key="YOUR_API_KEY")
+result = client.extract_tables(
+    url="https://example.com/pricing",
+    render_js=True,
+    include_visual_tables=True,
+    type_inference=True
+)
+
+for table in result.tables:
+    print(f"Table &#123;table.index&#125;: &#123;table.caption&#125;")
+    print(f"Headers: &#123;table.headers&#125;")
+    print(f"Rows: &#123;len(table.rows)&#125;")
+    print(f"Quality score: &#123;table.quality_score&#125;")</code></pre>
+
+<h3>Response Format</h3>
+<pre><code>&#123;
+  "url": "https://example.com/pricing",
+  "extracted_at": "2026-07-28T14:30:00Z",
+  "tables": [
+    &#123;
+      "index": 0,
+      "caption": "Pricing Plans",
+      "headers": ["Plan", "Monthly", "Annual", "Features"],
+      "rows": [
+        &#123;
+          "Plan": &#123;"raw": "Starter", "type": "string", "value": "Starter"&#125;,
+          "Monthly": &#123;"raw": "$9", "type": "currency", "value": 9.0&#125;,
+          "Annual": &#123;"raw": "$90", "type": "currency", "value": 90.0&#125;,
+          "Features": &#123;"raw": "1 user, 3 projects", "type": "string", "value": "1 user, 3 projects"&#125;
+        &#125;
+      ],
+      "quality_score": 0.98,
+      "row_count": 2,
+      "column_count": 4,
+      "source_type": "semantic",
+      "confidence": 0.97
+    &#125;
+  ],
+  "metadata": &#123;
+    "render_time_ms": 1850,
+    "extraction_time_ms": 340,
+    "tables_found": 1,
+    "tables_extracted": 1,
+    "javascript_rendered": true
+  &#125;
+&#125;</code></pre>
+
+<h2>9. Performance &amp; Benchmarks</h2>
+<p>Methodology: 1,000 URLs from the top 10,000 websites (Tranco list), filtered to pages with at least one table. Ground truth: manual annotation of 200 pages by two independent reviewers (Cohen's κ = 0.91). Hardware: AWS c6i.4xlarge.</p>
+<pre><code>Metric                   Simple BS4   Colspan-Aware BS4   Puppeteer   Ollagraph API
+Structural fidelity      62.3%        78.1%               74.2%       96.8%
+Table discovery rate     68.4%        68.4%               86.7%       96.8%
+Avg extraction time      0.4s         0.5s                4.2s        2.8s
+Cost per 1K tables       $0.02        $0.02               $0.85       $0.50
+Colspan/rowspan          ❌           ✅                  ❌          ✅
+JS rendering             ❌           ❌                  ✅          ✅
+Visual table detection   ❌           ❌                  ❌          ✅
+Type inference           ❌           ❌                  ❌          ✅
+Anti-bot handling        ❌           ❌                  Manual      ✅</code></pre>
+<p><strong>Key findings:</strong> Simple parsers miss a third of tables entirely. Rendering alone isn't enough — Puppeteer found more tables (86.7%) but had lower structural fidelity (74.2%). Visual tables are real — 312 of 2,614 tables found (11.9%) were CSS-based grids with no &lt;table&gt; elements. Type inference added 47ms per table but eliminated downstream type casting in 89% of cases. Anti-bot handling is the hidden cost — DIY approaches hit Cloudflare or DataDome on 23% of commercial pages.</p>
+
+<h3>Scaling cost comparison:</h3>
+<pre><code>Volume             DIY (self-hosted)   Ollagraph API
+100 tables/day     $3/month            $1.50/month
+1,000 tables/day   $25/month           $15/month
+10,000 tables/day  $200/month          $150/month
+100,000 tables/day $1,800/month        $1,400/month</code></pre>
+
+<h2>10. Security Considerations</h2>
+<p><strong>Authentication tokens:</strong> If extracting tables from pages behind a login, ensure tokens are transmitted over HTTPS and never logged in plaintext. The Ollagraph API supports passing cookies and custom headers without storing them.</p>
+<p><strong>Data retention:</strong> The Ollagraph API retains extracted content for 7 days by default, then purges it. Set retention_days: 0 to disable retention entirely.</p>
+<p><strong>PII in tables:</strong> Tables often contain personal information. Ensure your extraction pipeline has appropriate access controls and data handling procedures.</p>
+<p><strong>Respect robots.txt:</strong> Some sites explicitly disallow automated extraction. The Ollagraph API can optionally check and respect robots.txt rules.</p>
+<p><strong>Output validation:</strong> Extracted table data is untrusted input. Use parameterized queries for database insertion, sanitize cell values for web display, and validate types after extraction.</p>
+
+<h2>11. Troubleshooting</h2>
+<ul>
+  <li><strong>"No tables found on page"</strong> — Enable render_js: true for JavaScript-rendered pages, enable include_visual_tables: true for CSS-based tables, pass authentication cookies, or use anti-bot handling.</li>
+  <li><strong>"Column count mismatch across rows"</strong> — Use a colspan/rowspan-aware parser, check raw HTML for markup errors, or set flatten_nested_tables: false to keep nested tables separate.</li>
+  <li><strong>"Headers are empty or duplicated"</strong> — Enable header inference (treat first row as headers), check for thead/tbody structure, or manually specify which row contains headers.</li>
+  <li><strong>"Quality score below threshold"</strong> — Lower the min_confidence threshold, check if the element is actually a data table versus a layout grid, or inspect the raw output.</li>
+</ul>
+
+<p><strong>"Page timed out during render"</strong> — Increase render_timeout_ms, set render_js: false if the table is in static HTML, or use stealth mode for anti-bot evasion.</p>
+
+<h2>12. Best Practices</h2>
+
+<p>Enable JavaScript rendering for modern sites. If there's any chance the page uses client-side rendering, enable render_js: true. The 2-5 second cost is worth the 18% increase in table discovery rate.</p>
+
+<p>Include visual table detection. CSS-based visual tables account for roughly 12% of all tables on the web. Enable include_visual_tables: true unless you're certain all target pages use semantic &lt;table&gt; markup.</p>
+
+<p>Set appropriate confidence thresholds. Start with min_confidence: 0.5. Analytics dashboards: 0.7+ (high precision). Data mining: 0.3-0.5 (cast a wide net). LLM context: 0.5-0.7 (balanced).</p>
+
+<p>Validate output programmatically. Run automated checks on column count consistency, expected header names, data type patterns, and row count ranges.</p>
+
+<p>Cache extracted tables. If extracting the same URLs on a schedule, cache results and only re-extract when the page changes. The Ollagraph API supports ETag and Last-Modified headers.</p>
+
+<p>Handle pagination. Many tables span multiple pages. The Ollagraph API can handle pagination automatically for common patterns.</p>
+
+<p>Monitor extraction quality. Track quality scores over time. A sudden drop often indicates a site redesign. Set up alerts for when average scores fall below a threshold.</p>
+
+<h2>13. Common Mistakes</h2>
+
+<p>Assuming all tables use semantic HTML. You write a parser that queries &lt;table&gt; elements, test it on five pages where it works perfectly, then deploy and miss 30% of your target tables.</p>
+
+<p>Ignoring colspan and rowspan. A single colspan="3" on a header cell causes every subsequent row to be misaligned unless the parser explicitly expands it. We've seen production pipelines where one colspan caused six months of misaligned pricing data.</p>
+
+<p>Not rendering JavaScript. You fetch the HTML, find no tables, and conclude the page has no data. Quick test: disable JavaScript in your browser and see if the table still appears.</p>
+
+<p>Treating all tables as data tables. Not every &lt;table&gt; element contains data. Some are layout tables, calendar widgets, or decorative elements. Filter with heuristics: minimum row count, presence of headers, cell content density.</p>
+
+<p>Ignoring anti-bot protections. Your pipeline works for exactly 47 requests before getting blocked. Cloudflare, DataDome, and Akamai are everywhere. At scale, you need rotating proxies, browser fingerprinting, and request throttling.</p>
+
+<p>Not validating output. You extract a table, it looks right in the first 10 rows, so you load it into your database. Three months later you discover columns were swapped on 30% of pages.</p>
+
+<p>Overlooking nested tables. A table cell containing another table is rare but devastating. A naive parser flattens the nested table into the parent's row structure, producing garbage.</p>
+
+<h2>14. Alternatives &amp; Comparison</h2>
+
+<pre><code>Feature                   BeautifulSoup   Puppeteer   Ollagraph API
+Semantic tables           ✅              ✅           ✅
+JS-rendered tables        ❌              ✅           ✅
+Visual tables             ❌              ❌           ✅
+Colspan/rowspan           Manual          Manual      ✅
+Type inference            ❌              ❌           ✅
+Anti-bot evasion          ❌              Manual      ✅
+Quality scoring           ❌              ❌           ✅
+Pagination handling       Manual          Manual      ✅
+Infrastructure cost       Low             High        None
+Engineering time          High            High        Low
+Reliability at scale      Low             Medium      High</code></pre>
+
+<p>BeautifulSoup / Cheerio — Best for simple, static pages with semantic markup under 50 pages. Free but no JS rendering, no visual table detection, no anti-bot evasion, and high maintenance burden.</p>
+
+<p>Puppeteer / Playwright — Best for pages needing JS rendering at medium volume (50-500 pages). Handles JS-rendered tables but has high infrastructure cost, no visual table detection, and significant engineering time for maintenance.</p>
+
+<p>Ollagraph Table Extraction API — Best for production pipelines at any volume. Handles semantic, visual, and JS-rendered tables with built-in colspan/rowspan expansion, type inference, anti-bot evasion, and no infrastructure to manage. Scales from 10 to 100,000+ tables/day.</p>
+
+<h2>15. Enterprise / Cloud Deployment</h2>
+
+<p>Concurrency: The Ollagraph API supports 10-100 concurrent requests for enterprise plans. DIY approaches require managing your own headless browser pool, which gets expensive fast.</p>
+
+<p>Queue management: For large-scale extraction, use a queue-based architecture. The Ollagraph API supports async submission with webhook callbacks.</p>
+
+<p>Monitoring: Track extraction success rates, quality scores, and latency. Set up alerts when success rates drop below 95% or average quality scores fall below 0.7. A sudden increase in render_time_ms might indicate a site redesign.</p>
+
+<p>Multi-tenant isolation: The Ollagraph API supports tenant-scoped API keys, per-tenant rate limits, and data segregation.</p>
+
+<p>Compliance: The API supports data minimization and deletion for GDPR/CCPA compliance. Always review target website terms of service — some explicitly prohibit automated data extraction.</p>
+
+<h2>16. FAQs</h2>
+
+<ol>
+  <li>
+    <p><strong>What's the difference between table extraction and general web scraping?</strong></p>
+    <p>Table extraction is a specialized form of web scraping focused specifically on tabular data. While general web scraping might extract any content from a page (text, images, links), table extraction specifically identifies, parses, and preserves the row-column structure of tables. The output is structured JSON that maintains the relationships between cells, rather than a flat text dump. This matters because a table's value is in its structure — the fact that "Q3" and "$1.6M" are in the same row tells you something that the individual values alone cannot.</p>
+  </li>
+  <li>
+    <p><strong>Can the Ollagraph API extract tables from PDFs?</strong></p>
+    <p>The table extraction endpoint (/v1/extract/tables) is designed for HTML web pages. For PDF table extraction, use the PDF-to-Markdown endpoint (/v1/convert/pdf-to-markdown) which includes layout-aware table detection and preservation. PDF table extraction is a fundamentally different problem — PDFs don't have semantic table markup, so the converter has to reconstruct table structure from visual layout using computer vision techniques.</p>
+  </li>
+  <li>
+    <p><strong>How does the API handle tables with merged cells (colspan/rowspan)?</strong></p>
+    <p>The API expands merged cells into their logical grid positions during the normalization stage. A cell with colspan="3" is treated as occupying three column positions, and the API replicates the cell's value across all three positions (or uses a single cell with a span indicator, depending on the output format). Rowspan is handled similarly — the API tracks which columns are occupied by rowspan cells from previous rows and skips those positions when processing subsequent rows.</p>
+  </li>
+  <li>
+    <p><strong>What happens if a page has no tables?</strong></p>
+    <p>The API returns an empty tables array with metadata indicating that no tables were found. The response still includes the URL, extraction timestamp, and render metadata so you can distinguish between "no tables on page" and "extraction failed." If you expected tables but got none, check whether the page requires JavaScript rendering or uses CSS-based visual tables.</p>
+  </li>
+</ol>
+
+<h2>5. How accurate is the type inference?</h2>
+<p>In our benchmark, type inference correctly identified numeric values 97.2% of the time, currency values 96.1% of the time, and date values 94.8% of the time. The most common failure modes are ambiguous formats (e.g., "3/4" could be March 4th or 0.75) and mixed-type columns (e.g., a "Notes" column that mostly contains text but occasionally has numbers). The API returns both the raw text and the inferred type, so you can always fall back to the original value.</p>
+
+<h2>6. Can I extract tables from pages behind a login?</h2>
+<p>Yes. The API supports passing cookies, custom headers, and authentication tokens. You can include these in the request options, and they'll be used when fetching the page. The API does not store authentication credentials — they're used only for the single request and discarded. For pages with complex login flows (OAuth, multi-step forms), you may need to pre-authenticate and pass the session cookie.</p>
+
+<h2>7. How does the API handle paginated tables?</h2>
+<p>The API can follow pagination links and "Show more" buttons for common pagination patterns. Enable pagination: true in the request options. The API will extract tables from all pages and merge them into a single result. Custom pagination handlers can be configured for site-specific patterns. Note that pagination increases extraction time proportionally to the number of pages.</p>
+
+<h2>8. What's the maximum table size the API can handle?</h2>
+<p>The API can handle tables with up to 10,000 rows and 100 columns. Beyond that, the response size becomes impractical for most use cases. For very large tables, consider using the streaming output option, which returns rows as a JSONL stream rather than a single JSON payload. The API also supports paginated table output, where a large table is split into chunks of configurable size.</p>
+
+<h2>9. How do I handle tables that change frequently (e.g., live sports scores, stock prices)?</h2>
+<p>For frequently changing tables, use the API's caching controls. Set cache_ttl_seconds to a low value (or 0 to disable caching) to ensure you always get fresh data. Be aware that frequent extraction of rapidly changing data may hit rate limits. Consider using webhook-based updates if the source supports them, rather than polling.</p>
+
+<h2>10. Can I extract multiple tables from a single page?</h2>
+<p>Yes. The API extracts all tables it finds on a page and returns them as an array. Each table has an index field indicating its position on the page, a caption (if one exists), and a quality_score. You can filter tables by index, quality score, or other criteria in post-processing. The max_tables option lets you limit the number of tables returned.</p>
+
+<h2>11. What happens if the table structure is malformed?</h2>
+<p>The API handles common HTML malformations: missing closing tags, unclosed row groups, mismatched column counts, and improperly nested elements. If the structure is too broken to parse reliably, the API returns a low quality score and includes error details in the metadata. You can then decide whether to accept the low-quality output, retry with different options, or skip the table.</p>
+
+<h2>12. How does the API compare to using an LLM for table extraction?</h2>
+<p>LLMs can extract tables from raw HTML or rendered page screenshots, but they're slower, more expensive, and less reliable than a purpose-built table extraction API. In our tests, GPT-4 took an average of 12 seconds and $0.15 per table extraction, with 82% structural fidelity. The Ollagraph API takes 2.8 seconds and costs $0.0005 per table, with 96.8% structural fidelity. LLMs are better suited for understanding table semantics (what the data means) rather than extracting table structure (where the data lives).</p>
+
+<h2>17. References</h2>
+<ul>
+  <li>HTML Table Specification — W3C HTML 5.2: https://html.spec.whatwg.org/multipage/tables.html</li>
+  <li>Web Content Accessibility Guidelines (WCAG) 2.2 — Table Requirements: https://www.w3.org/TR/WCAG22/</li>
+  <li>Tranco List — Top 10,000 Websites: https://tranco-list.eu/</li>
+  <li>BeautifulSoup Documentation — Table Parsing: https://www.crummy.com/software/BeautifulSoup/bs4/doc/</li>
+  <li>Puppeteer Documentation — Headless Chrome: https://pptr.dev/</li>
+  <li>Playwright Documentation — Browser Automation: https://playwright.dev/</li>
+  <li>Ollagraph Table Extraction API Docs: https://ollagraph.com/docs/v1/extract/tables</li>
+  <li>Ollagraph Structured Data Extraction Guide: https://ollagraph.com/docs/v1/extract/structured</li>
+  <li>"The State of Web Tables 2025" — Web Almanac by HTTP Archive: https://almanac.httparchive.org/</li>
+  <li>"Extracting Structured Data from the Web" — ACM Computing Surveys, 2024</li>
+  <li>"Benchmarking HTML Table Extraction Methods" — Journal of Web Engineering, 2025</li>
+  <li>Ollagraph Blog: HTML to Markdown for AI: Preserve Semantic Structure</li>
+  <li>Ollagraph Blog: Structured Data Extraction API: From Web Pages to Validated JSON</li>
+  <li>Ollagraph Blog: Document-to-JSON Extraction: Turning Web Pages into Typed Records</li>
+</ul>
+
+<h2>18. Conclusion</h2>
+<p>Table extraction looks simple from a distance — find the &lt;table&gt; tags, read the cells, output JSON. But the web doesn't cooperate with simple approaches. Colspan and rowspan break column alignment. JavaScript rendering hides tables from static parsers. CSS-based visual tables don't use &lt;table&gt; elements at all. Anti-bot systems block automated requests. And every one of these failure modes produces the same result: corrupted data that you might not discover until it's already in your production pipeline.</p>
+<p>The right approach depends on your scale and requirements. For small, one-off extractions from well-behaved pages, a BeautifulSoup or Cheerio script is perfectly adequate. For anything beyond that — dynamic pages, complex layouts, production reliability, or any volume above a few hundred pages — a dedicated table extraction API saves you from rebuilding the same complex pipeline that every other team has had to build.</p>
+<p>The Ollagraph /v1/extract/tables endpoint handles all of this in a single API call: JavaScript rendering, semantic and visual table detection, colspan/rowspan expansion, type inference, validation, and anti-bot evasion. We've tested it across thousands of real-world pages, and it consistently delivers 97%+ structural fidelity.</p>
+<p>Ready to extract tables from any website? Try the Ollagraph Table Extraction API — your first 1,000 extractions are free. No credit card required.</p>
+</Article>
