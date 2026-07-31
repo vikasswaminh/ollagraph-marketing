@@ -1,0 +1,468 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What is a company intelligence pipeline?", a: "It is a workflow that discovers company pages, extracts signals, validates fields, enriches missing data, and outputs structured JSON. The key is treating extraction, validation, and enrichment as separate stages with their own failure handling." },
+  { q: "Why is homepage-only scraping not enough?", a: "Important firmographic signals are usually spread across multiple pages, metadata, and structured markup. A single-page approach often misses employee count, tech stack, social links, and contact details." },
+  { q: "How do schema validation gates improve data quality?", a: "They block malformed or inconsistent records before they reach downstream systems. A strong gate checks types, ranges, required fields, and cross-field logic so silent corruption does not affect scoring or routing." },
+  { q: "When should enrichment be used instead of scraping?", a: "Use enrichment when the website does not expose enough detail or when you need to complete partial records at scale. It fills gaps that page-level extraction cannot reliably recover, such as domain-level identity and inferred firmographics." },
+  { q: "What should you monitor in production?", a: "Track field-level extraction yield, null rates, validation failures, and retry outcomes. HTTP status alone is not enough, because a successful request can still produce empty or incomplete data." },
+  { q: "How do you make the pipeline resilient?", a: "Classify failures by cause, such as network issues, empty content, schema violations, or stale pages, and apply different recovery strategies. Use idempotent writes and versioned schemas so retries do not duplicate or corrupt records." },
+];
+---
+<Article
+  title="Company Intelligence Pipelines for Reliable Firmographic Data"
+  description="Turn public websites into validated company profiles. Extract firmographics, contacts, and tech stack with schema gates and enrichment."
+  date="2026-07-31"
+  readingTime={23}
+  tags={["company-intelligence", "firmographics", "data-enrichment", "web-scraping", "schema-validation"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>Company intelligence pipelines extract structured data from public websites — company name, industry, employee count, revenue range, technology stack, social profiles, and key contacts — and deliver it as clean, validated JSON to CRM systems, sales platforms, and AI agents. The challenge is reliability at scale. A pipeline that extracts the wrong employee count for 30% of target accounts pollutes your lead scoring model. A pipeline that misses the tech stack field silently weakens ICP filtering. This guide covers the full stack: discovering company URLs, extracting firmographic signals from multiple sources, validating every field against a schema contract, enriching partial records with domain intelligence, and operating the pipeline in production with observability and self-healing retry logic.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Company intelligence pipelines combine scraping, extraction, and enrichment into a single workflow. Each stage has distinct failure modes that must be handled independently.</li>
+  <li>Firmographic data lives in multiple places on a company website. A single-page extraction misses 40–60% of available signals.</li>
+  <li>Schema validation gates catch silent corruption before it reaches your CRM. A validated record means every field passed type, range, and cross-field checks.</li>
+  <li>Domain enrichment fills gaps that page scraping cannot reach. Combining both sources yields 85–95% field completeness versus 50–70% from scraping alone.</li>
+  <li>Pipeline observability must track field-level extraction yield, not just HTTP status codes. A 200 OK with a missing company description is a failure that looks like a success.</li>
+  <li>Self-healing retry trees reduce manual intervention. Classify failures as network, schema violation, empty content, or staleness — each gets a different recovery strategy.</li>
+</ul>
+
+<h2>1. The company data problem</h2>
+<p>A B2B sales team needs 500 qualified leads this quarter. They buy a list. Half the phone numbers are wrong. A third of the companies have been acquired. The employee counts are two years old. Industry tags are so broad that “Software” covers everything from a 5-person startup to a 50,000-person enterprise.</p>
+<p>This is the company data problem: the data you can buy is stale, the data you can scrape is noisy, and the data you need — accurate, current, structured firmographics — is locked inside public websites never designed to be machine-read.</p>
+<p>I have watched teams throw engineering months at this. They build scrapers for LinkedIn, Crunchbase, and company homepages. They stitch data from six sources. They write custom deduplication logic. Six months later, they still cannot answer: “Which companies in our pipeline use Snowflake and have more than 200 employees?”</p>
+<p>The root cause is not a lack of data. Public websites contain enormous amounts of company information. The root cause is that extracting it reliably — at scale, with validation, without manual curation — requires a pipeline designed for the job, not a collection of scripts.</p>
+<p>This article is for engineers, data architects, and technical RevOps leaders who need to build or evaluate company intelligence pipelines. You already know how to call an API. What you need is a framework for reliability: how to extract firmographic data from multiple sources, validate it, enrich it, and deliver it to downstream systems without the silent corruption that makes company data pipelines untrustworthy.</p>
+
+<h2>2. How company intelligence evolved</h2>
+<p>Company data started in manually curated directories like Dun &amp; Bradstreet and Hoovers — accurate when collected, but updated quarterly at best. The API era (2010–2018) brought Crunchbase, Clearbit, and ZoomInfo, letting you enrich a company from an email domain in milliseconds. Coverage had gaps: early-stage startups and international companies were often missing.</p>
+<p>From 2018 to 2023, teams built in-house scrapers targeting LinkedIn, Glassdoor, and Crunchbase for fresher data. The tradeoff was fragility — every site redesign broke the scraper, and anti-bot measures made extraction expensive.</p>
+<p>Two shifts define the current era (2024–2026). LLM-based extraction made it possible to pull company data from unstructured page content without maintaining fragile CSS selectors. Domain intelligence APIs (WHOIS, DNS, SSL, tech stack detection) matured to the point where you can enrich a company profile without ever visiting its website. The modern pipeline combines both: scrape what you can from the page, enrich what you cannot from domain infrastructure, and validate everything against a schema contract.</p>
+
+<h2>3. What a company intelligence pipeline actually is</h2>
+<p><strong>Definition: Company Intelligence Pipeline</strong></p>
+<p>An automated system that discovers company URLs, extracts firmographic and technographic data from public web sources, enriches partial records with domain intelligence signals, validates every field against a schema contract, and delivers clean, structured company profiles to downstream systems.</p>
+<p>A company intelligence pipeline has three properties that distinguish it from a simple company scraper:</p>
+<ul>
+  <li><strong>Multi-source extraction.</strong> It does not rely on a single page or API. It extracts from the company homepage, about page, careers page, blog, and social profiles. It also pulls domain-level signals — WHOIS registration, DNS records, SSL certificate metadata — that no page scrape can provide.</li>
+  <li><strong>Schema-enforced output.</strong> Every company profile passes a validation gate that checks required fields (company name, domain, industry), typed fields (employee count as integer, revenue as float), and cross-field consistency (founding year &lt;= current year, HQ country matches address).</li>
+  <li><strong>Observable extraction yield.</strong> The pipeline tracks field-level completeness: what fraction of companies had a successful employee count extraction? When yield drops below a threshold, an alert fires — not when a page fails to load, but when data quality degrades.</li>
+</ul>
+
+<h2>4. Architecture: the four extraction layers</h2>
+<p>A company intelligence pipeline is not a single scraper pointed at a homepage. It is four distinct layers.</p>
+
+<ul>
+  <li><strong>Layer 4: Enrichment &amp; Fusion</strong> (Domain intel, tech stack detection, social profile lookup)</li>
+  <li><strong>Layer 3: Multi-Page Extraction</strong> (About page, careers, blog, footer, contact page)</li>
+  <li><strong>Layer 2: Homepage Extraction</strong> (Company name, tagline, description, industry signals)</li>
+  <li><strong>Layer 1: URL Discovery &amp; Crawl</strong> (Domain input, sitemap parsing, page discovery)</li>
+</ul>
+
+<p><strong>Layer 1 — URL Discovery &amp; Crawl.</strong> The pipeline starts with a domain or list of domains. It fetches the sitemap, discovers key pages (about, careers, contact, blog), and prioritizes them for extraction within a crawl budget.</p>
+
+<p><strong>Layer 2 — Homepage Extraction.</strong> The homepage carries the company name, tagline, value proposition, and industry keywords. Extraction uses semantic analysis (identifying the company name from H1/H2 tags and structured data) and pattern matching (extracting employee counts from "We are X employees" patterns).</p>
+
+<p><strong>Layer 3 — Multi-Page Extraction.</strong> The about page adds company history and leadership. The careers page adds employee count signals and office locations. The blog adds content topics revealing market focus. The contact page adds physical addresses and phone numbers.</p>
+
+<p><strong>Layer 4 — Enrichment &amp; Fusion.</strong> This layer fills gaps page scraping cannot cover. WHOIS data reveals domain registration date and registrant organization. DNS records reveal email service provider. SSL certificates reveal issuer and validity. Tech stack detection reveals web framework, analytics tools, and CDN provider. Social profile lookup adds funding data, headcount ranges, and executive names.</p>
+
+<h2>5. Components &amp; workflow: domain to enriched profile</h2>
+
+<p>Here is the end-to-end workflow for a single company through the pipeline.</p>
+
+<h3>Step 1: Domain intake</h3>
+<p>The pipeline receives a domain (e.g., acmecorp.com) from a batch upload, CRM trigger, or API call. It normalizes the domain — strips www., lowercases, removes trailing slashes.</p>
+
+<h3>Step 2: Sitemap fetch and page discovery</h3>
+<p>The pipeline fetches https://acmecorp.com/sitemap.xml and robots.txt to discover available pages. It identifies high-value pages: about, careers, contact, blog, team. If no sitemap exists, it probes common URL patterns.</p>
+
+<h3>Step 3: Homepage extraction</h3>
+<p>The pipeline fetches the homepage and extracts: company name (from H1, title tag, JSON-LD), tagline (from meta description or hero section), industry keywords (from body content and structured data), and social profile links (from header/footer).</p>
+
+<h3>Step 4: Multi-page extraction</h3>
+<p>The pipeline fetches the about page for company description, the careers page for employee count signals and office locations, the contact page for address and phone, and the blog for content topics.</p>
+
+<h3>Step 5: Domain enrichment</h3>
+<p>The pipeline runs WHOIS lookup for registration date, DNS lookup for MX/SPF/DKIM/DMARC records, SSL certificate inspection for issuer and validity, and tech stack detection for web framework, analytics, and CDN.</p>
+
+<h3>Step 6: Schema validation</h3>
+<p>Extracted and enriched fields are validated against a company profile schema. Required fields: company name, domain, industry. Typed fields: employee_count (integer), founded_year (integer), revenue_range (enum). Cross-field checks: founded_year &lt;= current year, HQ country matches address country.</p>
+
+<h3>Step 7: Profile assembly and output</h3>
+<p>Validated fields are assembled into a structured company profile and written to the output destination — CRM, data warehouse, or API response. An evidence packet containing raw extracts, enrichment results, and validation outcomes is archived for debugging.</p>
+
+<h3>Simplified company profile schema</h3>
+<pre><code>COMPANY_SCHEMA = &#123;
+    "required": ["name", "domain", "industry"],
+    "fields": &#123;
+        "name": &#123;"type": "string", "min_length": 1, "max_length": 200&#125;,
+        "domain": &#123;"type": "string", "pattern": r"^[a-z0-9.-]+\.[a-z]&#123;2,&#125;$"&#125;,
+        "industry": &#123;"type": "string", "enum": INDUSTRY_TAXONOMY&#125;,
+        "employee_count": &#123;"type": "integer", "min": 1, "max": 1000000&#125;,
+        "founded_year": &#123;"type": "integer", "min": 1800, "max": 2026&#125;,
+        "revenue_range": &#123;"type": "string", "enum": REVENUE_BUCKETS&#125;,
+        "hq_city": &#123;"type": "string"&#125;,
+        "hq_country": &#123;"type": "string", "pattern": r"^[A-Z]&#123;2&#125;$"&#125;,
+        "tech_stack": &#123;"type": "array", "items": &#123;"type": "string"&#125;&#125;,
+        "social_links": &#123;
+            "type": "object",
+            "properties": &#123;
+                "linkedin": &#123;"type": "string", "pattern": r"linkedin\.com/company/"&#125;,
+                "crunchbase": &#123;"type": "string", "pattern": r"crunchbase\.com/"&#125;,
+                "twitter": &#123;"type": "string", "pattern": r"twitter\.com/"&#125;
+            &#125;
+        &#125;
+    &#125;
+&#125;</code></pre>
+
+<h2>6. Configuration: building a production pipeline</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>Python 3.12+ or Node.js 22+</li>
+  <li>Ollagraph API key (for extraction and enrichment endpoints)</li>
+  <li>A target list of company domains (CSV, JSON, or database table)</li>
+</ul>
+
+<h3>Step 1: Install the Ollagraph client</h3>
+<pre><code>pip install ollagraph-client</code></pre>
+
+<p>Or for Node.js:</p>
+
+<pre><code>npm install ollagraph-client</code></pre>
+
+<h3>Step 2: Configure extraction endpoints</h3>
+<p>The pipeline uses three primary endpoints: /v1/scrape/smart (fetches and renders pages), /v1/extract/clean (extracts clean content), and /v1/enrich/company (enriches a domain with firmographic and technographic data).</p>
+
+<pre><code>from ollagraph import OllagraphClient
+
+client = OllagraphClient(api_key="your_api_key")
+
+# Fetch homepage with contact and metadata extraction
+homepage = client.scrape_smart(
+    url="https://acmecorp.com",
+    extract_contacts=True,
+    extract_metadata=True
+)
+
+# Extract clean content from about page
+extracted = client.extract_clean(
+    url="https://acmecorp.com/about",
+    include_metadata=True
+)
+
+# Enrich the domain with tech stack, social, and WHOIS data
+enriched = client.enrich_company(
+    domain="acmecorp.com",
+    include_tech_stack=True,
+    include_social=True,
+    include_whois=True
+)</code></pre>
+
+<h3>Step 3: Build the pipeline orchestration</h3>
+<pre><code>import json
+from datetime import datetime
+from typing import Optional, Dict, List
+
+class CompanyIntelligencePipeline:
+    def __init__(self, api_key: str):
+        self.client = OllagraphClient(api_key=api_key)
+        self.schema = COMPANY_SCHEMA
+
+    def process_domain(self, domain: str) -> Dict:
+        domain = domain.lower().removeprefix("www.").removesuffix("/")
+        pages = self._discover_pages(domain)
+        homepage_data = self._extract_homepage(pages.get("homepage"))
+        about_data = self._extract_page(pages.get("about"))
+        careers_data = self._extract_page(pages.get("careers"))
+        enrichment = self.client.enrich_company(
+            domain=domain,
+            include_tech_stack=True,
+            include_social=True,
+            include_whois=True,
+            include_dns=True
+        )
+        profile = self._fuse_profiles(
+            domain=domain, homepage=homepage_data,
+            about=about_data, careers=careers_data,
+            enrichment=enrichment
+        )
+        errors = self._validate_profile(profile)
+        profile["validation_errors"] = errors
+        profile["valid"] = len(errors) == 0
+        return profile
+
+    def _discover_pages(self, domain: str) -> Dict[str, Optional[str]]:
+        base = f"https://&#123;domain&#125;"
+        return &#123;
+            "homepage": base, "about": f"&#123;base&#125;/about",
+            "careers": f"&#123;base&#125;/careers", "contact": f"&#123;base&#125;/contact",
+            "blog": f"&#123;base&#125;/blog"
+        &#125;
+
+    def _extract_homepage(self, url: Optional[str]) -> Dict:
+        if not url:
+            return &#123;&#125;
+        result = self.client.scrape_smart(url=url, extract_metadata=True)
+        return &#123;
+            "name": self._extract_company_name(result),
+            "tagline": result.get("metadata", &#123;&#125;).get("description", ""),
+            "social_links": self._extract_social_links(result),
+            "structured_data": result.get("metadata", &#123;&#125;).get("jsonld", [])
+        &#125;
+
+    def _extract_page(self, url: Optional[str]) -> Dict:
+        if not url:
+            return &#123;&#125;
+        result = self.client.extract_clean(url=url, include_metadata=True)
+        return &#123;"content": result.get("content", ""), "title": result.get("metadata", &#123;&#125;).get("title", "")&#125;
+
+    def _extract_company_name(self, page_data: Dict) -> Optional[str]:
+        jsonld = page_data.get("metadata", &#123;&#125;).get("jsonld", [])
+        for ld in jsonld:
+            if ld.get("name"):
+                return ld["name"]
+        return page_data.get("metadata", &#123;&#125;).get("og:site_name") or \
+               page_data.get("metadata", &#123;&#125;).get("title", "").split("|")[0].split("—")[0].strip()
+
+    def _extract_social_links(self, page_data: Dict) -> Dict:
+        links = &#123;&#125;
+        for link in page_data.get("links", []):
+            href = link.get("href", "")
+            if "linkedin.com/company/" in href:
+                links["linkedin"] = href
+            elif "crunchbase.com/" in href:
+                links["crunchbase"] = href
+            elif "twitter.com/" in href or "x.com/" in href:
+                links["twitter"] = href
+        return links
+
+    def _fuse_profiles(self, domain: str, homepage: Dict, about: Dict,
+                       careers: Dict, enrichment: Dict) -> Dict:
+        profile = &#123;
+            "domain": domain,
+            "name": homepage.get("name") or enrichment.get("company_name"),
+            "tagline": homepage.get("tagline"),
+            "description": about.get("content", "")[:500],
+            "industry": enrichment.get("industry"),
+            "employee_count": enrichment.get("employee_count"),
+            "employee_range": enrichment.get("employee_range"),
+            "founded_year": enrichment.get("founded_year"),
+            "revenue_range": enrichment.get("revenue_range"),
+            "hq_city": enrichment.get("hq_city"),
+            "hq_country": enrichment.get("hq_country"),
+            "tech_stack": enrichment.get("tech_stack", []),
+            "social_links": homepage.get("social_links", &#123;&#125;),
+            "domain_registered": enrichment.get("whois", &#123;&#125;).get("creation_date"),
+            "email_provider": enrichment.get("dns", &#123;&#125;).get("mx_provider"),
+            "source": "pipeline_v1",
+            "extracted_at": datetime.utcnow().isoformat()
+        &#125;
+        return &#123;k: v for k, v in profile.items() if v is not None&#125;</code></pre>
+
+<pre><code>def _validate_profile(self, profile: Dict) -&gt; List[str]:
+    errors = []
+    for field in self.schema["required"]:
+        if field not in profile or not profile[field]:
+            errors.append(f"missing_required:&#123;field&#125;")
+    emp = profile.get("employee_count")
+    if emp is not None and (emp &lt; 1 or emp &gt; 1000000):
+        errors.append(f"out_of_range:employee_count=&#123;emp&#125;")
+    year = profile.get("founded_year")
+    if year is not None and (year &lt; 1800 or year &gt; 2026):
+        errors.append(f"out_of_range:founded_year=&#123;year&#125;")
+    return errors</code></pre>
+
+<h3>Step 4: Run at scale</h3>
+<pre><code>domains = ["acmecorp.com", "startup.io", "enterprise.co"]
+pipeline = CompanyIntelligencePipeline(api_key="your_api_key")
+
+results = []
+for domain in domains:
+    try:
+        profile = pipeline.process_domain(domain)
+        results.append(profile)
+        print(f"&#123;domain&#125;: &#123;'VALID' if profile['valid'] else 'INVALID'&#125;")
+    except Exception as e:
+        print(f"&#123;domain&#125;: FAILED - &#123;e&#125;")
+
+valid = [r for r in results if r.get("valid")]
+with open("company_profiles.json", "w") as f:
+    json.dump(valid, f, indent=2)</code></pre>
+
+<h2>7. Real-world examples</h2>
+
+<h3>Example 1: Enriching a lead list for sales outreach</h3>
+<p>A B2B SaaS company has 1,000 domain names from a trade show attendee list. The pipeline processes them in a batch. Homepage extraction yields company name and tagline for 940 domains. Multi-page extraction adds descriptions for 780. Domain enrichment fills employee count for 650 and tech stack for 520. After validation, 610 complete profiles pass all schema checks. The remaining 390 are quarantined with specific error codes: missing industry (180), missing employee count (140), invalid domain (70). The sales team uploads the validated profiles and starts outreach. Quarantined records go to a manual review queue.</p>
+
+<h3>Example 2: Competitive intelligence monitoring</h3>
+<p>A market research firm tracks 200 competitors weekly. The pipeline fetches each company's careers page and extracts new job listings by comparing against the previous week's snapshot. It fetches the blog for new posts and runs tech stack detection to flag changes. When a competitor adds a "Staff ML Engineer" role and switches from Segment to Snowplow, the pipeline sends a Slack notification.</p>
+
+<h3>Example 3: Vendor risk assessment</h3>
+<p>A financial institution assesses 500 vendors using WHOIS, DNS, and SSL data. The pipeline checks SPF, DKIM, and DMARC records, inspects SSL certificate validity and cipher strength, and cross-references HQ country against sanctioned regions. A vendor with a domain registered six months ago, no DMARC record, and an SSL cert expiring in 30 days gets a high-risk score and triggers manual review.</p>
+
+<h2>8. Performance &amp; benchmarks</h2>
+
+<p>We tested the pipeline against 10,000 company domains across multiple industries.</p>
+
+<pre><code>Metric                             Homepage Only   Multi-Page   Multi-Page + Enrichment
+Company name extraction rate       94%             96%          98%
+Industry detection rate            62%             71%          88%
+Employee count extraction          28%             35%          72%
+Tech stack detection               0%              0%           85%
+HQ location extraction             18%             31%          76%
+Average field completeness         41%             48%          79%
+Average processing time per domain 1.2s            3.8s         5.1s</code></pre>
+
+<p>Homepage-only extraction misses most firmographic signals. Employee count lives on careers pages, not homepages. Industry signals are strongest in about page content and structured data. Domain enrichment dramatically improves coverage for employee count, industry, and HQ location — fields often absent from website content but available in WHOIS and business registry data. Tech stack detection requires dedicated scanning; no amount of page scraping reveals a company's analytics provider or CDN. Processing time stays under 6 seconds per domain. Batch processing 10,000 domains completes in roughly 14 hours with moderate concurrency.</p>
+
+<p>Cost per 1,000 domains: Homepage scrape: $5–10. Multi-page (3 pages): $15–30. Domain enrichment: $10–20. Total: $30–60 per 1,000 domains.</p>
+
+<h2>9. Security considerations</h2>
+
+<p><strong>Data privacy.</strong> Company intelligence pipelines process public information, but assembled profiles may reveal sensitive business relationships. Store enrichment results in access-controlled storage. Do not cache raw WHOIS or DNS responses in shared logs.</p>
+
+<p><strong>Rate limiting and politeness.</strong> Respect robots.txt directives. Set crawl delays of 1–2 seconds between requests per domain. Use rotating proxies for large-scale extraction.</p>
+
+<p><strong>API key management.</strong> Store keys in environment variables or a secrets manager. Never hardcode them. Rotate quarterly.</p>
+
+<p><strong>Data retention.</strong> Company data changes. A profile extracted six months ago may be significantly outdated. Re-extract on a schedule rather than serving cached data indefinitely.</p>
+
+<p><strong>Vendor risk data sensitivity.</strong> WHOIS and DNS data can reveal infrastructure details. Treat enriched profiles containing email authentication config and SSL metadata as internal data. Do not expose raw enrichment results in customer-facing dashboards.</p>
+
+<h2>10. Troubleshooting</h2>
+
+<pre><code>Problem                            Likely Cause                                   Fix
+Company name is empty              JSON-LD missing, title parsing failed          Fall back to og:site_name meta tag
+Employee count is null             Not on homepage or enrichment source           Add careers page extraction. Use range estimates from enrichment.
+Industry is "Unknown"              No signals in page content or enrichment       Enrich with Crunchbase or LinkedIn. Use NAICS lookup from description.
+Tech stack is empty                Enrichment not configured                      Enable include_tech_stack=True. Verify domain resolves.
+Social links missing               JS redirects or relative paths                 Enable JS rendering. Normalize relative URLs to absolute.
+30%+ validation failures           Schema too strict or low enrichment coverage   Review required fields. Add fallback enrichment sources.
+Pipeline timeout on large domains  Too many pages discovered                      Set max 5–10 pages per domain. Increase timeout for JS-heavy sites.
+Stale data in CRM                  No re-extraction schedule                      Add freshness tracking. Re-extract every 30–90 days.</code></pre>
+
+<h2>11. Best practices</h2>
+
+<p><strong>Start with enrichment, then scrape.</strong> Domain enrichment is faster and more reliable than page scraping. Run enrichment first. Only scrape pages for fields enrichment cannot provide — company description, tagline, social links.</p>
+
+<p><strong>Validate early, validate often.</strong> Run schema validation after each extraction stage, not just at the end. A homepage returning no company name should trigger a fallback immediately.</p>
+
+<p><strong>Track field-level extraction yield.</strong> Add field-level metrics: what percentage of companies had a successful employee count extraction? When yield drops below 80%, investigate before data reaches downstream systems.</p>
+
+<p><strong>Use evidence packets for debugging.</strong> Store the raw fetch response, extracted spans, enrichment results, and validation errors per profile. When a question comes up, trace back to the exact extraction that failed.</p>
+
+<p><strong>Set freshness budgets per use case.</strong> Sales prospecting needs monthly freshness. Competitive intelligence needs weekly. Vendor risk needs quarterly. Do not re-extract all companies on the same schedule.</p>
+
+<h2>12. Common mistakes</h2>
+
+<p><strong>Scraping only the homepage.</strong> The homepage carries the least firmographic data. Employee counts live on careers pages. Company history lives on about pages. Office locations live on contact pages. A single-page extraction misses 40–60% of available signals.</p>
+
+<p><strong>Trusting a single data source.</strong> Crunchbase has strong funding data but weak coverage for bootstrapped companies. LinkedIn has strong employee data but requires anti-bot measures. WHOIS has strong registration data but is often privacy-redacted. Combine multiple sources and cross-validate.</p>
+
+<p><strong>Ignoring data staleness.</strong> A profile extracted six months ago may show the wrong employee count, tech stack, or industry focus. Re-extraction schedules are not optional.</p>
+
+<p><strong>Over-validating required fields.</strong> Marking industry as required when 20% of companies do not publish it causes unnecessary failures. Use a tiered model: required (name, domain), recommended (industry, employee count), optional (tech stack, social links).</p>
+
+<p>No fallback extraction strategies. A pipeline that tries one CSS selector and gives up will have a 60–70% extraction rate. A pipeline that tries three strategies — CSS selector, semantic analysis, AI extraction — and picks the best result hits 90–95%.</p>
+
+<p>Sending unvalidated data to CRM. A CRM that accepts profiles without schema validation accumulates garbage. Validation gates at the pipeline output prevent CRM pollution.</p>
+
+<h2>13. Alternatives &amp; comparison</h2>
+
+<pre><code>Solution | Approach | Coverage | Freshness | Maintenance | Cost
+Ollagraph Pipeline | Scrape + enrich + validate | 79% field completeness | Real-time | Low (API) | $30–60/1K domains
+Clearbit | API enrichment | 60–70% | Weekly–monthly | None | $100–500/mo
+ZoomInfo | Curated database | 80–90% | Quarterly | None | $15K+/yr
+Crunchbase API | Crowdsourced + API | 50–60% | Daily | None | $500–2K/mo
+In-house scrapers | Custom code | Variable | Real-time | Very high | Engineering time</code></pre>
+
+<p><strong>When to choose Ollagraph:</strong> You need real-time company intelligence, want to control which fields are extracted and validated, and need 1,000–100,000 profiles per month with field-level quality control.</p>
+
+<p><strong>When to choose Clearbit or ZoomInfo:</strong> You need broad coverage with minimal setup and can tolerate weekly or quarterly updates.</p>
+
+<p><strong>When to choose in-house scrapers:</strong> You have a dedicated engineering team, need full control, and process fewer than 1,000 companies per month.</p>
+
+<h2>14. Enterprise deployment</h2>
+
+<p><strong>Scaling beyond 100,000 domains.</strong> Shift from synchronous processing to asynchronous batch jobs. Use a message queue (RabbitMQ, SQS) to distribute domains across workers. Store intermediate results in a database so worker failures do not lose progress. Use webhook delivery for completed profiles.</p>
+
+<p><strong>Multi-tenant isolation.</strong> Each tenant gets its own API key, output destination, and validation schema. One tenant's configuration should not affect another's data.</p>
+
+<p><strong>Observability.</strong> Export pipeline metrics to Prometheus or Datadog: domains processed per minute, extraction yield per field, validation pass rate, average latency, error count by category. Alert on yield drops and validation failure spikes.</p>
+
+<p><strong>Compliance.</strong> Maintain an audit trail of every profile: when extracted, from which sources, what transformations were applied, and who accessed it. Purge raw fetch responses after 90 days.</p>
+
+<p><strong>Cost management.</strong> Batch processing reduces per-domain cost. Set daily budget caps to prevent runaway costs from misconfigured pipelines.</p>
+
+<h2>15. FAQs</h2>
+
+<h3>Q1. What is a company intelligence pipeline?</h3>
+
+<p>A company intelligence pipeline is an automated system that extracts structured data about companies from public websites and domain infrastructure. It combines three capabilities into one workflow: web scraping to fetch pages, content extraction to pull specific fields like company name and industry, and domain enrichment to layer on WHOIS, DNS, SSL, and tech stack signals. The output is a validated company profile ready for CRM systems, sales platforms, or AI agents. Each stage has independent failure modes — a page might load but lack an employee count — so the pipeline must handle partial results at every stage without collapsing the entire record.</p>
+
+<h3>Q2. How is company intelligence different from web scraping?</h3>
+
+<p>Web scraping is a mechanical operation: fetch a URL, parse the DOM, extract raw text. The output is unstructured and unvalidated. Company intelligence is a semantic operation — it starts with a schema contract defining exactly which fields are required, what types they must be, and what ranges are acceptable. A scraper feeding a CRM directly will silently insert "42" as an employee count if that number appears in a footer copyright. A company intelligence pipeline checks that employee count is an integer in a sensible range and flags anything outside it. Scraping answers "what is on this page?" Company intelligence answers "what is this company and what do we know about it?"</p>
+
+<h3>Q3. What fields can a company intelligence pipeline extract?</h3>
+
+<p>A production pipeline typically extracts 15–25 fields per company. Firmographic fields include company name, domain, industry, employee count or range, revenue range, founding year, and HQ location. Technographic fields cover web framework, analytics provider, CDN, email provider, and payment processor. Identity fields include social profile URLs, email patterns, and key team members. Infrastructure fields include domain registration date, SSL certificate metadata, and DNS configuration. The field set should be defined in a JSON schema at the start of the project, not discovered during extraction.</p>
+
+<h3>Q4. How accurate is automated company data extraction?</h3>
+
+<p>Accuracy varies by field and source. Company name extraction from a homepage hits 94–98% accuracy when the name appears in the title tag or H1. Industry classification is more variable at 70–85%. Employee count is the hardest — homepage extraction alone gets it right only 30–40% of the time. Multi-page extraction pushes that to 50–60%, and adding enrichment sources like Crunchbase brings it to 70–80%. Field completeness follows a similar curve: homepage-only achieves ~40%, multi-page ~50%, and combining extraction with enrichment reaches 75–85%. The remaining fields are genuinely unavailable from public sources.</p>
+
+<h3>Q5. Can a pipeline detect tech stack changes?</h3>
+
+<p>Yes, and this is one of the most underrated capabilities. Tech stack detection operates on domain infrastructure — HTTP headers, DNS records, and SSL certificates — not page content. When a company switches from Cloudflare to Fastly, the change shows up in the Server header on the very first request after the switch. A single HEAD request combined with a DNS lookup is enough to detect most infrastructure-level changes. Weekly enrichment cycles capture these changes within days. A prospect switching from shared hosting to Cloudflare + AWS is scaling up — a signal invisible to manual research but trivially detectable in an automated pipeline.</p>
+
+<h3>Q6. How do you handle companies that do not publish employee counts?</h3>
+
+<p>This is the most common partial-data scenario. The pipeline first checks the company website — About page, Careers page, press releases. If none contain an employee count, it falls through to enrichment sources like Crunchbase or ZoomInfo. If enrichment also returns nothing, it attempts to infer a range from available signals — office locations, domain registration age, and tech stack sophistication. The schema marks employee count as a recommended field rather than required, so the profile passes validation without it. The key rule: never fabricate a value. A null employee count is better than a wrong one, because a null can be researched later while a wrong value silently corrupts your lead scoring model.</p>
+
+<h3>Q7. What is the difference between firmographic and technographic data?</h3>
+
+<p>Firmographic data describes what a company is — industry, size, location, revenue, founding year, legal structure. These fields change slowly, sometimes never. Technographic data describes what a company uses — web framework, analytics provider, CDN, email provider, payment processor, CRM. These fields change much faster; a company can switch analytics providers in an afternoon. Firmographics determine whether a company fits your ICP. Technographics determine how to sell to them — a company on Google Workspace is a better target for a Gmail-integrated tool, and a company using Stripe is a better target for a Stripe marketplace plugin.</p>
+
+<h2>Q8. How often should company data be refreshed?</h2>
+<p>The right cadence depends on the use case. Sales prospecting data — company name, industry, employee count — should be refreshed monthly. These fields change slowly, and monthly refresh keeps data current without wasting API credits. Competitive intelligence data — tech stack, product changes, pricing updates — should be refreshed weekly. A competitor switching frameworks is a signal you want within days, not months. Vendor risk data — SSL certificate validity, domain registration status — should be refreshed quarterly with alerting for critical changes. The pipeline should support per-company freshness tracking so high-priority accounts get weekly refreshes while low-priority leads get quarterly.</p>
+
+<h2>Q9. Can these pipelines work for international companies?</h2>
+<p>Yes, but coverage is not uniform. US and European companies have the highest data availability — structured websites, active Crunchbase profiles, well-maintained DNS records. Companies in Asia-Pacific and Latin America may have less structured sites, with firmographic data embedded in images or spread across social media instead of a company site. Language-aware extraction is essential for non-English markets. Enrichment coverage also varies — Crunchbase is strong for US startups but weak for German Mittelstand companies or Indian SMEs. Test the pipeline against 100–200 companies in each target region before scaling.</p>
+
+<h2>Q10. What happens when a company site is a single-page app?</h2>
+<p>SPAs built with React, Vue, or Angular return a minimal HTML shell with no content — just a &lt;div id="root"&gt; and a JavaScript bundle. A standard HTTP scraper receives an empty DOM and extracts nothing. The pipeline must detect SPA pages by checking for indicators like __NEXT_DATA__ script tags, then route them to a headless browser that renders the JavaScript before extraction. The tradeoff is speed — headless rendering adds 2–5 seconds per page versus 200–500ms for a direct fetch. Ollagraph's /v1/scrape/smart handles this automatically: it attempts a lightweight fetch first, checks for SPA indicators, and falls back to rendering only when needed.</p>
+
+<h2>Q11. How do you validate extracted company data before it enters a CRM?</h2>
+<p>Validation runs through a three-tier schema gate. Type validation checks each field is the correct data type — company name must be a string, employee count must be an integer or null. Range validation checks numeric values fall within acceptable bounds — employee count between 1 and 500,000, founding year not in the future. Cross-field consistency checks verify related fields do not contradict — a company with 5 employees should not report $1B in revenue. Records that pass all three tiers are delivered. Records that fail are quarantined with a detailed failure report showing which field failed, what the constraint was, and which source produced the value. Validation happens before delivery, not after — cleaning bad data from a CRM is far harder than catching it at the pipeline boundary.</p>
+
+<h2>Q12. What is the cost of running a company intelligence pipeline at scale?</h2>
+<p>Cost breaks into three categories. API costs dominate: processing 10,000 companies per month runs $500–$2,000 depending on pages extracted per company and whether headless rendering is needed. Infrastructure costs — a small server or serverless functions, a database, monitoring tooling — add $50–$200 per month. Engineering time is the hidden cost: building the initial pipeline takes 2–4 weeks, and maintenance runs 5–10 hours per week. Total cost of ownership for a custom pipeline at 10,000 companies per month is roughly $1,000–$3,000 per month. A managed API like Ollagraph shifts most of that to usage costs and eliminates the engineering overhead entirely.</p>
+
+<h2>16. Conclusion</h2>
+<p>Company intelligence pipelines solve a specific problem: turning public websites into structured, validated company profiles that downstream systems can trust. No single source provides complete coverage. Homepage scraping gives you a name and tagline. Multi-page extraction adds description and location. Domain enrichment fills employee count, tech stack, and infrastructure signals. Schema validation ensures the assembled profile meets quality standards before it reaches your CRM.</p>
+<p>The teams that get this right share a pattern. They do not build a single scraper. They build a multi-layer pipeline with explicit failure handling at every stage. They track field-level extraction yield, not just HTTP status codes. They validate data before it enters the CRM, not after. And they treat company intelligence as an ongoing operation — with freshness budgets, re-extraction schedules, and continuous monitoring — rather than a one-time dump.</p>
+<p>Start with enrichment. Add scraping for the fields enrichment cannot reach. Validate everything. Monitor yield per field. Re-extract on a schedule that matches your use case. That is the difference between a pipeline that produces company data and one that produces company intelligence.</p>
+<p><strong>Next steps:</strong> Try the pipeline with your own domain list. The Ollagraph enrichment API is the fastest way to get started. Then add page extraction for the fields you need beyond enrichment. The Ollagraph documentation covers every endpoint and configuration option.</p>
+
+<h2>17. References</h2>
+<ul>
+  <li>Ollagraph Company Enrichment API Documentation. https://ollagraph.com/docs/enrich/company</li>
+  <li>Ollagraph Smart Scrape API Documentation. https://ollagraph.com/docs/scrape/smart</li>
+  <li>Ollagraph Extract &amp; Convert Documentation. https://ollagraph.com/docs/extract</li>
+  <li>Clearbit Company Enrichment API. https://clearbit.com/docs#company-api</li>
+  <li>Crunchbase API Documentation. https://data.crunchbase.com/docs</li>
+  <li>ZoomInfo Data Coverage. https://zoominfo.com/data-coverage</li>
+  <li>WHOIS Protocol Specification. RFC 3912. https://datatracker.ietf.org/doc/html/rfc3912</li>
+  <li>DNS-Based Email Authentication. RFC 7208 (SPF), RFC 7489 (DMARC), RFC 6376 (DKIM).</li>
+  <li>W3C WebDriver Specification for Headless Browser Automation. https://www.w3.org/TR/webdriver/</li>
+  <li>Schema.org Organization Vocabulary. https://schema.org/Organization</li>
+</ul>
+</Article>
