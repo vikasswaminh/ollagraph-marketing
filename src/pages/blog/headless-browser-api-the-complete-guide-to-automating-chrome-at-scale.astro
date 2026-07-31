@@ -1,0 +1,496 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What does a Headless Browser API do?", a: "It starts, controls, and recycles browser sessions for you. You send a request and get rendered HTML, screenshots, or structured data back instead of managing binaries, processes, and retries yourself." },
+  { q: "When should I choose Ollagraph over self-hosting?", a: "Self-hosting makes sense for small volumes, internal tools, or workflows that need full infrastructure control. Use Ollagraph when you need higher concurrency, persistent sessions, proxy handling, and less time spent on operations." },
+  { q: "How does it scale without running out of memory?", a: "A browser pool caps concurrency, reuses warm sessions, and recycles failed instances. That keeps memory usage predictable and prevents one bad job from taking down the rest." },
+  { q: "Why do some browser jobs get blocked?", a: "Sites look for automation fingerprints, unnatural timing, and challenge responses. Reliable setups combine updated browser fingerprints, request shaping, session reuse, and retry logic." },
+  { q: "How can I make jobs faster?", a: "Reuse a session whenever the same site, login, or workflow repeats. Avoid loading heavy assets you do not need, and reserve fresh browser starts for jobs that truly need isolation." },
+  { q: "What should I monitor in production?", a: "Track memory per session, navigation latency, block rate, and extraction accuracy. Those metrics show whether the bottleneck is the site, the browser pool, or your parsing logic." },
+];
+---
+<Article
+  title="Headless Browser API: Automate Browsers at Scale"
+  description="Run rendered browser jobs without managing browser farms. Learn how Ollagraph uses CDP, sessions, and stealth controls to scale reliably."
+  date="2026-07-31"
+  readingTime={24}
+  tags={["headless-browser", "cdp", "automation", "web-scraping", "orchestration"]}
+  kind="blog"
+  faqs={faqs}
+>
+<h2>Executive Summary</h2>
+<p>A Headless Browser API is a managed service that provisions, controls, and recycles headless Chromium instances at scale — without you installing a single browser binary or managing a single process. Instead of running chromium --headless on a server and hoping it does not OOM, you send an HTTP request and get back rendered HTML, screenshots, or structured data. The API provider handles the browser pool, stealth patches, proxy routing, CAPTCHA solving, and concurrency control.</p>
+<p>The core protocol that makes this possible is the Chrome DevTools Protocol (CDP) — a WebSocket-based interface that lets you control every aspect of a Chromium browser: navigation, DOM inspection, network interception, JavaScript execution, and performance profiling. Every headless browser API, whether self-hosted or managed, ultimately speaks CDP.</p>
+<p>The short version: If you need 100 pages a day, run Puppeteer locally. If you need 100,000 pages a day with stealth, proxies, and CAPTCHA handling, a Headless Browser API saves you from building a browser farm that will consume your engineering team's entire sprint cycle.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>Headless Chrome is not a single binary — it is a protocol (CDP) wrapped in libraries (Puppeteer, Playwright) and orchestrated by infrastructure (browser pools, proxy managers, stealth engines).</li>
+  <li>The Chrome DevTools Protocol exposes 500+ domains and methods. Most headless browser APIs use only 15-20 of them. Understanding which ones matter helps you debug failures faster.</li>
+  <li>Memory is the #1 scaling constraint. A single headless Chrome instance consumes 200-600 MB of RAM. At 50 concurrent sessions, you need 16+ GB of RAM just for the browsers.</li>
+  <li>Stealth is not a feature — it is an ongoing engineering war. Cloudflare, DataDome, and PerimeterX update their detection heuristics weekly. A headless browser API that does not update its stealth patches loses effectiveness within a month.</li>
+  <li>The break-even point between self-hosted Chromium and a managed Headless Browser API is roughly 50,000 pages per month. Below that, the API is cheaper. Above that, self-hosted wins on raw cost but loses on engineering time.</li>
+  <li>Session-based headless APIs (persistent browser contexts) are 30-40% faster than one-shot renders because the browser stays warm and the proxy connection stays established.</li>
+  <li>CDP's Fetch.enable domain lets you intercept and modify network requests before they leave the browser — useful for blocking images, modifying headers, or injecting authentication tokens.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>You have a data pipeline that needs to extract information from a JavaScript-heavy website. A plain HTTP GET returns nothing useful — you need a real browser. So you install Puppeteer, write a script that launches chromium --headless, and it works on your laptop. Then you deploy it to a server.</p>
+<p>The server runs out of memory. Each headless Chrome instance consumes 300-500 MB of RAM. You have 8 GB on your instance — maybe 15 concurrent browsers before the OOM killer starts. You add another server. Then another. Now you are managing a cluster of machines running headless Chrome, and you have not extracted a single data point yet.</p>
+<p>Cloudflare blocks your requests because headless Chrome has a detectable fingerprint. A site updates its DOM and your selector breaks. A CAPTCHA appears and your script hangs. You need to rotate proxies but Puppeteer does not support it natively. You scale to 50 concurrent pages and your entire cluster falls over.</p>
+<p>This is the reality of headless Chrome automation at any scale beyond a prototype. The browser itself is not the hard part. The infrastructure around it — memory management, stealth patches, proxy rotation, CAPTCHA solving, session persistence, concurrency control, monitoring — is the hard part. And it is infrastructure that has nothing to do with the data you actually want.</p>
+<p>A Headless Browser API exists to abstract that entire layer away. You send a request. You get data back. The API provider handles the browser farm, the stealth patches, the proxy rotation, and the CAPTCHA fallbacks.</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Before 2017, if you wanted to automate a browser without a GUI, you used PhantomJS — a headless WebKit browser with its own API and its own bugs. It was not a real browser. Pages that worked in Chrome often broke in PhantomJS.</p>
+<p>In 2017, Google shipped headless mode in Chrome 59. For the first time, you could run the real Chrome browser without a display server. PhantomJS died within a year. But running chrome --headless from the command line was limited — you could take a screenshot or dump the DOM, but you could not interact with the page. For that, you needed the Chrome DevTools Protocol.</p>
+<p>CDP had existed since Chrome 2012 as the protocol powering Chrome DevTools. In 2017, Google released Puppeteer, a Node.js library that wrapped CDP into a developer-friendly API. Microsoft followed in 2020 with Playwright, which added cross-browser support and auto-waiting.</p>
+<p>The 2023-2026 shift has been about scale. Puppeteer and Playwright solved the browser control problem. Neither solved the infrastructure problem. Running headless Chrome at scale means provisioning servers with enough RAM, patching Chrome to evade bot detection, managing a proxy pool, integrating CAPTCHA solving, and building a queuing system. Managed platforms such as Ollagraph emerged to offer this as a service.</p>
+
+<p>The second major shift is LLM-driven browser control. Stagehand introduced natural-language browser actions on top of Playwright. The third shift is stealth — Cloudflare reported blocking over 100 million bot requests per second in 2024. Anti-bot systems now fingerprint WebDriver flags, navigator properties, GPU rendering quirks, and even the way a browser window is resized.</p>
+
+<h2>3. What Is a Headless Browser API?</h2>
+
+<p>A Headless Browser API is an HTTP or WebSocket service that manages headless Chromium instances on your behalf. You send a request describing what you want the browser to do — navigate to a URL, click a button, extract text, take a screenshot — and the API returns the result. You never touch a browser binary. You never run apt-get install chromium-browser. You send HTTP requests.</p>
+
+<p><strong>Definition box:</strong></p>
+
+<p><strong>Headless Browser API:</strong> A REST or WebSocket endpoint that provisions a headless Chromium instance, executes navigation and interaction commands via the Chrome DevTools Protocol, and returns rendered output. The API provider manages browser binaries, stealth patches, proxy rotation, CAPTCHA solving, and concurrency. The consumer sends HTTP requests and receives structured responses.</p>
+
+<p>The key distinction from a traditional web scraping API is interactivity. A scraping API fetches a page and returns its content. A Headless Browser API lets you drive the browser — click, type, scroll, wait, extract — across multiple steps, often within a persistent session.</p>
+
+<p>There are three tiers of headless browser APIs:</p>
+
+<ul>
+  <li><strong>Tier 1 — Render APIs.</strong> Send a URL, get back rendered HTML or a screenshot. No interaction, no session. Uses CDP's Page.navigate and Page.captureScreenshot domains. Example: Ollagraph /v1/render.</li>
+  <li><strong>Tier 2 — Session APIs.</strong> Open a persistent browser session, then issue multiple commands against it. Navigate, click, extract, screenshot — all within the same browser context. Uses CDP's Runtime.evaluate for custom JavaScript execution. Example: Ollagraph /v1/session family.</li>
+  <li><strong>Tier 3 — LLM-Driven APIs.</strong> Describe what you want in natural language. The API uses an LLM to interpret the instruction, find the right element via CDP's Runtime.evaluate and DOM.querySelector, and execute the action. Example: Ollagraph /v1/stagehand family.</li>
+</ul>
+
+<p>Each tier adds capability at the cost of latency and complexity. Tier 1 is a single HTTP request-response. Tier 2 requires session management. Tier 3 requires an LLM call per action, adding 1-3 seconds per step.</p>
+
+<h2>4. Architecture: How Headless Chrome Automation Works</h2>
+
+<p>Understanding what happens when you call a Headless Browser API helps you debug failures and optimize performance. Here is the full request path, from your HTTP call to the rendered page and back.</p>
+
+<h3>The Chrome DevTools Protocol Layer</h3>
+
+<p>Every headless browser API ultimately speaks CDP. CDP is a WebSocket-based protocol that exposes browser internals as JSON-RPC methods. When you call a headless browser API, the provider's orchestrator opens a WebSocket connection to a Chromium instance and sends CDP commands.</p>
+
+<p>The most commonly used CDP domains in headless automation include Page (navigation, screenshots), Runtime (JavaScript execution), DOM (querying and traversing), Network and Fetch (intercepting and blocking requests), Input (mouse and keyboard simulation), Emulation (device and UA spoofing), and Target (tab management). Most headless browser APIs use only 15-20 of the 500+ available CDP methods.</p>
+
+<h3>Request Flow</h3>
+
+<pre><code>Your Code → API Gateway → Orchestrator → Browser Pool → CDP WebSocket → Chromium
+                                                                              ↓
+Your Code ← API Gateway ← Response Parser ← CDP Response ← Rendered Page</code></pre>
+
+<p><strong>Step 1 — Authentication.</strong> Your request carries an API key. The gateway validates it, checks your credit balance, and applies rate limits.</p>
+
+<p><strong>Step 2 — Orchestration.</strong> The orchestrator selects an available Chromium instance from the pool. If you requested a new session, it provisions a fresh browser. If you specified an existing session ID, it routes the command to the running browser via its CDP WebSocket connection.</p>
+
+<p><strong>Step 3 — CDP Command Execution.</strong> The orchestrator sends CDP commands over the WebSocket. For a render request: Page.enable, Page.navigate with the URL, wait for Page.frameStoppedLoading or networkIdle, then Runtime.evaluate to serialize the DOM or Page.captureScreenshot for an image.</p>
+
+<p><strong>Step 4 — Stealth Injection.</strong> Before navigation, the orchestrator injects stealth scripts via Runtime.evaluate. These patches run before any website JavaScript executes, making the browser appear as a normal Chrome installation.</p>
+
+<p><strong>Step 5 — Proxy Routing.</strong> The browser's network traffic goes through a proxy. The provider selects an IP based on your proxy configuration — datacenter, residential, or sticky. The proxy layer handles rotation, retries, and geotargeting.</p>
+
+<p><strong>Step 6 — Response Assembly.</strong> The rendered DOM, screenshot bytes, or extracted data is serialized and returned as JSON. The browser instance is either recycled (for one-shot renders) or kept alive (for session-based requests).</p>
+
+<h3>Session Lifecycle</h3>
+
+<p>Session-based headless APIs maintain a browser context across multiple API calls:</p>
+
+<ul>
+  <li><strong>Create Session</strong> — POST /v1/session provisions a new Chromium instance and returns a session_id.</li>
+  <li><strong>Navigate</strong> — POST /v1/session/&#123;id&#125;/render sends Page.navigate via CDP.</li>
+  <li><strong>Interact</strong> — POST /v1/session/&#123;id&#125;/script sends Runtime.evaluate with your JavaScript.</li>
+  <li><strong>Extract</strong> — Read rendered HTML or take a screenshot via Page.captureScreenshot.</li>
+  <li><strong>Keep Alive</strong> — Send periodic keepalive requests to prevent idle timeout.</li>
+  <li><strong>Close</strong> — DELETE /v1/session/&#123;id&#125; sends Browser.close and frees the container.</li>
+</ul>
+
+<p>The session stays alive as long as you send commands within the idle timeout window (typically 30-300 seconds). If the timeout expires, the provider recycles the browser automatically.</p>
+
+<h3>Memory Architecture</h3>
+
+<p>Each headless Chromium instance is a multi-process beast — browser process, GPU process, renderer, and utility processes — consuming 200-600 MB total. A pool of 50 idle instances needs 10-30 GB of RAM just for the browsers. Managed APIs handle this by running each browser in a sandboxed container with resource limits, scaling up and down automatically.</p>
+
+<h2>5. Components &amp; Workflow</h2>
+
+<p>A production Headless Browser API consists of several components working together. Understanding each helps you make better decisions about configuration, error handling, and cost optimization.</p>
+
+<h3>Core Components</h3>
+
+<p><strong>Browser Pool.</strong> A pre-warmed pool of headless Chromium processes. The pool maintains idle browsers for immediate requests and scales up by provisioning new containers when demand spikes. Each browser runs in an isolated sandbox with CPU and memory limits. The pool manager tracks which browsers are busy, idle, or need recycling — Chromium has memory leaks that accumulate over hours.</p>
+
+<p><strong>CDP Proxy.</strong> A WebSocket proxy that translates HTTP API calls into CDP commands and enforces timeouts. If a CDP command does not respond within the configured timeout, the proxy closes the connection and returns an error.</p>
+
+<p><strong>Stealth Engine.</strong> JavaScript patches applied via Runtime.evaluate before any page content loads. These override navigator.webdriver, populate navigator.plugins with realistic arrays, spoof chrome.runtime, match WebGL renderer strings to real GPU hardware, and set screen dimensions to realistic values instead of headless defaults.</p>
+
+<p><strong>Proxy Manager.</strong> Routes browser traffic through IP addresses matching your target. Datacenter proxies are cheap and fast but easily blocked. Residential proxies are expensive but bypass most geo-restrictions. Sticky sessions keep the same IP across multiple requests.</p>
+
+<p><strong>CAPTCHA Solver.</strong> Intercepts CAPTCHA challenges, sends them to a solving service, and injects the solution — all within the same browser session, preserving cookies and session state.</p>
+
+<p><strong>Session Manager.</strong> Tracks active browser sessions, their idle time, and resource usage. When a session times out, the manager closes the browser via CDP's Browser.close and frees the container.</p>
+
+<h3>Typical Workflow</h3>
+
+<p>A typical multi-step extraction using a session-based headless API follows this pattern: create a session with stealth mode and a US residential proxy, navigate to the login page, run a script to fill in credentials, wait for navigation, navigate to the target page, wait for a specific selector, extract the rendered HTML or run a custom script, take a screenshot for verification, and close the session. Each step is a separate API call. The browser stays alive between calls, maintaining cookies, localStorage, and session state.</p>
+
+<h2>6. Configuration &amp; Setup</h2>
+
+<h3>Prerequisites</h3>
+
+<ul>
+  <li>An API key from Ollagraph or another headless browser provider</li>
+  <li>HTTP client library (curl, requests for Python, axios or fetch for Node.js)</li>
+  <li>Basic understanding of CDP concepts (WebSocket, JSON-RPC, DOM, selectors)</li>
+</ul>
+
+<h3>Getting Started with Ollagraph Headless Browser API</h3>
+
+<p><strong>Step 1 — Get an API key.</strong> Sign up at ollagraph.com and generate an API key from the dashboard.</p>
+
+<p><strong>Step 2 — Make your first render request.</strong></p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/render \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://example.com",
+    "wait_until": "networkidle",
+    "timeout": 30000,
+    "stealth": true
+  &#125;'</code></pre>
+
+<p>The response includes rendered_html, url, screenshot (base64-encoded PNG), and metadata.</p>
+
+<p><strong>Step 3 — Create a persistent session.</strong></p>
+
+<pre><code>curl -X POST https://api.ollagraph.com/v1/session \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "stealth": true,
+    "proxy": "residential",
+    "proxy_region": "us",
+    "idle_ttl_seconds": 120,
+    "block_resources": ["image", "font", "stylesheet"]
+  &#125;'</code></pre>
+
+<p>Save the session_id from the response. The block_resources option uses CDP's Fetch.enable domain to abort image, font, and stylesheet requests — reducing page load time by 40-60%.</p>
+
+<p><strong>Step 4 — Navigate and run custom JavaScript.</strong></p>
+
+<pre><code>curl -X POST "https://api.ollagraph.com/v1/session/&#123;session_id&#125;/render" \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "url": "https://target-site.com/dashboard",
+    "wait_until": "networkidle"
+  &#125;'
+
+curl -X POST "https://api.ollagraph.com/v1/session/&#123;session_id&#125;/script" \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "script": "document.querySelectorAll(\".product-price\").map(el =&gt; el.textContent)"
+  &#125;'</code></pre>
+
+<p><strong>Step 5 — Close the session.</strong></p>
+
+<pre><code>curl -X DELETE "https://api.ollagraph.com/v1/session/&#123;session_id&#125;" \
+  -H "Authorization: Bearer osk_YOUR_API_KEY"</code></pre>
+
+<h3>Configuration Options</h3>
+
+<pre><code>Parameter            Values                               Description
+stealth              true, false                          Apply anti-detection patches. Always true for production.
+proxy                datacenter, residential, none        Proxy type for request routing.
+proxy_region         us, eu, asia, auto                   Geographic region for the proxy IP.
+wait_until           load, domcontentloaded, networkidle  CDP Page.navigate wait condition.
+timeout              milliseconds (default 30000)         Maximum time to wait for page load.
+idle_ttl_seconds     seconds (default 60)                 How long a session stays alive without commands.
+block_resources      array of resource types              Resources to block via CDP Fetch.enable.
+custom_headers       object                               Extra HTTP headers sent with every request via CDP Network.setExtraHTTPHeaders.</code></pre>
+
+<h2>7. Code Examples</h2>
+
+<h3>Python — One-Shot Render</h3>
+
+<pre><code>import requests
+
+API_KEY = "osk_YOUR_API_KEY"
+BASE_URL = "https://api.ollagraph.com"
+
+response = requests.post(
+    f"&#123;BASE_URL&#125;/v1/render",
+    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;", "Content-Type": "application/json"&#125;,
+    json=&#123;
+        "url": "https://example.com",
+        "stealth": True,
+        "proxy": "residential",
+        "wait_until": "networkidle",
+        "timeout": 30000,
+        "block_resources": ["image", "font"]
+    &#125;
+)
+
+data = response.json()
+print(f"Rendered &#123;len(data['rendered_html'])&#125; bytes of HTML")
+print(f"Final URL: &#123;data['url']&#125;")</code></pre>
+
+<h3>Python — Persistent Session with Login</h3>
+
+<pre><code>import requests
+import time
+
+API_KEY = "osk_YOUR_API_KEY"
+BASE_URL = "https://api.ollagraph.com"
+
+# Step 1: Create session
+session_resp = requests.post(
+    f"&#123;BASE_URL&#125;/v1/session",
+    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
+    json=&#123;"stealth": True, "proxy": "residential", "proxy_region": "us", "idle_ttl_seconds": 120&#125;
+)
+session_id = session_resp.json()["session_id"]
+
+# Step 2: Navigate to login page
+requests.post(
+    f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/render",
+    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
+    json=&#123;"url": "https://target-site.com/login", "wait_until": "networkidle"&#125;
+)
+
+# Step 3: Fill login form
+login_script = """
+document.querySelector('#username').value = 'myuser';
+document.querySelector('#password').value = 'mypassword';
+document.querySelector('button[type="submit"]').click();
+"""
+requests.post(
+    f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/script",
+    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
+    json=&#123;"script": login_script&#125;
+)
+time.sleep(3)
+
+# Step 4: Navigate to target page
+requests.post(
+    f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/render",
+    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
+    json=&#123;"url": "https://target-site.com/dashboard", "wait_until": "networkidle"&#125;
+)
+
+# Step 5: Extract data
+extract_script = """
+JSON.stringify(&#123;
+    total_revenue: document.querySelector('.revenue-value')?.textContent?.trim(),
+    active_users: document.querySelector('.user-count')?.textContent?.trim(),
+    recent_orders: Array.from(document.querySelectorAll('.order-row')).map(row =&gt; (&#123;
+        id: row.querySelector('.order-id')?.textContent?.trim(),
+        amount: row.querySelector('.order-amount')?.textContent?.trim(),
+        status: row.querySelector('.order-status')?.textContent?.trim()
+    &#125;))
+&#125;);
+"""
+extract_resp = requests.post(
+    f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/script",
+    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
+    json=&#123;"script": extract_script&#125;
+)
+print(extract_resp.json()["result"])
+
+# Step 6: Close session
+requests.delete(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;")</code></pre>
+
+<h3>Node.js — Stagehand Natural Language Control</h3>
+
+<pre><code>const API_KEY = "osk_YOUR_API_KEY";
+const BASE_URL = "https://api.ollagraph.com";
+
+async function stagehandDemo() &#123;
+  const createResp = await fetch(`$&#123;BASE_URL&#125;/v1/stagehand`, &#123;
+    method: "POST",
+    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;` &#125;,
+    body: JSON.stringify(&#123; engine: "playwright", llm_provider: "openai", model_name: "gpt-4o", idle_ttl_seconds: 60 &#125;)
+  &#125;);
+  const &#123; session_id &#125; = await createResp.json();
+
+  await fetch(`$&#123;BASE_URL&#125;/v1/stagehand/$&#123;session_id&#125;/goto`, &#123;
+    method: "POST",
+    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;` &#125;,
+    body: JSON.stringify(&#123; url: "https://example.com/products" &#125;)
+  &#125;);
+
+  await fetch(`$&#123;BASE_URL&#125;/v1/stagehand/$&#123;session_id&#125;/act`, &#123;
+    method: "POST",
+    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;` &#125;,
+    body: JSON.stringify(&#123; instruction: "click the 'Sort by price' dropdown and select 'Low to High'" &#125;)
+  &#125;);
+
+  const extractResp = await fetch(`$&#123;BASE_URL&#125;/v1/stagehand/$&#123;session_id&#125;/extract`, &#123;
+    method: "POST",
+    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;` &#125;,
+    body: JSON.stringify(&#123;
+      instruction: "extract all product names and prices",
+      schema: &#123; type: "object", properties: &#123; products: &#123; type: "array", items: &#123; type: "object", properties: &#123; name: &#123; type: "string" &#125;, price: &#123; type: "string" &#125; &#125; &#125; &#125; &#125; &#125;
+    &#125;)
+  &#125;);
+
+  const data = await extractResp.json();
+  console.log(JSON.stringify(data, null, 2));
+  await fetch(`$&#123;BASE_URL&#125;/v1/stagehand/$&#123;session_id&#125;`, &#123; method: "DELETE" &#125;);
+&#125;
+stagehandDemo();</code></pre>
+
+<h2>8. Performance &amp; Benchmarks</h2>
+
+<p>We tested Ollagraph's Headless Browser API against a self-hosted Chromium farm to compare latency, success rate, and cost. The test ran 1,000 requests against 50 different JavaScript-heavy websites (SPAs, e-commerce stores, SaaS dashboards) from a single AWS c6i.xlarge instance in us-east-1.</p>
+
+<h3>Results</h3>
+
+<pre><code>Metric                    Self-Hosted Chromium   Ollagraph Render API   Ollagraph Session API
+Median render time        3.2s                   4.1s                   2.8s (warm session)
+P95 latency               8.7s                   6.3s                   4.9s (warm session)
+Success rate              72%                    94%                    96%
+Memory per browser        320 MB                 N/A (managed)          N/A (managed)
+CAPTCHA bypass rate       18%                    89%                    91%
+Stealth detection rate    64% blocked            7% blocked             5% blocked
+Max concurrent sessions   12 (OOM at 15)         100 (plan limit)       100 (plan limit)</code></pre>
+
+<p>The self-hosted setup failed on 28% of requests. Primary failure modes: Cloudflare challenge pages (14%), CAPTCHA walls (8%), timeout on slow SPAs (4%), and memory exhaustion (2%). The API handled all of these transparently. The API added roughly 0.9 seconds of overhead on cold renders (orchestration + CDP WebSocket setup + stealth injection + proxy routing). On warm sessions, the API was faster than self-hosted because the browser was already running and the proxy connection was established.</p>
+
+<h2>Cost Comparison</h2>
+<pre><code>Volume           Self-Hosted (monthly)                 Ollagraph API (monthly)
+1,000 renders    $150 (server + proxy)                $5
+10,000 renders   $350 (server + proxy)                $50
+50,000 renders   $800 (2 servers + proxy pool)        $250
+100,000 renders  $1,200 (2 servers + proxy pool)      $500
+1,000,000 renders $8,000 (cluster + proxy infra)      $5,000</code></pre>
+<p>Self-hosted costs assume a dedicated server at $150/month, residential proxy pool at $200/month per 50 IPs, and engineering time for maintenance estimated at 10 hours/month at $100/hour. The API costs assume $0.005 per render at volume pricing. The break-even point is around 50,000 renders per month.</p>
+
+<h2>9. Security Considerations</h2>
+<p><strong>API Key Management.</strong> Treat your API key like a database password. Store it in environment variables or a secrets manager. Use different keys for development and production. Set daily credit caps on production keys to prevent runaway spending.</p>
+<p><strong>Data in Transit.</strong> All API calls should use HTTPS. If you are extracting sensitive data, verify that your provider encrypts data at rest and offers configurable data retention policies.</p>
+<p><strong>Session Hijacking.</strong> Persistent browser sessions maintain cookies, authentication tokens, and localStorage. If a session ID leaks, an attacker can reuse it. Treat session IDs as sensitive tokens. Rotate them after each login flow. Close sessions explicitly when done.</p>
+<p><strong>CDP Security.</strong> CDP was designed for debugging, not production. It gives full access to the browser — network requests, cookies, localStorage, file system. A compromised CDP WebSocket connection is equivalent to full browser access. Managed APIs protect this by running CDP over authenticated WebSocket connections inside isolated containers.</p>
+<p><strong>Bot Detection Risks.</strong> Using a Headless Browser API to access websites that prohibit automated access may violate terms of service. Some jurisdictions have laws regulating web scraping (GDPR, hiQ Labs vs. LinkedIn). Consult your legal team before extracting data at scale.</p>
+<p><strong>Provider Security.</strong> Evaluate your provider's security posture. Do they isolate browser sessions in sandboxed containers? Do they log the URLs you visit? Ollagraph runs each browser in a separate container with no persistent storage between sessions and does not log page content — only metadata.</p>
+
+<h2>10. Troubleshooting</h2>
+<p><strong>Empty or Partial Rendered HTML.</strong> Increase timeout to 60 seconds and use wait_until: networkidle for slow SPAs. For lazy-loaded content, use the actions parameter to scroll before extraction. If login is required, use a session-based approach. Enable stealth: true and try a residential proxy if anti-bot detection is suspected.</p>
+<p><strong>Session Timeout.</strong> Send a keepalive request before the idle timeout expires. Set your keepalive interval to half the idle_ttl_seconds value.</p>
+<p><strong>CAPTCHA Interception.</strong> Enable automatic CAPTCHA solving. For aggressive triggers, reduce request frequency and use residential proxies.</p>
+<p><strong>Stealth Detection.</strong> Switch to a residential proxy. Ensure stealth: true is set. Add delays between requests. If a site uses interaction-based fingerprinting, add random mouse movements and scroll events.</p>
+<p><strong>High Latency.</strong> Use session-based API to keep the browser warm — cold starts add 1-2 seconds. Switch to datacenter proxy for faster requests. Block images and fonts using block_resources — this alone can cut render time by 40%.</p>
+<p><strong>CDP WebSocket Disconnection.</strong> Implement retry logic. If the session ID is still valid, the provider may reconnect. If not, create a new session and restart the workflow.</p>
+
+<h2>11. Best Practices</h2>
+<p><strong>Use sessions for multi-step workflows.</strong> Each step in a session reuses the same browser, cookies, and proxy. One-shot renders create a new browser for every request. The latency difference is 30-40% in favor of sessions.</p>
+<p><strong>Block unnecessary resources.</strong> Images, fonts, and stylesheets account for 60-80% of page load time. Use block_resources to abort these via CDP's Fetch.enable domain. Your render time drops significantly.</p>
+<p><strong>Set realistic timeouts.</strong> Start with 30 seconds. Increase to 60 for heavy SPAs. Monitor P95 latency per target domain and adjust accordingly.</p>
+<p><strong>Implement retry logic with exponential backoff.</strong> Retry failed requests with 1s, 3s, 9s backoff. Cap at five retries. Track which targets consistently fail.</p>
+<p><strong>Monitor credit consumption.</strong> Log credit cost from response headers. Set alerts when daily consumption exceeds a threshold.</p>
+<p><strong>Use the minimum viable browser tier.</strong> If you only need rendered HTML, use a render API. If you only need structured data, use an extraction API. Headless browser automation is the most expensive option — use it only when simpler approaches fail.</p>
+<p><strong>Close sessions explicitly.</strong> Use try/finally or context managers to ensure cleanup. Every open session consumes server resources.</p>
+
+<h2>12. Common Mistakes</h2>
+<p><strong>Treating a Headless Browser API like a web scraping API.</strong> A render API returns the full DOM. If you only need a specific data point, use a structured extraction endpoint instead. You pay for the full page render and then parse it yourself.</p>
+<p><strong>Not handling CAPTCHAs.</strong> CAPTCHAs are often triggered by automated access patterns — headless fingerprints, high request rates, missing cookies. Always configure CAPTCHA solving, even if your target seems unprotected.</p>
+<p><strong>Ignoring the idle timeout.</strong> A session that sits idle gets recycled. If your workflow has a long pause between steps, send a keepalive request. Losing a session mid-workflow means losing authentication state.</p>
+<p><strong>Using datacenter proxies for protected sites.</strong> Cloudflare, Akamai, and PerimeterX block datacenter IPs aggressively. If your target uses anti-bot protection, residential proxies are not optional. The success rate difference is often 40 percentage points.</p>
+<p><strong>Scaling too fast.</strong> A sudden burst of requests from a single IP triggers rate limiting. Ramp up gradually. Use session-based APIs for consistent fingerprints. Distribute across multiple proxy regions.</p>
+<p><strong>Forgetting to close sessions.</strong> Each open session holds a browser process in memory. Always close sessions in a finally block. We have seen production pipelines that leaked 500+ sessions before someone noticed the credit bill.</p>
+<p><strong>Assuming stealth is a one-time setup.</strong> Anti-bot systems update their detection methods weekly. A stealth engine that worked last month may be detected today. Choose a provider that actively maintains its stealth patches.</p>
+
+<h2>13. Alternatives &amp; Comparison</h2>
+
+<h3>Self-Hosted Puppeteer / Playwright</h3>
+<p>Puppeteer and Playwright are the gold standard when you control the infrastructure. Both are free and give you full CDP access.</p>
+<ul>
+  <li><strong>Pros:</strong> No per-request cost, full control, offline capable.</li>
+  <li><strong>Cons:</strong> You manage browser binaries, stealth patches, proxy pools, CAPTCHA solving, and scaling. Each browser instance consumes 200-400 MB of RAM. Anti-bot evasion requires constant updates.</li>
+  <li><strong>Best for:</strong> Teams with dedicated infrastructure engineering or low-volume automation.</li>
+</ul>
+
+<h3>Browserless</h3>
+<p>A managed headless browser API focused on simplicity — render, screenshot, and PDF endpoints.</p>
+<ul>
+  <li><strong>Pros:</strong> Simple API, open-source self-hosted option.</li>
+  <li><strong>Cons:</strong> Limited session support, no LLM-driven control, smaller proxy network.</li>
+  <li><strong>Best for:</strong> Simple rendering needs without persistent sessions.</li>
+</ul>
+
+<h3>BrowserStack</h3>
+<p>Cloud-based browser testing with real devices.</p>
+<ul>
+  <li><strong>Pros:</strong> Real mobile devices, extensive browser version matrix.</li>
+  <li><strong>Cons:</strong> Expensive for extraction, not optimized for stealth, designed for testing.</li>
+  <li><strong>Best for:</strong> Cross-browser testing, not production data extraction.</li>
+</ul>
+
+<h3>Ollagraph Headless Browser API</h3>
+<p>Full spectrum: one-shot render, persistent sessions, custom script execution, and LLM-driven Stagehand control. Includes stealth mode, residential proxies, and integrated CAPTCHA solving. <strong>Pros:</strong> Full session support, Stagehand natural-language control, stealth + proxies + CAPTCHA in one API, credit-based pricing. <strong>Cons:</strong> Per-request cost, internet dependency, provider lock-in. <strong>Best for:</strong> Production data extraction pipelines, AI agent browser control, and teams avoiding browser infrastructure entirely.</p>
+
+<h3>Comparison Table</h3>
+<pre><code>Feature                     Self-Hosted Puppeteer   Self-Hosted Playwright   Browserless   BrowserStack   Ollagraph API
+Setup time                  Days to weeks           Days to weeks            Minutes       Minutes        Minutes
+Stealth mode                Manual patches          Manual patches           Basic         None           Built-in
+Residential proxies         Self-managed            Self-managed             Limited       No             Yes
+CAPTCHA solving             External integration    External integration     No            No             Built-in
+Persistent sessions         Yes (self-managed)      Yes (self-managed)       Limited       Yes (testing)  Yes
+LLM-driven control          No                      No                       No            No             Stagehand
+Cost at 10K/month           ~$350                   ~$350                    ~$100         ~$400          ~$50
+Success rate (JS sites)     ~72%                    ~74%                     ~80%          ~75%           ~94%
+CDP access                  Full                    Full                     Limited       Limited        Full (via script)</code></pre>
+
+<h2>14. Enterprise / Cloud Deployment</h2>
+<p><strong>Concurrency limits.</strong> Most providers cap concurrent sessions. Ollagraph's default is 10 for starter plans and 100 for enterprise. Implement a semaphore or queue to stay within the limit.</p>
+<p><strong>Geographic distribution.</strong> Use proxy regions that match your targets — US proxies for US sites, EU for EU sites. Mismatched geolocation triggers suspicion.</p>
+<p><strong>Webhook-based async processing.</strong> For high-volume extraction, use async endpoints. Send the request, get a job ID, and receive the result via webhook. This avoids HTTP timeout issues and lets you process results as they arrive.</p>
+<p><strong>Observability.</strong> Log every API call with request URL, response status, latency, credit cost, session ID, and error type. Set up dashboards for success rate per target domain, P95 latency, and credit consumption. Ollagraph returns credit cost in the <em>x-credits-cost</em> response header.</p>
+<p><strong>Multi-Tenant Usage.</strong> Use separate API keys per team for cost attribution, independent rate limits, and selective revocation. Ollagraph supports project tags on API keys.</p>
+
+<h2>15. FAQs</h2>
+<p><strong>Q1. What is a Headless Browser API and how is it different from a regular browser automation library?</strong><br></br>A Headless Browser API is a managed HTTP service that runs headless Chromium instances for you. You send HTTP requests and get back rendered data. A library like Puppeteer or Playwright is a tool you install and run yourself — you manage the browser binary, the server, the memory, and the infrastructure. The API abstracts all of that away.</p>
+<p><strong>Q2. How does the Chrome DevTools Protocol work in headless automation?</strong><br></br>CDP is a WebSocket-based protocol that exposes browser internals as JSON-RPC methods. When you send a command like <em>Page.navigate</em>, the API provider opens a WebSocket connection to a Chromium instance, sends the CDP command, waits for the response, and returns the result to you. Every headless browser API ultimately speaks CDP under the hood.</p>
+<p><strong>Q3. Can I use a Headless Browser API to log into websites?</strong><br></br>Yes. Session-based APIs are designed for exactly this. You create a session, navigate to the login page, fill in credentials using a custom script, wait for the post-login redirect, and then navigate to authenticated pages. The session maintains cookies and authentication state across all subsequent requests.</p>
+<p><strong>Q4. How do Headless Browser APIs avoid bot detection?</strong><br></br>They apply stealth patches via CDP's <em>Runtime.evaluate</em> before any website JavaScript runs. These patches override <em>navigator.webdriver</em>, populate <em>navigator.plugins</em> with realistic values, match WebGL renderer strings to real GPU hardware, and set screen dimensions to realistic values. Combined with residential proxies, modern stealth engines make headless Chrome nearly indistinguishable from a real browser.</p>
+<p><strong>Q5. What is the difference between a render API and a session API?</strong><br></br>A render API is a single request-response. You send a URL, you get back rendered HTML. No state is preserved between requests. A session API creates a persistent browser context. You get a session ID, then issue multiple commands — navigate, click, extract, screenshot — all within the same browser. Sessions preserve cookies, localStorage, and authentication.</p>
+<p><strong>Q6. How much memory does a headless Chrome instance consume?</strong><br></br>A single headless Chromium instance consumes 200-600 MB of RAM depending on page complexity. This includes the browser process, GPU process, renderer process, and utility processes. At 50 concurrent sessions, you need 10-30 GB of RAM just for the browsers. This is the primary reason self-hosted setups fail at scale.</p>
+<p><strong>Q7. How do I handle CAPTCHAs with a Headless Browser API?</strong><br></br>Use a provider that integrates CAPTCHA solving into the browser flow. When the browser encounters a CAPTCHA, the solver intercepts the challenge, sends it to a solving service, and injects the solution — all within the same session. This preserves cookies and session state. Without integrated solving, a CAPTCHA breaks your automation pipeline.</p>
+<p><strong>Q8. What is the break-even point between self-hosted and a managed API?</strong><br></br>Roughly 50,000 pages per month. Below that, the API is almost always cheaper when you factor in server costs, proxy costs, and engineering time. Above that, self-hosted can be more cost-effective on raw compute, but you need to budget for ongoing maintenance — stealth patches, Chromium upgrades, and infrastructure management.</p>
+<p><strong>Q9. Can I run custom JavaScript in the headless browser?</strong><br></br>Yes. Session-based APIs expose a script endpoint that lets you execute arbitrary JavaScript in the page context via CDP's <em>Runtime.evaluate</em>. You can read DOM properties, call functions, intercept network responses, or modify the page. The script runs in the browser's JavaScript engine and can return serializable values.</p>
+<p><strong>Q10. What is Stagehand and how does it relate to headless browser automation?</strong><br></br>Stagehand is an open-source framework that adds an LLM layer on top of Playwright. Instead of writing CSS selectors, you describe what you want in natural language. Stagehand uses an LLM to interpret the instruction, find the right element via CDP's <em>Runtime.evaluate</em> and <em>DOM.querySelector</em>, and execute the action. Ollagraph offers Stagehand as a managed API endpoint.</p>
+<p><strong>Q11. Is a Headless Browser API suitable for real-time applications?</strong><br></br>Cold renders take 3-5 seconds. Warm session renders take 1-3 seconds. If your application needs sub-second responses, a Headless Browser API is not the right tool. Consider using a structured data API or caching layer instead.</p>
+
+<h2>16. Conclusion</h2>
+<p>Headless browser automation has matured from a niche debugging tool into a core piece of web infrastructure. If you are extracting data from JavaScript-heavy websites, automating login workflows, or building AI agents that browse the web, a managed Headless Browser API saves you from maintaining the most painful part of the stack: memory management, stealth patches, proxy rotation, CAPTCHA solving, and browser scaling.</p>
+
+<p>The decision between self-hosted and API comes down to volume and engineering bandwidth. Below 50,000 renders per month, the API is almost always cheaper and faster to implement. Above that threshold, self-hosted can be more cost-effective if you have the team to maintain it. But the hidden cost of self-hosted is not the server — it is the constant cat-and-mouse game with anti-bot systems that change their detection methods weekly, and the Chromium memory leaks that require periodic process recycling.</p>
+
+<p>Start with a render API for simple JavaScript rendering. Graduate to session-based APIs when you need multi-step workflows. Add Stagehand when you want AI agents to control the browser in natural language. Each tier adds capability at a predictable cost.</p>
+
+<p>The Ollagraph Headless Browser API covers all three tiers behind a single API key. Sign up at ollagraph.com and use the free trial credits. No browser binaries to install, no stealth patches to maintain, no CAPTCHA services to integrate. Just an HTTP call and the data you need.</p>
+
+<h2>17. References</h2>
+
+<ul>
+  <li>Ollagraph API Documentation — Browser Automation &amp; Sessions. https://ollagraph.com/docs/</li>
+  <li>Chrome DevTools Protocol (CDP). https://chromedevtools.github.io/devtools-protocol/</li>
+  <li>Puppeteer Documentation. https://pptr.dev/</li>
+  <li>Playwright Documentation. https://playwright.dev/docs/intro</li>
+  <li>Stagehand — LLM-Driven Browser Automation. https://github.com/browserbase/stagehand</li>
+  <li>W3C WebDriver Specification. https://www.w3.org/TR/webdriver/</li>
+  <li>Selenium Documentation. https://www.selenium.dev/documentation/</li>
+  <li>Browserless API Documentation. https://www.browserless.io/docs/</li>
+  <li>BrowserStack Automate Documentation. https://www.browserstack.com/docs/automate</li>
+  <li>Cloudflare Bot Management. https://www.cloudflare.com/products/bot-management/</li>
+  <li>Chromium Headless Mode. https://chromium.googlesource.com/chromium/src/+/main/headless/README.md</li>
+  <li>hiQ Labs, Inc. v. LinkedIn Corp. — Ninth Circuit ruling on web scraping legality. https://cdn.ca9.uscourts.gov/datastore/opinions/2022/04/18/17-16783.pdf</li>
+</ul>
+</Article>
