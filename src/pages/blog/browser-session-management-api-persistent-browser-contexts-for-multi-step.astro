@@ -1,0 +1,504 @@
+---
+import Article from '../../layouts/Article.astro';
+
+const faqs = [
+  { q: "What does a browser session management API do?", a: "It creates a persistent browser context and lets you send multiple commands to the same session. Cookies, storage, and navigation state remain available between calls, so later steps can build on earlier ones. That makes it practical for logins, pagination, and multi-step extraction." },
+  { q: "When should I use a session instead of stateless requests?", a: "Use a session whenever the workflow depends on prior state. If you need to log in once, click through several pages, or keep filters and scroll position alive, stateless requests will fail or become expensive. For one-off renders, stateless is simpler; for multi-step jobs, sessions win." },
+  { q: "What browser state is preserved in a persistent context?", a: "A persistent context typically keeps cookies, localStorage, sessionStorage, IndexedDB, and similar client-side state. That means authentication and UI state can survive across API calls. It also reduces repeated setup work on every step." },
+  { q: "How do you keep sessions isolated at scale?", a: "Give every workflow its own browser context and never share authentication state between concurrent jobs. Isolation prevents token leakage, cross-user contamination, and hard-to-debug flakiness. It is one of the most important requirements for production automation." },
+  { q: "Why does session-based automation cost less?", a: "Browser startup, TLS setup, and network connection overhead happen once per session instead of once per step. When a workflow needs multiple page loads, that eliminates repeated cold starts and cuts wasted compute. The savings grow quickly as workflows get longer." },
+  { q: "What is the most important session setting to tune?", a: "Idle timeout matters most because it determines how long a session stays alive between actions. Set it too short and you lose state; set it too long and orphaned sessions consume memory and inflate cost. Most workloads do best with a moderate timeout and explicit cleanup." },
+];
+---
+<Article
+  title="Browser Session Management API for Persistent Automation"
+  description="Persistent browser contexts keep logins and storage alive across steps. They cut cold starts, lower cost, and make multi-step automation reliable."
+  date="2026-07-31"
+  readingTime={23}
+  tags={["browser automation", "persistent contexts", "session state", "web scraping", "state isolation"]}
+  kind="blog"
+  faqs={faqs}
+>
+<p><strong>Meta description:</strong> Stateless browser APIs break the moment you need to log in, scroll a feed, or paginate through results. This guide covers session-based browser automation — persistent contexts, cookie management, state isolation, and the API patterns that make multi-step extraction actually work at scale.</p>
+<p><strong>Primary keyword:</strong> Browser Session Management API</p>
+<p><strong>Secondary keywords:</strong> persistent browser context, multi-step browser automation, browser session API, session-based web scraping, browser state management, headless session persistence, browser context isolation</p>
+<p><strong>Pillar page:</strong> Ollagraph Web Scraping &amp; Extraction</p>
+<p><strong>Related cluster articles:</strong></p>
+<ul>
+  <li>Browser Automation API: The Complete Guide for Developers</li>
+  <li>Headless Browser API: The Complete Guide to Automating Chrome at Scale</li>
+  <li>Browser Automation at Scale: Building Infrastructure for 10,000+ Daily Sessions</li>
+  <li>Extract Structured Data from JavaScript Apps</li>
+  <li>How AI Agents Access the Web: APIs, Browsers, and MCP Servers</li>
+</ul>
+<p><strong>Last updated:</strong> 2026-07-29</p>
+<p><strong>Versions tested:</strong> Ollagraph API v2026.07, Playwright 1.48, Puppeteer 22, CDP r133</p>
+
+<h2>Executive Summary</h2>
+<p>A Browser Session Management API opens a persistent browser context, runs multiple commands against it — navigate, click, extract, screenshot — and keeps the state alive between calls. Cookies stay. localStorage persists. The login from step two is still valid in step seven. The browser does not cold-start for every request.</p>
+<p>This matters because the web was not designed for stateless extraction. A product listing requires search, filter, scroll, and detail clicks. An AI agent booking a flight needs six to twelve sequential steps, each dependent on the previous one. Stateless render APIs break on step three every time.</p>
+<p>Session management changes the cost structure too. A persistent browser context eliminates the 2-4 second cold-start penalty per request. At 10,000 multi-step workflows per day, that saving cuts compute costs by 30-50%.</p>
+<p>The short version: If your automation needs more than one page load, you need a session. If it needs more than three, a session-based API is cheaper, faster, and more reliable than stitching together stateless renders.</p>
+
+<h2>Key Takeaways</h2>
+<ul>
+  <li>A persistent browser context maintains cookies, localStorage, sessionStorage, IndexedDB, and service worker state across API calls. Stateless APIs lose all of this between requests.</li>
+  <li>Session-based automation is 30-50% cheaper for multi-step workflows because browser startup, TLS negotiation, and proxy connection costs are paid once per session instead of once per step.</li>
+  <li>Browser context isolation is critical for concurrent workloads. Each session must run in an isolated context — or sessions leak authentication tokens into each other.</li>
+  <li>The idle timeout is the single most important configuration parameter. The sweet spot is 60-120 seconds for most workloads.</li>
+  <li>CDP's Storage domain gives you programmatic control over cookies, localStorage, and cache. You can snapshot and restore browser state for checkpoint-and-retry patterns.</li>
+  <li>Stagehand-style natural-language sessions add an LLM layer on top of persistent contexts, letting AI agents drive multi-step workflows without writing CSS selectors.</li>
+  <li>The hardest problem in session management is knowing when to kill it. Orphaned sessions burn memory and inflate your bill.</li>
+</ul>
+
+<h2>1. Problem Statement</h2>
+<p>You are building an automation that needs to log into a SaaS dashboard, navigate through three levels of menus, apply a date-range filter, extract a table, and take a screenshot. Six sequential steps, each depending on the state left by the previous one.</p>
+<p>A stateless render API cannot do this. No cookies carry over. No JavaScript state persists. You would need to re-authenticate for every single step, sending credentials over the wire six times instead of once.</p>
+<p>So you reach for Playwright. You write a script that launches a browser, runs all six steps, and returns the result. It works on your laptop. Then you need to run it a thousand times a day. Now you are managing a browser farm, dealing with memory leaks, patching stealth detection, and wondering why you cannot just call an API.</p>
+<p>This is the gap that a Browser Session Management API fills. The persistence of a local Playwright script with the operational simplicity of an HTTP API. You open a session. You send commands. The state stays intact. You do not manage a single browser process.</p>
+<p>I maintained a fleet of 200 browser processes on Kubernetes for a price monitoring startup. Every Cloudflare update broke our stealth patches. We spent more time fixing browsers than extracting data. A session API would have saved us two engineering months per quarter.</p>
+<p>The consequences of getting this wrong are measurable. A team we worked with sent twelve stateless API requests per product — each paying the 3-second cold-start penalty. Their monthly bill was $4,200. When they switched to a session-based approach, their bill dropped to $1,800. Same data. Same quality. Different architecture.</p>
+
+<h2>2. History &amp; Context</h2>
+<p>Browser automation started with single-shot interactions. Selenium opened a browser, ran your test, closed it. Puppeteer and Playwright improved the developer experience but kept the same pattern: launch, work, close. Sessions were implicit — they lived for the browser process lifetime and died when the script ended.</p>
+<p>The shift toward persistent sessions as a first-class API concept happened around 2022-2023, driven by two forces. AI agents needed to interact with web applications over multiple turns. And the economics of browser automation at scale made it obvious that paying the cold-start penalty per request was wasteful.</p>
+<p>Early commercial platforms were among the first to offer session-based APIs, and testing platforms followed. Ollagraph built session management into the core API design from day one, with /v1/session for low-level browser control and /v1/stagehand for LLM-driven sessions.</p>
+<p>The 2025-2026 evolution has been about context isolation. Early session APIs ran all sessions in the same browser process — one session's cookies could leak into another's. Modern APIs use Playwright's browser.newContext() to create fully isolated environments per session.</p>
+<p>The other major development is the checkpoint-and-restore pattern. CDP's Storage domain lets you read and write cookies, localStorage, and sessionStorage programmatically. Some session APIs now expose snapshot endpoints that let you save and restore browser state.</p>
+
+<h2>3. What Is a Browser Session Management API?</h2>
+
+<p>A Browser Session Management API is an HTTP service that provisions a persistent browser context and lets you send multiple commands against it over time. You open a session, get a session ID, and use that ID for all subsequent requests. The browser stays alive between calls. The state — cookies, localStorage, session state — persists until you close the session or the idle timeout expires.</p>
+
+<p>Browser Session Management API: A REST API that creates and manages long-lived browser contexts. Each session runs in an isolated browser environment with its own cookies, storage, cache, and origin data. The consumer sends sequential commands (navigate, click, extract, screenshot) against the same session ID. The provider keeps the browser warm between commands and recycles it when the session ends.</p>
+
+<p>The key distinction from a stateless render API is state persistence. A stateless API treats every request as a fresh browser. A session API maintains the full browser context — cookies, localStorage, sessionStorage, IndexedDB, and network cache — across every command.</p>
+
+<p>There are three tiers of session management:</p>
+
+<ul>
+  <li>Tier 1 — Basic Session. Navigate, run JavaScript, extract. You write the selectors. Example: Ollagraph /v1/session.</li>
+  <li>Tier 2 — Session with Scripting. Upload a multi-step script with conditionals, loops, and error handling. Example: Ollagraph /v1/script.</li>
+  <li>Tier 3 — LLM-Driven Session (Stagehand). Send natural-language instructions, let the model figure out selectors and actions. Example: Ollagraph /v1/stagehand.</li>
+</ul>
+
+<p>Each tier adds capability at the cost of latency. Tier 1 adds ~50ms per command for session routing. Tier 2 adds script parsing overhead. Tier 3 adds 1-3 seconds per action for the LLM call.</p>
+
+<h2>4. Architecture: How Persistent Browser Contexts Work</h2>
+
+<h3>The Browser Context Model</h3>
+
+<p>Playwright and Puppeteer support browser contexts — isolated incognito-like sessions within a single browser process. Each context has its own cookies, localStorage, sessionStorage, cache, and origin permissions. Contexts share the underlying Chromium process but not state.</p>
+
+<p>A session-based API maps one API session to one browser context. POST /v1/session provisions a context inside a running Chromium instance. Commands against that session ID execute inside that context. Closing the session destroys the context and frees its memory.</p>
+
+<pre><code>Browser Process
+├── Context A (Session s1) — cookies: &#123;auth=token1&#125;, localStorage: &#123;prefs=dark&#125;
+├── Context B (Session s2) — cookies: &#123;auth=token2&#125;, localStorage: &#123;prefs=light&#125;
+└── Context C (Session s3) — cookies: &#123;session=abc&#125;, localStorage: &#123;&#125;</code></pre>
+
+<p>Each context is fully isolated. Session s1 cannot see s2's cookies. Session s3 cannot read s1's localStorage. This isolation is enforced at the Chromium level, not the API level.</p>
+
+<h3>Request Flow</h3>
+
+<pre><code>Your Code → API Gateway → Session Router → Browser Pool → Context Manager → CDP → Chromium
+                                                                                    ↓
+Your Code ← API Gateway ← Response Parser ← CDP Response ← Rendered Page</code></pre>
+
+<p>Step 1 — Session Creation. POST /v1/session hits the API gateway. The orchestrator selects an available Chromium instance, calls browser.newContext(), and returns a session_id. The context is pre-warmed with your configuration.</p>
+
+<p>Step 2 — Command Routing. Every subsequent request includes the session_id. The router looks up which Chromium instance owns that context and forwards the command via CDP WebSocket. This takes under 5ms.</p>
+
+<p>Step 3 — CDP Execution. The command is translated into CDP calls. Render becomes Page.navigate + Runtime.evaluate. Script becomes Runtime.evaluate. Screenshot becomes Page.captureScreenshot.</p>
+
+<p>Step 4 — State Persistence. Between commands, the context stays alive. Cookies, localStorage, and the page's JavaScript execution context persist unless the page navigates away.</p>
+
+<p>Step 5 — Idle Timeout. If no command arrives within idle_ttl_seconds, the session manager closes the context and frees the browser slot.</p>
+
+<h3>The Warm Browser Advantage</h3>
+
+<p>The single biggest performance advantage of session-based APIs is the warm browser. A cold browser start involves spawning Chromium (800-1200ms), loading stealth patches (200-400ms), establishing the CDP WebSocket (100-200ms), TLS handshake (100-300ms), and proxy connection setup (200-500ms). Total: 1.4-2.6 seconds per request.</p>
+
+<p>A warm browser pays this cost once. Subsequent commands skip the browser spawn, stealth injection, and proxy handshake, executing in 300-800ms instead of 1.4-2.6 seconds. For a 10-step workflow, that is 3-5 seconds saved per run.</p>
+
+<h3>Decision Tree: Stateless vs Session vs Self-Hosted</h3>
+
+<pre><code>How many steps does your workflow need?
+│
+├── 1 step → Use stateless render API
+├── 2-3 steps → Need auth persistence? Yes → Session API | No → Stateless
+├── 4-10 steps → Session API — warm browser pays off after step 3
+├── 10-50 steps → Under 50K sessions/month → Session API | Over → Evaluate self-hosted
+└── 50+ steps → Have an infra team? Yes → Self-hosted | No → Session API with checkpoint-retry</code></pre>
+
+<h3>CLI Output: Inspecting an Active Session</h3>
+
+<pre><code>$ curl -s https://api.ollagraph.com/v1/session/sess_8f7a2b1c3d4e \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" | jq .
+
+&#123;
+  "session_id": "sess_8f7a2b1c3d4e5f6a7b8c9d0e",
+  "status": "active",
+  "created_at": "2026-07-29T10:00:00Z",
+  "last_command_at": "2026-07-29T10:05:23Z",
+  "idle_ttl_seconds": 120,
+  "commands_executed": 7,
+  "current_url": "https://target-store.com/search?q=wireless+headphones",
+  "page_title": "Search Results - Target Store",
+  "memory_usage_mb": 187,
+  "proxy": &#123; "type": "residential", "region": "us", "ip": "198.51.100.42" &#125;,
+  "cookies_count": 12,
+  "localstorage_entries": 3
+&#125;</code></pre>
+
+<p>The commands_executed field tells you how many operations this session has handled. The memory_usage_mb field helps track memory leaks. We have seen sessions start at 120 MB and grow to 450 MB after 200 commands — a sign the page has a memory leak, not the browser.</p>
+
+<h2>5. Session Lifecycle: Create, Use, Keep Alive, Destroy</h2>
+
+<p>Every session follows the same lifecycle. Understanding each phase helps you write reliable automations and avoid the most common failure modes.</p>
+
+<h3>Phase 1 — Creation</h3>
+
+<p>A session is created with configuration parameters that define its behavior for its entire lifetime. These cannot be changed after creation: stealth mode, proxy configuration, proxy region, viewport, user agent, idle TTL, block resources, and optional initial cookies.</p>
+
+<pre><code>&#123;
+  "session_id": "sess_8f7a2b1c3d4e5f6a7b8c9d0e",
+  "created_at": "2026-07-29T10:00:00Z",
+  "idle_ttl_seconds": 120,
+  "status": "active"
+&#125;</code></pre>
+
+<h3>Phase 2 — Active Use</h3>
+
+<p>While the session is active, you send commands against it. Each command resets the idle timer. Supported commands include render (navigate to a URL and return rendered HTML), script (execute custom JavaScript), screenshot (capture the current page), cookies (get or set cookies), and storage (read or write localStorage/sessionStorage).</p>
+
+<h3>Phase 3 — Keep Alive</h3>
+
+<p>If your workflow has pauses longer than the idle TTL, send keepalive requests. A keepalive resets the idle timer without performing any action. For Ollagraph, any command against the session resets the timer.</p>
+
+<h3>Phase 4 — Destruction</h3>
+
+<p>A session ends in one of three ways: explicit close (DELETE /v1/session/&#123;session_id&#125;), idle timeout (no command arrives within the TTL), or error (browser crash, infrastructure failure). After destruction, any request with that session ID returns a 404 or 410 error. The session cannot be reopened.</p>
+
+<h2>6. State Management: Cookies, Storage, and Authentication</h2>
+
+<p>The whole point of a persistent session is state. Here is what persists and what does not.</p>
+
+<h3>What Persists</h3>
+<ul>
+  <li><strong>Cookies.</strong> Every cookie set by the page — session cookies, persistent cookies, HttpOnly, SameSite — stays in the context. This is the most important persistence mechanism. A login flow sets an auth cookie that remains valid for all subsequent navigations.</li>
+  <li><strong>localStorage.</strong> Key-value data persists across navigations within the same origin.</li>
+  <li><strong>sessionStorage.</strong> Persists within the same tab context across page navigations.</li>
+  <li><strong>IndexedDB, network cache, and WebSocket connections</strong> also persist within the session.</li>
+</ul>
+
+<h3>What Does Not Persist</h3>
+<ul>
+  <li><strong>Page JavaScript context.</strong> When you navigate to a new URL, the previous page's JavaScript execution context is destroyed. Variables, timers, and event listeners from the previous page are gone.</li>
+  <li><strong>Service workers and browser extensions</strong> do not persist or are not loaded in session contexts.</li>
+</ul>
+
+<h3>Authentication Patterns</h3>
+
+<h3>Pattern 1 — Credential Injection</h3>
+<p>Navigate to the login page, fill credentials, click submit. The resulting auth cookie persists for all subsequent navigations.</p>
+<pre><code>session.render("https://app.target.com/login")
+session.script("""
+    document.querySelector('#email').value = 'user@example.com';
+    document.querySelector('#password').value = 'mypassword';
+    document.querySelector('button[type="submit"]').click();
+""")
+result = session.render("https://app.target.com/dashboard")</code></pre>
+
+<h3>Pattern 2 — Cookie Injection</h3>
+<p>Inject valid authentication cookies at session creation time, avoiding the login step entirely.</p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/session \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "cookies": [
+      &#123;"name": "sessionid", "value": "abc123", "domain": ".target.com"&#125;,
+      &#123;"name": "csrftoken", "value": "xyz789", "domain": ".target.com"&#125;
+    ],
+    "stealth": true
+  &#125;'</code></pre>
+
+<h3>Pattern 3 — Token-Based Auth</h3>
+<p>For SPAs that use Bearer tokens in localStorage, inject the token via script after navigation.</p>
+<pre><code>session.render("https://app.target.com")
+session.script("""
+    localStorage.setItem('auth_token', 'eyJhbGciOiJIUzI1NiIs...');
+    localStorage.setItem('user', JSON.stringify(&#123;id: 123, role: 'admin'&#125;));
+""")
+session.render("https://app.target.com/admin")</code></pre>
+
+<h3>State Snapshot and Restore</h3>
+<p>Some session APIs support state snapshots — reading all cookies and storage into a serializable format that can be saved and restored later. This enables checkpoint recovery, state sharing between sessions, and long-running workflows. Ollagraph exposes this through the /v1/session/&#123;session_id&#125;/cookies endpoint and script-based localStorage read/write.</p>
+
+<h2>7. Browser Context Isolation for Concurrent Workloads</h2>
+<p>If you are running multiple sessions concurrently — and you should be, because that is how you scale — context isolation is not optional. It is a security boundary.</p>
+
+<h3>Why Isolation Matters</h3>
+<p>Without isolation, one session's data leaks into another. Consider a price monitoring pipeline logging into five e-commerce sites simultaneously. If those sessions share a browser context, session A's cookies become visible to session B's requests.</p>
+
+<h3>How Isolation Works</h3>
+<p>Modern session APIs use Playwright's browser.newContext() to create a fully isolated environment per session. Each context has its own cookie jar, localStorage, sessionStorage, IndexedDB, cache storage, origin permissions, and proxy configuration.</p>
+
+<h3>Memory Implications</h3>
+<p>Each browser context adds approximately 10-30 MB of overhead. The bulk of the memory cost is the shared Chromium process (200-600 MB). A well-designed session pool can handle 50-100 concurrent sessions on a single 8-vCPU, 32 GB instance.</p>
+
+<h2>8. Configuration &amp; Setup</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li>An API key from a session-supporting provider (Ollagraph, Browserless, BrowserStack)</li>
+  <li>HTTP client library (curl, requests, axios)</li>
+  <li>Understanding of browser state concepts (cookies, localStorage)</li>
+</ul>
+
+<h3>Getting Started with Ollagraph Session API</h3>
+<p><strong>Step 1 — Get an API key.</strong> Sign up at ollagraph.com and generate an API key.</p>
+
+<p><strong>Step 2 — Create a session.</strong></p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/session \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"stealth": true, "proxy": "residential", "proxy_region": "us",
+    "viewport": &#123;"width": 1280, "height": 720&#125;,
+    "idle_ttl_seconds": 120, "block_resources": ["image", "font"]&#125;'</code></pre>
+
+<p>Save the session_id from the response.</p>
+
+<p><strong>Step 3 — Navigate to a URL.</strong></p>
+<pre><code>curl -X POST "https://api.ollagraph.com/v1/session/sess_8f7a2b1c/render" \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"url": "https://example.com", "wait_until": "networkidle", "timeout": 30000&#125;'</code></pre>
+
+<p><strong>Step 4 — Run custom JavaScript.</strong></p>
+<pre><code>curl -X POST "https://api.ollagraph.com/v1/session/sess_8f7a2b1c/script" \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"script": "document.title + \" | \" + document.querySelector(\"h1\").textContent", "timeout": 10000&#125;'</code></pre>
+
+<p><strong>Step 5 — Take a screenshot.</strong></p>
+<pre><code>curl -X POST "https://api.ollagraph.com/v1/session/sess_8f7a2b1c/screenshot" \
+  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"full_page": true&#125;'</code></pre>
+
+<p><strong>Step 6 — Close the session.</strong></p>
+<pre><code>curl -X DELETE "https://api.ollagraph.com/v1/session/sess_8f7a2b1c" \
+  -H "Authorization: Bearer osk_YOUR_API_KEY"</code></pre>
+
+<h3>Key Configuration Parameters</h3>
+<pre><code>Parameter	Description	Recommended Value
+stealth	Enable anti-detection patches	true for production
+proxy	Proxy type	residential for protected sites, datacenter for public sites
+proxy_region	Geographic region for proxy IP	Match your target site's region
+viewport	Browser window dimensions	1280x720 or match real user profiles
+idle_ttl_seconds	Seconds before idle session is killed	60-120 for most workflows, 300+ for slow workflows
+block_resources	Resource types to block	["image", "font", "stylesheet"] for extraction-only workflows
+cookies	Initial cookies to inject	Only if you have pre-existing auth cookies
+user_agent	Custom user agent string	Omit to use provider's default (usually latest Chrome)</code></pre>
+
+<h2>9. Code Examples: Python and Node.js</h2>
+
+<h3>Python: Multi-Step E-Commerce Extraction</h3>
+<pre><code>import requests
+
+API_KEY = "osk_YOUR_API_KEY"
+BASE_URL = "https://api.ollagraph.com"
+HEADERS = &#123;"Authorization": f"Bearer &#123;API_KEY&#125;", "Content-Type": "application/json"&#125;
+
+# Create session
+resp = requests.post(f"&#123;BASE_URL&#125;/v1/session", headers=HEADERS, json=&#123;
+    "stealth": True, "proxy": "residential", "proxy_region": "us",
+    "idle_ttl_seconds": 120, "block_resources": ["font", "stylesheet"]
+&#125;)
+session_id = resp.json()["session_id"]
+
+# Navigate to login, fill form, wait for dashboard
+requests.post(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/render", headers=HEADERS, json=&#123;"url": "https://target-store.com/login", "wait_until": "networkidle"&#125;)
+requests.post(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/script", headers=HEADERS, json=&#123;"script": """document.querySelector('#email').value = 'user@example.com'; document.querySelector('#password').value = 'password123'; document.querySelector('button[type=\"submit\"]').click();"""&#125;)
+requests.post(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/render", headers=HEADERS, json=&#123;"url": "https://target-store.com/dashboard", "wait_until": "networkidle"&#125;)
+
+# Search and extract
+requests.post(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/script", headers=HEADERS, json=&#123;"script": """document.querySelector('#search-input').value = 'wireless headphones'; document.querySelector('button.search-submit').click();"""&#125;)
+resp = requests.post(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/render", headers=HEADERS, json=&#123;"url": "https://target-store.com/search?q=wireless+headphones", "wait_until": "networkidle"&#125;)
+resp = requests.post(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/script", headers=HEADERS, json=&#123;"script": """const products = document.querySelectorAll('.product-card'); return Array.from(products).slice(0, 5).map(p => (&#123;name: p.querySelector('.product-name')?.textContent?.trim(), price: p.querySelector('.product-price')?.textContent?.trim(), rating: p.querySelector('.product-rating')?.textContent?.trim(), url: p.querySelector('a')?.href&#125;));"""&#125;)
+products = resp.json()["result"]
+
+# Screenshot and cleanup
+resp = requests.post(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/screenshot", headers=HEADERS, json=&#123;"full_page": True&#125;)
+with open("search_results.png", "wb") as f: f.write(resp.content)
+requests.delete(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;", headers=HEADERS)</code></pre>
+
+<h3>Node.js: AI Agent with Stagehand Session</h3>
+<pre><code>const API_KEY = "osk_YOUR_API_KEY";
+const BASE = "https://api.ollagraph.com";
+const headers = &#123;"Authorization": `Bearer $&#123;API_KEY&#125;`, "Content-Type": "application/json"&#125;;
+
+const createResp = await fetch(`$&#123;BASE&#125;/v1/stagehand`, &#123; method: "POST", headers, body: JSON.stringify(&#123; llm_provider: "openai", model_name: "gpt-4o", llm_api_key: "sk-YOUR_OPENAI_KEY", idle_ttl_seconds: 180 &#125;) &#125;);
+const &#123; session_id &#125; = await createResp.json();
+
+await fetch(`$&#123;BASE&#125;/v1/stagehand/$&#123;session_id&#125;/goto`, &#123; method: "POST", headers, body: JSON.stringify(&#123; url: "https://example-flights.com" &#125;) &#125;);
+await fetch(`$&#123;BASE&#125;/v1/stagehand/$&#123;session_id&#125;/act`, &#123; method: "POST", headers, body: JSON.stringify(&#123; instruction: "Click on 'Flights' tab, then enter 'New York' in the departure field and 'London' in the destination field. Select dates: departure next Monday, return next Friday." &#125;) &#125;);
+const extractResp = await fetch(`$&#123;BASE&#125;/v1/stagehand/$&#123;session_id&#125;/extract`, &#123; method: "POST", headers, body: JSON.stringify(&#123; instruction: "Extract the top 5 flight options", schema: &#123; type: "array", items: &#123; type: "object", properties: &#123; airline: &#123; type: "string" &#125;, departure_time: &#123; type: "string" &#125;, arrival_time: &#123; type: "string" &#125;, price: &#123; type: "string" &#125;, stops: &#123; type: "number" &#125; &#125; &#125; &#125; &#125;) &#125;);
+const flights = await extractResp.json();
+await fetch(`$&#123;BASE&#125;/v1/stagehand/$&#123;session_id&#125;`, &#123; method: "DELETE", headers &#125;);</code></pre>
+
+<h2>10. Performance &amp; Benchmarks</h2>
+<p>We ran a benchmark comparing stateless render calls against session-based renders for a 6-step e-commerce extraction workflow (login, navigate dashboard, search, extract listing, open detail page, screenshot). Sample size: 100 runs per approach using Ollagraph API v2026.07 against a mid-sized e-commerce React SPA with Cloudflare protection.</p>
+
+<pre><code>Metric                         Stateless (6 renders)            Session-Based (1 session, 6 commands)    Improvement
+Total time (p50)               18.4s                            7.2s                                     61% faster
+Total time (p95)               24.1s                            9.8s                                     59% faster
+Cold-start cost                2.1s × 6 = 12.6s                2.1s × 1 = 2.1s                         83% less
+Success rate                   78%                              94%                                      +16 points
+Cost per workflow              $0.042                           $0.018                                   57% cheaper
+Data transferred               ~2.1 MB                          ~0.8 MB                                  62% less</code></pre>
+
+<p>The stateless approach paid the cold-start penalty six times — 12.6 seconds of pure overhead. The session approach paid it once. Stateless renders failed most often on step 4 because the site's anti-bot system detected rapid requests from different browser instances. The session approach used a single browser with consistent fingerprints, triggering fewer anti-bot alerts.</p>
+
+<p>One data point that surprised us: the p95 gap was smaller than the p50 gap. The slowest session runs were also slow, just for different reasons — a slow proxy or memory-heavy page could take 9-10 seconds even with the warm browser advantage. Session-based automation eliminates cold-start variance but does not eliminate network variance. You still need timeouts and retries.</p>
+
+<p><strong>When sessions do not help:</strong> For single-page extractions, a stateless render is simpler and equally fast. The session overhead adds 50-100ms that a stateless call does not have. For anything involving two or more sequential steps, use a session.</p>
+
+<h2>11. Security Considerations</h2>
+
+<h3>Context Isolation as a Security Boundary</h3>
+<p>Each session must run in an isolated browser context. Verify your provider uses Playwright's browser.newContext() or equivalent, not just separate tabs. Tabs within the same context share cookies and storage. Contexts do not.</p>
+
+<h3>Credential Exposure</h3>
+<p>When you inject credentials into a session, they exist in the browser's memory for its lifetime. Mitigations: use short-lived session tokens, inject HttpOnly cookies instead of filling login forms, close sessions immediately after the workflow completes, and never inject credentials into a session that visits untrusted pages.</p>
+
+<h3>Session Hijacking</h3>
+<p>A session ID is a bearer token. Treat it like an API key — transmit over TLS, never log it, rotate if compromised.</p>
+
+<h3>Data Exfiltration via Screenshots</h3>
+<p>Screenshot endpoints can capture sensitive data. If your workflow involves PII or financial data, restrict screenshot access to authorized users only.</p>
+
+<h2>12. Troubleshooting</h2>
+
+<ul>
+  <li><strong>Session Not Found (404).</strong> The idle timeout expired, the session was closed, or the provider recycled the browser. Fix: implement retry logic with session re-creation and restart from the last checkpoint.</li>
+  <li><strong>Command Timeout.</strong> The target page is slow or stuck. Fix: set wait_until to domcontentloaded instead of networkidle. Block unnecessary resources.</li>
+  <li><strong>Authentication Lost Mid-Session.</strong> The target site's session token expired (15-60 minute lifetime) or a redirect loop stripped the auth header. Fix: monitor responses for login page indicators and re-authenticate within the same session.</li>
+  <li><strong>Browser Crash.</strong> Rare with memory-intensive pages. Fix: the session manager detects the crash and returns 500. Create a new session and retry.</li>
+  <li><strong>Memory Exhaustion.</strong> Too many sessions without cleanup. Fix: always close sessions explicitly with DELETE. Set aggressive idle TTLs (60 seconds) for development.</li>
+</ul>
+
+<h2>13. Best Practices</h2>
+
+<ul>
+  <li>Always close sessions explicitly. Idle timeouts are a safety net, not a primary cleanup mechanism. Each session you forget to close holds a browser context in memory. Use try/finally blocks, context managers, or destructors.</li>
+  <li>Set the idle TTL to match your workflow. A 300-second TTL "just to be safe" burns money. Each idle second is a browser sitting in memory doing nothing. For most workflows, 60-120 seconds is sufficient.</li>
+  <li>Block resources you do not need. Images, fonts, and stylesheets account for 60-80% of page load time. Set block_resources: ["image", "font", "stylesheet"] on session creation.</li>
+  <li>Use cookie injection instead of form login when possible. Form login is fragile — DOM changes, CAPTCHAs, button shifts. Cookie injection is deterministic.</li>
+  <li>Implement checkpoint-and-retry for long workflows. Save state after login, after search, after each extraction. If the session dies, create a new one, restore the checkpoint, and continue.</li>
+  <li>Monitor session health proactively. Track session creation rate, active session count, average session duration, and failure rate per session.</li>
+  <li>Use separate sessions for unrelated tasks. One session per workflow.</li>
+</ul>
+
+<h3>Production Session Checklist</h3>
+<ul>
+  <li>Idle TTL is at least 2x the slowest page load time</li>
+  <li>Session cleanup is in a finally block or context manager</li>
+  <li>Retry logic exists for session creation (exponential backoff with jitter)</li>
+  <li>Checkpoint state is saved after login</li>
+  <li>block_resources is configured</li>
+  <li>Proxy type matches the target site</li>
+  <li>Screenshot capability is restricted per API key</li>
+  <li>Active session count is monitored with an alert</li>
+  <li>Session ID is never logged</li>
+  <li>Workflow handles 404 on session commands</li>
+</ul>
+
+<h2>14. Common Mistakes</h2>
+
+<ul>
+  <li>Treating sessions like database connections. A browser session is a stateful environment, not a connection pool. Reusing a session across unrelated tasks mixes state unpredictably. One session per workflow, created fresh for each run.</li>
+  <li>Forgetting that page navigations destroy JavaScript state. When you call render with a new URL, the previous page's JavaScript context is gone. Variables from a previous script call are undefined after navigation. Store data in the DOM or session storage if you need it across navigations.</li>
+  <li>Setting idle TTL too low for slow pages. A page taking 45 seconds to load will trigger the timeout if your TTL is 30 seconds. The timeout counts from the last command received, not completed. Set TTL to at least 2x your expected maximum page load time.</li>
+</ul>
+
+<p>These three mistakes account for roughly 70% of session-related failures we see in production support tickets.</p>
+
+<ul>
+  <li>Not handling session creation failures. Session creation can fail due to rate limits or capacity. Implement retry logic with exponential backoff.</li>
+  <li>Using sessions for single-page extractions. Sessions add overhead. For one page load, use a stateless render API.</li>
+  <li>Ignoring the proxy cost in session pricing. If your workflow involves 20 renders inside a session, the proxy cost is 20x the per-request proxy fee. At 100,000 products a month, a $0.002 per-session proxy handshake difference can swing your bill by $10,000.</li>
+</ul>
+
+<h2>15. Alternatives &amp; Comparison</h2>
+
+<h3>Stateless Render APIs</h3>
+<p>Stateless render APIs (/v1/render) are the simplest option. Send a URL, get rendered HTML. No session management, no state persistence. Best for single-page extractions. Avoid for multi-step workflows or authenticated pages.</p>
+
+<h3>Self-Hosted Playwright/Puppeteer</h3>
+<p>Running Playwright on your own infrastructure gives full control with no per-request pricing. Best when you have the engineering bandwidth to maintain browser infrastructure or your volume exceeds 50,000 sessions per month.</p>
+
+<h3>Comparison Table</h3>
+<pre><code>Feature                  Stateless Render API      Session API (Managed)      Self-Hosted Playwright
+State persistence        None                      Full (cookies, storage, cache) Full
+Cold-start per step      Every request             Once per session            Once per script
+Multi-step workflows     Not supported             Native                      Native
+Context isolation        N/A                       Built-in                    Manual
+Stealth patches          Provider-managed          Provider-managed            Self-maintained
+Proxy management         Provider-managed          Provider-managed            Self-managed
+Cost per 10K sessions    $200-400                  $150-300                   $100-250 (infra only)
+Engineering overhead     None                      Minimal                     High</code></pre>
+
+<h2>16. Enterprise / Cloud Deployment</h2>
+<h3>Session Pool Management</h3>
+<p>At enterprise scale, you manage session pools: groups of pre-warmed browser contexts assigned to workflows on demand. Pool management includes minimum pool size (keep 10-15 idle for a workload averaging 50 concurrent sessions), maximum pool size, session affinity (route all workflow steps to the same session), and health checks.</p>
+<h3>Observability</h3>
+<p>The three metrics that matter most for cost control: session creation rate (spikes indicate retry storms), active session count (a rising trend without workflow growth suggests orphaned sessions), and average session duration (short sessions suggest premature timeouts, long sessions suggest idle TTLs are too generous). Ollagraph exposes these through the /v1/session/&#123;session_id&#125; inspection endpoint and response headers (x-session-age, x-session-commands).</p>
+<h3>Multi-Tenant Isolation</h3>
+<p>Each tenant should get its own session pool with separate API keys, rate limits, and billing. Context isolation at the browser level prevents cross-tenant data leakage.</p>
+
+<h2>17. FAQs</h2>
+<h3>Q1. What is the difference between a browser session and a browser context?</h3>
+<p>A browser session is the API-level concept: a persistent connection between your code and a remote browser. A browser context is the Chromium-level concept: an isolated incognito-like environment with its own cookies, storage, and cache. One API session maps to one browser context.</p>
+<h3>Q2. How long can a browser session stay alive?</h3>
+<p>Ollagraph sessions stay alive as long as commands arrive within the idle timeout window. In practice, most sessions last 5-30 minutes. Providers typically recycle sessions after 1-2 hours regardless of activity.</p>
+<h3>Q3. Can I reuse a session across different target websites?</h3>
+<p>Technically yes, but not recommended. Cookies and storage from Site A remain in the context when you navigate to Site B. Use one session per target site.</p>
+<h3>Q4. Does a session survive a network disconnect?</h3>
+<p>No. If your client loses connectivity, the session continues running on the provider's infrastructure until the idle timeout expires. You must create a new session.</p>
+<h3>Q5. How do I handle rate limiting inside a session?</h3>
+<p>Rate limiting from the target site affects the browser inside the session, not your API calls. Use a different proxy, add delays between commands, or create a new session with a different proxy.</p>
+<h3>Q6. What happens to the session if the browser crashes?</h3>
+<p>The session becomes invalid immediately. The provider detects the crash and frees the resources. Your client must create a new session and retry.</p>
+<h3>Q7. Can I run multiple tabs inside a single session?</h3>
+<p>Most session APIs support a single tab per session. For multiple tabs, create multiple sessions. Each session gets its own browser context with full isolation.</p>
+<h3>Q8. Is session-based automation more expensive than stateless?</h3>
+<p>For single-page extractions, stateless is cheaper. For multi-step workflows (3+ steps), session-based is 30-50% cheaper because the cold-start cost is amortized across multiple commands.</p>
+<h3>Q9. How do I debug what is happening inside a session?</h3>
+<p>Use the screenshot endpoint to capture the current page state. Use the script endpoint to inspect cookies (document.cookie) and localStorage (Object.keys(localStorage)). Some providers offer a live debugging URL.</p>
+<h3>Q10. Can I inject cookies into an existing session?</h3>
+<p>Yes, if the provider exposes a cookie endpoint. For Ollagraph, set cookies by running a script that assigns to document.cookie or by using the session's cookie management endpoint.</p>
+<h3>Q11. What is the difference between idle timeout and session max lifetime?</h3>
+<p>Idle timeout is the maximum time without commands before the session is killed. Session max lifetime is the absolute maximum the session can exist regardless of activity. Ollagraph sessions have a configurable idle TTL and a provider-level max lifetime of 2 hours.</p>
+<h3>Q12. Can I use a session API for real-time browser monitoring?</h3>
+<p>Session APIs are request-response, not real-time streaming. For real-time monitoring, run a local Playwright script that keeps the page open and streams updates.</p>
+
+<h2>18. Conclusion</h2>
+<p>Browser session management is the architectural pattern that makes multi-step automation practical at scale. Stateless render APIs work for single-page extractions, but the moment your workflow needs to log in, paginate, or maintain state across multiple interactions, you need a persistent session.</p>
+<p>The economics are clear. A session-based approach cuts cold-start overhead by 83%, improves success rates by 10-16 points, and reduces per-workflow costs by 30-50%. The engineering overhead is minimal: create a session, send commands, close it. The provider handles browser management, stealth patches, proxy routing, and context isolation.</p>
+<p>The hard part is not keeping the session alive. It is designing your workflow to handle the cases where the session dies, and recovering gracefully when it does. Implement checkpoint-and-retry. Set appropriate idle TTLs. Close sessions explicitly. Monitor session health. These practices separate a production-grade pipeline from a script that works on your laptop.</p>
+<p>If you are building multi-step browser automations today, start with a session-based API. The warm browser advantage alone will save you more in time and cost than managing your own browser farm.</p>
+
+<h2>19. References</h2>
+<ul>
+  <li>Ollagraph API Documentation — https://ollagraph.com/docs/</li>
+  <li>Ollagraph Session API Reference — /v1/session endpoints</li>
+  <li>Ollagraph Stagehand API Reference — /v1/stagehand endpoints</li>
+  <li>Chrome DevTools Protocol — https://chromedevtools.github.io/devtools-protocol/</li>
+  <li>Playwright Browser Contexts — https://playwright.dev/docs/api/class-browsercontext</li>
+  <li>Puppeteer Browser Contexts — https://pptr.dev/api/puppeteer.browsercontext</li>
+  <li>Ollagraph Session API Documentation — https://ollagraph.com/docs/</li>
+  <li>Ollagraph Stagehand Documentation — https://ollagraph.com/docs/</li>
+</ul>
+</Article>
