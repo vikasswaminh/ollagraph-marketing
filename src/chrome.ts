@@ -154,6 +154,32 @@ export function footerHtml(): string {
           }).join("")}
         </div>`).join("");
 
+  // Sibling brands under the same group — dofollow cross-links (brand-name
+  // anchors) so the network passes link equity to each domain. Ollagraph
+  // itself is intentionally omitted (this IS ollagraph.com). Keep in sync
+  // with the group's live zones; add a brand only once its site is live.
+  const groupBrands = [
+    { label: "Ollabear",     href: "https://ollabear.com" },
+    { label: "OllaDNS",      href: "https://olladns.com" },
+    { label: "OllaLink",     href: "https://ollalink.com" },
+    { label: "OllaNode",     href: "https://ollanode.com" },
+    { label: "OllaSoftware", href: "https://ollasoftware.com" },
+    { label: "OllaStack",    href: "https://ollastack.com" },
+    { label: "OllaSuper",    href: "https://ollasuper.com" },
+    { label: "OllaSync",     href: "https://ollasync.com" },
+    { label: "OllaVPN",      href: "https://ollavpn.com" },
+    { label: "OllaWrite",    href: "https://ollawrite.com" },
+  ];
+  const brandsHTML = `
+            <div class="footer-brands">
+              <h4>Ollagraph Group</h4>
+              <div class="footer-brands-links">
+                ${groupBrands.map((b) =>
+                  `<a href="${b.href}" target="_blank" rel="noopener">${b.label}</a>`
+                ).join("")}
+              </div>
+            </div>`;
+
   return `
         </main>
         <footer class="footer">
@@ -170,6 +196,7 @@ export function footerHtml(): string {
               </div>
               ${colsHTML}
             </div>
+            ${brandsHTML}
             <div class="footer-bottom">
               <div>© 2026 Ollagraph</div>
               <div style="color:var(--text-muted); font-size:12.5px;">
