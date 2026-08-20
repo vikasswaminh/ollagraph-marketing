@@ -23,6 +23,7 @@ if (!tok) {
 // Default targeted URLs — add new pages here when deploying content updates.
 const DEFAULT_PURGE_URLS = [
   "https://ollagraph.com/blog/",
+  "https://ollagraph.com/blog/connect-cursor-ide-to-web-search-mcp-server/",
   "https://ollagraph.com/blog/extract-structured-data-api-guide/",
 ];
 
