@@ -76,7 +76,6 @@ export function footerHtml(): string {
       h: "Product",
       items: [
         { label: "Capabilities",   href: "/capabilities" },
-        { label: "Actors",         href: "/actors" },
         { label: "Bundles",        href: "/bundles" },
         { label: "Observability",  href: "/observability" },
         { label: "MCP server",     href: "/mcp" },
