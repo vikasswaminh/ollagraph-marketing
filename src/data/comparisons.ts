@@ -2,7 +2,7 @@
 // do well first, never disparage. ACCURACY rules applied here:
 //  - Apify IS included as of 2026-06-20 (owner decision: cost-leadership vs the
 //    actor-marketplace model is a key marketing goal). GUARDRAILS, because we
-//    STILL resell Apify upstream for some vertical actors:
+//    (actors were retired 2026-08-23 — no vertical-actor resale remains):
 //      (a) never disclose the supplier relationship in public copy;
 //      (b) never claim to undercut Apify on the specific datasets we resell from
 //          them — keep the comparison at the model / consolidation / breadth level;
@@ -32,7 +32,7 @@ export const comparisons: CompetitorComparison[] = [
     slug: "firecrawl",
     name: "Firecrawl",
     positioning: "Ollagraph vs Firecrawl",
-    heroSub: "Firecrawl popularized clean markdown for LLM workflows. Ollagraph matches that quality and ships a complete intelligence layer, vertical actors, and browser automation alongside.",
+    heroSub: "Firecrawl popularized clean markdown for LLM workflows. Ollagraph matches that quality and ships a complete intelligence layer and browser automation alongside.",
     whatTheyDoWell: "Firecrawl earned its position by making LLM-ready markdown extraction simple and reliable. Their crawl-to-markdown pipeline is excellent, and they were early to recognize that AI engineers need a different shape of web data than traditional scrapers produced. If your use case is exclusively markdown for RAG or training, Firecrawl serves it well.",
     whereWeGoFurther: [
       "**Built-in intelligence layer.** Ollagraph returns DNS, WHOIS, SSL, GeoIP/ASN, tech-stack, contacts, and email verification in the same API. Firecrawl focuses on scrape and crawl — for the intelligence layer you'd add a second vendor.",
@@ -51,8 +51,8 @@ export const comparisons: CompetitorComparison[] = [
       { feature: "Pricing", them: "Per-credit", us: "Per-credit · PAYG from $5 · refund on failure" },
       { feature: "Free to start", them: "Free tier", us: "1,000 credits" },
     ],
-    bestForThem: "Teams whose use case is exclusively markdown extraction for LLM training or RAG, and who do not need intelligence, vertical actors, or browser automation from the same vendor.",
-    bestForUs: "Teams who need clean markdown plus intelligence, plus vertical actors, plus browser automation — behind one key and one bill. Especially AI teams whose agents also need to enrich the domains they scrape.",
+    bestForThem: "Teams whose use case is exclusively markdown extraction for LLM training or RAG, and who do not need intelligence or browser automation from the same vendor.",
+    bestForUs: "Teams who need clean markdown plus intelligence plus browser automation — behind one key and one bill. Especially AI teams whose agents also need to enrich the domains they scrape.",
     faqs: [
       { q: "Is Ollagraph's markdown output the same quality as Firecrawl's?", a: "Both use Readability-style extraction with strong defaults for stripping navigation, ads, and boilerplate, so output is comparable across most content sites. If your use case is markdown-only at low volume, either vendor serves you well." },
       { q: "Does Firecrawl have a domain intelligence layer?", a: "No. Firecrawl focuses on scraping and crawling; DNS, WHOIS, SSL, tech-stack, and email verification are not part of their product. Teams that need both typically pair Firecrawl with a separate intelligence vendor, or consolidate on Ollagraph." },
@@ -64,7 +64,7 @@ export const comparisons: CompetitorComparison[] = [
     slug: "scraperapi",
     name: "ScraperAPI",
     positioning: "Ollagraph vs ScraperAPI",
-    heroSub: "ScraperAPI nailed developer ergonomics — a clean API, fast onboarding, simple pricing. Ollagraph matches that simplicity and ships structured output, an intelligence layer, and vertical actors in the same API.",
+    heroSub: "ScraperAPI nailed developer ergonomics — a clean API, fast onboarding, simple pricing. Ollagraph matches that simplicity and ships structured output, an intelligence layer, and browser automation in the same API.",
     whatTheyDoWell: "ScraperAPI is one of the cleanest developer experiences in the scraping-API category. Onboarding is fast, the docs are clear, the auth pattern is simple. If you need raw HTML from any URL with anti-bot handling, ScraperAPI is a strong, focused choice.",
     whereWeGoFurther: [
       "**Structured data, not just HTML.** Ollagraph returns clean markdown, extracted Readability content, and structured JSON-LD / OpenGraph / microdata in the same call. ScraperAPI returns raw HTML; cleaning and structure extraction is on your side.",
@@ -124,7 +124,7 @@ export const comparisons: CompetitorComparison[] = [
     slug: "diffbot",
     name: "Diffbot",
     positioning: "Ollagraph vs Diffbot",
-    heroSub: "Diffbot built automatic AI extraction and a web-scale Knowledge Graph. Ollagraph overlaps on automatic extraction and adds scraping control, vertical actors, and agent-native tooling at a developer-friendly entry point.",
+    heroSub: "Diffbot built automatic AI extraction and a web-scale Knowledge Graph. Ollagraph overlaps on automatic extraction and adds scraping control and agent-native tooling at a developer-friendly entry point.",
     whatTheyDoWell: "Diffbot's automatic extraction (Article, Product, and other entity types) and its Knowledge Graph are genuinely differentiated — entity-level structured data at web scale. For teams whose core need is a queryable graph of companies, people, and articles, Diffbot is in a category of its own.",
     whereWeGoFurther: [
       "**Lower entry barrier.** Pay-as-you-go from $5 and 1,000 free credits to start, versus an enterprise-oriented entry point.",
@@ -144,7 +144,7 @@ export const comparisons: CompetitorComparison[] = [
     bestForUs: "Teams who need scraping plus clean markdown plus browser automation plus agent tooling at a low entry point, and don't need a standalone knowledge graph.",
     faqs: [
       { q: "Does Ollagraph have a Knowledge Graph like Diffbot?", a: "No, and we won't pretend otherwise — Diffbot's Knowledge Graph is its core product and we don't offer an equivalent. Ollagraph is a web-data API: scrape, extract, intelligence, actors, and automation. If you need a queryable entity graph, Diffbot is the better fit." },
-      { q: "Can Ollagraph do automatic article and product extraction?", a: "Yes. The extract and markdown endpoints return clean article content, and vertical actors return structured product/place/property data. The output is comparable for most content and commerce pages." },
+      { q: "Can Ollagraph do automatic article and product extraction?", a: "Yes. The extract and markdown endpoints return clean article content and structured JSON from product, place, and listing pages. The output is comparable for most content and commerce pages." },
       { q: "How does pricing compare?", a: "Ollagraph's entry point is lower — pay-as-you-go from $5, 1,000 free credits to start, 1 credit per call with refunds on failure. Diffbot is positioned toward enterprise; compare current tiers on their pricing page." },
     ],
   },
@@ -156,7 +156,7 @@ export const comparisons: CompetitorComparison[] = [
     whatTheyDoWell: "Zyte has deep scraping heritage — they steward the Scrapy framework, run mature managed crawling infrastructure, and their proxy/unblocker handles tough anti-bot targets. For teams already invested in Scrapy at scale, Zyte is a natural home.",
     whereWeGoFurther: [
       "**Single API, no framework to run.** Ollagraph is one endpoint family with a bearer token — no Scrapy project to maintain or deploy.",
-      "**Breadth behind one key.** Markdown, structured extraction, domain intelligence, vertical actors, and browser automation all in the same API and bill.",
+      "**Breadth behind one key.** Markdown, structured extraction, domain intelligence, and browser automation all in the same API and bill.",
       "**Agent-native.** An MCP server and natural-language browser actions make it directly usable by AI agents.",
       "**Low entry point.** Pay-as-you-go from $5, 1,000 free credits, 1 credit per call, refunds on failure.",
     ],
@@ -171,7 +171,7 @@ export const comparisons: CompetitorComparison[] = [
       { feature: "Free to start", them: "Trial / credits", us: "1,000 credits" },
     ],
     bestForThem: "Engineering teams standardized on Scrapy or needing managed crawl infrastructure and a dedicated unblocker for hard targets at large scale.",
-    bestForUs: "Teams who want a single API spanning scrape, intelligence, vertical actors, and browser automation without running a crawling framework themselves.",
+    bestForUs: "Teams who want a single API spanning scrape, intelligence, and browser automation without running a crawling framework themselves.",
     faqs: [
       { q: "Do I need Scrapy to use Ollagraph?", a: "No. Ollagraph is a plain HTTP API — no framework, no project scaffolding. You POST a URL and get JSON. That's the main difference from a Scrapy-centric platform." },
       { q: "Does Ollagraph handle tough anti-bot sites like Zyte's unblocker?", a: "Our managed engine escalates automatically — fast HTTP path, then a stealth browser, with a residential-proxy option for the hardest targets — and tells you which path served the request via the tier field. For the toughest enterprise targets, evaluate both against your specific sites." },
@@ -182,12 +182,12 @@ export const comparisons: CompetitorComparison[] = [
     slug: "scrapingbee",
     name: "ScrapingBee",
     positioning: "Ollagraph vs ScrapingBee",
-    heroSub: "ScrapingBee is a clean, focused scraping API with JS rendering and proxy rotation. Ollagraph matches the scraping core and adds an intelligence layer, vertical actors, and agent tooling in the same API.",
+    heroSub: "ScrapingBee is a clean, focused scraping API with JS rendering and proxy rotation. Ollagraph matches the scraping core and adds an intelligence layer and agent tooling in the same API.",
     whatTheyDoWell: "ScrapingBee is a well-built, developer-friendly scraping API — JS rendering, proxy rotation, screenshots, and a simple parameterized request model. For teams who want reliable rendered HTML or screenshots from arbitrary URLs with a minimal surface, it's a solid, focused choice.",
     whereWeGoFurther: [
       "**Structured output, not just HTML.** Clean markdown for LLMs and JSON-LD / OpenGraph extraction in the same call, where ScrapingBee centers on rendered HTML you parse yourself.",
       "**Intelligence layer.** DNS, WHOIS, SSL, GeoIP/ASN, and company enrichment alongside the scrape.",
-      "**Vertical actors + browser automation.** Dedicated Amazon/Zillow/Maps extractors plus persistent sessions and natural-language actions.",
+      "**Browser automation.** Persistent sessions and natural-language actions on real rendered pages.",
       "**Agent-native.** A Model Context Protocol server makes the whole surface callable by AI agents.",
     ],
     matrix: [
@@ -200,7 +200,7 @@ export const comparisons: CompetitorComparison[] = [
       { feature: "Free to start", them: "Trial credits", us: "1,000 credits" },
     ],
     bestForThem: "Teams that need focused, reliable rendered HTML or screenshots from arbitrary URLs and want a minimal API surface.",
-    bestForUs: "Teams who want scraping plus structure plus intelligence plus vertical actors plus browser automation behind one key and one bill.",
+    bestForUs: "Teams who want scraping plus structure plus intelligence plus browser automation behind one key and one bill.",
     faqs: [
       { q: "Can Ollagraph render JavaScript like ScrapingBee?", a: "Yes. Our managed engine escalates from a fast HTTP path to a full stealth browser automatically, and tells you which path served the request via the tier field. You can also force rendering and pass action macros." },
       { q: "Does ScrapingBee have a domain intelligence layer?", a: "No. ScrapingBee focuses on scraping and proxy handling. DNS, WHOIS, SSL, and enrichment are not part of their product; teams that need both consolidate on Ollagraph or add a second vendor." },
@@ -216,7 +216,7 @@ export const comparisons: CompetitorComparison[] = [
     whereWeGoFurther: [
       "**No content retention, by design.** Ollagraph returns your data and keeps URL-level metadata only — we don't store the scraped content itself. That's a deliberate privacy posture, not a missing feature.",
       "**Structured output for LLMs.** Clean markdown plus JSON-LD / OpenGraph extraction in the same call.",
-      "**Intelligence + vertical actors.** DNS/WHOIS/SSL/enrichment and dedicated Amazon/Zillow/Maps extractors alongside the crawl.",
+      "**Domain intelligence.** DNS/WHOIS/SSL/enrichment alongside the crawl.",
       "**Agent-native.** Browser automation with natural-language actions and a Model Context Protocol server.",
     ],
     matrix: [
@@ -246,7 +246,7 @@ export const comparisons: CompetitorComparison[] = [
       "**One predictable bill, not a metered stack.** Apify bills across a platform plan, compute units, proxy usage, and often per-result charges. Ollagraph is flat credits — 1 per call, pay-as-you-go from $5, failed calls auto-refunded. For mixed workloads that would otherwise span several actors, the consolidated bill is often well under half the stacked cost.",
       "**A curated, in-house catalog.** Every Ollagraph actor is maintained by us to one quality and schema bar, so reliability and response shape stay consistent across the catalog rather than varying by community author.",
       "**A built-in intelligence layer.** DNS, WHOIS, SSL, GeoIP/ASN, tech-stack, contacts, and email verification ship in the same API. Apify centers on scraping and automation, so this is typically a second vendor.",
-      "**One key across everything.** Scrape, crawl, structured extraction, vertical actors, browser automation, intelligence, and an MCP server all draw from the same credits and the same token.",
+      "**One key across everything.** Scrape, crawl, structured extraction, browser automation, intelligence, and an MCP server all draw from the same credits and the same token.",
     ],
     matrix: [
       { feature: "Ready-made actor / extractor library", them: "Marketplace (community + official)", us: "Curated in-house catalog" },
@@ -261,7 +261,7 @@ export const comparisons: CompetitorComparison[] = [
     bestForUs: "Teams that want a consistently-maintained catalog plus scrape, intelligence, and automation behind one predictable bill — often a fraction of the cost of stitching actors, platform, and proxy together — with failed calls refunded.",
     faqs: [
       { q: "Is Ollagraph cheaper than Apify?", a: "It depends on the workload, and we will not claim one number for every case. Ollagraph uses flat credits — 1 per call, failed calls auto-refunded — with pay-as-you-go from $5 and 1,000 free credits. For mixed workloads that would otherwise stack a platform plan, compute, proxy, and per-result charges, the consolidated bill is often well under half. Compare on your own workload." },
-      { q: "Can Ollagraph replace the Apify actors I use?", a: "For common targets — marketplaces, maps, reviews, social, and dozens of public-data sources — Ollagraph's vertical actors return structured JSON directly. For long-tail or highly customized community actors, evaluate per target; Apify's marketplace is wider, and we would rather you check than take our word." },
+      { q: "Do you offer an actor marketplace like Apify?", a: "No. Ollagraph focuses on generic scrape, crawl, and structured extraction — /v1/extract returns typed JSON from any page you fetch — plus browser automation, not a catalog of per-site actors. If you depend on many community-built Apify actors, keep Apify for those and use Ollagraph for scrape, extract, and intelligence under one key." },
       { q: "How is Apify's pricing different from Ollagraph's?", a: "Apify meters several dimensions — a platform plan, compute units, proxy traffic, and often per-result charges — which gives fine-grained control and a bill that takes some modeling. Ollagraph is flat: 1 credit per call, refunds on failure, pay-as-you-go from $5. The trade is granularity for predictability." },
       { q: "Does Ollagraph have an MCP server like Apify?", a: "Yes. Ollagraph ships a Model Context Protocol server that exposes its full surface — scrape, extract, intelligence, and actors — so an AI agent can call everything through one token without custom glue code." },
     ],
@@ -275,7 +275,7 @@ export const comparisons: CompetitorComparison[] = [
     whereWeGoFurther: [
       "**The full page, not just the snippet.** Tavily returns ranked results and summaries; Ollagraph fetches and renders the actual pages — clean markdown, structured JSON-LD / OpenGraph, screenshots via sessions — for the URLs you care about.",
       "**Managed anti-bot + rendering.** A 4-tier engine escalates from a fast HTTP path to a stealth browser with a residential-proxy option, so protected and JS-heavy pages still return. Search APIs hand you links; getting the hard ones to load is on you.",
-      "**Intelligence + vertical actors.** DNS/WHOIS/SSL/enrichment and dedicated Amazon/Zillow/Maps extractors alongside the fetch — context a search result doesn't carry.",
+      "**Domain intelligence.** DNS/WHOIS/SSL/enrichment alongside the fetch — context a search result doesn't carry.",
       "**One key, refunds on failure.** Retrieval (where you supply the URLs), extraction, intelligence, actors, and an MCP server all draw from the same credits — 1 per call, failed calls auto-refunded.",
     ],
     matrix: [
@@ -289,7 +289,7 @@ export const comparisons: CompetitorComparison[] = [
       { feature: "Free to start", them: "Free tier", us: "1,000 credits" },
     ],
     bestForThem: "Agents whose core need is real-time web search with ranked sources and a quick synthesized answer, and who don't need to fetch, render, or enrich the underlying pages themselves.",
-    bestForUs: "Teams who need to fetch and render the actual pages — clean markdown, structured data, intelligence, and vertical actors — behind one key, often alongside a search step. Tavily and Ollagraph are frequently complementary: search to find, Ollagraph to fetch and extract.",
+    bestForUs: "Teams who need to fetch and render the actual pages — clean markdown, structured data, and intelligence — behind one key, often alongside a search step. Tavily and Ollagraph are frequently complementary: search to find, Ollagraph to fetch and extract.",
     faqs: [
       { q: "Is Ollagraph a search API like Tavily?", a: "Not primarily. Tavily's core is query-to-ranked-sources with a synthesized answer; Ollagraph's core is fetching, rendering, extracting, and enriching specific pages. Many teams use both — Tavily (or another search) to discover URLs, Ollagraph to pull clean content and intelligence from them." },
       { q: "Can Ollagraph replace Tavily for an agent?", a: "If your agent mostly needs to read specific pages and structured data, yes — point it at the URLs and Ollagraph returns clean markdown plus extraction. If it needs open-web search and answers, keep a search layer; Ollagraph complements it rather than replacing it." },
@@ -300,7 +300,7 @@ export const comparisons: CompetitorComparison[] = [
     slug: "jina",
     name: "Jina AI",
     positioning: "Ollagraph vs Jina AI Reader",
-    heroSub: "Jina AI's Reader (r.jina.ai) turns a URL into clean markdown for LLMs — fast, generous, often free. Ollagraph matches the markdown and adds managed anti-bot, structured extraction, intelligence, and vertical actors for production workloads.",
+    heroSub: "Jina AI's Reader (r.jina.ai) turns a URL into clean markdown for LLMs — fast, generous, often free. Ollagraph matches the markdown and adds managed anti-bot, structured extraction, and intelligence for production workloads.",
     whatTheyDoWell: "Jina AI's Reader is one of the easiest ways to get LLM-ready markdown from a URL, and the free, no-friction entry point made it a favorite for RAG prototypes. Jina also ships embeddings, rerankers, and a search endpoint, so for teams that want reading plus embeddings from one vendor, it's a strong, well-engineered toolkit.",
     whereWeGoFurther: [
       "**Managed anti-bot + rendering for the hard pages.** Ollagraph's 4-tier engine escalates from a fast HTTP path to a stealth browser with a residential-proxy option, so login-walled, JS-heavy, and bot-protected pages still return — where a lightweight reader often can't.",
@@ -335,7 +335,7 @@ export const comparisons: CompetitorComparison[] = [
     whereWeGoFurther: [
       "**API-first, not a recorded robot.** Ollagraph is a single HTTP endpoint family with a bearer token — drop it into any pipeline, agent, or cron without recording or maintaining a visual robot.",
       "**Structured output + intelligence.** Clean markdown, JSON-LD/OpenGraph extraction, plus DNS/WHOIS/SSL/enrichment in the same API.",
-      "**Vertical actors + browser automation.** Dedicated Amazon/Zillow/Maps extractors and persistent stealth sessions with natural-language actions.",
+      "**Browser automation.** Persistent stealth sessions with natural-language actions on real rendered pages.",
       "**Agent-native.** An MCP server exposes the whole surface to AI agents — no per-site robot to build first.",
     ],
     matrix: [
