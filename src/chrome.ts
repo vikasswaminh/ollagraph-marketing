@@ -21,11 +21,11 @@ const NAV: Leaf[] = [
 export const LOGO_SVG = `
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M12 2L3 7.5V16.5L12 22L21 16.5V7.5L12 2Z" stroke="url(#g1)" stroke-width="1.4" stroke-linejoin="round"/>
-      <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="url(#g2)" stroke="#c7f751" stroke-width="1.2" stroke-linejoin="round"/>
-      <circle cx="12" cy="12" r="1.4" fill="#0b0e02"/>
+      <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="url(#g2)" stroke="var(--accent)" stroke-width="1.2" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="1.4" fill="var(--blue-ink)"/>
       <defs>
-        <linearGradient id="g1" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#c7f751"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
-        <linearGradient id="g2" x1="7" y1="7" x2="17" y2="17"><stop stop-color="#c7f751"/><stop offset="1" stop-color="#a3d83a"/></linearGradient>
+        <linearGradient id="g1" x1="0" y1="0" x2="24" y2="24"><stop stop-color="var(--accent)"/><stop offset="1" stop-color="var(--blue-ink)"/></linearGradient>
+        <linearGradient id="g2" x1="7" y1="7" x2="17" y2="17"><stop stop-color="var(--accent)"/><stop offset="1" stop-color="var(--blue-ink)"/></linearGradient>
       </defs>
     </svg>`;
 
