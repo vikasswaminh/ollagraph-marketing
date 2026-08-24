@@ -10,6 +10,22 @@ export interface PostMeta {
 }
 
 export const posts: PostMeta[] = [
+  {
+    slug: "how-to-measure-ai-search-visibility-chatgpt-gemini-claude-perplexity",
+    title: "How to Measure AI Search Visibility Across ChatGPT, Gemini, Claude & Perplexity (2026 Guide)",
+    description: "Learn how to engineer an automated pipeline to measure, benchmark, and audit brand visibility, citation rates, and share of voice across ChatGPT, Gemini, Claude, and Perplexity using Ollagraph APIs.",
+    date: "2026-08-24",
+    readingTime: 20,
+    tags: ["AI Search", "GEO", "AEO", "Ollagraph", "RAG"],
+  },
+  {
+    slug: "aeo-audit-tool-what-should-answer-engine-optimization-audit-measure",
+    title: "AEO Audit Tool Engineering Guide: What Answer Engine Auditing Must Measure (2026)",
+    description: "An in-depth technical blueprint for building Answer Engine Optimization (AEO) audit tools. Learn how to evaluate content for RAG pipelines, semantic chunk boundaries, vector similarity, information gain entropy, and entity-graph alignment.",
+    date: "2026-08-24",
+    readingTime: 18,
+    tags: ["AEO", "RAG", "Vector Search", "Technical SEO", "Ollagraph"],
+  },
   { slug: "langgraph-mcp-web-tools-integration", title: "Integrating MCP Web Tools into LangGraph Autonomous Multi-Agent Workflows", description: "Connect LangGraph multi-agent swarms to Ollagraph's Model Context Protocol (MCP) server for stateful, real-time web search, JS scraping, and RAG retrieval.", date: "2026-08-21", readingTime: 15, tags: ["LangGraph", "MCP", "Multi-Agent", "Web Scraping", "AI Agents"] },
   { slug: "connect-cursor-ide-to-web-search-mcp-server", title: "How to Connect Cursor IDE to a Web Search MCP Server Using Ollagraph", description: "Configure Cursor IDE with Ollagraph's Model Context Protocol (MCP) server for live multi-engine web search, real-time scraping, and RAG context injection.", date: "2026-08-20", readingTime: 15, tags: ["MCP", "Cursor IDE", "Web Search", "AI Coding"] },
   { slug: "seo-audit-for-ai-crawlers-beyond-traditional-technical-seo", title: "SEO Audit for AI Crawlers: The Six-Layer Framework", description: "Traditional SEO audits miss how AI crawlers fetch, render, and extract content. Use a six-layer audit to improve AI search visibility.", date: "2026-08-01", readingTime: 24, tags: ["SEO", "AI crawlers", "technical SEO", "site audit", "AEO"] },
