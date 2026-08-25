@@ -169,7 +169,7 @@ a, button, summary, [role="button"] { touch-action: manipulation; }
   letter-spacing: -0.015em;
   line-height: 1.02;
 }
-.h-1 { font-size: clamp(44px, 6vw, 84px); }
+.h-1 { font-size: clamp(38px, 6vw, 84px); }
 .h-2 { font-size: clamp(32px, 4vw, 52px); line-height: 1.06; }
 .h-3 { font-size: clamp(24px, 2.6vw, 36px); }
 .text-mono { font-family: var(--font-mono); font-feature-settings: "zero", "ss01"; }
@@ -572,8 +572,8 @@ a, button, summary, [role="button"] { touch-action: manipulation; }
    data made visible. Blue ink on paper, technical marginalia caption. */
 .hero-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 56px;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 72px;
   align-items: center;
   position: relative;
   z-index: 2;
@@ -581,31 +581,69 @@ a, button, summary, [role="button"] { touch-action: manipulation; }
 .hero-copy { text-align: left; max-width: 640px; position: relative; z-index: 2; }
 .hero-copy .cta-row { justify-content: flex-start; }
 
-.ascii-panel { position: relative; }
+/* Platform facts as a spec readout (mono, hairline-divided) */
+.hero-stats {
+  margin: 22px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  max-width: 460px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+}
+.hero-stats span { padding: 0 18px; border-left: 1px solid var(--border); }
+.hero-stats span:first-child { padding-left: 0; border-left: none; }
+.hero-stats b { color: var(--text); font-weight: 600; letter-spacing: 0.1em; }
+
+/* ASCII atlas plate: the globe as a technical drawing */
+.ascii-panel {
+  position: relative;
+  padding: 18px 6px 0;
+}
+.ascii-panel::before {
+  content: "";
+  position: absolute;
+  inset: -10px -6px;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(var(--accent), var(--accent)), linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)), linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)), linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)), linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-size: 11px 1px, 1px 11px, 11px 1px, 1px 11px, 11px 1px, 1px 11px, 11px 1px, 1px 11px;
+  background-position: left top, left top, right top, right top, left bottom, left bottom, right bottom, right bottom;
+}
 .ascii-panel pre {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  line-height: 1.12;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
   color: var(--accent);
   white-space: pre;
   overflow: hidden;
   user-select: none;
 }
 .ascii-caption {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 10px;
-  padding-top: 8px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 9px;
   border-top: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
 }
+.ascii-caption span + span { border-left: 1px solid var(--border); padding-left: 14px; }
+.ascii-caption .cap-src { color: var(--text-dim); }
 .ascii-strip {
   margin: 48px auto 0;
   max-width: 520px;
@@ -623,13 +661,16 @@ a, button, summary, [role="button"] { touch-action: manipulation; }
   .devx-grid > * { min-width: 0; }
 }
 @media (max-width: 960px) {
-  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 48px; }
   .hero-grid > * { min-width: 0; }
-  .hero-copy { text-align: center; max-width: 920px; margin: 0 auto; }
+  .hero-copy { text-align: center; max-width: 920px; width: 100%; margin: 0 auto; }
   .hero-copy .cta-row { justify-content: center; }
-  .hero-copy p[style*="justify-content:flex-start"] { justify-content: center !important; }
-  .ascii-panel { max-width: 480px; margin: 0 auto; width: 100%; }
+  .hero-copy .cta-row[style*="flex-start"] { justify-content: center !important; }
+  .hero-stats { justify-content: center; }
+  .ascii-panel { max-width: 480px; margin: 0 auto; width: 100%; padding-top: 12px; }
   .ascii-panel pre { font-size: 8px; max-width: 100%; }
+  .ascii-caption { grid-template-columns: 1fr auto; }
+  .ascii-caption span:nth-child(2) { display: none; }
 }
 
 /* Scrollable pre blocks must not inflate grid/flex tracks on small screens */
