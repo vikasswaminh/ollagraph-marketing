@@ -56,6 +56,7 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
     <meta name="description" content={description} />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="author" content={siteAuthor} />
+    <meta name="theme-color" content="#FAFAF7" />
     <link rel="canonical" href={canonicalUrl} />
 
     <!-- Favicon -->
@@ -171,7 +172,19 @@ const allJsonLd = [orgLd, websiteLd, ...jsonLd];
         });
       })();
     </script>
-    <!-- Cloudflare Web Analytics (privacy-first RUM; token is public by design) -->
-    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "f5bfdc0d8f934e3dba03374321af2436"}'></script>
+    <!-- Cloudflare Web Analytics (privacy-first RUM; token is public by design).
+         Guarded: the beacon CORS-fails on localhost/preview hosts and pollutes
+         the console, so it only loads on the production zone. -->
+    <script is:inline>
+      (function () {
+        var h = location.hostname;
+        if (h === 'localhost' || h === '127.0.0.1' || h.endsWith('.local')) return;
+        var s = document.createElement('script');
+        s.defer = true;
+        s.src = 'https://static.cloudflareinsights.com/beacon.min.js';
+        s.setAttribute('data-cf-beacon', '{"token": "f5bfdc0d8f934e3dba03374321af2436"}');
+        document.body.appendChild(s);
+      })();
+    </script>
   </body>
 </html>

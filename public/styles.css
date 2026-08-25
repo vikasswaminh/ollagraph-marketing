@@ -80,6 +80,9 @@
   --radius-lg: 0px;
   --radius-xl: 0px;
 
+  /* Light-only theme: native controls, scrollbars, form fields follow paper */
+  color-scheme: light;
+
   --font-display: var(--serif);
   --font-body: var(--serif);
   --font-mono: var(--mono);
@@ -99,12 +102,23 @@ html, body {
   text-rendering: optimizeLegibility;
 }
 
-body { min-height: 100vh; overflow-x: hidden; }
+html { scroll-behavior: smooth; }
+
+body { min-height: 100dvh; overflow-x: hidden; }
+
+h1, h2, h3 { text-wrap: balance; }
+p, li { text-wrap: pretty; }
 
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 img, svg { display: block; max-width: 100%; }
 ::selection { background: var(--blue-soft); color: var(--blue-ink); }
+
+/* ─── Interaction & anchor hygiene ───
+   touch-action kills the 300ms double-tap-zoom delay on mobile;
+   scroll-margin keeps deep-linked headings clear of the sticky nav. */
+a, button, summary, [role="button"] { touch-action: manipulation; }
+[id] { scroll-margin-top: 84px; }
 
 /* ─── Accessibility: visible keyboard focus (WCAG 2.4.7) + skip link ─── */
 :where(a, button, input, textarea, select, label, [tabindex]):focus-visible {
@@ -252,11 +266,14 @@ img, svg { display: block; max-width: 100%; }
     backdrop-filter: blur(20px) saturate(140%);
     -webkit-backdrop-filter: blur(20px) saturate(140%);
     border-bottom: 1px solid var(--border);
-    max-height: calc(100vh - 64px); overflow-y: auto;
+    max-height: calc(100dvh - 64px); overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .nav-links.open { display: flex; }
   .nav-burger { display: inline-flex; align-items: center; color: var(--text); cursor: pointer; padding: 4px; }
-  .nav-hide-sm { display: none; }
+  /* .btn (later in source, equal specificity) would override a bare class —
+     bump specificity so the collapse actually wins. */
+  .btn.nav-hide-sm, .nav-hide-sm { display: none; }
   .nav-mobile-cta { display: flex; gap: 8px; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
 }
 
@@ -340,7 +357,7 @@ img, svg { display: block; max-width: 100%; }
    current no-breakpoint behaviour; a mobile 1-col breakpoint is a Phase-4
    change (visual), not done here. .text-blue dedupes a magic hex. */
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-.text-blue { color: #8aa9ff; }
+.text-blue { color: var(--blue); }
 
 /* DS migration slice 5 — structural wrappers on section/div (element types no
    component selector targets → pixel-identical). */
@@ -403,11 +420,11 @@ img, svg { display: block; max-width: 100%; }
 }
 .footer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 40px 32px; }
 .footer-grid > .footer-col:first-child { grid-column: span 2; }
-.footer-col h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin: 0 0 18px; font-weight: 500; }
+.footer-col h3, .footer-col h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin: 0 0 18px; font-weight: 500; }
 .footer-col a { display: block; color: var(--text-muted); font-size: 13.5px; padding: 8px 0; transition: color 0.15s; }
 .footer-col a:hover, .footer-col a:focus-visible { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .footer-brands { margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); }
-.footer-brands h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin: 0 0 14px; font-weight: 500; }
+.footer-brands h3, .footer-brands h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin: 0 0 14px; font-weight: 500; }
 .footer-brands-links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .footer-brands-links a { color: var(--text-muted); font-size: 13px; transition: color 0.15s; }
 .footer-brands-links a:hover, .footer-brands-links a:focus-visible { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
@@ -466,7 +483,7 @@ img, svg { display: block; max-width: 100%; }
 
 /* shimmer animation for live data */
 .live-shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(199,247,81,0.4) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(29,78,216,0.4) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2.4s infinite;
 }
@@ -506,7 +523,7 @@ img, svg { display: block; max-width: 100%; }
 .prose table { width: 100%; border-collapse: collapse; margin: 26px 0; font-size: 14.5px; display: block; overflow-x: auto; }
 .prose thead th { text-align: left; color: var(--text); font-weight: 600; background: var(--surface); border-bottom: 1px solid var(--border-strong); padding: 10px 12px; white-space: nowrap; }
 .prose tbody td { color: var(--text-muted); border-bottom: 1px solid var(--border); padding: 10px 12px; vertical-align: top; line-height: 1.5; }
-.prose tbody tr:nth-child(odd) td { background: rgba(255, 255, 255, 0.015); }
+.prose tbody tr:nth-child(odd) td { background: rgba(17, 21, 26, 0.015); }
 .prose tbody td strong { color: var(--text); }
 .prose code { background: var(--paper-2); border: 1px solid var(--border); padding: 2px 6px; border-radius: 0px; font-size: 0.875em; font-family: var(--font-mono); color: var(--blue-ink); }
 .prose pre { background: #FFFFFF; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); padding: 18px 20px; margin: 22px 0; overflow-x: auto; font-size: 13px; line-height: 1.6; font-family: var(--font-mono); color: var(--ink); }
@@ -548,3 +565,73 @@ img, svg { display: block; max-width: 100%; }
     scroll-behavior: auto !important;
   }
 }
+
+
+/* --- ASCII hero artwork (Editorial � Data-Art) ---
+   The globe is rendered at runtime from monospace characters � the product's
+   data made visible. Blue ink on paper, technical marginalia caption. */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 56px;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+.hero-copy { text-align: left; max-width: 640px; position: relative; z-index: 2; }
+.hero-copy .cta-row { justify-content: flex-start; }
+
+.ascii-panel { position: relative; }
+.ascii-panel pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.12;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+}
+.ascii-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.ascii-strip {
+  margin: 48px auto 0;
+  max-width: 520px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.15;
+  color: var(--border-strong);
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+}
+
+@media (max-width: 860px) {
+  .devx-grid { grid-template-columns: 1fr !important; gap: 40px !important; }
+  .devx-grid > * { min-width: 0; }
+}
+@media (max-width: 960px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+  .hero-grid > * { min-width: 0; }
+  .hero-copy { text-align: center; max-width: 920px; margin: 0 auto; }
+  .hero-copy .cta-row { justify-content: center; }
+  .hero-copy p[style*="justify-content:flex-start"] { justify-content: center !important; }
+  .ascii-panel { max-width: 480px; margin: 0 auto; width: 100%; }
+  .ascii-panel pre { font-size: 8px; max-width: 100%; }
+}
+
+/* Scrollable pre blocks must not inflate grid/flex tracks on small screens */
+.api-panes > div, .devx-grid > div { min-width: 0; }
+.api-panes pre, .code-body { max-width: 100%; }

@@ -23,6 +23,7 @@ if (!tok) {
 // Default targeted URLs — add new pages here when deploying content updates.
 const DEFAULT_PURGE_URLS = [
   "https://ollagraph.com/blog/",
+  "https://ollagraph.com/blog/ai-search-visibility-score-practical-framework-measuring-brand-presence/",
   "https://ollagraph.com/blog/how-to-measure-ai-search-visibility-chatgpt-gemini-claude-perplexity/",
   "https://ollagraph.com/blog/aeo-audit-tool-what-should-answer-engine-optimization-audit-measure/",
   "https://ollagraph.com/blog/langgraph-mcp-web-tools-integration/",

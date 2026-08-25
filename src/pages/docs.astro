@@ -151,7 +151,7 @@ const contentHtml = tags.map((tag) => {
   const blurb = TAG_BLURBS[tag] || '';
   const eps = groups[tag].map((ep) => {
     const paramRows = ep.props.length
-      ? `<div class="ep-block"><h4>Body parameters</h4><table class="ep-params"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>`
+      ? `<div class="ep-block"><h3>Body parameters</h3><table class="ep-params"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>`
         + ep.props.map((p) =>
             `<tr><td><code>${esc(p.name)}</code></td><td class="t-type">${esc(p.type)}</td>`
             + `<td>${p.required ? '<span class="req">required</span>' : '<span class="opt">optional</span>'}</td>`
@@ -161,14 +161,14 @@ const contentHtml = tags.map((tag) => {
     const curl = curlSample(ep.method, ep.path, ep.exampleBody ?? synthBody(ep.props));
     const respExample = (responseExamples as Record<string, any>)[ep.opId];
     const respBlock = respExample !== undefined
-      ? `<div class="ep-block"><h4>Example response</h4><pre class="ep-code"><code>${esc(JSON.stringify(respExample, null, 2))}</code></pre></div>`
+      ? `<div class="ep-block"><h3>Example response</h3><pre class="ep-code"><code>${esc(JSON.stringify(respExample, null, 2))}</code></pre></div>`
       : '';
     return `<article class="ep-detail" id="${esc(ep.opId)}">`
       + `<div class="ep-h"><span class="ep-method m-${ep.method.toLowerCase()}">${ep.method}</span><code class="ep-fullpath">${esc(ep.path)}</code></div>`
       + (ep.summary ? `<p class="ep-summary">${esc(ep.summary)}</p>` : '')
       + (ep.desc ? `<p class="ep-desc">${esc(ep.desc)}</p>` : '')
       + paramRows
-      + `<div class="ep-block"><h4>Example request</h4><pre class="ep-code"><code>${esc(curl)}</code></pre></div>`
+      + `<div class="ep-block"><h3>Example request</h3><pre class="ep-code"><code>${esc(curl)}</code></pre></div>`
       + respBlock
       + `</article>`;
   }).join('');

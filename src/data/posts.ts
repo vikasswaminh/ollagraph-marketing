@@ -11,6 +11,14 @@ export interface PostMeta {
 
 export const posts: PostMeta[] = [
   {
+    slug: "ai-search-visibility-score-practical-framework-measuring-brand-presence",
+    title: "AI Search Visibility Score: A Practical Framework for Measuring Brand Presence",
+    description: "Master the AI Search Visibility Score (AISVS) framework. Learn how to quantify, measure, and optimize brand presence across ChatGPT, Perplexity, Claude, and Gemini using Ollagraph's AEO intelligence suite.",
+    date: "2026-08-24",
+    readingTime: 20,
+    tags: ["AEO", "AISVS", "GEO", "Ollagraph", "AI Search"],
+  },
+  {
     slug: "how-to-measure-ai-search-visibility-chatgpt-gemini-claude-perplexity",
     title: "How to Measure AI Search Visibility Across ChatGPT, Gemini, Claude & Perplexity (2026 Guide)",
     description: "Learn how to engineer an automated pipeline to measure, benchmark, and audit brand visibility, citation rates, and share of voice across ChatGPT, Gemini, Claude, and Perplexity using Ollagraph APIs.",

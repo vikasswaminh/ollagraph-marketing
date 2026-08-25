@@ -33,21 +33,21 @@ const { bundle } = Astro.props as { bundle: Bundle };
 
 // Color map — same set used elsewhere on the marketing site (matches the
 // CSS custom properties in /styles.css for the named ones, with hex
-// fallbacks for the two that aren't tokens). Used for the accent left
-// border on each card on this page so each bundle gets a visual signature.
+// fallbacks for the two that aren't tokens). Used for the accent top rule
+// on each card on this page so each bundle gets a visual signature.
 const COLOR_MAP: Record<string, string> = {
-  lime:    '#c7f751',
-  teal:    '#5eead4',
-  blue:    '#60a5fa',
-  amber:   '#fbbf24',
-  violet:  '#a78bfa',
-  rose:    '#fb7185',
-  slate:   '#94a3b8',
-  emerald: '#34d399',
-  red:     '#da291c',
-  cyan:    '#22d3ee',
+  lime:    '#1D4ED8',
+  teal:    '#0d9488',
+  blue:    '#2563EB',
+  amber:   '#92600A',
+  violet:  '#7c3aed',
+  rose:    '#e11d48',
+  slate:   '#64748b',
+  emerald: '#1B7A4E',
+  red:     '#b91c1c',
+  cyan:    '#0e7490',
 };
-const accent = COLOR_MAP[bundle.color] || '#c7f751';
+const accent = COLOR_MAP[bundle.color] || '#1D4ED8';
 
 // Escape HTML for any field we drop into a template literal — these strings
 // originate from a checked-in JSON file (trusted) but we still want safe
@@ -128,7 +128,7 @@ const body = `
   <!-- Endpoints table -->
   <section class="section">
     <div class="container">
-      <div class="bundle-card" style="border-left: 3px solid ${accent};">
+      <div class="bundle-card bundle-card--accent" style="--bundle-accent: ${accent};">
         <h2 class="h-display h-2" style="margin: 0 0 6px;">Endpoints in this bundle</h2>
         <p style="color: var(--text-muted); font-size: 14px; margin: 0 0 20px;">
           Each endpoint is independently callable. Bundle membership is for
@@ -156,7 +156,7 @@ const body = `
   <!-- Recipe -->
   <section class="section">
     <div class="container">
-      <div class="bundle-card" style="border-left: 3px solid ${accent};">
+      <div class="bundle-card bundle-card--accent" style="--bundle-accent: ${accent};">
         <div style="font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text-muted); margin-bottom: 8px;">Recipe</div>
         <h2 class="h-display h-2" style="margin: 0 0 18px;">${esc(bundle.recipe.title)}</h2>
         <ol class="recipe-list">
@@ -169,7 +169,7 @@ const body = `
   <!-- Sample code -->
   <section class="section">
     <div class="container">
-      <div class="bundle-card" style="border-left: 3px solid ${accent};">
+      <div class="bundle-card bundle-card--accent" style="--bundle-accent: ${accent};">
         <div style="font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text-muted); margin-bottom: 8px;">Sample code</div>
         <h2 class="h-display h-2" style="margin: 0 0 6px;">Try a request</h2>
         <p style="color: var(--text-muted); font-size: 14px; margin: 0 0 18px;">
@@ -185,7 +185,7 @@ const body = `
   <!-- FAQ -->
   <section class="section">
     <div class="container">
-      <div class="bundle-card" style="border-left: 3px solid ${accent};">
+      <div class="bundle-card bundle-card--accent" style="--bundle-accent: ${accent};">
         <div style="font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text-muted); margin-bottom: 8px;">FAQ</div>
         <h2 class="h-display h-2" style="margin: 0 0 18px;">${esc(bundle.name)} bundle FAQ</h2>
         <div class="faq-list">
@@ -211,12 +211,23 @@ const body = `
 
   ${footerHtml()}
 
-  <style>
+    <style>
     .bundle-card {
       background: var(--surface, #111114);
       border: 1px solid var(--border, rgba(255,255,255,0.08));
       border-radius: var(--radius-lg, 14px);
       padding: 28px 28px;
+    }
+    /* Per-bundle accent as a short rule at the card top (replaces the
+       side-tab left border — reads as template slop). */
+    .bundle-card--accent::before {
+      content: "";
+      display: block;
+      width: 26px;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--bundle-accent, var(--accent, #1D4ED8));
+      margin-bottom: 16px;
     }
     @media (max-width: 760px) {
       .bundle-card { padding: 22px 18px; }
@@ -262,7 +273,7 @@ const body = `
     .endpoint-table .credits-cell {
       font-family: var(--font-mono, monospace);
       font-size: 12px;
-      color: var(--accent, #c7f751);
+      color: var(--accent, #1D4ED8);
     }
     .endpoint-table .summary-cell {
       color: var(--text-muted);

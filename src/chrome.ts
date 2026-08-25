@@ -145,7 +145,7 @@ export function footerHtml(): string {
   ];
   const colsHTML = cols.map((c) => `
         <div class="footer-col">
-          <h4>${c.h}</h4>
+          <h3>${c.h}</h3>
           ${c.items.map((i) => {
             const ext = i.href.startsWith("http");
             const attrs = ext ? ` target="_blank" rel="noopener"` : "";
@@ -171,7 +171,7 @@ export function footerHtml(): string {
   ];
   const brandsHTML = `
             <div class="footer-brands">
-              <h4>Ollagraph Group</h4>
+              <h3>Ollagraph Group</h3>
               <div class="footer-brands-links">
                 ${groupBrands.map((b) =>
                   `<a href="${b.href}" target="_blank" rel="noopener">${b.label}</a>`

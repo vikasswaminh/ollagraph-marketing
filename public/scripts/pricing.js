@@ -1,7 +1,10 @@
-// Annual/monthly
+(function () {
+// Annual/monthly — guarded: the billing toggle and calculator elements are
+// not present on every pricing surface; bail cleanly instead of throwing.
     const bm = document.getElementById("bm"), by = document.getElementById("by");
+    if (bm && by) {
     bm.addEventListener("click", () => {
-      bm.style.background = "rgba(199,247,81,0.1)"; bm.style.color = "var(--accent)";
+      bm.style.background = "rgba(29,78,216,0.1)"; bm.style.color = "var(--accent)";
       by.style.background = ""; by.style.color = "var(--text-muted)";
       document.querySelectorAll("[data-price]").forEach(el => {
         const m = parseInt(el.dataset.price, 10);
@@ -9,7 +12,7 @@
       });
     });
     by.addEventListener("click", () => {
-      by.style.background = "rgba(199,247,81,0.1)"; by.style.color = "var(--accent)";
+      by.style.background = "rgba(29,78,216,0.1)"; by.style.color = "var(--accent)";
       bm.style.background = ""; bm.style.color = "var(--text-muted)";
       document.querySelectorAll("[data-price]").forEach(el => {
         const m = parseInt(el.dataset.price, 10);
@@ -17,11 +20,13 @@
         el.textContent = m === 0 ? "$0" : "$" + y;
       });
     });
+    }
 
     // Calculator
     const pages = document.getElementById("pages");
     const render = document.getElementById("render");
     const extract = document.getElementById("extract");
+    if (!pages || !render || !extract) return;
     const pagesOut = document.getElementById("pages-out");
     const renderOut = document.getElementById("render-out");
     const extractOut = document.getElementById("extract-out");
@@ -91,3 +96,5 @@
       });
     });
     update();
+
+})();
