@@ -39,3 +39,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Cache-Purge-scoped token so purge-cache.mjs can evict the edge on deploy.
+          # The Pages-deploy token above lacks Cache-Purge, so without this the purge
+          # step fails (code 10000) and HTML changes sit on the 1-day edge TTL.
+          CF_PURGE_TOKEN: ${{ secrets.CF_PURGE_TOKEN }}
