@@ -24,6 +24,7 @@ if (!tok) {
 const DEFAULT_PURGE_URLS = [
   "https://ollagraph.com/",
   "https://ollagraph.com/blog/",
+  "https://ollagraph.com/blog/citation-readiness-score-how-to-build-reliable-scoring-model/",
   "https://ollagraph.com/blog/ai-search-visibility-score-practical-framework-measuring-brand-presence/",
   "https://ollagraph.com/blog/how-to-measure-ai-search-visibility-chatgpt-gemini-claude-perplexity/",
   "https://ollagraph.com/blog/aeo-audit-tool-what-should-answer-engine-optimization-audit-measure/",

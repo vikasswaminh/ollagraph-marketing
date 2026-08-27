@@ -11,6 +11,14 @@ export interface PostMeta {
 
 export const posts: PostMeta[] = [
   {
+    slug: "citation-readiness-score-how-to-build-reliable-scoring-model",
+    title: "Citation Readiness Score: How to Build a Reliable Scoring Model",
+    description: "Learn how to engineer, calculate, and deploy a Citation Readiness Score (CRS) model to optimize web content for LLM retrieval, RAG grounding, and AI search engines.",
+    date: "2026-08-25",
+    readingTime: 20,
+    tags: ["AEO", "Citation Readiness Score", "RAG", "Ollagraph", "AI Search"],
+  },
+  {
     slug: "ai-search-visibility-score-practical-framework-measuring-brand-presence",
     title: "AI Search Visibility Score: A Practical Framework for Measuring Brand Presence",
     description: "Master the AI Search Visibility Score (AISVS) framework. Learn how to quantify, measure, and optimize brand presence across ChatGPT, Perplexity, Claude, and Gemini using Ollagraph's AEO intelligence suite.",

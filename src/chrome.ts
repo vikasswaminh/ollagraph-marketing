@@ -51,11 +51,8 @@ export function navHtml(activeKey: string = ""): string {
                 </div>
               </nav>
               <div class="nav-right">
-<a class="btn btn-ghost nav-hide-sm" href="https://app.ollagraph.com/login">Log in</a>
-<a class="btn btn-primary" href="/contactus">
-                  Request access
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-                </a>
+                <a class="btn btn-ghost nav-hide-sm" href="https://app.ollagraph.com/login">Log in</a>
+                <a class="btn btn-primary" href="/contactus">Request access &rarr;</a>
                 <button type="button" class="nav-burger" aria-label="Open menu" aria-expanded="false" aria-controls="nav-menu" data-nav-burger>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
                 </button>
