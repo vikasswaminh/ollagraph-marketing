@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "astro build && node scripts/gen-sitemap.mjs && node scripts/inject-stats.mjs",
+    "build": "tailwindcss -i ./src/styles/tailwind-input.css -o ./public/homepage-tailwind.css --minify && astro build && node scripts/gen-sitemap.mjs && node scripts/inject-stats.mjs",
     "preview": "astro preview",
     "deploy": "npm run build && wrangler pages deploy dist --project-name=ollagraph-marketing --branch=main && node scripts/purge-cache.mjs",
     "prebuild": "node scripts/check-bundles.mjs && node scripts/check-inline-styles.mjs"
@@ -16,6 +16,7 @@
     "astro": "^4.16.18"
   },
   "devDependencies": {
-    "sharp": "^0.35.2"
+    "sharp": "^0.35.2",
+    "tailwindcss": "^3.4.19"
   }
 }
