@@ -1,11 +1,13 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import bodyHtml from '../bodies/index.body.html?raw';
-import { navHtml, footerHtml } from '../chrome';
+import { navHtml } from '../chrome';
+
+import stats from '../data/api-stats.json';
 
 const rendered = bodyHtml
-  .replace('<div id="nav-root"></div>', navHtml("Ollagraph"))
-  .replace('<div id="footer-root"></div>', footerHtml());
+  .replace('<div id="nav-root"></div>', navHtml(""))
+  .split('%%ENDPOINT_COUNT%%').join(String(stats.endpointCount));
 
 const softwareApp = {
   "@context": "https://schema.org",
@@ -33,7 +35,7 @@ const faqPage = {
       name: "How does Ollagraph compare to Firecrawl?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Firecrawl is an excellent markdown-first context API. Ollagraph covers the same scrape, crawl, and extract surface, then adds web search, domain intelligence, and agent observability behind one key. On price it bills a flat 1 credit per call with no per-feature multipliers, offers true pay-as-you-go from $5, refunds automatically on failed fetches, and starts you with 1,000 free credits.",
+        text: "Firecrawl is an excellent markdown-first context API. Ollagraph covers the same scrape, crawl, and extract surface, then adds web search, domain intelligence, browser automation, and agent observability behind one key. On price it bills a flat 1 credit per call with no per-feature multipliers, offers true pay-as-you-go from $5, refunds automatically on failed calls, and gives 1,000 free credits.",
       },
     },
     {
@@ -41,7 +43,7 @@ const faqPage = {
       name: "Is there a free tier and pay-as-you-go pricing?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes. Every new account gets 1,000 free credits with no credit card, and every endpoint is available on the free tier. Beyond that you can pay as you go from $5 — you are not forced onto a monthly subscription.",
+        text: "Yes. You get 1,000 credits completely free upon signup without entering a credit card. When you're ready to scale, you can pay as you go starting from just $5. There are no mandatory recurring monthly subscription commitments for standard developer usage.",
       },
     },
     {
@@ -49,7 +51,7 @@ const faqPage = {
       name: "How is Ollagraph priced and metered?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Most endpoints cost a flat 1 credit per call and orchestrators cost 3. There are no 5x render or extract multipliers, so a JavaScript-rendered page costs the same as a static one. If an upstream fetch errors, the credit is refunded automatically before the response returns, so you only pay for successful calls.",
+        text: "Every standard endpoint consumes exactly 1 credit per successful HTTP 200 call. We do not apply JS multipliers or complexity penalties. Orchestrated multi-step operations cost 3 credits. If any upstream fetch or extraction fails, the credit is refunded to your balance automatically.",
       },
     },
     {
@@ -57,7 +59,7 @@ const faqPage = {
       name: "Does Ollagraph provide an MCP server for AI agents?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes. The Ollagraph MCP server exposes all %%ENDPOINT_COUNT%% endpoints as tools behind one key. Run `pipx run ollagraph-mcp` and Claude Desktop, Cursor, or any MCP client gets scrape, crawl, search, extract, and intelligence at once.",
+        text: "Yes, Ollagraph is completely MCP-native. You can run `pipx run ollagraph-mcp` to instantly expose all %%ENDPOINT_COUNT%% tools directly to Claude Desktop, Cursor, or your custom Model Context Protocol client with full schema typing.",
       },
     },
     {
@@ -65,7 +67,7 @@ const faqPage = {
       name: "Do you store the content Ollagraph scrapes?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "No. Ollagraph does not persist scraped page content. Requests are processed and returned; we keep usage metadata for billing and observability, not the pages themselves — which is the guarantee agent and enterprise workloads need.",
+        text: "No. We enforce a zero content-retention posture. Data fetched from the web is passed directly back to your agent or stored temporarily only in volatile memory during chunking and extraction operations, after which it is immediately purged.",
       },
     },
     {
@@ -73,7 +75,7 @@ const faqPage = {
       name: "Is Ollagraph a good Firecrawl alternative?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "For teams that want more than markdown — search, extraction, domain intelligence and browser automation under one key — with pay-as-you-go pricing, refund-on-failure, and a 1,000-credit free tier, Ollagraph is a strong Firecrawl alternative. See the side-by-side comparison and pricing breakdown for the details.",
+        text: "Ollagraph is widely considered the leading enterprise Firecrawl alternative for autonomous agents needing lower per-page costs, unified live web search, domain DNS intelligence, and full end-to-end execution observability in one place.",
       },
     },
   ],
@@ -101,10 +103,108 @@ const organization = {
 };
 ---
 <BaseLayout
-  title="Ollagraph — Web Scraping, Crawling & Search API for AI Agents"
-  description="The web data API for AI agents: scrape, crawl, search, and extract behind one key — flat 1 credit per call, pay-as-you-go from $5, 1,000 free credits."
+  title="Ollagraph | Web scraping, crawling & search for AI agents"
+  description="Web scraping, crawling & search for AI agents. Scrape, crawl, search, and extract the live web behind one API key, one bill, and one MCP server. Flat 1 credit per call, no multipliers, refund on failure."
   jsonLd={[softwareApp, faqPage, website, organization]}
 >
+
+  <Fragment slot="head">
+    <!-- Tailwind CSS v3 for Stitch Design -->
+    <script is:inline src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script is:inline>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                DEFAULT: '#E11D48',
+                hover: '#BE123C',
+                dark: '#9F1239',
+                light: '#FFE4E6'
+              },
+              ink: {
+                950: '#090D16',
+                900: '#0F172A',
+                800: '#1E293B',
+                700: '#334155',
+                600: '#475569',
+                500: '#64748B',
+                400: '#94A3B8',
+                300: '#CBD5E1',
+                200: '#E2E8F0',
+                100: '#F1F5F9',
+                50: '#F8FAFC',
+              },
+              terminal: {
+                bg: '#0D1117',
+                border: '#30363D',
+                green: '#3FB950',
+                cyan: '#58A6FF',
+                amber: '#D29922',
+                purple: '#BC8CFF',
+                red: '#FF7B72'
+              }
+            },
+            fontFamily: {
+              sans: ['Geist', 'Inter', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace']
+            },
+            letterSpacing: {
+              technical: '-0.02em',
+              tighter: '-0.035em'
+            },
+            keyframes: {
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(14px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' }
+              },
+              softGlow: {
+                '0%, 100%': { opacity: '0.4', transform: 'scale(1)' },
+                '50%': { opacity: '0.7', transform: 'scale(1.06)' }
+              },
+              shimmer: {
+                '100%': { transform: 'translateX(100%)' }
+              }
+            },
+            animation: {
+              'fade-in-up': 'fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'soft-glow': 'softGlow 8s ease-in-out infinite'
+            }
+          }
+        }
+      }
+    </script>
+    <style is:inline data-purpose="custom-typography">
+      body {
+        font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      .cursor-blink {
+        display: inline-block;
+        width: 6px;
+        height: 12px;
+        vertical-align: middle;
+        background-color: #E11D48;
+        animation: blink 1s step-start infinite;
+      }
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, ::before, ::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </Fragment>
+
   <Fragment set:html={rendered} />
-  <script is:inline src="/scripts/index.js"></script>
 </BaseLayout>

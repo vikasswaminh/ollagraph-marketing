@@ -1,337 +1,531 @@
-  <div class="bg-grid"></div>
-  <div class="bg-noise"></div>
-  <div id="nav-root"></div>
-
-  <!-- ─────────────────────────  ANNOUNCEMENT BAR  ───────────────────────── -->
-  <div style="border-bottom:1px solid var(--border); background:var(--paper-2); position:relative; z-index:1; font-family:var(--font-mono); font-size:12px;">
-    <div class="container-wide" style="min-height:40px; display:flex; align-items:center; justify-content:center; gap:8px 16px; flex-wrap:wrap; padding:6px 0;">
-      <span class="badge" style="background:var(--accent); color:var(--bg); border:none; border-radius:0px; padding:2px 8px; font-size:10px; letter-spacing:0.12em;">NEW</span>
-      <span class="text-muted">
-        <span style="color:var(--text); font-weight:700;">1,000 free credits</span> on signup
-        <span style="margin:0 12px; color:var(--text-faint);">·</span>
-        %%ENDPOINT_COUNT%% endpoints, one API key, MCP-ready
-      </span>
-      <a href="/pricing" style="color:var(--accent); display:inline-flex; align-items:center; gap:5px; font-weight:500;">
-        See pricing
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-      </a>
-    </div>
-  </div>
-
-  <!-- ─────────────────────────  HERO  ───────────────────────── -->
-  <section style="position:relative; overflow:hidden; padding:40px 0 20px;">
-    <div class="hero-glow"></div>
-    <div class="container">
-      <div class="hero-grid">
-        <div class="hero-copy">
-
-<a href="/observability" class="pill" style="margin-bottom:24px;">
-<span style="color:var(--text);">NEW</span>
-<span class="text-muted"> Stream traces to your existing observability stack</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:2px;"><path d="M9 18l6-6-6-6"/></svg>
-        </a>
-
-        <h1 class="h-display h-1" style="margin:0 0 20px;">
-          Web scraping, crawling &amp; search<br>
-          for <span class="gradient-text" style="--grad:linear-gradient(120deg,#1D4ED8 0%, #3B82F6 50%, #60A5FA 100%);">AI agents</span>.
-        </h1>
-
-        <p style="font-size:18px; line-height:1.55; color:var(--text-muted); max-width:560px; margin:0 0 28px;">
-          Scrape, crawl, search, and extract the live web (plus domain intelligence and browser
-          automation) behind one API key, one bill, and one MCP server. Flat 1 credit per call,
-          no multipliers, refund on failure.
-        </p>
-
-        <div class="cta-row cta-row--mb" style="justify-content:flex-start;">
-          <a class="btn btn-primary btn-lg" href="/contactus">
-            Request access
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-          </a>
-          <a class="btn btn-secondary btn-lg" href="/docs">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-            View docs
-          </a>
-        </div>
-
-        <p class="hero-stats">
-          <span><b>%%ENDPOINT_COUNT%%</b> ENDPOINTS</span>
-          <span><b>01</b> API KEY</span>
-          <span><b>MCP</b> NATIVE</span>
-        </p>
-
+<!-- BEGIN: TopNotificationBanner -->
+<aside class="bg-ink-950 text-ink-300 text-[11px] font-mono border-b border-ink-800 tracking-wide py-2 px-4 transition-colors">
+<div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
+<div class="flex items-center space-x-2">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-brand/20 text-brand font-semibold uppercase tracking-wider relative overflow-hidden">
+<span class="relative z-10">NEW</span>
+<span class="absolute inset-0 bg-brand/10 animate-pulse"></span>
+</span>
+<a class="hover:text-white transition-colors inline-flex items-center gap-1" href="/observability">
+<span class="text-ink-400 hover:text-white transition-colors">Stream traces to your existing observability stack</span>
+<span class="text-ink-600 transition-transform hover:translate-x-0.5">→</span>
+</a>
 </div>
-
-        <div class="ascii-panel" aria-hidden="true">
-          <pre id="ascii-globe"></pre>
-          <div class="ascii-caption">
-            <span>THE LIVE WEB</span>
-            <span class="cap-src">SOURCE: OLLAGRAPH.COM</span>
-            <span>66 x 33 GRID, 1 BIT</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ─── Real API example block ─── -->
-      <div class="api" data-reveal style="margin-top:40px;">
-        <div class="api-frame">
-          <div class="api-head">
-            <span class="method">POST</span>
-            <span>api.ollagraph.com/v1/scrape/llm-ready</span>
-            <span class="meta"><span>1 credit</span><span class="ok">200 OK</span></span>
-          </div>
-          <div class="api-panes">
-
-              <!-- Request -->
-              <div class="api-pane">
-                <div class="pane-label">REQUEST</div>
-                <pre><code><span class="c-dim"># curl, Python, TypeScript: same shape, same answer.</span>
-curl https://api.ollagraph.com/v1/scrape/llm-ready \
-  -H <span class="text-accent">"Authorization: Bearer $OLLAGRAPH_API_KEY"</span> \
-  -H <span class="text-accent">"Content-Type: application/json"</span> \
-  -d <span class="text-accent">'{
+<div class="flex items-center space-x-6 text-[11px]">
+<div class="flex items-center gap-1.5">
+<span class="font-medium text-white">1,000 free credits</span>
+<span class="text-ink-500">on signup</span>
+</div>
+<div class="hidden sm:flex items-center gap-1.5">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+</span>
+<span class="text-white">99.98% uptime SLA</span>
+</div>
+<div class="hidden md:flex items-center gap-1.5">
+<span class="text-brand">MCP-ready</span>
+</div>
+<a class="text-ink-400 hover:text-white underline decoration-ink-600 underline-offset-2 transition-all hover:decoration-brand" href="/pricing">See pricing →</a>
+</div>
+</div>
+</aside>
+<!-- END: TopNotificationBanner -->
+<div id="nav-root"></div>
+<!-- BEGIN: HeroSection -->
+<section class="relative pt-14 pb-20 overflow-hidden bg-white border-b border-ink-200">
+<div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<!-- Hero Tagline Metadata -->
+<div class="flex items-center space-x-2 text-[11px] font-mono text-ink-500 mb-6 uppercase tracking-wider animate-fade-in-up">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+</span>
+<span>%%ENDPOINT_COUNT%% endpoints</span>
+<span class="text-ink-300">•</span>
+<span>One API key</span>
+<span class="text-ink-300">•</span>
+<span>MCP Native</span>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+<!-- Hero Copy Left -->
+<div class="lg:col-span-6 space-y-6 animate-fade-in-up">
+<h1 class="text-4xl sm:text-5xl lg:text-[3.25rem] leading-[1.08] font-bold tracking-tighter text-ink-950">
+              Web scraping, crawling &amp; search for <span class="text-brand underline decoration-brand/30 decoration-4 underline-offset-4 hover:decoration-brand transition-colors duration-200">AI agents</span>.
+            </h1>
+<p class="text-base sm:text-lg text-ink-600 leading-relaxed max-w-xl font-normal">
+              Scrape, crawl, search, and extract the live web (plus domain intelligence and browser automation) behind one API key, one bill, and one MCP server. Flat 1 credit per call, no multipliers, refund on failure.
+            </p>
+<div class="flex flex-wrap items-center gap-3 pt-2">
+<a class="relative group overflow-hidden inline-flex items-center px-4 py-2.5 text-sm font-semibold rounded bg-brand text-white shadow-sm hover:shadow-lg hover:shadow-brand/25 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+<span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+<span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+</a>
+<a class="inline-flex items-center px-4 py-2.5 text-sm font-medium rounded border border-ink-300 bg-white text-ink-700 hover:bg-ink-50 hover:text-ink-900 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs hover:shadow" href="/docs">
+<svg class="w-4 h-4 mr-1.5 text-ink-400 transition-transform duration-200 group-hover:rotate-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+                View docs
+              </a>
+</div>
+</div>
+<!-- Hero Right: Live Interactive Mesh Visualizer -->
+<div class="lg:col-span-6 animate-fade-in-up" style="animation-delay: 0.15s;">
+<div class="rounded-lg border border-ink-800 bg-ink-950 p-4 font-mono text-xs text-ink-300 shadow-2xl relative overflow-hidden transition-all duration-300 hover:border-ink-700 hover:shadow-black/60">
+<div class="flex items-center justify-between border-b border-ink-800/80 pb-3 mb-3">
+<div class="flex items-center gap-2">
+<div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+<div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+<span class="text-ink-400 text-[11px] ml-2">OLLAGRAPH API // LIVE PIPELINE</span>
+</div>
+<div class="flex items-center gap-2 text-[10px]">
+<span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/50 flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+  AUTO-SOLVE CAPTCHA
+</span>
+<span class="text-ink-500 font-mono tracking-tight">%%ENDPOINT_COUNT%% ENDPOINTS</span>
+</div>
+</div>
+<!-- Active Crawl Task list with micro hover glow -->
+<div class="space-y-2.5 my-3">
+<div class="p-2.5 rounded bg-ink-900/90 border border-ink-800 flex items-center justify-between text-[11px] transition-all duration-150 hover:border-ink-700 hover:bg-ink-900">
+<div class="flex items-center space-x-2.5 min-w-0 mr-4">
+<span class="text-brand font-semibold shrink-0">GET</span>
+<span class="text-ink-400 text-[10px] shrink-0">/v1/jobs/crl_8f29</span>
+<span class="text-ink-200 truncate">arxiv.org/abs/2401</span>
+</div>
+<div class="flex items-center gap-2.5 shrink-0">
+<span class="text-terminal-purple shrink-0">PDF PARSE</span>
+<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-900/60 text-emerald-300 border border-emerald-800/40 shrink-0 font-medium">CLEAN MD</span>
+<span class="text-ink-400 shrink-0">140ms</span>
+</div>
+</div>
+<div class="p-2.5 rounded bg-ink-900/90 border border-ink-800 flex items-center justify-between text-[11px] transition-all duration-150 hover:border-ink-700 hover:bg-ink-900">
+<div class="flex items-center space-x-2.5 min-w-0 mr-4">
+<span class="text-emerald-400 font-semibold shrink-0">POST</span>
+<span class="text-ink-400 text-[10px] shrink-0">/v1/extract</span>
+<span class="text-ink-200 truncate">wikipedia.org/wiki/AI</span>
+</div>
+<div class="flex items-center gap-2.5 shrink-0">
+<span class="text-sky-400 shrink-0">SCHEMA EXTRACTION</span>
+<span class="text-ink-400 shrink-0">5 chunks</span>
+<span class="text-ink-400 shrink-0">89ms</span>
+</div>
+</div>
+<div class="p-2.5 rounded bg-ink-900/90 border border-ink-800 flex items-center justify-between text-[11px] transition-all duration-150 hover:border-ink-700 hover:bg-ink-900">
+<div class="flex items-center space-x-2.5 min-w-0 mr-4">
+<span class="text-amber-400 font-semibold shrink-0">POST</span>
+<span class="text-ink-400 text-[10px] shrink-0">/v1/scrape</span>
+<span class="text-ink-200 truncate">github.com/trending</span>
+</div>
+<div class="flex items-center gap-2.5 shrink-0">
+<span class="text-amber-300 shrink-0">STEALTH JS</span>
+<span class="text-ink-400 shrink-0">24.8kb</span>
+<span class="text-ink-400 shrink-0">312ms</span>
+</div>
+</div>
+<div class="p-2.5 rounded bg-ink-900/90 border border-ink-800 flex items-center justify-between text-[11px] transition-all duration-150 hover:border-ink-700 hover:bg-ink-900">
+<div class="flex items-center space-x-2.5 min-w-0 mr-4">
+<span class="text-purple-400 font-semibold shrink-0">DELETE</span>
+<span class="text-ink-400 text-[10px] shrink-0">/v1/session/sess_49a</span>
+<span class="text-ink-200 truncate">bloomberg.com/markets</span>
+</div>
+<div class="flex items-center gap-2.5 shrink-0">
+<span class="text-emerald-400 shrink-0">200 OK</span>
+<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-900/50 text-purple-300 border border-purple-800/40 shrink-0 font-medium">CLOSED</span>
+<span class="text-ink-400 shrink-0">18ms</span>
+</div>
+</div>
+</div>
+<!-- Realtime Status Footer -->
+<div class="mt-3 pt-2.5 border-t border-ink-800/80 flex items-center justify-between text-[10px] text-ink-400">
+<div class="flex items-center gap-2">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+</span>
+<span>MCP SERVER: <strong class="text-emerald-300">CONNECTED</strong></span>
+</div>
+<div class="flex items-center gap-4">
+<span>PRICING: <span class="text-ink-200 font-semibold">1 CREDIT</span></span>
+<span class="hidden sm:inline">SUCCESS: <span class="text-ink-200">99.98%</span></span>
+<span>ON FAILURE: <span class="text-emerald-400 font-medium">AUTO REFUND</span></span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Terminal Code Console -->
+<div class="mt-10 rounded-xl border border-ink-800 bg-[#0A0D14] overflow-hidden shadow-2xl animate-fade-in-up" style="animation-delay: 0.25s;">
+<!-- Terminal Header Bar with live indicator & copy button -->
+<div class="bg-ink-950/80 px-4 py-2.5 border-b border-ink-800 flex items-center justify-between text-xs font-mono">
+<div class="flex items-center space-x-2">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+</span>
+<span class="text-ink-200 font-medium">POST</span>
+<span class="text-ink-400">api.ollagraph.com/v1/scrape/llm-ready</span>
+</div>
+<div class="flex items-center space-x-3 text-[11px]">
+<span class="px-2 py-0.5 rounded bg-emerald-950/70 text-emerald-400 border border-emerald-850 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+  1 credit = 200 OK
+</span>
+<button id="hero-copy-btn" onclick="copyHeroCode()" class="text-ink-400 hover:text-white px-2 py-0.5 rounded border border-ink-700/60 hover:border-ink-500 bg-ink-900/60 text-[11px] transition-all hover:bg-ink-800 flex items-center gap-1" title="Copy code">
+<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Copy</span>
+</button>
+</div>
+</div>
+<!-- Request / Response Dual Column View -->
+<div class="grid grid-cols-1 lg:grid-cols-12 font-mono text-xs divide-y lg:divide-y-0 lg:divide-x divide-ink-800">
+<!-- Left: Request Payload -->
+<div class="lg:col-span-5 p-5 text-ink-300 space-y-3 bg-[#0A0D14]/90 overflow-x-auto">
+<div class="text-[11px] text-ink-500 font-semibold uppercase tracking-wider">// REQUEST</div>
+<div class="text-ink-500 text-[11px] italic"># curl, Python, TypeScript: same shape, same answer.</div>
+<pre class="text-ink-300 text-xs leading-relaxed font-mono"><code><span class="text-sky-300">curl</span> https://api.ollagraph.com/v1/scrape/llm-ready \
+  -H <span class="text-emerald-300">"Authorization: Bearer $OLLAGRAPH_API_KEY"</span> \
+  -H <span class="text-emerald-300">"Content-Type: application/json"</span> \
+  -d <span class="text-amber-200">'{
     "url": "https://en.wikipedia.org/wiki/Web_scraping",
     "max_tokens": 512,
     "overlap_tokens": 64
   }'</span></code></pre>
-              </div>
-
-              <!-- Response -->
-              <div class="api-pane">
-                <div class="pane-label">RESPONSE <span class="pane-meta">abridged · ~2,400 tokens · 5 chunks</span></div>
-                <pre><code>{
-  <span class="text-blue">"status"</span>: <span class="text-accent">"success"</span>,
-  <span class="text-blue">"url"</span>: <span class="text-accent">"https://en.wikipedia.org/wiki/Web_scraping"</span>,
-  <span class="text-blue">"title"</span>: <span class="text-accent">"Web scraping - Wikipedia"</span>,
-  <span class="text-blue">"rendered_with_js"</span>: <span style="color:var(--amber);">false</span>,
-  <span class="text-blue">"rendered_via"</span>:    <span class="text-accent">"direct"</span>,
-  <span class="text-blue">"chunks"</span>: [
+</div>
+<!-- Right: Response JSON -->
+<div class="lg:col-span-7 p-5 text-ink-300 space-y-3 bg-[#080B10] overflow-x-auto">
+<div class="flex items-center justify-between text-[11px]">
+<span class="text-ink-500 font-semibold uppercase tracking-wider">// RESPONSE</span>
+<span class="text-emerald-400 font-mono text-[10px] bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-900 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+  MARKDOWN • ~2,400 TOKENS • 5 CHUNKS
+</span>
+</div>
+<pre class="text-ink-300 text-xs leading-relaxed font-mono"><code>{
+  <span class="text-sky-300">"status"</span>: <span class="text-emerald-300">"success"</span>,
+  <span class="text-sky-300">"url"</span>: <span class="text-emerald-300">"https://en.wikipedia.org/wiki/Web_scraping"</span>,
+  <span class="text-sky-300">"title"</span>: <span class="text-emerald-300">"Web scraping - Wikipedia"</span>,
+  <span class="text-sky-300">"rendered_with_js"</span>: <span class="text-terminal-amber">false</span>,
+  <span class="text-sky-300">"rendered_via"</span>: <span class="text-emerald-300">"direct"</span>,
+  <span class="text-sky-300">"chunks"</span>: [
     {
-      <span class="text-blue">"text"</span>:        <span class="text-accent">"Web scraping is the process of automatically extracting data from websites…"</span>,
-      <span class="text-blue">"token_count"</span>: <span style="color:var(--amber);">498</span>,
-      <span class="text-blue">"byte_start"</span>:  <span style="color:var(--amber);">0</span>,
-      <span class="text-blue">"byte_end"</span>:    <span style="color:var(--amber);">2196</span>
+      <span class="text-sky-300">"text"</span>: <span class="text-emerald-300">"Web scraping is the process of automatically extracting data from websites…"</span>,
+      <span class="text-sky-300">"token_count"</span>: <span class="text-terminal-cyan">498</span>,
+      <span class="text-sky-300">"byte_start"</span>: <span class="text-terminal-cyan">0</span>,
+      <span class="text-sky-300">"byte_end"</span>: <span class="text-terminal-cyan">2196</span>
     },
-    <span class="text-dim">{ /* chunk 2, 3, 4, 5 */ }</span>
+    <span class="text-ink-500">{ /* chunk 2, 3, 4, 5 */ }</span>
   ]
-}</code></pre>
-              </div>
+}<span class="cursor-blink"></span></code></pre>
+</div>
+</div>
+<!-- Bottom Console Info Badges -->
+<div class="border-t border-ink-800 bg-ink-950/95 px-5 py-3.5 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
+<div class="flex flex-col space-y-1 transition-colors hover:text-white">
+<span class="text-[10px] text-ink-400 uppercase font-semibold">JS-RENDERED WHEN NEEDED</span>
+<p class="text-[11px] text-ink-300 leading-snug">
+                SPA detection auto-retries through a residential rendering pool. Same response shape; rendered_with_js tells you which path served the call.
+              </p>
+</div>
+<div class="flex flex-col space-y-1 border-t sm:border-t-0 sm:border-l border-ink-800 sm:pl-4 transition-colors hover:text-white">
+<span class="text-[10px] text-ink-400 uppercase font-semibold">EXACT-MATCHED, REFUND-ON-FAIL</span>
+<p class="text-[11px] text-ink-300 leading-snug">
+                Most endpoints cost 1 credit; orchestrators cost 3. If the upstream fetch errors, we refund automatically before returning — you only pay for successful calls.
+              </p>
+</div>
+<div class="flex flex-col space-y-1 border-t sm:border-t-0 sm:border-l border-ink-800 sm:pl-4 transition-colors hover:text-white">
+<span class="text-[10px] text-ink-400 uppercase font-semibold">MCP-NATIVE</span>
+<p class="text-[11px] text-ink-300 leading-snug">
+                Every endpoint is also an MCP tool. <code class="bg-ink-900 text-brand px-1 py-0.5 rounded text-[10px] border border-ink-800">pipx run ollagraph-mcp</code> and Claude Desktop / Cursor gets all %%ENDPOINT_COUNT%% of them at once.
+              </p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: HeroSection -->
+<!-- BEGIN: TrustPillBar -->
+<section class="border-b border-ink-200 bg-ink-50/60 py-4">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex flex-wrap items-center justify-between gap-y-3 gap-x-6 text-xs font-mono text-ink-600">
+<div class="flex items-center gap-2 group transition-transform hover:scale-105">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span class="group-hover:text-ink-900 transition-colors">Refund on failed calls</span>
+</div>
+<div class="flex items-center gap-2 group transition-transform hover:scale-105">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span class="group-hover:text-ink-900 transition-colors">Never stores your scraped content</span>
+</div>
+<div class="flex items-center gap-2 group transition-transform hover:scale-105">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span class="group-hover:text-ink-900 transition-colors">Uptime SLA on Team &amp; Business</span>
+</div>
+<div class="flex items-center gap-2 group transition-transform hover:scale-105">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span class="group-hover:text-ink-900 transition-colors">%%ENDPOINT_COUNT%% endpoints, one API key</span>
+</div>
+<div class="flex items-center gap-2 group transition-transform hover:scale-105">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span class="group-hover:text-ink-900 transition-colors">Built on open web standards</span>
+</div>
+</div>
+</div>
+</section>
+<!-- END: TrustPillBar -->
+<!-- BEGIN: PlatformSection -->
+<section class="py-24 bg-white border-b border-ink-200 relative" id="platform">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<!-- Section Header -->
+<div class="flex items-center justify-between border-b border-ink-200 pb-4 mb-10">
+<div>
+<div class="text-xs font-mono text-ink-500 uppercase tracking-wider mb-1">
+<span class="text-brand font-semibold">01 / 07</span> • PLATFORM
             </div>
-
-            <div class="api-trust">
-              <div>
-                <div class="t-label">JS-RENDERED WHEN NEEDED</div>
-                <div class="t-body">SPA detection auto-retries through a residential rendering pool. Same response shape; <code>rendered_via</code> tells you which path served the page.</div>
-              </div>
-              <div>
-                <div class="t-label">CREDIT-METERED, REFUND-ON-FAIL</div>
-                <div class="t-body">Most endpoints cost 1 credit; orchestrators cost 3. If the upstream fetch errors, we refund automatically before returning — you only pay for successful calls.</div>
-              </div>
-              <div>
-                <div class="t-label">MCP-NATIVE</div>
-                <div class="t-body">Every endpoint is also an MCP tool. <code>pipx run ollagraph-mcp</code> and Claude Desktop / Cursor gets all %%ENDPOINT_COUNT%% of them at once.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────  TRUST BAND  ───────────────────────── -->
-  <section class="trust-section">
-    <div class="container">
-      <div class="trust-band">
-        <span>Refund on failed calls</span>
-        <span>Never stores your scraped content</span>
-        <span>Uptime SLA on Team &amp; Business</span>
-        <span>%%ENDPOINT_COUNT%% endpoints, one API key</span>
-        <span>Built on open web standards</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────  FEATURE GRID  ───────────────────────── -->
-  <section class="section" id="platform">
-
-    <div class="container">
-      <div class="section-rule marginalia" data-reveal>
-        <span class="idx">01 / 07</span>
-        <span>PLATFORM</span>
-        <span class="ticks"></span>
-        <span>OLLAGRAPH.COM</span>
-      </div>
-      <div style="max-width:760px; margin-bottom:56px;">
-        <div class="h-eyebrow" style="margin-bottom:16px;">PLATFORM</div>
-        <h2 class="h-display h-2" style="margin:0 0 16px;">One platform.<br>The whole web stack.</h2>
-        <p style="color:var(--text-muted); font-size:16px; line-height:1.55; margin:0;">
-          The core web-data primitives (scrape, crawl, search, and extract) behind a single auth,
-          a single bill, and one MCP server. No more duct-taping a scraper, a SERP, a parser, and a
-          headless browser.
+<h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-ink-950">
+              One platform. The whole web stack.
+            </h2>
+</div>
+<div class="hidden sm:block text-right">
+<span class="font-mono text-xs text-ink-400">OLLAGRAPH.COM</span>
+</div>
+</div>
+<p class="text-ink-600 text-base max-w-3xl mb-12 -mt-4">
+          The core web-data primitives (scrape, crawl, search, and extract) behind a single auth, a single bill, and one MCP server. No more duct-taping a scraper, a SERP, a parser, and a headless browser.
         </p>
-      </div>
-
-
-      <div class="feature-grid">
-        <div class="feature-card feature-card--featured">
-          <div class="feature-icon" style="--ic:var(--accent);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+<!-- 8 Platform Grid Cards with refined hover lifts and subtle color borders -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- Card 1: Smart crawling -->
+<div class="p-6 rounded-lg border border-ink-200 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5 hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default">
+<div class="w-8 h-8 rounded-md bg-rose-50 text-brand flex items-center justify-center mb-4 font-mono text-sm group-hover:scale-110 group-hover:rotate-1 transition-all duration-300">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h3 class="text-base font-semibold text-ink-900 mb-2 group-hover:text-brand transition-colors duration-200">Smart crawling</h3>
+<p class="text-xs leading-relaxed text-ink-600">
+              Render-aware crawls that follow links, respect robots, and bypass anti-bot walls cleanly.
+            </p>
+</div>
+<!-- Card 2: Web search -->
+<div class="p-6 rounded-lg border border-ink-200 hover:border-sky-400/40 hover:shadow-lg hover:shadow-sky-500/5 hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default">
+<div class="w-8 h-8 rounded-md bg-sky-50 text-sky-600 flex items-center justify-center mb-4 font-mono text-sm group-hover:scale-110 group-hover:rotate-1 transition-all duration-300">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h3 class="text-base font-semibold text-ink-900 mb-2 group-hover:text-sky-600 transition-colors duration-200">Web search</h3>
+<p class="text-xs leading-relaxed text-ink-600">
+              Search the live web across engines, merged and deduped by URL, ranked results from one call, no SERP scraping to maintain.
+            </p>
+</div>
+<!-- Card 3: Structured extraction -->
+<div class="p-6 rounded-lg border border-ink-200 hover:border-emerald-400/40 hover:shadow-lg hover:shadow-emerald-500/5 hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default">
+<div class="w-8 h-8 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 font-mono text-sm group-hover:scale-110 group-hover:rotate-1 transition-all duration-300">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h3 class="text-base font-semibold text-ink-900 mb-2 group-hover:text-emerald-600 transition-colors duration-200">Structured extraction</h3>
+<p class="text-xs leading-relaxed text-ink-600">
+              Structured extraction with JSON schemas, retries, and verification, typed end-to-end.
+            </p>
+</div>
+<!-- Card 4: Agent observability -->
+<div class="p-6 rounded-lg border border-ink-200 hover:border-purple-400/40 hover:shadow-lg hover:shadow-purple-500/5 hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default">
+<div class="w-8 h-8 rounded-md bg-purple-50 text-purple-600 flex items-center justify-center mb-4 font-mono text-sm group-hover:scale-110 group-hover:rotate-1 transition-all duration-300">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h3 class="text-base font-semibold text-ink-900 mb-2 group-hover:text-purple-600 transition-colors duration-200">Agent observability</h3>
+<p class="text-xs leading-relaxed text-ink-600">
+              Trace every tool call, token, and step. Replay runs. Diff prompts. Find regressions fast.
+            </p>
+</div>
+<!-- Card 5: Browser automation -->
+<div class="p-6 rounded-lg border border-ink-200 hover:border-amber-400/40 hover:shadow-lg hover:shadow-amber-500/5 hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default">
+<div class="w-8 h-8 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center mb-4 font-mono text-sm group-hover:scale-110 group-hover:rotate-1 transition-all duration-300">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h3 class="text-base font-semibold text-ink-900 mb-2 group-hover:text-amber-600 transition-colors duration-200">Browser automation</h3>
+<p class="text-xs leading-relaxed text-ink-600">
+              Stealth Chromium pools that scale to thousands of concurrent sessions in seconds.
+            </p>
+</div>
+<!-- Card 6: AEO audits -->
+<div class="p-6 rounded-lg border border-ink-200 hover:border-teal-400/40 hover:shadow-lg hover:shadow-teal-500/5 hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default">
+<div class="w-8 h-8 rounded-md bg-teal-50 text-teal-600 flex items-center justify-center mb-4 font-mono text-sm group-hover:scale-110 group-hover:rotate-1 transition-all duration-300">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h3 class="text-base font-semibold text-ink-900 mb-2 group-hover:text-teal-600 transition-colors duration-200">AEO audits</h3>
+<p class="text-xs leading-relaxed text-ink-600">
+              Audit how AI crawlers see, cite, and rank your site. Get a remediation checklist instantly.
+            </p>
+</div>
+<!-- Card 7: Markdown conversion -->
+<div class="p-6 rounded-lg border border-ink-200 hover:border-indigo-400/40 hover:shadow-lg hover:shadow-indigo-500/5 hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default">
+<div class="w-8 h-8 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4 font-mono text-sm group-hover:scale-110 group-hover:rotate-1 transition-all duration-300">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h3 class="text-base font-semibold text-ink-900 mb-2 group-hover:text-indigo-600 transition-colors duration-200">Markdown conversion</h3>
+<p class="text-xs leading-relaxed text-ink-600">
+              Clean, model-ready markdown for any page. Strips chrome, keeps semantics, preserves citations.
+            </p>
+</div>
+<!-- Card 8: Async jobs -->
+<div class="p-6 rounded-lg border border-ink-200 hover:border-pink-400/40 hover:shadow-lg hover:shadow-pink-500/5 hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default">
+<div class="w-8 h-8 rounded-md bg-pink-50 text-pink-600 flex items-center justify-center mb-4 font-mono text-sm group-hover:scale-110 group-hover:rotate-1 transition-all duration-300">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h3 class="text-base font-semibold text-ink-900 mb-2 group-hover:text-pink-600 transition-colors duration-200">Async jobs</h3>
+<p class="text-xs leading-relaxed text-ink-600">
+              Fire-and-forget jobs with webhooks, idempotency keys, fan-out, and durable retries.
+            </p>
+</div>
+</div>
+<!-- Domain Intelligence Banner -->
+<div class="mt-8 p-4 rounded-lg bg-ink-50 border border-ink-200 flex flex-wrap items-center justify-between text-xs text-ink-600 gap-2 transition-all duration-200 hover:border-ink-300 hover:shadow-xs">
+<div>
+<span class="font-semibold text-ink-800">Plus full domain &amp; security intelligence:</span> DNS, SSL/TLS posture, redirect graphs, and threat signals.
           </div>
-          <h3>Smart crawling</h3>
-          <p>Render-aware crawls that follow links, respect robots, and bypass anti-bot walls cleanly.</p>
-        </div>
-        <div class="feature-card feature-card--featured">
-          <div class="feature-icon" style="--ic:var(--cyan);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+<a class="group text-brand font-medium hover:underline flex items-center gap-1 transition-colors" href="/for-intel">
+            Explore the intelligence suite <span class="text-sm transition-transform duration-200 group-hover:translate-x-1">→</span>
+</a>
+</div>
+</div>
+</section>
+<!-- END: PlatformSection -->
+<!-- BEGIN: DeveloperExperience -->
+<section class="py-24 bg-ink-950 text-white relative overflow-hidden" id="developer-experience">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+<div class="flex items-center justify-between border-b border-ink-800 pb-4 mb-12">
+<div class="text-xs font-mono text-ink-400 uppercase tracking-wider">
+<span class="text-brand font-semibold">02 / 07</span> • DEVELOPER EXPERIENCE
           </div>
-          <h3>Web search</h3>
-          <p>Search the live web across engines, merged and deduped by URL, ranked results from one call, no SERP scraping to maintain.</p>
-        </div>
-        <div class="feature-card feature-card--dim">
-          <div class="feature-icon" style="--ic:var(--cyan);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
-          </div>
-          <h3>Structured extraction</h3>
-          <p>Structured extraction with JSON schemas, retries, and verification, typed end-to-end.</p>
-        </div>
-        <div class="feature-card feature-card--dim">
-          <div class="feature-icon" style="--ic:var(--violet);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          </div>
-          <h3>Agent observability</h3>
-          <p>Trace every tool call, token, and step. Replay runs. Diff prompts. Find regressions fast.</p>
-        </div>
-        <div class="feature-card feature-card--dim">
-          <div class="feature-icon" style="--ic:var(--amber);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          </div>
-          <h3>Browser automation</h3>
-          <p>Stealth Chromium pools that scale to thousands of concurrent sessions in seconds.</p>
-        </div>
-        <div class="feature-card feature-card--dim">
-          <div class="feature-icon" style="--ic:var(--green);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          </div>
-          <h3>AEO audits</h3>
-          <p>Audit how AI crawlers see, cite, and rank your site. Get a remediation checklist instantly.</p>
-        </div>
-        <div class="feature-card feature-card--dim">
-          <div class="feature-icon" style="--ic:var(--accent);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          </div>
-          <h3>Markdown conversion</h3>
-          <p>Clean, model-ready markdown for any page. Strips chrome, keeps semantics, preserves citations.</p>
-        </div>
-        <div class="feature-card feature-card--dim">
-          <div class="feature-icon" style="--ic:var(--blue);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><polyline points="21 4 12 13 9 10"/></svg>
-          </div>
-          <h3>Async jobs</h3>
-          <p>Fire-and-forget jobs with webhooks, idempotency keys, fan-out, and durable retries.</p>
-        </div>
-      </div>
-
-      <p class="grid-more">Plus full domain &amp; security intelligence: DNS, SSL/TLS posture, redirect graphs, and threat signals. <a href="/for-intel">Explore the intelligence suite &rarr;</a></p>
-    </div>
-
-  </section>
-
-  <!-- ─────────────────────────  CODE TABS  ───────────────────────── -->
-  <section class="section section--dense" style="padding-top:32px;">
-    <div class="container">
-      <div class="section-rule marginalia" data-reveal>
-        <span class="idx">02 / 07</span>
-        <span>DEVELOPER EXPERIENCE</span>
-        <span class="ticks"></span>
-        <span>SDK · REST · MCP</span>
-      </div>
-      <div class="devx-grid" style="display:grid; grid-template-columns:1fr 1.2fr; gap:64px; align-items:start;" data-reveal>
-        <div style="position:sticky; top:120px;">
-          <div class="h-eyebrow" style="margin-bottom:16px;">DEVELOPER EXPERIENCE</div>
-          <h2 class="h-display h-2" style="margin:0 0 16px;">One endpoint.<br>One auth. One billing.</h2>
-          <p style="color:var(--text-muted); font-size:16px; line-height:1.55; margin:0 0 24px;">
-            Typed SDKs in TypeScript and Python. A first-class REST API. Idempotent jobs,
-            streaming responses, webhooks, and structured errors. Built the way you wished
-            scraping APIs were built ten years ago.
-          </p>
-          <div style="display:flex; flex-direction:column; gap:14px;">
-            <div class="flex gap-3 items-center"><span style="width:24px;height:24px; display:flex; align-items:center; justify-content:center; color:var(--accent);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span><div><div style="font-size:14px;">Typed everywhere</div><div style="font-size:12px; color:var(--text-muted);">Schemas generate SDK methods, error types, and trace shape.</div></div></div>
-            <div class="flex gap-3 items-center"><span style="width:24px;height:24px; display:flex; align-items:center; justify-content:center; color:var(--accent);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span><div><div style="font-size:14px;">Streaming-first</div><div style="font-size:12px; color:var(--text-muted);">SSE & WebSocket for long crawls. Tail logs, results, and progress live.</div></div></div>
-            <div class="flex gap-3 items-center"><span style="width:24px;height:24px; display:flex; align-items:center; justify-content:center; color:var(--accent);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span><div><div style="font-size:14px;">Local-first DX</div><div style="font-size:12px; color:var(--text-muted);">CLI, dashboards in the terminal, replay from a trace ID.</div></div></div>
-          </div>
-          <div style="margin-top:24px; display:flex; gap:10px;">
-            <a class="btn btn-secondary" href="/docs">View docs</a>
-            <a class="btn btn-ghost" href="/docs">API reference →</a>
-          </div>
-        </div>
-
-        <!-- Code tabs -->
-        <div class="code-block">
-          <div class="code-head">
-            <div style="display:flex; gap:4px;" id="code-tabs">
-              <button class="code-tab active" data-tab="ts">TypeScript</button>
-              <button class="code-tab" data-tab="py">Python</button>
-              <button class="code-tab" data-tab="curl">curl</button>
+<div class="text-xs font-mono text-ink-500">SDK • REST • MCP</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+<!-- Left Column Content -->
+<div class="lg:col-span-5 space-y-6">
+<h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-white leading-tight">
+              One endpoint.<br>One auth. One billing.
+            </h2>
+<p class="text-ink-400 text-sm leading-relaxed">
+              Typed SDKs in TypeScript and Python. A first-class REST API. Idempotent jobs, streaming responses, webhooks, and structured errors. Built the way you wished scraping APIs were built ten years ago.
+            </p>
+<div class="space-y-4 pt-2">
+<div class="flex items-start gap-3 group">
+<span class="text-emerald-400 text-sm mt-0.5 transition-transform group-hover:scale-125">✓</span>
+<div>
+<h4 class="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">Typed everywhere</h4>
+<p class="text-xs text-ink-400">Schemas generate SDK methods, error types, and trace shape.</p>
+</div>
+</div>
+<div class="flex items-start gap-3 group">
+<span class="text-emerald-400 text-sm mt-0.5 transition-transform group-hover:scale-125">✓</span>
+<div>
+<h4 class="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">Streaming-first</h4>
+<p class="text-xs text-ink-400">SSE &amp; Websocket for long crawls, tail logs, results, and progress live.</p>
+</div>
+</div>
+<div class="flex items-start gap-3 group">
+<span class="text-emerald-400 text-sm mt-0.5 transition-transform group-hover:scale-125">✓</span>
+<div>
+<h4 class="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">Local-first DX</h4>
+<p class="text-xs text-ink-400">CLI dashboards in the terminal, replay from a trace ID.</p>
+</div>
+</div>
+</div>
+<div class="pt-4 flex items-center space-x-4">
+<a class="px-4 py-2 text-xs font-semibold rounded bg-brand text-white hover:bg-brand-hover hover:shadow-lg hover:shadow-brand/20 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0" href="/docs">
+                View docs
+              </a>
+<a class="px-4 py-2 text-xs font-medium rounded border border-ink-700 hover:border-ink-500 hover:bg-ink-900 transition-all duration-200 text-ink-300 hover:text-white" href="/docs">
+                API reference →
+              </a>
+</div>
+</div>
+<!-- Right Column Code Editor with Interactive Tabs and Endpoint Indicator -->
+<div class="lg:col-span-7">
+<div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-2xl font-mono text-xs transition-all duration-300 hover:border-ink-700 hover:shadow-black/70">
+            <!-- Code Tabs & interactive switch -->
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center space-x-3">
+                <!-- Window Controls -->
+                <div class="flex items-center gap-2 pl-1 pr-3 border-r border-ink-800">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <!-- Language Tabs (Segmented Control) -->
+                <div class="inline-flex items-center bg-ink-900/90 p-1 rounded-lg border border-ink-800 gap-1" id="lang-tab-container">
+                  <button class="px-3 py-1 rounded-md text-xs font-semibold text-white bg-ink-800 border border-ink-600 shadow-sm transition-all" id="tab-ts" onclick="switchTab('ts')">TypeScript</button>
+                  <button class="px-3 py-1 rounded-md text-xs font-medium text-ink-400 hover:text-white hover:bg-ink-800/50 border border-transparent transition-all" id="tab-py" onclick="switchTab('py')">Python</button>
+                  <button class="px-3 py-1 rounded-md text-xs font-medium text-ink-400 hover:text-white hover:bg-ink-800/50 border border-transparent transition-all" id="tab-curl" onclick="switchTab('curl')">curl</button>
+                </div>
+              </div>
+              <div class="flex items-center space-x-3 pb-1">
+                <div class="text-[11px] text-ink-500 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span class="cursor-pointer hover:text-ink-300 transition-colors">POST /v1/crawl</span>
+                </div>
+                <button id="copy-code-btn" onclick="copyActiveCode()" class="text-ink-400 hover:text-white p-1 transition-colors rounded hover:bg-ink-800" title="Copy code">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
             </div>
-            <div style="display:flex; gap:14px; align-items:center;">
-              <span class="text-mono" style="color:var(--text-dim);">POST /v1/crawl</span>
-              <button class="copy-btn" title="Copy">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              </button>
-            </div>
-          </div>
+            <!-- Code Content: TypeScript -->
+            <div class="p-6 overflow-x-auto text-ink-300 leading-relaxed min-h-[320px]" id="code-ts">
+              <pre class="font-mono text-xs leading-relaxed"><code><span class="text-ink-500 italic">// Crawl a site, extract structured data, observe every step.</span>
+<span class="text-purple-400">import</span> { <span class="text-sky-300">Ollagraph</span> } <span class="text-purple-400">from</span> <span class="text-emerald-300">"@ollagraph/sdk"</span>;
 
-          <pre class="code-body" data-pane="ts"><code><span class="tok-com">// Crawl a site, extract structured data, observe every step.</span>
-<span class="tok-kw">import</span> { Ollagraph } <span class="tok-kw">from</span> <span class="tok-str">"@ollagraph/sdk"</span>;
+<span class="text-purple-400">const</span> og = <span class="text-purple-400">new</span> <span class="text-sky-300">Ollagraph</span>({ apiKey: process.env.<span class="text-amber-300">OLLAGRAPH_API_KEY</span>! });
 
-<span class="tok-kw">const</span> <span class="tok-prop">og</span> = <span class="tok-kw">new</span> <span class="tok-fn">Ollagraph</span>({ apiKey: process.env.<span class="tok-prop">OG_KEY</span>! });
-
-<span class="tok-kw">const</span> job = <span class="tok-kw">await</span> og.<span class="tok-fn">crawl</span>.<span class="tok-fn">start</span>({
-  url:       <span class="tok-str">"https://news.ycombinator.com"</span>,
-  depth:     <span class="tok-num">3</span>,
-  renderer:  <span class="tok-str">"chromium-stealth"</span>,
+<span class="text-purple-400">const</span> job = <span class="text-purple-400">await</span> og.crawl.<span class="text-sky-300">start</span>({
+  url:       <span class="text-emerald-300">"https://news.ycombinator.com"</span>,
+  depth:     <span class="text-amber-300">3</span>,
+  renderer:  <span class="text-emerald-300">"chromium-stealth"</span>,
   extract: {
     schema: {
-      title:   <span class="tok-str">"string"</span>,
-      url:     <span class="tok-str">"url"</span>,
-      points:  <span class="tok-str">"int"</span>,
-      author:  <span class="tok-str">"string"</span>,
+      title:   <span class="text-emerald-300">"string"</span>,
+      url:     <span class="text-emerald-300">"url"</span>,
+      points:  <span class="text-emerald-300">"int"</span>,
+      author:  <span class="text-emerald-300">"string"</span>,
     },
   },
-  observe: { trace: <span class="tok-kw">true</span>, redact: [<span class="tok-str">"email"</span>] },
+  observe: { trace: <span class="text-purple-400">true</span>, redact: [<span class="text-emerald-300">"email"</span>] },
 });
 
-<span class="tok-kw">for</span> <span class="tok-kw">await</span> (<span class="tok-kw">const</span> ev <span class="tok-kw">of</span> og.<span class="tok-fn">stream</span>(job.id)) {
-  console.<span class="tok-fn">log</span>(ev.<span class="tok-prop">phase</span>, ev.<span class="tok-prop">url</span>, ev.<span class="tok-prop">latencyMs</span>);
-}
-</code></pre>
+<span class="text-purple-400">for await</span> (<span class="text-purple-400">const</span> ev <span class="text-purple-400">of</span> og.<span class="text-sky-300">stream</span>(job.id)) {
+  console.<span class="text-sky-300">log</span>(ev.phase, ev.url, ev.latencyMs);
+}</code></pre>
+            </div>
+            <!-- Code Content: Python (hidden initially) -->
+            <div class="p-6 overflow-x-auto text-ink-300 leading-relaxed min-h-[320px] hidden" id="code-py">
+              <pre class="font-mono text-xs leading-relaxed"><code><span class="text-ink-500 italic"># Crawl a site, extract structured data, observe every step.</span>
+<span class="text-purple-400">import</span> os
+<span class="text-purple-400">from</span> <span class="text-sky-300">ollagraph</span> <span class="text-purple-400">import</span> Ollagraph
 
-          <pre class="code-body" data-pane="py" hidden><code><span class="tok-kw">from</span> ollagraph <span class="tok-kw">import</span> Ollagraph
+og = <span class="text-sky-300">Ollagraph</span>(api_key=os.environ[<span class="text-emerald-300">"OLLAGRAPH_API_KEY"</span>])
 
-og = <span class="tok-fn">Ollagraph</span>(api_key=os.environ[<span class="tok-str">"OG_KEY"</span>])
-
-job = og.crawl.<span class="tok-fn">start</span>(
-    url=<span class="tok-str">"https://news.ycombinator.com"</span>,
-    depth=<span class="tok-num">3</span>,
-    renderer=<span class="tok-str">"chromium-stealth"</span>,
+job = og.crawl.<span class="text-sky-300">start</span>(
+    url=<span class="text-emerald-300">"https://news.ycombinator.com"</span>,
+    depth=<span class="text-amber-300">3</span>,
+    renderer=<span class="text-emerald-300">"chromium-stealth"</span>,
     extract={
-        <span class="tok-str">"schema"</span>: {
-            <span class="tok-str">"title"</span>:  <span class="tok-str">"string"</span>,
-            <span class="tok-str">"url"</span>:    <span class="tok-str">"url"</span>,
-            <span class="tok-str">"points"</span>: <span class="tok-str">"int"</span>,
-            <span class="tok-str">"author"</span>: <span class="tok-str">"string"</span>,
+        <span class="text-emerald-300">"schema"</span>: {
+            <span class="text-emerald-300">"title"</span>:  <span class="text-emerald-300">"string"</span>,
+            <span class="text-emerald-300">"url"</span>:    <span class="text-emerald-300">"url"</span>,
+            <span class="text-emerald-300">"points"</span>: <span class="text-emerald-300">"int"</span>,
+            <span class="text-emerald-300">"author"</span>: <span class="text-emerald-300">"string"</span>,
         },
     },
-    observe={<span class="tok-str">"trace"</span>: <span class="tok-kw">True</span>, <span class="tok-str">"redact"</span>: [<span class="tok-str">"email"</span>]},
+    observe={<span class="text-emerald-300">"trace"</span>: <span class="text-purple-400">True</span>, <span class="text-emerald-300">"redact"</span>: [<span class="text-emerald-300">"email"</span>]},
 )
 
-<span class="tok-kw">for</span> ev <span class="tok-kw">in</span> og.<span class="tok-fn">stream</span>(job.id):
-    <span class="tok-fn">print</span>(ev.phase, ev.url, ev.latency_ms)
-</code></pre>
-
-          <pre class="code-body" data-pane="curl" hidden><code>curl https://api.ollagraph.com/v1/crawl \
-  -H <span class="tok-str">"Authorization: Bearer $OG_KEY"</span> \
-  -H <span class="tok-str">"Content-Type: application/json"</span> \
-  -d <span class="tok-str">'{
+<span class="text-purple-400">for</span> ev <span class="text-purple-400">in</span> og.<span class="text-sky-300">stream</span>(job.id):
+    <span class="text-sky-300">print</span>(ev.phase, ev.url, ev.latency_ms)</code></pre>
+            </div>
+            <!-- Code Content: Curl (hidden initially) -->
+            <div class="p-6 overflow-x-auto text-ink-300 leading-relaxed min-h-[320px] hidden" id="code-curl">
+              <pre class="font-mono text-xs leading-relaxed"><code><span class="text-sky-300">curl</span> https://api.ollagraph.com/v1/crawl \
+  -H <span class="text-emerald-300">"Authorization: Bearer $OLLAGRAPH_API_KEY"</span> \
+  -H <span class="text-emerald-300">"Content-Type: application/json"</span> \
+  -d <span class="text-amber-200">'{
     "url": "https://news.ycombinator.com",
     "depth": 3,
     "renderer": "chromium-stealth",
@@ -346,207 +540,7 @@ job = og.crawl.<span class="tok-fn">start</span>(
     "observe": { "trace": true, "redact": ["email"] }
   }'</span>
 
-<span class="tok-com"># → { "job_id": "job_8431", "stream": "wss://…/v1/jobs/job_8431" }</span>
-</code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────  USE CASES  ───────────────────────── -->
-  <section class="section section--dense" id="use-cases">
-    <div class="container">
-      <div class="section-rule marginalia" data-reveal>
-        <span class="idx">03 / 07</span>
-        <span>USE CASES</span>
-        <span class="ticks"></span>
-        <span>4 PATTERNS</span>
-      </div>
-      <div class="pc-head" data-reveal>
-        <div class="h-eyebrow pc-eyebrow">USE CASES</div>
-        <h2 class="h-display h-2 pc-h2">One API, built for<br>what agents actually do.</h2>
-        <p class="pc-lead">From RAG ingestion to lead enrichment, price monitoring, and AI-search audits: the same key, the same flat pricing.</p>
-      </div>
-      <div class="uc-grid" data-reveal>
-        <a class="uc-card" href="/for-ai">
-          <h3>RAG &amp; LLM pipelines</h3>
-          <p>Turn any site or document into clean, chunked, model-ready markdown for retrieval and training.</p>
-          <span class="uc-link">Build a RAG pipeline &rarr;</span>
-        </a>
-        <a class="uc-card" href="/recipes/enrich-leads-from-domain">
-          <h3>Sales &amp; lead intelligence</h3>
-          <p>Enrich domains into contacts, tech stack, and firmographics for prospecting and RevOps.</p>
-          <span class="uc-link">Enrich leads from a domain &rarr;</span>
-        </a>
-        <a class="uc-card" href="/recipes/monitor-competitor-pricing">
-          <h3>Price &amp; review monitoring</h3>
-          <p>Track competitor SKUs, prices, and reviews across marketplaces on a schedule.</p>
-          <span class="uc-link">Monitor competitor pricing &rarr;</span>
-        </a>
-        <a class="uc-card" href="/for-seo">
-          <h3>SEO &amp; AEO audits</h3>
-          <p>Audit how search engines and AI answer engines see, cite, and rank your pages.</p>
-          <span class="uc-link">Audit for AI search &rarr;</span>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────  PRICING / COMPARISON  ───────────────────────── -->
-  <section class="section section--dense" id="pricing-compare">
-    <div class="container">
-      <div class="section-rule marginalia" data-reveal>
-        <span class="idx">04 / 07</span>
-        <span>PRICING</span>
-        <span class="ticks"></span>
-        <span>FLAT 1 CREDIT</span>
-      </div>
-      <div class="pc-head" data-reveal>
-        <div class="h-eyebrow pc-eyebrow">PRICING</div>
-        <h2 class="h-display h-2 pc-h2">Priced for how agents<br>actually run.</h2>
-        <p class="pc-lead">
-          A flat 1 credit per call: no  or extract multipliers, so a JavaScript-rendered
-          page costs the same as a static one. Pay as you go from $5, get refunded automatically when a
-          fetch fails, and start with 1,000 free credits.
-        </p>
-      </div>
-
-      <!-- Pricing teaser stats -->
-      <div class="pc-teaser" data-reveal>
-        <span class="pill">1,000 free credits</span>
-        <span class="pill">Pay-as-you-go from $5</span>
-        <span class="pill">Flat 1 credit, no multipliers</span>
-        <span class="pill">Refund on failure</span>
-        <span class="pill">No content retention</span>
-      </div>
-
-      <!-- Comparison table -->
-      <div class="surface pc-table-wrap" data-reveal>
-        <table class="compare-table">
-          <thead>
-            <tr>
-              <th>How it compares</th>
-              <th class="og-col">Ollagraph</th>
-              <th>Firecrawl</th>
-              <th>Typical scraping API</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Price per call</td>
-              <td class="og-col">Flat 1 credit</td>
-              <td class="cx">1&ndash;5&times; by feature</td>
-              <td class="cx">Per-request tiers</td>
-            </tr>
-            <tr>
-              <td>Pay-as-you-go from $5</td>
-              <td class="og-col"><span class="ck"></span> Yes</td>
-              <td class="cx">No</td>
-              <td class="cx">Varies</td>
-            </tr>
-            <tr>
-              <td>Refund on failed fetch</td>
-              <td class="og-col"><span class="ck"></span> Yes</td>
-              <td class="cx">No</td>
-              <td class="cx">No</td>
-            </tr>
-            <tr>
-              <td>Free to start</td>
-              <td class="og-col">1,000 credits</td>
-              <td class="cx">500 credits</td>
-              <td class="cx">Trial</td>
-            </tr>
-            <tr>
-              <td>MCP server included</td>
-              <td class="og-col"><span class="ck"></span> Yes</td>
-              <td>Yes</td>
-              <td class="cx">No</td>
-            </tr>
-            <tr>
-              <td>Search + crawl + extract + intelligence, one key</td>
-              <td class="og-col"><span class="ck"></span> Yes</td>
-              <td class="cx">Scrape + crawl</td>
-              <td class="cx">Scrape only</td>
-            </tr>
-            <tr>
-              <td>No scraped-content retention</td>
-              <td class="og-col"><span class="ck"></span> Yes</td>
-              <td class="cx">&mdash;</td>
-              <td class="cx">&mdash;</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p class="pc-note">
-        On raw static HTML a few providers match our entry rate. Where Ollagraph pulls ahead is
-        real-world, JavaScript-rendered pages: one flat credit, no render multiplier, plus
-        pay-as-you-go, refund-on-failure, and the largest free tier. Firecrawl is a great
-        markdown-first tool; we go further on predictability and breadth.
-      </p>
-
-      <div class="pc-ctas">
-        <a class="btn btn-primary" href="/pricing">Compare pricing</a>
-        <a class="btn btn-secondary" href="/blog/firecrawl-alternatives">Ollagraph vs Firecrawl</a>
-        <a class="btn btn-ghost" href="/blog/firecrawl-pricing">Firecrawl pricing explained &rarr;</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────  ENTERPRISE CTA  ───────────────────────── -->
-  <section class="section section--dense">
-    <div class="container">
-      <div class="section-rule marginalia" data-reveal>
-        <span class="idx">05 / 07</span>
-        <span>ENTERPRISE</span>
-        <span class="ticks"></span>
-        <span>SLA · SCIM · SAML</span>
-      </div>
-      <div style="position:relative; overflow:hidden; border:1px solid var(--border); border-radius:24px; background:radial-gradient(ellipse at 0% 0%, rgba(29,78,216,0.06), transparent 50%), radial-gradient(ellipse at 100% 100%, rgba(13,148,136,0.06), transparent 50%), var(--card); padding:64px;" data-reveal>
-        <div class="ent-grid" style="display:grid; grid-template-columns:1.2fr 1fr; gap:48px; align-items:center;">
-          <div>
-            <div class="h-eyebrow" style="margin-bottom:16px; color:var(--accent);">ENTERPRISE</div>
-            <h2 class="h-display h-2" style="margin:0 0 16px;">Built for teams at scale.</h2>
-            <p style="color:var(--text-muted); font-size:16px; line-height:1.55; max-width:540px; margin:0 0 24px;">
-              Volume pricing, an uptime SLA, SCIM, SAML, and fine-grained RBAC, plus the
-              data-handling guarantee that matters for agent workloads: we never persist
-              scraped content. For teams who need to know exactly where their data goes.
-            </p>
-            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:24px;">
-              <span class="pill">Uptime SLA</span>
-              <span class="pill">Volume pricing</span>
-              <span class="pill">SCIM &amp; SAML</span>
-              <span class="pill">No content retention</span>
-              <span class="pill">Audit logs → your SIEM</span>
-              <span class="pill">Dedicated support</span>
-            </div>
-            <div style="display:flex; gap:10px;">
-              <a class="btn btn-primary" href="/enterprise">Talk to sales</a>
-              <a class="btn btn-secondary" href="/enterprise">Read the security overview</a>
-            </div>
-          </div>
-
-          <div class="surface" style="padding:0; overflow:hidden;">
-            <div style="border-bottom:1px solid var(--border); padding:12px 16px; font-size:12px; color:var(--text-muted); display:flex; justify-content:space-between;">
-              <span>governance.audit · 2026-05-24</span>
-              <span class="text-mono">3 events</span>
-            </div>
-            <div style="padding:14px 16px; font-family:var(--font-mono); font-size:11px; line-height:1.85;">
-              <div style="display:flex; gap:10px; padding:6px 0; border-bottom:1px dashed var(--border);">
-                <span class="text-dim">14:02:17</span>
-                <span class="badge badge-violet" style="padding:1px 5px;font-size:9px;">SCIM</span>
-                <div>user <span class="tok-prop">u_84a1</span> assigned role <span class="tok-str">"observer"</span> by sso/okta</div>
-              </div>
-              <div style="display:flex; gap:10px; padding:6px 0; border-bottom:1px dashed var(--border);">
-                <span class="text-dim">14:01:08</span>
-                <span class="badge badge-green" style="padding:1px 5px;font-size:9px;">CMK</span>
-                <div>workspace <span class="tok-prop">acme/prod</span> rotated KMS key · 30d cadence</div>
-              </div>
-              <div style="display:flex; gap:10px; padding:6px 0;">
-                <span class="text-dim">13:58:42</span>
-                <span class="badge badge-amber" style="padding:1px 5px;font-size:9px;">POLICY</span>
-                <div>egress to <span class="tok-str">"*.internal.com"</span> blocked · policy:allowlist</div>
-              </div>
+<span class="text-ink-500 italic"># → { "job_id": "job_8431", "stream": "wss://…/v1/jobs/job_8431" }</span></code></pre>
             </div>
           </div>
         </div>
@@ -554,345 +548,696 @@ job = og.crawl.<span class="tok-fn">start</span>(
     </div>
   </section>
 
-  <!-- ─────────────────────────  OPEN STANDARDS  ───────────────────────── -->
-  <section style="padding:8px 0 56px;">
-    <div class="container" style="text-align:center; max-width:760px;">
-      <p style="color:var(--text-dim); font-size:13px; line-height:1.7; margin:0;">
-        Built on open web standards: we honor the
-        <a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener" class="text-muted">Robots Exclusion Protocol (RFC 9309)</a>,
-        extract <a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener" class="text-muted">W3C JSON-LD</a> structured data,
-        and follow the <a href="https://en.wikipedia.org/wiki/Sitemaps" target="_blank" rel="noopener" class="text-muted">Sitemaps</a> and
-        <a href="https://en.wikipedia.org/wiki/Robots.txt" target="_blank" rel="noopener" class="text-muted">robots.txt</a> conventions the whole web already relies on.
-      </p>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────  FAQ  ───────────────────────── -->
-  <section class="section section--dense" id="faq">
-    <div class="container faq-wrap">
-      <div class="section-rule marginalia" data-reveal>
-        <span class="idx">06 / 07</span>
-        <span>FAQ</span>
-        <span class="ticks"></span>
-        <span>6 ANSWERS</span>
-      </div>
-      <div class="faq-head" data-reveal>
-        <div class="h-eyebrow pc-eyebrow">FAQ</div>
-        <h2 class="h-display h-2 faq-h2">Questions, answered.</h2>
-      </div>
-
-      <div class="faq-list" data-reveal>
-        <details class="faq-item" open>
-          <summary>How does Ollagraph compare to Firecrawl?</summary>
-          <p>Firecrawl is an excellent markdown-first context API. Ollagraph covers the same scrape,
-          crawl, and extract surface, then adds web search, domain intelligence, browser automation, and
-          agent observability behind one key. On price it bills a flat 1 credit per call with no
-          per-feature multipliers, offers true pay-as-you-go from $5, refunds automatically on failed
-          fetches, and starts you with 1,000 free credits. See the
-          <a href="/blog/firecrawl-alternatives">full Firecrawl comparison</a>.</p>
-        </details>
-        <details class="faq-item">
-          <summary>Is there a free tier and pay-as-you-go pricing?</summary>
-          <p>Yes. Every new account gets 1,000 free credits with no credit card, and every endpoint is
-          available on the free tier. Beyond that you can pay as you go from $5; you are not forced
-          onto a monthly subscription.</p>
-        </details>
-        <details class="faq-item">
-          <summary>How is Ollagraph priced and metered?</summary>
-          <p>Most endpoints cost a flat 1 credit per call and orchestrators cost 3. There are no 5&times;
-          render or extract multipliers, so a JavaScript-rendered page costs the same as a static one.
-          If an upstream fetch errors, the credit is refunded automatically before the response returns,
-          so you only pay for successful calls.</p>
-        </details>
-        <details class="faq-item">
-          <summary>Does Ollagraph provide an MCP server for AI agents?</summary>
-          <p>Yes. The Ollagraph MCP server exposes all %%ENDPOINT_COUNT%% endpoints as tools behind one key. Run
-          <span class="text-mono">pipx run ollagraph-mcp</span> and Claude Desktop, Cursor, or any MCP
-          client gets scrape, crawl, search, extract, and intelligence at once.</p>
-        </details>
-        <details class="faq-item">
-          <summary>Do you store the content Ollagraph scrapes?</summary>
-          <p>No. Ollagraph does not persist scraped page content. Requests are processed and returned; we
-          keep usage metadata for billing and observability, not the pages themselves; the guarantee
-          agent and enterprise workloads need.</p>
-        </details>
-        <details class="faq-item">
-          <summary>Is Ollagraph a good Firecrawl alternative?</summary>
-          <p>For teams that want more than markdown: search, extraction, domain intelligence, and
-          browser automation under one key, with pay-as-you-go pricing, refund-on-failure, and a
-          1,000-credit free tier, Ollagraph is a strong Firecrawl alternative. See the
-          <a href="/blog/firecrawl-alternatives">side-by-side comparison</a> and
-          <a href="/blog/firecrawl-pricing">pricing breakdown</a>.</p>
-        </details>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────  FINAL CTA  ───────────────────────── -->
-  <section class="section section--dense" style="padding:96px 0 64px; position:relative; overflow:hidden;">
-    <div class="hero-glow" style="top:auto; bottom:-300px;"></div>
-    <div class="split-container">
-      <div class="left-col">
-        <h2>Ship agents that actually understand the web.</h2>
-        <p>Start free with 1,000 credits. No credit card. Production-ready in five minutes and one platform you'll grow into, not out of.</p>
-      </div>
-      <div class="right-panel">
-        <div class="panel-title">Endpoint Initialization</div>
-        <a class="btn btn-primary btn-lg" style="width: 100%; text-align: center; justify-content: center;" href="/contactus">Create your account &rarr;</a>
-        <a class="btn btn-secondary btn-lg" style="width: 100%; text-align: center; justify-content: center;" href="/pricing">Compare pricing</a>
-        <div class="panel-footer">Free tier is generous. No credit card. The whole catalog from day one.</div>
-      </div>
-    </div>
-  </section>
-
-  <div id="footer-root"></div>
-
-  <script is:inline src="/scripts/ascii.js" defer></script>
-
-  <!-- ─────────────────────────  PAGE STYLES  ───────────────────────── -->
-  <style>
-    /* Split Panel CTA rules */
-    .split-container {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr;
-      gap: 40px;
-      text-align: left;
-      align-items: center;
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 40px;
-    }
-    @media (max-width: 768px) {
-      .split-container {
-        grid-template-columns: 1fr;
-        gap: 24px;
+  <script>
+  let currentCodeTab = 'ts';
+  function switchTab(lang) {
+    currentCodeTab = lang;
+    const tabs = ['ts', 'py', 'curl'];
+    tabs.forEach(t => {
+      const btn = document.getElementById('tab-' + t);
+      const code = document.getElementById('code-' + t);
+      if (!btn || !code) return;
+      if (t === lang) {
+        btn.className = "px-3 py-1 rounded-md text-xs font-semibold text-white bg-ink-800 border border-ink-600 shadow-sm transition-all";
+        code.classList.remove('hidden');
+      } else {
+        btn.className = "px-3 py-1 rounded-md text-xs font-medium text-ink-400 hover:text-white hover:bg-ink-800/50 border border-transparent transition-all";
+        code.classList.add('hidden');
       }
-    }
-    .split-container .left-col h2 {
-      font-family: var(--font-display);
-      font-size: 30px;
-      font-weight: 500;
-      line-height: 1.3;
-      margin: 0 0 16px;
-    }
-    .split-container .left-col p {
-      color: var(--text-muted);
-      font-size: 15px;
-      line-height: 1.6;
-      margin: 0;
-    }
-    .split-container .right-panel {
-      background: var(--surface);
-      border: 1px solid var(--border-strong);
-      padding: 28px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .split-container .panel-title {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--text-dim);
-      margin-bottom: 8px;
-    }
-    .split-container .panel-footer {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-top: 8px;
-    }
+    });
+  }
 
-    .logo-mark {
-      font-family: var(--font-display);
-      font-size: 16px;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-      text-align: center;
-      font-weight: 600;
+  function copyActiveCode() {
+    const codeEl = document.getElementById('code-' + currentCodeTab);
+    if (codeEl) {
+      const text = codeEl.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copy-code-btn');
+        if (btn) {
+          btn.innerHTML = '<span class="text-emerald-400 text-[11px] font-mono">Copied!</span>';
+          setTimeout(() => {
+            btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+          }, 1500);
+        }
+      });
     }
+  }
 
-    /* Side nav rows (hero dashboard) */
-    .side-nav {
-      display: flex; align-items: center; gap: 9px;
-      padding: 7px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      color: var(--text-muted);
-      cursor: default;
-    }
-    .side-nav[data-active] { background: rgba(29,78,216,0.08); color: var(--text); }
-    .side-nav[data-active] svg { color: var(--accent); }
-    .side-nav svg { color: var(--text-dim); }
+  function copyHeroCode() {
+    const code = `curl https://api.ollagraph.com/v1/scrape/llm-ready \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://en.wikipedia.org/wiki/Web_scraping",
+    "max_tokens": 512,
+    "overlap_tokens": 64
+  }'`;
+    navigator.clipboard.writeText(code).then(() => {
+      const btn = document.getElementById('hero-copy-btn');
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="text-emerald-400 text-[11px] font-mono">✓ Copied</span>';
+        setTimeout(() => { btn.innerHTML = orig; }, 1800);
+      }
+    });
+  }
+  </script>
+<!-- END: DeveloperExperience -->
+<!-- BEGIN: UseCasesSection -->
+<section class="py-24 bg-white border-b border-ink-200" id="use-cases">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex items-center justify-between border-b border-ink-200 pb-4 mb-10">
+<div>
+<div class="text-xs font-mono text-ink-500 uppercase tracking-wider mb-1">
+<span class="text-brand font-semibold">03 / 07</span> • USE CASES
+            </div>
+<h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-ink-950">
+              One API, built for what agents actually do.
+            </h2>
+</div>
+<div class="hidden sm:block text-right">
+<span class="font-mono text-xs text-ink-400">4 PATTERNS</span>
+</div>
+</div>
+<p class="text-ink-600 text-base max-w-3xl mb-12 -mt-4">
+          From RAG ingestion to lead enrichment, price monitoring, and AI-search audits: the same key, the same flat pricing.
+        </p>
+<!-- Use Case Grid with Interactive Cards & Smooth Slide Arrow -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<!-- Use Case 1 -->
+<a href="/for-ai" class="block border border-ink-200 rounded-lg p-6 hover:border-brand/50 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 bg-white group relative overflow-hidden">
+<div class="absolute top-0 left-0 right-0 h-[2px] bg-transparent group-hover:bg-brand transition-colors duration-300"></div>
+<span class="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-400 group-hover:text-brand transition-colors">PATTERN 01</span>
+<h3 class="text-lg font-bold text-ink-900 mt-2 mb-2 group-hover:text-brand transition-colors">RAG &amp; LLM pipelines</h3>
+<p class="text-xs text-ink-600 leading-relaxed mb-6">
+              Turn any site or document into clean, chunked, model-ready markdown for retrieval and training.
+            </p>
+<span class="inline-flex items-center text-xs font-medium text-brand group-hover:underline">
+              Build a RAG pipeline <span class="ml-1 transition-transform duration-200 group-hover:translate-x-1">→</span>
+</span>
+</a>
+<!-- Use Case 2 -->
+<a href="/recipes/enrich-leads-from-domain" class="block border border-ink-200 rounded-lg p-6 hover:border-brand/50 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 bg-white group relative overflow-hidden">
+<div class="absolute top-0 left-0 right-0 h-[2px] bg-transparent group-hover:bg-brand transition-colors duration-300"></div>
+<span class="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-400 group-hover:text-brand transition-colors">PATTERN 02</span>
+<h3 class="text-lg font-bold text-ink-900 mt-2 mb-2 group-hover:text-brand transition-colors">Sales &amp; lead intelligence</h3>
+<p class="text-xs text-ink-600 leading-relaxed mb-6">
+              Enrich domains into contacts, tech stack, and firmographics for prospecting and RevOps.
+            </p>
+<span class="inline-flex items-center text-xs font-medium text-brand group-hover:underline">
+              Enrich leads from a domain <span class="ml-1 transition-transform duration-200 group-hover:translate-x-1">→</span>
+</span>
+</a>
+<!-- Use Case 3 -->
+<a href="/recipes/monitor-competitor-pricing" class="block border border-ink-200 rounded-lg p-6 hover:border-brand/50 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 bg-white group relative overflow-hidden">
+<div class="absolute top-0 left-0 right-0 h-[2px] bg-transparent group-hover:bg-brand transition-colors duration-300"></div>
+<span class="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-400 group-hover:text-brand transition-colors">PATTERN 03</span>
+<h3 class="text-lg font-bold text-ink-900 mt-2 mb-2 group-hover:text-brand transition-colors">Price &amp; review monitoring</h3>
+<p class="text-xs text-ink-600 leading-relaxed mb-6">
+              Track competitor SKUs, prices, and reviews across marketplaces on a schedule.
+            </p>
+<span class="inline-flex items-center text-xs font-medium text-brand group-hover:underline">
+              Monitor competitor pricing <span class="ml-1 transition-transform duration-200 group-hover:translate-x-1">→</span>
+</span>
+</a>
+<!-- Use Case 4 -->
+<a href="/for-seo" class="block border border-ink-200 rounded-lg p-6 hover:border-brand/50 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 bg-white group relative overflow-hidden">
+<div class="absolute top-0 left-0 right-0 h-[2px] bg-transparent group-hover:bg-brand transition-colors duration-300"></div>
+<span class="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-400 group-hover:text-brand transition-colors">PATTERN 04</span>
+<h3 class="text-lg font-bold text-ink-900 mt-2 mb-2 group-hover:text-brand transition-colors">SEO &amp; AEO audits</h3>
+<p class="text-xs text-ink-600 leading-relaxed mb-6">
+              Audit how search engines and AI answer engines see, cite, and rank your pages.
+            </p>
+<span class="inline-flex items-center text-xs font-medium text-brand group-hover:underline">
+              Audit for AI search <span class="ml-1 transition-transform duration-200 group-hover:translate-x-1">→</span>
+</span>
+</a>
+</div>
+</div>
+</section>
+<!-- END: UseCasesSection -->
+<!-- BEGIN: PricingAndComparison -->
+<section class="py-24 bg-ink-50/50 border-b border-ink-200" id="pricing">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex items-center justify-between border-b border-ink-200 pb-4 mb-10">
+<div>
+<div class="text-xs font-mono text-ink-500 uppercase tracking-wider mb-1">
+<span class="text-brand font-semibold">04 / 07</span> • PRICING
+            </div>
+<h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-ink-950">
+              Priced for how agents actually run.
+            </h2>
+</div>
+<div class="hidden sm:block text-right">
+<span class="font-mono text-xs text-brand font-semibold">FLAT 1 CREDIT</span>
+</div>
+</div>
+<p class="text-ink-600 text-base max-w-3xl mb-10 -mt-4">
+          A flat 1 credit per call; no JS extract multipliers, so a JavaScript-rendered page costs the same as a static one. Pay as you go from $5, get refunded automatically when a fetch fails, and start with 1,000 free credits.
+        </p>
+<!-- Feature Highlight Check-pills with hover lift -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs font-mono text-ink-700 mb-10">
+<div class="flex items-center gap-2 p-3 bg-white border border-ink-200 rounded hover:border-ink-300 hover:shadow-xs transition-all duration-200">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+<span>1,000 Free credits</span>
+</div>
+<div class="flex items-center gap-2 p-3 bg-white border border-ink-200 rounded hover:border-ink-300 hover:shadow-xs transition-all duration-200">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span>Pay-as-you-go from $5</span>
+</div>
+<div class="flex items-center gap-2 p-3 bg-white border border-ink-200 rounded hover:border-ink-300 hover:shadow-xs transition-all duration-200">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span>Flat 1 credit, no multipliers</span>
+</div>
+<div class="flex items-center gap-2 p-3 bg-white border border-ink-200 rounded hover:border-ink-300 hover:shadow-xs transition-all duration-200">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span>Refund on failure</span>
+</div>
+<div class="flex items-center gap-2 p-3 bg-white border border-ink-200 rounded hover:border-ink-300 hover:shadow-xs transition-all duration-200">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span>No content retention</span>
+</div>
+</div>
+<!-- Comparison Table Matrix with Row Hover Effects -->
+<div class="border border-ink-200 rounded-lg overflow-hidden bg-white shadow-xs">
+<div class="overflow-x-auto">
+<table class="w-full text-left font-mono text-xs border-collapse">
+<thead>
+<tr class="border-b border-ink-200 bg-ink-50/80 text-[11px] text-ink-500">
+<th class="p-4 uppercase font-semibold">HOW IT COMPARES</th>
+<th class="p-4 uppercase font-semibold text-brand bg-brand/5 border-x border-brand/20">
+<div class="flex items-center justify-between">
+<span>OLLAGRAPH</span>
+<span class="bg-brand text-white text-[9px] px-1.5 py-0.2 rounded uppercase animate-pulse">RECOMMENDED</span>
+</div>
+</th>
+<th class="p-4 uppercase font-semibold text-ink-700">FIRECRAWL</th>
+<th class="p-4 uppercase font-semibold text-ink-500">TYPICAL SCRAPING API</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-ink-200 text-ink-800">
+<tr class="hover:bg-rose-50/50 transition-colors duration-150">
+<td class="p-4 font-sans text-ink-900 font-medium">Price per call</td>
+<td class="p-4 bg-brand/5 border-x border-brand/20 font-bold text-ink-950">
+<span class="bg-brand text-white px-2 py-0.5 rounded text-[11px] shadow-xs">Flat 1 credit</span>
+</td>
+<td class="p-4 text-ink-600">1-5x by feature</td>
+<td class="p-4 text-ink-400">Per-request tiers</td>
+</tr>
+<tr class="hover:bg-rose-50/50 transition-colors duration-150">
+<td class="p-4 font-sans text-ink-900 font-medium">Pay-as-you-go from $5</td>
+<td class="p-4 bg-brand/5 border-x border-brand/20 text-emerald-600 font-bold">✓ Yes</td>
+<td class="p-4 text-ink-600">No</td>
+<td class="p-4 text-ink-400">Varies</td>
+</tr>
+<tr class="hover:bg-rose-50/50 transition-colors duration-150">
+<td class="p-4 font-sans text-ink-900 font-medium">Refund on failed fetch</td>
+<td class="p-4 bg-brand/5 border-x border-brand/20 text-emerald-600 font-bold">✓ Yes</td>
+<td class="p-4 text-ink-600">No</td>
+<td class="p-4 text-ink-400">No</td>
+</tr>
+<tr class="hover:bg-rose-50/50 transition-colors duration-150">
+<td class="p-4 font-sans text-ink-900 font-medium">Free to start</td>
+<td class="p-4 bg-brand/5 border-x border-brand/20 font-bold text-ink-950">1,000 credits</td>
+<td class="p-4 text-ink-600">500 credits</td>
+<td class="p-4 text-ink-400">Trial</td>
+</tr>
+<tr class="hover:bg-rose-50/50 transition-colors duration-150">
+<td class="p-4 font-sans text-ink-900 font-medium">MCP server included</td>
+<td class="p-4 bg-brand/5 border-x border-brand/20 text-emerald-600 font-bold">✓ Yes</td>
+<td class="p-4 text-ink-600">Yes</td>
+<td class="p-4 text-ink-400">No</td>
+</tr>
+<tr class="hover:bg-rose-50/50 transition-colors duration-150">
+<td class="p-4 font-sans text-ink-900 font-medium">Search + crawl + extract + intelligence, one key</td>
+<td class="p-4 bg-brand/5 border-x border-brand/20 text-emerald-600 font-bold">✓ Yes</td>
+<td class="p-4 text-ink-600">Scrape + crawl</td>
+<td class="p-4 text-ink-400">Scrape only</td>
+</tr>
+<tr class="hover:bg-rose-50/50 transition-colors duration-150">
+<td class="p-4 font-sans text-ink-900 font-medium">No scraped-content retention</td>
+<td class="p-4 bg-brand/5 border-x border-brand/20 text-emerald-600 font-bold">✓ Yes</td>
+<td class="p-4 text-ink-400">—</td>
+<td class="p-4 text-ink-400">—</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Matrix Callout Note -->
+<div class="mt-4 p-4 rounded-lg bg-ink-100 border border-ink-200 text-xs text-ink-600 leading-relaxed font-mono">
+          On raw static HTML, a few providers match our entry rate. Where Ollagraph pulls ahead is real-world, JavaScript-rendered pages: one flat credit, no render multiplier, plus pay-as-you-go, refund-on-failure, and the largest free tier. Firecrawl is a great markdown-first tool; we go further on predictability and breadth.
+        </div>
+<div class="mt-6 flex flex-wrap items-center gap-3">
+<a class="px-3.5 py-2 rounded bg-brand text-white text-xs font-semibold hover:bg-brand-hover shadow-xs hover:shadow hover:-translate-y-0.5 active:translate-y-0 transition-all" href="/pricing">Compare pricing</a>
+<a class="px-3.5 py-2 rounded border border-ink-300 text-ink-700 bg-white hover:bg-ink-50 hover:border-ink-400 text-xs font-medium hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-xs" href="/blog/firecrawl-alternatives">Ollagraph vs Firecrawl</a>
+<a class="px-3.5 py-2 text-ink-500 hover:text-ink-800 text-xs font-mono transition-colors group flex items-center gap-1" href="/blog/firecrawl-pricing">Firecrawl pricing explained <span class="transition-transform duration-200 group-hover:translate-x-1">→</span></a>
+</div>
+</div>
+</section>
+<!-- END: PricingAndComparison -->
+<!-- BEGIN: EnterpriseTier -->
+<section class="py-24 bg-white border-b border-ink-200" id="enterprise">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex items-center justify-between border-b border-ink-200 pb-4 mb-10">
+<div>
+<div class="text-xs font-mono text-ink-500 uppercase tracking-wider mb-1">
+<span class="text-brand font-semibold">05 / 07</span> • ENTERPRISE
+            </div>
+<h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-ink-950">
+              Built for teams at scale.
+            </h2>
+</div>
+<div class="hidden sm:block text-right">
+<span class="font-mono text-xs text-ink-400">SLA • SCIM • SAML</span>
+</div>
+</div>
+<div class="rounded-xl border border-ink-200 bg-gradient-to-br from-rose-50/20 via-white to-ink-50 p-8 lg:p-12 shadow-sm transition-all duration-300 hover:shadow-md">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+<div class="lg:col-span-7 space-y-6">
+<div class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-brand/10 text-brand uppercase tracking-wider">
+                ★ ENTERPRISE
+              </div>
+<h3 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950">
+                Governance, controls &amp; dedicated throughput.
+              </h3>
+<p class="text-sm text-ink-600 leading-relaxed max-w-xl">
+                Volume pricing, an uptime SLA, SCIM, SAML, and fine-grained RBAC, plus the data-handling guarantee that matters for agent workloads: we never persist scraped content. For teams who need to know exactly where their data goes.
+              </p>
+<!-- Enterprise feature checkmark list -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono text-ink-800 pt-2">
+<div class="flex items-center space-x-2 group">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span>Uptime SLA</span>
+</div>
+<div class="flex items-center space-x-2 group">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span>Volume pricing</span>
+</div>
+<div class="flex items-center space-x-2 group">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span>SCIM &amp; SAML</span>
+</div>
+<div class="flex items-center space-x-2 group">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span>No content retention</span>
+</div>
+<div class="flex items-center space-x-2 group">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span>Audit logs - your SIEM</span>
+</div>
+<div class="flex items-center space-x-2 group">
+<span class="text-emerald-600 font-bold transition-transform group-hover:scale-125">✓</span>
+<span>Dedicated support</span>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-3 pt-4">
+<a class="px-4 py-2.5 rounded bg-brand text-white text-xs font-semibold hover:bg-brand-hover hover:shadow-md hover:shadow-brand/20 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 shadow-sm" href="/enterprise">
+                  Talk to sales
+                </a>
+<a class="px-4 py-2.5 rounded border border-ink-300 text-ink-700 bg-white text-xs font-medium hover:bg-ink-50 hover:border-ink-400 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200" href="/enterprise">
+                  Read the security overview
+                </a>
+</div>
+</div>
+<!-- Enterprise Terminal Visual -->
+<div class="lg:col-span-5">
+<div class="rounded-xl border border-ink-800 bg-[#090D14] p-4 sm:p-5 font-mono text-xs text-ink-300 shadow-2xl transition-all duration-300 hover:border-ink-700 hover:shadow-black/70">
+<div class="flex items-center justify-between border-b border-ink-800 pb-3 mb-3.5 text-[11px]">
+  <div class="flex items-center space-x-3">
+    <!-- Window Controls -->
+    <div class="flex items-center gap-1.5 pr-2.5 border-r border-ink-800">
+      <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+      <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+      <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-ink-200 font-medium">governance.audit</span>
+      <span class="text-ink-500 font-mono text-[10px] hidden sm:inline">2026-09-24</span>
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="relative flex h-2 w-2">
+      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+      <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+    </span>
+    <span class="text-[10px] px-2 py-0.5 rounded bg-ink-900 text-ink-400 border border-ink-800 font-mono">3 events</span>
+  </div>
+</div>
+<div class="space-y-2.5">
+  <!-- Event 1: SCIM -->
+  <div class="p-2.5 rounded-lg bg-ink-900/60 border border-ink-800 hover:border-ink-700 hover:bg-ink-900/90 transition-all duration-150">
+    <div class="flex items-center justify-between gap-2 text-[10px] mb-1.5">
+      <div class="flex items-center gap-2">
+        <span class="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-purple-950 text-purple-300 border border-purple-800/60 font-mono tracking-wide">SCIM</span>
+        <span class="text-ink-500 font-mono">14:02:17</span>
+      </div>
+      <span class="text-ink-400 font-mono text-[10px]">sso/okta</span>
+    </div>
+    <div class="text-[11.5px] text-ink-200 leading-snug font-mono">
+      user <span class="text-sky-300 font-medium">u_84a1</span> assigned role <span class="text-emerald-300">"observer"</span>
+    </div>
+  </div>
 
-    /* Log rows */
-    .log-row {
-      display: grid;
-      grid-template-columns: 92px 38px 60px 1fr;
-      gap: 8px;
-      align-items: center;
-      padding: 4px 14px;
-      border-bottom: 1px solid rgba(17,21,26,0.025);
-    }
-    .log-row:last-child { border-bottom: none; }
-    .log-time { color: var(--text-dim); }
-    .log-meta { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  <!-- Event 2: CMK -->
+  <div class="p-2.5 rounded-lg bg-ink-900/60 border border-ink-800 hover:border-ink-700 hover:bg-ink-900/90 transition-all duration-150">
+    <div class="flex items-center justify-between gap-2 text-[10px] mb-1.5">
+      <div class="flex items-center gap-2">
+        <span class="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800/60 font-mono tracking-wide">CMK</span>
+        <span class="text-ink-500 font-mono">14:01:08</span>
+      </div>
+      <span class="text-ink-400 font-mono text-[10px]">30d cadence</span>
+    </div>
+    <div class="text-[11.5px] text-ink-200 leading-snug font-mono">
+      workspace <span class="text-purple-300 font-medium">acme/prod</span> rotated KMS key
+    </div>
+  </div>
 
-    /* Feature grid */
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-    }
-    .feature-card {
-      background: var(--surface);
-      padding: 28px 24px;
-      transition: background 0.2s;
-      grid-column: span 2;
-    }
-    .feature-card:hover { background: var(--card); }
-    .feature-card--featured {
-      grid-column: span 3;
-    }
-    .feature-card--featured h3 {
-      font-weight: 700 !important;
-      font-size: 18px !important;
-    }
-    .feature-card--dim h3,
-    .feature-card--dim p,
-    .feature-card--dim .feature-icon {
-      opacity: 0.8;
-      transition: opacity 0.2s;
-    }
-    .feature-card--dim:hover h3,
-    .feature-card--dim:hover p,
-    .feature-card--dim:hover .feature-icon {
-      opacity: 1;
-    }
-    .feature-icon {
-      width: 36px; height: 36px;
-      border-radius: 9px;
-      background: color-mix(in oklab, var(--ic) 12%, transparent);
-      border: 1px solid color-mix(in oklab, var(--ic) 28%, transparent);
-      display: flex; align-items: center; justify-content: center;
-      color: var(--ic);
-      margin-bottom: 18px;
-    }
-    .feature-icon svg { width: 18px; height: 18px; }
-    .feature-card h3 {
-      font-family: var(--font-display);
-      font-size: 16px;
-      font-weight: 500;
-      letter-spacing: -0.01em;
-      margin: 0 0 8px;
-    }
-    .feature-card p { font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.55; }
-
-    /* Code tabs */
-    .code-tab {
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-    }
-    .code-tab.active { background: rgba(29,78,216,0.1); color: var(--accent); }
-    .code-tab:hover { color: var(--text); }
-    .copy-btn { padding: 5px; border-radius: 5px; color: var(--text-muted); }
-    .copy-btn:hover { background: rgba(17,21,26,0.05); color: var(--text); }
-    .code-body { margin: 0; }
-    .code-body code { color: var(--text); }
-
-    /* Comparison table */
-    .compare-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    .compare-table th, .compare-table td {
-      padding: 16px 22px;
-      text-align: center;
-      border-bottom: 1px solid var(--border);
-    }
-    .compare-table th { font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); background: rgba(17,21,26,0.02); }
-    .compare-table th:first-child, .compare-table td:first-child { text-align: left; color: var(--text); }
-    .compare-table tr:last-child td { border-bottom: none; background: rgba(29,78,216,0.05); font-weight: 500; }
-    .og-col { color: var(--accent); font-weight: 500; }
-    .ck::before { content: ""; display: inline-block; width: 18px; height: 18px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231D4ED8' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>"); background-size: 14px; background-position: center; background-repeat: no-repeat; }
-    .cx { color: var(--text-dim); font-size: 13px; }
-    .cp { color: var(--amber); font-size: 12px; }
-
-    /* FAQ */
-    .faq-item { border-bottom: 1px solid var(--border); }
-    .faq-item summary {
-      list-style: none; cursor: pointer;
-      padding: 18px 0; font-size: 16px; font-weight: 500;
-      color: var(--text); display: flex; justify-content: space-between; align-items: center; gap: 16px;
-    }
-    .faq-item summary::-webkit-details-marker { display: none; }
-    .faq-item summary::after { content: "+"; color: var(--accent); font-size: 22px; line-height: 1; }
-    .faq-item[open] summary::after { content: "\2212"; }
-    .faq-item p { margin: 0 0 20px; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
-    .faq-item a { color: var(--accent); }
-
-    /* Pricing / comparison + FAQ layout */
-    .pc-head { max-width: 760px; margin-bottom: 40px; }
-    .pc-eyebrow { margin-bottom: 16px; }
-    .pc-h2 { margin: 0 0 16px; }
-    .pc-lead { color: var(--text-muted); font-size: 16px; line-height: 1.55; margin: 0; }
-    .pc-teaser { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 36px; }
-    .pc-table-wrap { padding: 0; overflow-x: auto; }
-    .pc-note { color: var(--text-dim); font-size: 13px; line-height: 1.7; margin: 20px 0 0; max-width: 760px; }
-    .pc-ctas { margin-top: 24px; display: flex; gap: 10px; flex-wrap: wrap; }
-    .faq-wrap { max-width: 820px; }
-    .faq-head { margin-bottom: 40px; }
-    .faq-h2 { margin: 0; }
-    .faq-list { display: flex; flex-direction: column; gap: 4px; }
-    .grid-more { margin-top: 20px; color: var(--text-dim); font-size: 13px; line-height: 1.7; }
-    .grid-more a { color: var(--accent); }
-
-    /* Trust band */
-    .trust-section { padding: 8px 0 20px; }
-    .trust-band { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 28px; color: var(--text-muted); font-size: 13px; }
-    .trust-band span { display: inline-flex; align-items: center; gap: 7px; }
-    .trust-band span::before { content: "\2713"; color: var(--accent); font-weight: 700; }
-
-    /* Use-case cards */
-    .uc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    .uc-card { display: block; padding: 24px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); transition: background 0.2s, border-color 0.2s; }
-    .uc-card:hover { background: var(--card); border-color: rgba(29,78,216,0.35); }
-    .uc-card h3 { font-family: var(--font-display); font-size: 17px; font-weight: 500; margin: 0 0 8px; }
-    .uc-card p { color: var(--text-muted); font-size: 14px; line-height: 1.55; margin: 0 0 12px; }
-    .uc-link { color: var(--accent); font-size: 13px; }
-
-    /* Responsive */
-    @media (max-width: 1100px) {
-      .feature-grid { grid-template-columns: repeat(2,1fr); }
-      .feature-card { grid-column: span 1; }
-      .feature-card--featured { grid-column: span 2; }
-      .nav-links { display: none; }
-    }
-    @media (max-width: 860px) {
-      /* Inline-styled grids get classes + !important collapse (inline beats
-         any stylesheet rule otherwise). */
-      .api-head { height: auto !important; min-height: 42px; flex-wrap: wrap; padding: 8px 14px !important; }
-      .api-panes { grid-template-columns: 1fr !important; min-height: 0 !important; }
-      .api-panes > div:first-child { border-right: none !important; border-bottom: 1px solid var(--border); }
-      .ent-grid { grid-template-columns: 1fr !important; gap: 32px !important; }
-      .feature-card { grid-column: auto !important; }
-      .feature-card--featured { grid-column: auto !important; }
-    }
-    @media (max-width: 760px) {
-      .container, .container-wide { padding: 0 20px; }
-      .feature-grid { grid-template-columns: 1fr; }
-      .feature-card { grid-column: auto !important; }
-      .feature-card--featured { grid-column: auto !important; }
-      .uc-grid { grid-template-columns: 1fr; }
-      .compare-table th, .compare-table td { padding: 12px 10px; font-size: 12px; }
-      .compare-table th:nth-child(n+3), .compare-table td:nth-child(n+3) { display: none; }
-    }
-  </style>
+  <!-- Event 3: POLICY -->
+  <div class="p-2.5 rounded-lg bg-ink-900/60 border border-ink-800 hover:border-ink-700 hover:bg-ink-900/90 transition-all duration-150">
+    <div class="flex items-center justify-between gap-2 text-[10px] mb-1.5">
+      <div class="flex items-center gap-2">
+        <span class="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-amber-950 text-amber-300 border border-amber-800/60 font-mono tracking-wide">POLICY</span>
+        <span class="text-ink-500 font-mono">13:58:42</span>
+      </div>
+      <span class="px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-rose-950/80 text-rose-300 border border-rose-900/60">policy:allowlist</span>
+    </div>
+    <div class="text-[11.5px] text-ink-200 leading-snug font-mono">
+      egress to <span class="text-amber-300 font-medium">"*.internal.com"</span> blocked
+    </div>
+  </div>
+</div>
+<div class="mt-3.5 pt-3 border-t border-ink-800 flex items-center justify-between text-[10px]">
+  <div class="flex items-center gap-1.5 text-emerald-400 font-mono">
+    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+    <span class="font-medium tracking-wide">SIEM: STREAMING</span>
+  </div>
+  <div class="flex items-center gap-2 font-mono">
+    <span class="text-ink-500">RETENTION:</span>
+    <span class="px-1.5 py-0.5 rounded bg-ink-900 text-emerald-400 border border-emerald-900/50 font-semibold text-[9.5px]">ZERO PERSIST</span>
+  </div>
+</div>
+</div>
+</div>
+</div>
+<!-- Open Web Standards Disclaimer Note -->
+<p class="text-center font-mono text-[11px] text-ink-500 mt-8">
+          Built on open web standards: we honor the <a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener" class="text-ink-700 underline hover:text-brand transition-colors">Robots Exclusion Protocol (RFC 9309)</a>, extract <a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener" class="text-ink-700 underline hover:text-brand transition-colors">W3C JSON-LD</a> structured data, and follow the <a href="https://en.wikipedia.org/wiki/Sitemaps" target="_blank" rel="noopener" class="text-ink-700 underline hover:text-brand transition-colors">sitemaps</a> and <a href="https://en.wikipedia.org/wiki/Robots.txt" target="_blank" rel="noopener" class="text-ink-700 underline hover:text-brand transition-colors">robots.txt</a> conventions the whole web already relies on.
+        </p>
+</div>
+</section>
+<!-- END: EnterpriseTier -->
+<!-- BEGIN: FAQSection -->
+<section class="py-24 bg-ink-50/40 border-b border-ink-200" id="faq">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start">
+<!-- Left Column: Sticky Title & Helpful Links -->
+<div class="lg:col-span-5 lg:sticky lg:top-24 space-y-6">
+<div>
+<div class="text-xs font-mono text-ink-500 uppercase tracking-wider mb-2">
+<span class="text-brand font-semibold">06 / 07</span> • FAQ
+</div>
+<h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-ink-950">
+Questions, answered.
+</h2>
+</div>
+<p class="text-sm text-ink-600 leading-relaxed">
+Everything you need to know about pricing, data retention, MCP integration, and agent infrastructure.
+</p>
+<!-- Contact Card -->
+<div class="p-5 rounded-lg border border-ink-200 bg-white shadow-xs space-y-2.5">
+<div class="flex items-center gap-2 text-xs font-semibold text-ink-900">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+Have a specific question?
+</div>
+<p class="text-xs text-ink-600 leading-relaxed">
+Can't find what you're looking for? Check our interactive API documentation or reach out directly.
+</p>
+<div class="pt-1 flex flex-wrap items-center gap-3 text-xs font-medium">
+<a class="text-brand hover:underline inline-flex items-center gap-1" href="/contactus">
+Contact engineering <span class="text-sm">→</span>
+</a>
+<span class="text-ink-300">•</span>
+<a class="text-ink-600 hover:text-ink-900 transition-colors" href="/docs">
+Explore docs
+</a>
+</div>
+</div>
+</div>
+<!-- Right Column: FAQ Accordion Stack -->
+<div class="lg:col-span-7 space-y-4">
+<!-- FAQ Item 1 -->
+<details class="group bg-white border border-ink-200 open:border-brand/40 rounded-lg p-5 transition-all duration-200 hover:border-ink-300 open:shadow-sm" open="">
+<summary class="flex items-center justify-between cursor-pointer font-medium text-ink-950 text-sm list-none select-none">
+<span class="group-hover:text-brand transition-colors">How does Ollagraph compare to Firecrawl?</span>
+<svg class="w-4 h-4 text-ink-400 transition-transform duration-300 group-open:rotate-180 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</summary>
+<div class="mt-3 text-xs text-ink-600 leading-relaxed font-normal pt-2 border-t border-ink-100">
+Firecrawl is an excellent markdown-first context API. Ollagraph covers the same scrape, crawl, and extract surface, then adds web search, domain intelligence, browser automation, and agent observability behind one key. On price it bills a flat 1 credit per call with no per-feature multipliers, offers true pay-as-you-go from $5, refunds automatically on failed calls, and gives 1,000 free credits. See the <a class="text-brand underline hover:text-brand-dark" href="/blog/firecrawl-alternatives">full Firecrawl comparison</a>.
+</div>
+</details>
+<!-- FAQ Item 2 -->
+<details class="group bg-white border border-ink-200 open:border-brand/40 rounded-lg p-5 transition-all duration-200 hover:border-ink-300 open:shadow-sm">
+<summary class="flex items-center justify-between cursor-pointer font-medium text-ink-950 text-sm list-none select-none">
+<span class="group-hover:text-brand transition-colors">Is there a free tier and pay-as-you-go pricing?</span>
+<svg class="w-4 h-4 text-ink-400 transition-transform duration-300 group-open:rotate-180 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</summary>
+<div class="mt-3 text-xs text-ink-600 leading-relaxed font-normal pt-2 border-t border-ink-100">
+Yes. You get 1,000 credits completely free upon signup without entering a credit card. When you're ready to scale, you can pay as you go starting from just $5. There are no mandatory recurring monthly subscription commitments for standard developer usage.
+</div>
+</details>
+<!-- FAQ Item 3 -->
+<details class="group bg-white border border-ink-200 open:border-brand/40 rounded-lg p-5 transition-all duration-200 hover:border-ink-300 open:shadow-sm">
+<summary class="flex items-center justify-between cursor-pointer font-medium text-ink-950 text-sm list-none select-none">
+<span class="group-hover:text-brand transition-colors">How is Ollagraph priced and metered?</span>
+<svg class="w-4 h-4 text-ink-400 transition-transform duration-300 group-open:rotate-180 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</summary>
+<div class="mt-3 text-xs text-ink-600 leading-relaxed font-normal pt-2 border-t border-ink-100">
+Every standard endpoint consumes exactly 1 credit per successful HTTP 200 call. We do not apply JS multipliers or complexity penalties. Orchestrated multi-step operations cost 3 credits. If any upstream fetch or extraction fails, the credit is refunded to your balance automatically.
+</div>
+</details>
+<!-- FAQ Item 4 -->
+<details class="group bg-white border border-ink-200 open:border-brand/40 rounded-lg p-5 transition-all duration-200 hover:border-ink-300 open:shadow-sm">
+<summary class="flex items-center justify-between cursor-pointer font-medium text-ink-950 text-sm list-none select-none">
+<span class="group-hover:text-brand transition-colors">Does Ollagraph provide an MCP server for AI agents?</span>
+<svg class="w-4 h-4 text-ink-400 transition-transform duration-300 group-open:rotate-180 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</summary>
+<div class="mt-3 text-xs text-ink-600 leading-relaxed font-normal pt-2 border-t border-ink-100">
+Yes, Ollagraph is completely MCP-native. You can run <code class="font-mono bg-ink-100 px-1 py-0.5 rounded text-brand">pipx run ollagraph-mcp</code> to instantly expose all %%ENDPOINT_COUNT%% tools directly to Claude Desktop, Cursor, or your custom Model Context Protocol client with full schema typing.
+</div>
+</details>
+<!-- FAQ Item 5 -->
+<details class="group bg-white border border-ink-200 open:border-brand/40 rounded-lg p-5 transition-all duration-200 hover:border-ink-300 open:shadow-sm">
+<summary class="flex items-center justify-between cursor-pointer font-medium text-ink-950 text-sm list-none select-none">
+<span class="group-hover:text-brand transition-colors">Do you store the content Ollagraph scrapes?</span>
+<svg class="w-4 h-4 text-ink-400 transition-transform duration-300 group-open:rotate-180 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</summary>
+<div class="mt-3 text-xs text-ink-600 leading-relaxed font-normal pt-2 border-t border-ink-100">
+No. We enforce a zero content-retention posture. Data fetched from the web is passed directly back to your agent or stored temporarily only in volatile memory during chunking and extraction operations, after which it is immediately purged.
+</div>
+</details>
+<!-- FAQ Item 6 -->
+<details class="group bg-white border border-ink-200 open:border-brand/40 rounded-lg p-5 transition-all duration-200 hover:border-ink-300 open:shadow-sm">
+<summary class="flex items-center justify-between cursor-pointer font-medium text-ink-950 text-sm list-none select-none">
+<span class="group-hover:text-brand transition-colors">Is Ollagraph a good Firecrawl alternative?</span>
+<svg class="w-4 h-4 text-ink-400 transition-transform duration-300 group-open:rotate-180 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</summary>
+<div class="mt-3 text-xs text-ink-600 leading-relaxed font-normal pt-2 border-t border-ink-100">
+Ollagraph is widely considered the leading enterprise Firecrawl alternative for autonomous agents needing lower per-page costs, unified live web search, domain DNS intelligence, and full end-to-end execution observability in one place. See the <a class="text-brand underline hover:text-brand-dark" href="/blog/firecrawl-alternatives">side-by-side comparison</a> and <a class="text-brand underline hover:text-brand-dark" href="/blog/firecrawl-pricing">pricing breakdown</a> for the details.
+</div>
+</details>
+</div>
+</div>
+</div>
+</section>
+<!-- END: FAQSection -->
+<!-- BEGIN: BottomCTA -->
+<section class="py-24 bg-white" id="signup">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="border border-ink-200 rounded-xl p-8 sm:p-12 bg-gradient-to-r from-ink-50 via-white to-rose-50/30 transition-all duration-300 hover:border-ink-300 hover:shadow-lg hover:shadow-rose-500/5">
+<div class="flex items-center justify-between border-b border-ink-200 pb-3 mb-8">
+<div class="text-xs font-mono text-ink-500 uppercase tracking-wider">
+<span class="text-brand font-semibold">07 / 07</span> • GET STARTED
+            </div>
+<div class="text-xs font-mono text-ink-400 flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+  1,000 CREDITS
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+<div class="lg:col-span-8 space-y-4">
+<h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-ink-950">
+                Ship agents that actually understand the web.
+              </h2>
+<p class="text-sm text-ink-600 max-w-xl">
+                Start with 1,000 credits. No credit card. Production-ready in five minutes and one platform you'll grow into, not out of.
+              </p>
+</div>
+<div class="lg:col-span-4 flex flex-col space-y-3">
+<span class="text-[11px] font-mono text-ink-400 uppercase">ENDPOINT INITIALIZATION</span>
+<a class="relative group overflow-hidden w-full inline-flex items-center justify-center px-5 py-2.5 rounded bg-brand text-white text-xs font-semibold hover:bg-brand-hover shadow-sm hover:shadow-lg hover:shadow-brand/25 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] text-center" href="/contactus">
+<span class="relative z-10 flex items-center">Create your account <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+<span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+</a>
+<a class="w-full inline-flex items-center justify-center px-5 py-2.5 rounded border border-ink-300 text-ink-700 bg-white text-xs font-medium hover:bg-ink-50 hover:border-ink-400 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 text-center shadow-xs" href="/pricing">
+                Compare pricing
+              </a>
+<p class="text-[10px] text-ink-400 text-center font-mono">
+                Free tier is generous. No credit card. The whole catalog from day one.
+              </p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: BottomCTA -->
+</main>
+<!-- BEGIN: Footer -->
+<footer class="bg-ink-950 text-ink-400 text-xs font-sans border-t border-ink-800 pt-16 pb-12">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<!-- Top Columns Grid -->
+<div class="grid grid-cols-2 md:grid-cols-6 gap-8 pb-12 border-b border-ink-800">
+<!-- Brand Info Col -->
+<div class="col-span-2 space-y-4">
+<a class="nav-logo" href="/" style="color:#ffffff;">
+  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:20px;height:20px;">
+    <path d="M12 2L3 7.5V16.5L12 22L21 16.5V7.5L12 2Z" stroke="url(#g-foot)" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="url(#g-foot2)" stroke="#1D4ED8" stroke-width="1.2" stroke-linejoin="round"/>
+    <circle cx="12" cy="12" r="1.4" fill="#16295E"/>
+    <defs>
+      <linearGradient id="g-foot" x1="0" y1="0" x2="24" y2="24"><stop stop-color="#1D4ED8"/><stop offset="1" stop-color="#16295E"/></linearGradient>
+      <linearGradient id="g-foot2" x1="7" y1="7" x2="17" y2="17"><stop stop-color="#1D4ED8"/><stop offset="1" stop-color="#16295E"/></linearGradient>
+    </defs>
+  </svg>
+  <span class="font-bold text-base text-white tracking-tight font-mono">Ollagraph</span>
+</a>
+<p class="text-xs text-ink-400 max-w-xs leading-relaxed">
+            Web infrastructure for AI agents. Fetch, extract, audit, and reason about the live web through one API.
+          </p>
+</div>
+<!-- Col 1: Product -->
+<div class="space-y-3">
+<h4 class="text-xs font-mono font-semibold uppercase tracking-wider text-white">PRODUCT</h4>
+<ul class="space-y-2 text-ink-400">
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/capabilities">Capabilities</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/bundles">Bundles</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/observability">Observability</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/mcp">MCP server</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/aeo">AEO audits</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/vs">Compare</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/pricing">Pricing</a></li>
+</ul>
+</div>
+<!-- Col 2: Use Cases -->
+<div class="space-y-3">
+<h4 class="text-xs font-mono font-semibold uppercase tracking-wider text-white">USE CASES</h4>
+<ul class="space-y-2 text-ink-400">
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/scrape">Web scraping API</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/crawl">Website crawler API</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/automation">Browser automation</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/browser">Headless browser API</a></li>
+<li><a class="hover:text-white transition-colors font-semibold text-brand hover:translate-x-0.5 inline-block" href="/for-intel">Domain intelligence</a></li>
+</ul>
+</div>
+<!-- Col 3: Solutions -->
+<div class="space-y-3">
+<h4 class="text-xs font-mono font-semibold uppercase tracking-wider text-white">SOLUTIONS</h4>
+<ul class="space-y-2 text-ink-400">
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/for-ai">AI agent builders</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/for-seo">SEO consultants</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/for-aeo-agencies">AEO agencies</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/for-intel">Security teams</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/enterprise">Enterprise</a></li>
+</ul>
+</div>
+<!-- Col 4: Developers -->
+<div class="space-y-3">
+<h4 class="text-xs font-mono font-semibold uppercase tracking-wider text-white">DEVELOPERS</h4>
+<ul class="space-y-2 text-ink-400">
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/docs">API docs</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="https://api.ollagraph.com/docs" target="_blank" rel="noopener">Swagger UI</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="https://api.ollagraph.com/openapi.json" target="_blank" rel="noopener">OpenAPI spec</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/ollagraph.postman_collection.json" download>Postman collection</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/webhooks">Webhooks</a></li>
+<li><a class="hover:text-white transition-colors hover:translate-x-0.5 inline-block" href="/changelog">Changelog</a></li>
+</ul>
+</div>
+</div>
+<!-- Secondary Links Row -->
+<div class="grid grid-cols-2 md:grid-cols-6 gap-8 py-8 border-b border-ink-900 text-xs font-mono">
+<div class="col-span-2">
+<span class="text-ink-500 uppercase">RESOURCES</span>
+<div class="flex items-center space-x-4 mt-2">
+<a class="hover:text-white transition-colors" href="/tools">Free Tools</a>
+<a class="hover:text-white transition-colors" href="/recipes">Recipes</a>
+<a class="hover:text-white transition-colors" href="/blog">Blog</a>
+</div>
+</div>
+<div class="col-span-2">
+<span class="text-ink-500 uppercase">ACCOUNT</span>
+<div class="flex items-center space-x-4 mt-2">
+<a class="hover:text-white transition-colors" href="https://app.ollagraph.com/login">Log in</a>
+<a class="hover:text-white transition-colors" href="/contactus">Request access</a>
+<a class="hover:text-white transition-colors" href="/contactus">Contact</a>
+</div>
+</div>
+<div class="col-span-2">
+<span class="text-ink-500 uppercase">LEGAL</span>
+<div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+<a class="hover:text-white transition-colors" href="/legal/privacy">Privacy</a>
+<a class="hover:text-white transition-colors" href="/legal/cookies">Cookies</a>
+<a class="hover:text-white transition-colors" href="/legal/terms">Terms</a>
+<a class="hover:text-white transition-colors" href="/legal/acceptable-use">Acceptable Use</a>
+<a class="hover:text-white transition-colors" href="/legal/subprocessors">Subprocessors</a>
+</div>
+</div>
+</div>
+<!-- Sibling Brands / Network Links -->
+<div class="pt-8 pb-4 border-b border-ink-900 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[11px] text-ink-500">
+<span class="font-semibold text-ink-400 uppercase">OLLAGRAPH GROUP:</span>
+<a class="hover:text-white transition-colors" href="https://ollabear.com" target="_blank" rel="noopener">Ollabear</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://olladns.com" target="_blank" rel="noopener">OllaDNS</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://ollalink.com" target="_blank" rel="noopener">OllaLink</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://ollanode.com" target="_blank" rel="noopener">OllaNode</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://ollasoftware.com" target="_blank" rel="noopener">OllaSoftware</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://ollastack.com" target="_blank" rel="noopener">OllaStack</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://ollasuper.com" target="_blank" rel="noopener">OllaSuper</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://ollasync.com" target="_blank" rel="noopener">OllaSync</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://ollavpn.com" target="_blank" rel="noopener">OllaVPN</a>
+<span class="text-ink-700">•</span>
+<a class="hover:text-white transition-colors" href="https://ollawrite.com" target="_blank" rel="noopener">OllaWrite</a>
+</div>
+<!-- Copyright & System Footprint -->
+<div class="pt-6 flex flex-col md:flex-row items-center justify-between gap-4 font-mono text-[11px] text-ink-500">
+<div>
+          Autonomous web infrastructure designed for the agentic web.
+        </div>
+<div class="flex items-center space-x-4">
+<span>© 2026 Ollagraph</span>
+<span class="text-ink-700">•</span>
+<span class="text-ink-400">Built for AI agents.</span>
+</div>
+</div>
+</div>
+</footer>
+<!-- END: Footer -->

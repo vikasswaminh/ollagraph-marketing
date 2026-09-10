@@ -19,14 +19,10 @@ const NAV: Leaf[] = [
 ];
 
 export const LOGO_SVG = `
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 2L3 7.5V16.5L12 22L21 16.5V7.5L12 2Z" stroke="url(#g1)" stroke-width="1.4" stroke-linejoin="round"/>
-      <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="url(#g2)" stroke="var(--accent)" stroke-width="1.2" stroke-linejoin="round"/>
-      <circle cx="12" cy="12" r="1.4" fill="var(--blue-ink)"/>
-      <defs>
-        <linearGradient id="g1" x1="0" y1="0" x2="24" y2="24"><stop stop-color="var(--accent)"/><stop offset="1" stop-color="var(--blue-ink)"/></linearGradient>
-        <linearGradient id="g2" x1="7" y1="7" x2="17" y2="17"><stop stop-color="var(--accent)"/><stop offset="1" stop-color="var(--blue-ink)"/></linearGradient>
-      </defs>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2L3 7.5V16.5L12 22L21 16.5V7.5L12 2Z" stroke="#2563EB" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="#2563EB" stroke="#2563EB" stroke-width="1.2" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="1.4" fill="#0F172A"/>
     </svg>`;
 
 export function navHtml(activeKey: string = ""): string {
@@ -40,7 +36,7 @@ export function navHtml(activeKey: string = ""): string {
             <div class="nav-inner">
               <a class="nav-logo" href="/">
                 ${LOGO_SVG}
-                <span>Ollagraph</span>
+                <span class="nav-brand-name">Ollagraph</span>
                 <span class="badge badge-mute" style="margin-left:4px;">BETA</span>
               </a>
               <nav class="nav-links" id="nav-menu">
@@ -52,7 +48,7 @@ export function navHtml(activeKey: string = ""): string {
               </nav>
               <div class="nav-right">
                 <a class="btn btn-ghost nav-hide-sm" href="https://app.ollagraph.com/login">Log in</a>
-                <a class="btn btn-primary" href="/contactus">Request access &rarr;</a>
+                <a class="btn btn-primary" href="/contactus">Request access <span class="btn-arrow">&rarr;</span></a>
                 <button type="button" class="nav-burger" aria-label="Open menu" aria-expanded="false" aria-controls="nav-menu" data-nav-burger>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
                 </button>
