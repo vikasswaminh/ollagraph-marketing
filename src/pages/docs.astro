@@ -119,6 +119,51 @@ function curlSample(method: string, path: string, body: Record<string, any>): st
   return lines.join('\n');
 }
 
+function highlightCurl(method: string, path: string, body: Record<string, any>): string {
+  const url = 'https://api.ollagraph.com' + path;
+  const lines: string[] = [];
+  const hasBody = method !== 'GET' && Object.keys(body).length > 0;
+  if (method === 'GET') {
+    lines.push(`<span class="hl-cmd">curl</span> <span class="hl-url">${esc(url)}</span>` + (hasBody ? ' \\' : ''));
+  } else {
+    lines.push(`<span class="hl-cmd">curl</span> <span class="hl-flag">-X</span> <span class="hl-method m-${method.toLowerCase()}">${esc(method)}</span> <span class="hl-url">${esc(url)}</span> \\`);
+  }
+  lines.push(`  <span class="hl-flag">-H</span> <span class="hl-str">"Authorization: Bearer <span class="hl-var">$OLLAGRAPH_API_KEY</span>"</span>` + (hasBody ? ' \\' : ''));
+  if (hasBody) {
+    lines.push(`  <span class="hl-flag">-H</span> <span class="hl-str">"Content-Type: application/json"</span> \\`);
+    const inlineJson = esc(JSON.stringify(body)).replace(
+      /(&quot;.*?&quot;)(\s*:)?/g,
+      (m, p1, p2) => p2 ? `<span class="hl-key">${p1}</span>:` : `<span class="hl-str">${p1}</span>`
+    );
+    lines.push(`  <span class="hl-flag">-d</span> <span class="hl-data">'${inlineJson}'</span>`);
+  }
+  return lines.join('\n');
+}
+
+function highlightJson(obj: any): string {
+  const jsonStr = JSON.stringify(obj, null, 2);
+  return jsonStr.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    (match) => {
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          const key = match.slice(0, -1);
+          return `<span class="hl-key">${esc(key)}</span>:`;
+        } else {
+          return `<span class="hl-str">${esc(match)}</span>`;
+        }
+      } else if (/^(true|false)$/.test(match)) {
+        return `<span class="hl-bool">${match}</span>`;
+      } else if (/^null$/.test(match)) {
+        return `<span class="hl-null">${match}</span>`;
+      } else if (/^-?\d/.test(match)) {
+        return `<span class="hl-num">${match}</span>`;
+      }
+      return esc(match);
+    }
+  );
+}
+
 type EP = { method: string; path: string; opId: string; summary: string; desc: string; props: Prop[]; exampleBody: Record<string, any> | null };
 const groups: Record<string, EP[]> = {};
 for (const [path, ops] of Object.entries(openapi.paths as Record<string, any>)) {
@@ -135,6 +180,46 @@ for (const t of Object.keys(groups)) groups[t].sort((a, b) => a.path.localeCompa
 const tags = [...TAG_ORDER.filter((t) => groups[t]), ...Object.keys(groups).filter((t) => !TAG_ORDER.includes(t))];
 const totalOps = Object.values(groups).reduce((s, e) => s + e.length, 0);
 
+// --- Category Tabs (Top Categories + More ▾ Dropdown) ---
+const TOP_TAGS = ['Scraping', 'Extraction', 'Conversion', 'AEO', 'SEO'];
+const visibleTopTags = TOP_TAGS.filter((t) => groups[t]);
+const moreTags = tags.filter((t) => !visibleTopTags.includes(t));
+
+const topTabsHtml = [
+  `<button class="ds-tab active" data-tab="Overview" type="button">`
+    + `<svg class="ds-tab-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>`
+    + `<span class="ds-tab-name">Overview</span>`
+    + `</button>`,
+  ...visibleTopTags.map((t) => {
+    const count = groups[t]?.length || 0;
+    return `<button class="ds-tab" data-tab="${esc(t)}" type="button">`
+      + `<span class="ds-tab-name">${esc(t)}</span>`
+      + `<span class="ds-tab-count">${count}</span>`
+      + `</button>`;
+  })
+].join('');
+
+const moreItemsHtml = moreTags.map((t) => {
+  const count = groups[t]?.length || 0;
+  return `<button class="ds-more-item" data-tab="${esc(t)}" type="button">`
+    + `<span class="ds-more-item-name">${esc(t)}</span>`
+    + `<span class="ds-more-item-count">${count}</span>`
+    + `</button>`;
+}).join('');
+
+const moreDropdownHtml = moreTags.length > 0 ? (
+  `<div class="ds-more-wrap" id="ds-more-wrap">`
+    + `<button class="ds-tab ds-tab-more" id="ds-more-btn" type="button" aria-expanded="false" aria-haspopup="true">`
+      + `<span class="ds-tab-name" id="ds-more-label">More</span>`
+      + `<span class="ds-tab-count" id="ds-more-count">${moreTags.length}</span>`
+      + `<svg class="ds-more-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`
+    + `</button>`
+    + `<div class="ds-more-menu" id="ds-more-menu">${moreItemsHtml}</div>`
+  + `</div>`
+) : '';
+
+const tabsHtml = topTabsHtml + moreDropdownHtml;
+
 // --- Sidebar ---
 const sidebarHtml = tags.map((tag) => {
   const links = groups[tag].map((ep) => {
@@ -143,7 +228,7 @@ const sidebarHtml = tags.map((tag) => {
       + `<span class="ds-m m-${ep.method.toLowerCase()}">${ep.method}</span>`
       + `<span class="ds-p">${esc(ep.path)}</span></a>`;
   }).join('');
-  return `<div class="ds-group" data-tag="${esc(tag)}"><a class="ds-group-h" href="#tag-${esc(tag.toLowerCase())}">${esc(tag)}</a>${links}</div>`;
+  return `<div class="ds-group" data-tag="${esc(tag)}"><a class="ds-group-h" href="#tag-${esc(tag.toLowerCase())}">${esc(tag)} <span class="ds-group-count">${groups[tag].length}</span></a>${links}</div>`;
 }).join('');
 
 // --- Main content ---
@@ -151,29 +236,59 @@ const contentHtml = tags.map((tag) => {
   const blurb = TAG_BLURBS[tag] || '';
   const eps = groups[tag].map((ep) => {
     const paramRows = ep.props.length
-      ? `<div class="ep-block"><h3>Body parameters</h3><table class="ep-params"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>`
+      ? `<div class="ep-block">`
+        + `<div class="ep-block-header"><span>Body parameters</span><span class="ep-param-count">${ep.props.length} fields</span></div>`
+        + `<div class="ep-table-wrap"><table class="ep-params"><thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead><tbody>`
         + ep.props.map((p) =>
-            `<tr><td><code>${esc(p.name)}</code></td><td class="t-type">${esc(p.type)}</td>`
+            `<tr><td><code class="ep-prop-name">${esc(p.name)}</code></td><td class="t-type">${esc(p.type)}</td>`
             + `<td>${p.required ? '<span class="req">required</span>' : '<span class="opt">optional</span>'}</td>`
             + `<td>${esc(p.desc)}</td></tr>`).join('')
-        + `</tbody></table></div>`
+        + `</tbody></table></div></div>`
       : '';
     const curl = curlSample(ep.method, ep.path, ep.exampleBody ?? synthBody(ep.props));
+    const curlHtml = highlightCurl(ep.method, ep.path, ep.exampleBody ?? synthBody(ep.props));
     const respExample = (responseExamples as Record<string, any>)[ep.opId];
     const respBlock = respExample !== undefined
-      ? `<div class="ep-block"><h3>Example response</h3><pre class="ep-code"><code>${esc(JSON.stringify(respExample, null, 2))}</code></pre></div>`
+      ? `<div class="ep-terminal ep-terminal-resp">`
+        + `<div class="ep-terminal-header">`
+          + `<div class="flex items-center gap-2">`
+            + `<span class="ep-terminal-tag"><span class="ep-tag-dot ep-tag-dot-resp"></span>Example response</span>`
+            + `<span class="ep-status-badge">200 OK</span>`
+          + `</div>`
+        + `</div>`
+        + `<pre class="ep-code"><code>${highlightJson(respExample)}</code></pre>`
+        + `</div>`
       : '';
-    return `<article class="ep-detail" id="${esc(ep.opId)}">`
-      + `<div class="ep-h"><span class="ep-method m-${ep.method.toLowerCase()}">${ep.method}</span><code class="ep-fullpath">${esc(ep.path)}</code></div>`
-      + (ep.summary ? `<p class="ep-summary">${esc(ep.summary)}</p>` : '')
+    return `<article class="ep-card ep-detail" id="${esc(ep.opId)}">`
+      + `<div class="ep-card-top">`
+        + `<div class="ep-h"><span class="ep-method m-${ep.method.toLowerCase()}">${ep.method}</span><code class="ep-fullpath">${esc(ep.path)}</code></div>`
+        + `<button class="ep-copy-path-btn" data-copy="${esc(ep.path)}" title="Copy endpoint path" type="button">`
+          + `<svg class="ep-copy-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`
+          + `<span class="ep-btn-label">Copy path</span>`
+        + `</button>`
+      + `</div>`
+      + (ep.summary ? `<h3 class="ep-summary">${esc(ep.summary)}</h3>` : '')
       + (ep.desc ? `<p class="ep-desc">${esc(ep.desc)}</p>` : '')
       + paramRows
-      + `<div class="ep-block"><h3>Example request</h3><pre class="ep-code"><code>${esc(curl)}</code></pre></div>`
+      + `<div class="ep-terminal">`
+        + `<div class="ep-terminal-header">`
+          + `<span class="ep-terminal-tag"><span class="ep-tag-dot ep-tag-dot-req"></span>Example request</span>`
+          + `<button class="ep-copy-btn" data-copy="${esc(curl)}" type="button" aria-label="Copy cURL command">`
+            + `<svg class="ep-copy-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`
+            + `<span class="ep-btn-label">Copy</span>`
+          + `</button>`
+        + `</div>`
+        + `<pre class="ep-code"><code>${curlHtml}</code></pre>`
+      + `</div>`
       + respBlock
       + `</article>`;
   }).join('');
-  return `<section class="ds-section" id="tag-${esc(tag.toLowerCase())}"><div class="ds-section-h"><h2>${esc(tag)}</h2>`
-    + (blurb ? `<p>${esc(blurb)}</p>` : '') + `</div>${eps}</section>`;
+  return `<section class="ds-section ds-section--hidden" data-tab-panel="${esc(tag)}" id="tag-${esc(tag.toLowerCase())}">`
+    + `<div class="ds-section-h">`
+      + `<div class="ds-cat-meta"><span class="pill"><span class="pill-dot"></span>${groups[tag].length} endpoints</span></div>`
+      + `<h2>${esc(tag)}</h2>`
+      + (blurb ? `<p>${esc(blurb)}</p>` : '')
+    + `</div>${eps}</section>`;
 }).join('');
 
 const rendered = bodyHtml
@@ -181,10 +296,14 @@ const rendered = bodyHtml
   .replace('<div id="footer-root"></div>', footerHtml())
   .replace(/__TOTAL_OPS__/g, String(totalOps))
   .replace('__SIDEBAR__', sidebarHtml)
+  .replace('__TABS__', tabsHtml)
   .replace('__CONTENT__', contentHtml);
 ---
 <BaseLayout title="Ollagraph API Docs — Reference, SDKs &amp; Code Samples" description="Full API reference for Ollagraph — every endpoint with parameters and examples. One Bearer token, one OpenAPI spec, one MCP server.">
-  <Fragment slot="head" set:html={headExtras} />
+  <Fragment slot="head">
+    <link rel="stylesheet" href="/homepage-tailwind.css?v=27" />
+    <Fragment set:html={headExtras} />
+  </Fragment>
   <Fragment set:html={rendered} />
-  <script is:inline src="/scripts/docs.js"></script>
+  <script is:inline src="/scripts/docs.js?v=37"></script>
 </BaseLayout>

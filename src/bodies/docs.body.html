@@ -6,51 +6,93 @@
   <div class="docs-layout">
     <aside class="docs-sidebar" id="docs-sidebar">
       <div class="ds-search-wrap">
-        <input class="ds-search" id="ds-search" type="search" aria-label="Search endpoints" placeholder="Search endpoints…" autocomplete="off" spellcheck="false" />
+        <div class="ds-search-box">
+          <svg class="ds-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input class="ds-search" id="ds-search" type="search" aria-label="Search endpoints" placeholder="Search 147 endpoints…" autocomplete="off" spellcheck="false" />
+          <kbd class="ds-search-kbd">/</kbd>
+        </div>
       </div>
       <nav class="ds-nav" id="ds-nav">
-        <a class="ds-top" href="#overview">Overview</a>
-        <a class="ds-top" href="#quickstart">Quickstart</a>
-        <a class="ds-top" href="#auth">Authentication</a>
+        <a class="ds-top active" href="#overview" data-tab-target="Overview">
+          <svg class="ds-nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <span>Overview</span>
+        </a>
+        <a class="ds-top" href="#quickstart" data-tab-target="Overview">
+          <svg class="ds-nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          <span>Quickstart</span>
+        </a>
+        <a class="ds-top" href="#auth" data-tab-target="Overview">
+          <svg class="ds-nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <span>Authentication</span>
+        </a>
         <div class="ds-divider"></div>
 __SIDEBAR__
       </nav>
     </aside>
 
     <div class="docs-main">
-      <section class="ds-section" id="overview">
-        <div class="ds-section-h">
-          <span class="pill" style="margin-bottom: 16px;"><span class="pill-dot"></span>__TOTAL_OPS__ endpoints &middot; generated from the live OpenAPI spec</span>
-          <h1 class="h-display h-2" style="margin: 0 0 12px;">API reference</h1>
-          <p>Base URL <code>https://api.ollagraph.com</code>. Every endpoint takes a Bearer API key and returns JSON. Failed calls are refunded automatically &mdash; you only pay for successful responses, and the exact cost comes back in the response headers.</p>
-          <div class="docs-toolrow" style="justify-content: flex-start; margin-top: 22px;">
-            <a class="primary" href="https://api.ollagraph.com/docs">Swagger &ldquo;try it&rdquo; &rarr;</a>
-            <a href="https://api.ollagraph.com/openapi.json">OpenAPI spec</a>
-            <a href="/ollagraph.postman_collection.json">Postman collection</a>
+      <!-- Sticky Category Tab Bar -->
+      <div class="ds-tab-bar-wrap" id="ds-tab-bar-wrap">
+        <div class="ds-tab-bar" id="ds-tab-bar">
+__TABS__
+        </div>
+      </div>
+
+      <!-- Overview & Quickstart Panel -->
+      <div class="ds-overview-panel ds-section ds-section--active" data-tab-panel="Overview">
+        <!-- API Reference Hero Card (Pure White Box) -->
+        <section class="ds-section-sub ds-card-box" id="overview">
+          <div class="ds-hero-badge-wrap">
+            <span class="ds-spec-pill">
+              <span class="live-dot-wrap">
+                <span class="live-dot-ping"></span>
+                <span class="live-dot"></span>
+              </span>
+              <strong class="ds-spec-count">__TOTAL_OPS__ endpoints</strong>
+              <span class="ds-spec-sep">&middot;</span>
+              <span class="ds-spec-desc">generated from the live OpenAPI spec</span>
+            </span>
+          </div>
+          <h1 class="ds-ref-title">API reference</h1>
+          <p class="ds-ref-desc">Base URL <code>https://api.ollagraph.com</code>. Every endpoint takes a Bearer API key and returns JSON. Failed calls are refunded automatically &mdash; you only pay for successful responses, and the exact cost comes back in the response headers.</p>
+          <div class="docs-toolrow">
+            <a class="primary" href="https://api.ollagraph.com/docs" target="_blank" rel="noopener">Swagger &ldquo;try it&rdquo; &rarr;</a>
+            <a href="https://api.ollagraph.com/openapi.json" target="_blank" rel="noopener">OpenAPI spec</a>
+            <a href="/ollagraph.postman_collection.json" download>Postman collection</a>
             <a href="/mcp">MCP server</a>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="ds-section" id="quickstart">
-        <div class="ds-section-h"><h2>Quickstart</h2><p>Sign up for a key (1,000 free credits, no card), then make your first call:</p></div>
-        <pre class="ep-code"><code><span class="qs-comment"># 1. Set your key</span>
-<span class="qs-cmd">export</span> OLLAGRAPH_API_KEY=<span class="qs-str">"osk_..."</span>
+        <!-- Quickstart Section -->
+        <section class="ds-section-sub" id="quickstart" style="margin-top: 36px;">
+          <div class="ds-section-h">
+            <h2>Quickstart</h2>
+            <p>Sign up for a key (1,000 free credits, no card), then make your first call:</p>
+          </div>
+          <pre class="ep-code"><code><span class="qs-comment"># 1. Set your key</span>
+<span class="hl-cmd">export</span> <span class="hl-key">OLLAGRAPH_API_KEY</span>=<span class="hl-str">"osk_..."</span>
 
 <span class="qs-comment"># 2. Scrape a page</span>
-<span class="qs-cmd">curl</span> https://api.ollagraph.com/v1/scrape \
-  -H <span class="qs-str">"Authorization: Bearer $OLLAGRAPH_API_KEY"</span> \
-  -H <span class="qs-str">"Content-Type: application/json"</span> \
-  -d <span class="qs-str">'{"url": "https://example.com"}'</span>
+<span class="hl-cmd">curl</span> <span class="hl-url">https://api.ollagraph.com/v1/scrape</span> \
+  <span class="hl-flag">-H</span> <span class="hl-str">"Authorization: Bearer <span class="hl-var">$OLLAGRAPH_API_KEY</span>"</span> \
+  <span class="hl-flag">-H</span> <span class="hl-str">"Content-Type: application/json"</span> \
+  <span class="hl-flag">-d</span> <span class="hl-data">'{"url": "https://example.com"}'</span>
 
 <span class="qs-comment"># 3. Or use the MCP server in Claude Desktop / Cursor</span>
-<span class="qs-cmd">pipx run</span> ollagraph-mcp</code></pre>
-      </section>
+<span class="hl-cmd">pipx</span> <span class="hl-flag">run</span> <span class="hl-key">ollagraph-mcp</span></code></pre>
+        </section>
 
-      <section class="ds-section" id="auth">
-        <div class="ds-section-h"><h2>Authentication</h2></div>
-        <p style="color: var(--text-muted); font-size: 14px; line-height: 1.7;">All requests authenticate with a Bearer token: <code>Authorization: Bearer osk_…</code>. Create and revoke keys from your <a href="https://app.ollagraph.com" class="text-accent">dashboard</a>. The <code>/health</code> endpoint is the only unauthenticated route. Each response carries <code>x-credits-cost</code>, <code>x-credits-charged</code>, and <code>x-credits-balance</code> so you always know what a call cost.</p>
-      </section>
+        <!-- Authentication Section (Pure White Box) -->
+        <section class="ds-section-sub ds-card-box" id="auth" style="margin-top: 36px;">
+          <div class="ds-auth-header">
+            <div class="ds-auth-icon-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            </div>
+            <h2>Authentication</h2>
+          </div>
+          <p class="ds-auth-desc">All requests authenticate with a Bearer token: <code>Authorization: Bearer osk_…</code>. Create and revoke keys from your <a href="https://app.ollagraph.com" class="text-brand hover:underline font-semibold" target="_blank" rel="noopener">dashboard</a>. The <code>/health</code> endpoint is the only unauthenticated route. Each response carries <code>x-credits-cost</code>, <code>x-credits-charged</code>, and <code>x-credits-balance</code> so you always know what a call cost.</p>
+        </section>
+      </div>
 
 __CONTENT__
     </div>
