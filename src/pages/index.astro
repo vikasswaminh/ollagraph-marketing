@@ -1,12 +1,13 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import bodyHtml from '../bodies/index.body.html?raw';
-import { navHtml } from '../chrome';
+import { navHtml, footerHtml } from '../chrome';
 
 import stats from '../data/api-stats.json';
 
 const rendered = bodyHtml
   .replace('<div id="nav-root"></div>', navHtml(""))
+  .replace('<div id="footer-root"></div>', footerHtml())
   .split('%%ENDPOINT_COUNT%%').join(String(stats.endpointCount));
 
 const softwareApp = {

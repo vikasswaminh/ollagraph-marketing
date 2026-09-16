@@ -63,7 +63,7 @@ export function footerHtml(): string {
   // Every link below points at something that actually exists. Don't add a
   // footer link until the destination is real — broken footers look worse
   // than missing ones.
-  const cols = [
+  const primaryCols = [
     {
       h: "Product",
       items: [
@@ -108,42 +108,36 @@ export function footerHtml(): string {
         { label: "Changelog",           href: "/changelog" },
       ],
     },
+  ];
+
+  const secondaryCols = [
     {
       h: "Resources",
       items: [
-        { label: "Free tools",  href: "/tools" },
-        { label: "Recipes",     href: "/recipes" },
-        { label: "Blog",        href: "/blog" },
+        { label: "Free tools", href: "/tools" },
+        { label: "Recipes",    href: "/recipes" },
+        { label: "Blog",       href: "/blog" },
       ],
     },
     {
       h: "Account",
       items: [
-        { label: "Log in",          href: "https://app.ollagraph.com/login" },
-        { label: "Request access",         href: "/contactus" },
-        { label: "Contact",         href: "mailto:hello@ollagraph.com" },
+        { label: "Log in",         href: "https://app.ollagraph.com/login" },
+        { label: "Request access", href: "/contactus" },
+        { label: "Contact",        href: "mailto:hello@ollagraph.com" },
       ],
     },
     {
       h: "Legal",
       items: [
-        { label: "Privacy",         href: "/legal/privacy" },
-        { label: "Cookies",         href: "/legal/cookies" },
-        { label: "Terms",           href: "/legal/terms" },
-        { label: "Acceptable Use",  href: "/legal/acceptable-use" },
-        { label: "Subprocessors",   href: "/legal/subprocessors" },
+        { label: "Privacy",        href: "/legal/privacy" },
+        { label: "Cookies",        href: "/legal/cookies" },
+        { label: "Terms",          href: "/legal/terms" },
+        { label: "Acceptable Use", href: "/legal/acceptable-use" },
+        { label: "Subprocessors",  href: "/legal/subprocessors" },
       ],
     },
   ];
-  const colsHTML = cols.map((c) => `
-        <div class="footer-col">
-          <h3>${c.h}</h3>
-          ${c.items.map((i) => {
-            const ext = i.href.startsWith("http");
-            const attrs = ext ? ` target="_blank" rel="noopener"` : "";
-            return `<a href="${i.href}"${attrs}>${i.label}</a>`;
-          }).join("")}
-        </div>`).join("");
 
   // Sibling brands under the same group — dofollow cross-links (brand-name
   // anchors) so the network passes link equity to each domain. Ollagraph
@@ -161,37 +155,74 @@ export function footerHtml(): string {
     { label: "OllaVPN",      href: "https://ollavpn.com" },
     { label: "OllaWrite",    href: "https://ollawrite.com" },
   ];
-  const brandsHTML = `
-            <div class="footer-brands">
-              <h3>Ollagraph Group</h3>
-              <div class="footer-brands-links">
-                ${groupBrands.map((b) =>
-                  `<a href="${b.href}" target="_blank" rel="noopener">${b.label}</a>`
-                ).join("")}
-              </div>
-            </div>`;
+
+  const primaryHTML = primaryCols.map((c) => `
+              <div class="footer-col">
+                <div class="footer-col-header">${c.h}</div>
+                <ul class="footer-links-list">
+                  ${c.items.map((i) => {
+                    const ext = i.href.startsWith("http");
+                    const dl = i.href.endsWith(".json") ? " download" : "";
+                    const attrs = ext ? ` target="_blank" rel="noopener"` : "";
+                    return `<li><a class="footer-link" href="${i.href}"${attrs}${dl}>${i.label}</a></li>`;
+                  }).join("")}
+                </ul>
+              </div>`).join("");
+
+  const secondaryHTML = secondaryCols.map((c) => `
+              <div class="footer-sec-group">
+                <span class="footer-sec-title">${c.h}</span>
+                <div class="footer-sec-links">
+                  ${c.items.map((i) => {
+                    const ext = i.href.startsWith("http");
+                    const attrs = ext ? ` target="_blank" rel="noopener"` : "";
+                    return `<a class="footer-sec-link" href="${i.href}"${attrs}>${i.label}</a>`;
+                  }).join("")}
+                </div>
+              </div>`).join("");
+
+  const brandsHTML = groupBrands.map((b) => `
+                <a class="footer-brand-chip" href="${b.href}" target="_blank" rel="noopener">${b.label}</a>
+              `).join("");
 
   return `
         </main>
         <footer class="footer">
-          <div class="container-wide">
-            <div class="footer-grid">
-              <div class="footer-col">
-                <a class="nav-logo" href="/" style="font-size:18px;">
+          <div class="footer-container">
+            <div class="footer-primary-grid">
+              <div class="footer-brand-col">
+                <a class="footer-brand-logo" href="/">
                   ${LOGO_SVG}
-                  <span>Ollagraph</span>
+                  <span class="footer-brand-name">Ollagraph</span>
+                  <span class="footer-brand-badge">BETA</span>
                 </a>
-                <p style="color:var(--text-muted); font-size:13.5px; max-width:300px; margin-top:18px; line-height:1.6;">
+                <p class="footer-brand-desc">
                   Web infrastructure for AI agents. Fetch, extract, audit, and reason about the live web through one API.
                 </p>
               </div>
-              ${colsHTML}
+              ${primaryHTML}
             </div>
-            ${brandsHTML}
-            <div class="footer-bottom">
-              <div>© 2026 Ollagraph</div>
-              <div style="color:var(--text-muted); font-size:12.5px;">
-                Built for AI agents.
+            <div class="footer-secondary-row">
+              ${secondaryHTML}
+            </div>
+            <div class="footer-brands-row">
+              <span class="footer-brands-label">Ollagraph Group</span>
+              <div class="footer-brands-list">
+                ${brandsHTML}
+              </div>
+            </div>
+            <div class="footer-bottom-row">
+              <div class="footer-tagline">
+                Autonomous web infrastructure designed for the agentic web.
+              </div>
+              <div class="footer-status-pill">
+                <span class="footer-status-pulse"></span>
+                <span class="footer-status-text">All systems operational</span>
+              </div>
+              <div class="footer-copyright">
+                <span>© 2026 Ollagraph</span>
+                <span class="footer-bottom-dot">•</span>
+                <span class="footer-copyright-sub">Built for AI agents.</span>
               </div>
             </div>
           </div>
