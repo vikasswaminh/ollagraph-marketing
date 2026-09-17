@@ -18,12 +18,20 @@ const NAV: Leaf[] = [
   { label: "Compare", href: "/vs",      key: "vs" },
 ];
 
-export const LOGO_SVG = `
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 2L3 7.5V16.5L12 22L21 16.5V7.5L12 2Z" stroke="#2563EB" stroke-width="1.6" stroke-linejoin="round"/>
-      <path d="M12 7L7 10V14L12 17L17 14V10L12 7Z" fill="#2563EB" stroke="#2563EB" stroke-width="1.2" stroke-linejoin="round"/>
-      <circle cx="12" cy="12" r="1.4" fill="#0F172A"/>
+export const LOGO_CRIMSON_SVG = `
+    <svg width="34" height="37" viewBox="7 9 86 94" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+      <path d="M 47.8,11.23 L 9,33 L 9,79 L 47.8,100.77 Z M 35.3,32.54 L 21.5,40.28 L 21.5,71.72 L 35.3,79.46 Z" fill="#E11D48" fill-rule="evenodd" />
+      <path d="M 52.2,11.23 L 52.2,100.77 L 91,79 L 91,50 L 71,50 L 71,62.5 L 78.5,62.5 L 78.5,71.72 L 64.7,79.46 L 64.7,32.54 L 78.5,40.28 L 91,40.28 L 91,33 Z" fill="#E11D48" />
     </svg>`;
+
+export const LOGO_DARK_BG_SVG = `
+    <svg width="32" height="32" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" style="border-radius:5px;overflow:hidden;flex-shrink:0;">
+      <rect width="128" height="128" rx="16" fill="#090D16" />
+      <path d="M 61.1,5.5 L 10.4,34.0 L 10.4,94.0 L 61.1,122.5 Z M 44.8,33.4 L 26.8,43.5 L 26.8,84.5 L 44.8,94.6 Z" fill="#E11D48" fill-rule="evenodd" />
+      <path d="M 66.9,5.5 L 66.9,122.5 L 117.6,94.0 L 117.6,56.2 L 91.4,56.2 L 91.4,72.5 L 101.2,72.5 L 101.2,84.5 L 83.2,94.6 L 83.2,33.4 L 101.2,43.5 L 117.6,43.5 L 117.6,34.0 Z" fill="#E11D48" />
+    </svg>`;
+
+export const LOGO_SVG = LOGO_CRIMSON_SVG;
 
 export function navHtml(activeKey: string = ""): string {
   const itemsHTML = NAV.map((entry) => {
@@ -34,11 +42,7 @@ export function navHtml(activeKey: string = ""): string {
         <div class="nav">
           <div class="container-wide">
             <div class="nav-inner">
-              <a class="nav-logo" href="/">
-                ${LOGO_SVG}
-                <span class="nav-brand-name">Ollagraph</span>
-                <span class="badge badge-mute" style="margin-left:4px;">BETA</span>
-              </a>
+              <a class="nav-logo" href="/">${LOGO_CRIMSON_SVG}<span class="nav-brand-name">Ollagraph</span><span class="badge badge-mute" style="margin-left:4px;">BETA</span></a>
               <nav class="nav-links" id="nav-menu">
                 ${itemsHTML}
                 <div class="nav-mobile-cta">
@@ -192,7 +196,7 @@ export function footerHtml(): string {
             <div class="footer-primary-grid">
               <div class="footer-brand-col">
                 <a class="footer-brand-logo" href="/">
-                  ${LOGO_SVG}
+                  ${LOGO_CRIMSON_SVG}
                   <span class="footer-brand-name">Ollagraph</span>
                   <span class="footer-brand-badge">BETA</span>
                 </a>
