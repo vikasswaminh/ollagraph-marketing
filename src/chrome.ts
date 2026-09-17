@@ -19,7 +19,7 @@ const NAV: Leaf[] = [
 ];
 
 export const LOGO_CRIMSON_SVG = `
-    <svg width="34" height="37" viewBox="7 9 86 94" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+    <svg width="32" height="35" viewBox="7 9 86 94" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
       <path d="M 47.8,11.23 L 9,33 L 9,79 L 47.8,100.77 Z M 35.3,32.54 L 21.5,40.28 L 21.5,71.72 L 35.3,79.46 Z" fill="#E11D48" fill-rule="evenodd" />
       <path d="M 52.2,11.23 L 52.2,100.77 L 91,79 L 91,50 L 71,50 L 71,62.5 L 78.5,62.5 L 78.5,71.72 L 64.7,79.46 L 64.7,32.54 L 78.5,40.28 L 91,40.28 L 91,33 Z" fill="#E11D48" />
     </svg>`;
