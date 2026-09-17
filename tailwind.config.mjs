@@ -2,7 +2,9 @@
 export default {
   content: [
     './src/pages/index.astro',
-    './src/bodies/index.body.html'
+    './src/bodies/index.body.html',
+    './src/pages/pricing.astro',
+    './src/bodies/pricing.body.html'
   ],
   theme: {
     extend: {
