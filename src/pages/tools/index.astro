@@ -11,18 +11,48 @@ const tools = [
     name: "AI Citation-Readiness Checker",
     blurb: "Score whether a page is ready to be read, trusted, and cited by AI answer engines like ChatGPT, Perplexity, and Claude — and see what to fix.",
     tag: "AEO",
+    theme: {
+      accent: "#e11d48",
+      iconBg: "#fff1f2",
+      iconColor: "#e11d48",
+      iconBorder: "#fecdd3",
+      tagBg: "#fff1f2",
+      tagColor: "#e11d48",
+      tagBorder: "#fecdd3",
+    },
+    icon: "radar",
   },
   {
     href: "/tools/llms-txt-generator",
     name: "llms.txt Generator",
     blurb: "Build a valid llms.txt file that points AI tools and answer engines at your canonical content. Runs in your browser, no signup.",
     tag: "AEO",
+    theme: {
+      accent: "#f59e0b",
+      iconBg: "#fffbeb",
+      iconColor: "#d97706",
+      iconBorder: "#fde68a",
+      tagBg: "#fffbeb",
+      tagColor: "#b45309",
+      tagBorder: "#fde68a",
+    },
+    icon: "doc",
   },
   {
     href: "/tools/schema-generator",
     name: "Schema.org JSON-LD Generator",
     blurb: "Generate valid structured-data markup — Organization, Article, FAQPage, Product, BreadcrumbList — for rich results and AI citations.",
     tag: "Structured data",
+    theme: {
+      accent: "#2563eb",
+      iconBg: "#eff6ff",
+      iconColor: "#2563eb",
+      iconBorder: "#bfdbfe",
+      tagBg: "#eff6ff",
+      tagColor: "#1d4ed8",
+      tagBorder: "#bfdbfe",
+    },
+    icon: "schema",
   },
 ];
 
@@ -33,33 +63,346 @@ const collectionLd = {
   description: "Free tools for AI web data and answer-engine optimization, powered by the Ollagraph API.",
   url: "https://ollagraph.com/tools/",
 };
+
+const nav = navHtml('tools');
+const footer = footerHtml();
 ---
 <BaseLayout
   title="Free tools for AI web data & AEO — Ollagraph"
   description="Free, no-cost tools powered by the Ollagraph API: check your site's AI citation-readiness and more. Run them on 1,000 free credits."
   jsonLd={[collectionLd]}
 >
-  <Fragment set:html={navHtml('tools')} />
-  <section class="section" style="padding-top:80px; text-align:center;">
-    <div class="container" style="max-width:760px;">
-      <span class="badge badge-mute" style="margin-bottom:16px;">FREE TOOLS</span>
-      <h1 class="h-display h-1" style="margin:0 0 18px;">Free web tools.</h1>
-      <p class="copy-lg">
-        Small, focused tools powered by the Ollagraph API. Run them free — no card — and graduate to
-        the full API when you're ready.
-      </p>
-    </div>
-  </section>
-  <section class="section-tight">
-    <div class="container" style="max-width:760px; display:flex; flex-direction:column; gap:16px;">
-      {tools.map((t) => (
-        <a class="recipe-card" href={t.href}>
-          <span class="badge badge-mute" style="margin-bottom:8px;">{t.tag}</span>
-          <h3 style="font-size:18px; margin:0 0 8px;">{t.name}</h3>
-          <p>{t.blurb}</p>
-        </a>
-      ))}
-    </div>
-  </section>
-  <Fragment set:html={footerHtml()} />
+  <Fragment set:html={nav} />
+
+  <main class="tools-page">
+    <div class="tools-glow-canvas" aria-hidden="true"></div>
+
+    <section class="tools-hero">
+      <div class="tools-hero-content">
+        <div class="tools-badge">
+          <span class="tools-badge-dot"></span>
+          <span>FREE TOOLS</span>
+        </div>
+        <h1 class="tools-title">Free web tools.</h1>
+        <p class="tools-subtitle">
+          Small, focused tools powered by the Ollagraph API. Run them free — no card — and graduate to
+          the full API when you're ready.
+        </p>
+      </div>
+    </section>
+
+    <section class="tools-section">
+      <div class="tools-grid">
+        {tools.map((t) => (
+          <a
+            class="tool-card"
+            href={t.href}
+            style={`--card-accent: ${t.theme.accent}; --icon-bg: ${t.theme.iconBg}; --icon-color: ${t.theme.iconColor}; --icon-border: ${t.theme.iconBorder}; --tag-bg: ${t.theme.tagBg}; --tag-color: ${t.theme.tagColor}; --tag-border: ${t.theme.tagBorder};`}
+          >
+            <div class="tool-card-header">
+              <div class="tool-icon-wrap">
+                {t.icon === "radar" && (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="m4.93 4.93 4.24 4.24"></path>
+                    <path d="m14.83 9.17 4.24-4.24"></path>
+                    <path d="m14.83 14.83 4.24 4.24"></path>
+                    <path d="m9.17 14.83-4.24 4.24"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                )}
+                {t.icon === "doc" && (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                )}
+                {t.icon === "schema" && (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                    <path d="M10 6.5h4"></path>
+                    <path d="M6.5 10v4"></path>
+                    <path d="M17.5 10v4"></path>
+                    <path d="M10 17.5h4"></path>
+                  </svg>
+                )}
+              </div>
+              <span class="tool-tag">{t.tag}</span>
+            </div>
+
+            <h3 class="tool-name">{t.name}</h3>
+            <p class="tool-blurb">{t.blurb}</p>
+
+            <div class="tool-card-footer">
+              <span class="tool-arrow-btn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              </span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  </main>
+
+  <Fragment set:html={footer} />
 </BaseLayout>
+
+<style>
+  .tools-page {
+    position: relative;
+    min-height: calc(100vh - 380px);
+    padding-bottom: 96px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  .tools-glow-canvas {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 1200px;
+    height: 480px;
+    background: radial-gradient(ellipse 65% 55% at 50% 0%, rgba(225, 29, 72, 0.05) 0%, rgba(37, 99, 235, 0.03) 45%, transparent 75%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .tools-hero {
+    position: relative;
+    z-index: 1;
+    padding-top: 72px;
+    padding-bottom: 48px;
+    text-align: center;
+  }
+
+  .tools-hero-content {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  .tools-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.72rem;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #e11d48;
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    margin-bottom: 18px;
+  }
+
+  .tools-badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #e11d48;
+    box-shadow: 0 0 6px rgba(225, 29, 72, 0.6);
+  }
+
+  .tools-title {
+    font-family: var(--font-display, 'Geist', 'Inter', sans-serif);
+    font-size: clamp(2.4rem, 4.8vw, 3.4rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.035em;
+    color: #0f172a;
+    margin: 0 0 16px;
+  }
+
+  .tools-subtitle {
+    font-size: clamp(1rem, 1.8vw, 1.12rem);
+    line-height: 1.62;
+    color: #475569;
+    max-width: 620px;
+    margin: 0 auto;
+  }
+
+  .tools-section {
+    position: relative;
+    z-index: 1;
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    align-items: stretch;
+  }
+
+  .tool-card {
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 28px 26px 22px;
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 6px 16px -4px rgba(0, 0, 0, 0.02);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.2s ease;
+  }
+
+  .tool-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--card-accent, #e11d48);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .tool-card:hover {
+    transform: translateY(-4px);
+    border-color: #cbd5e1;
+    box-shadow: 0 16px 32px -8px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
+    text-decoration: none;
+  }
+
+  .tool-card:hover::before {
+    opacity: 1;
+  }
+
+  .tool-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .tool-icon-wrap {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--icon-bg, #fff1f2);
+    color: var(--icon-color, #e11d48);
+    border: 1px solid var(--icon-border, #fecdd3);
+    transition: transform 0.2s ease;
+  }
+
+  .tool-card:hover .tool-icon-wrap {
+    transform: scale(1.06);
+  }
+
+  .tool-tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 6px;
+    color: var(--tag-color, #e11d48);
+    background: var(--tag-bg, #fff1f2);
+    border: 1px solid var(--tag-border, #fecdd3);
+    line-height: 1.3;
+  }
+
+  .tool-name {
+    font-family: var(--font-display, 'Geist', 'Inter', sans-serif);
+    font-size: 1.22rem;
+    font-weight: 750;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+    margin: 0 0 10px;
+    transition: color 0.15s ease;
+  }
+
+  .tool-card:hover .tool-name {
+    color: var(--card-accent, #e11d48);
+  }
+
+  .tool-blurb {
+    font-size: 0.91rem;
+    line-height: 1.62;
+    color: #475569;
+    margin: 0 0 22px;
+    flex-grow: 1;
+  }
+
+  .tool-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-top: 14px;
+    border-top: 1px solid #f1f5f9;
+    margin-top: auto;
+  }
+
+  .tool-arrow-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .tool-card:hover .tool-arrow-btn {
+    background: #0f172a;
+    color: #ffffff;
+    border-color: #0f172a;
+    transform: translateX(3px);
+  }
+
+  @media (max-width: 980px) {
+    .tools-grid {
+      grid-template-columns: 1fr;
+      max-width: 620px;
+    }
+
+    .tools-hero {
+      padding-top: 56px;
+      padding-bottom: 36px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .tools-hero {
+      padding-top: 42px;
+      padding-bottom: 28px;
+    }
+
+    .tools-title {
+      font-size: 2.1rem;
+    }
+
+    .tool-card {
+      padding: 22px 20px 18px;
+    }
+  }
+</style>
