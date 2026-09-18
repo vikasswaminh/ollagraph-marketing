@@ -1,0 +1,338 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import BaseLayout from './BaseLayout.astro';
+import FormattedDate from '../components/blog/FormattedDate.astro';
+import TableOfContents from '../components/blog/TableOfContents.astro';
+import RelatedSidebar from '../components/blog/RelatedSidebar.astro';
+import { navHtml, footerHtml } from '../chrome';
+import { readingTime, getRelatedPosts, getPublishedPosts } from '../utils/posts';
+import '../styles/blog.css';
+
+interface Props {
+  post: CollectionEntry<'blog'>;
+  headings: { depth: number; slug: string; text: string }[];
+}
+
+const { post, headings } = Astro.props;
+const { title, description, pubDate, updatedDate, author = 'Ollagraph Team', tags = [] } = post.data;
+const minutes = readingTime(post.body);
+const canonicalUrl = `https://ollagraph.com/blog/${post.slug}/`;
+
+const allPosts = await getPublishedPosts();
+const related = getRelatedPosts(post, allPosts, 4);
+
+// Category badge formatting
+const tagColorMap: Record<string, string> = {
+  aeo: 'var(--cat-aeo)',
+  geo: 'var(--cat-geo)',
+  'ai-search': 'var(--cat-ai-search)',
+  rag: 'var(--cat-rag)',
+  citations: 'var(--cat-citations)',
+  guides: 'var(--cat-guides)',
+  announcements: 'var(--cat-announcements)',
+  'robots-txt': 'var(--cat-robots-txt)',
+  seo: 'var(--cat-seo)',
+};
+
+const tagDisplayNames: Record<string, string> = {
+  aeo: 'AEO',
+  geo: 'GEO',
+  'ai-search': 'AI Search',
+  rag: 'RAG',
+  citations: 'Citations',
+  guides: 'Guides',
+  announcements: 'Announcements',
+  'robots-txt': 'Robots.txt',
+  seo: 'SEO',
+};
+
+const firstTag = tags[0];
+const badgeColor = firstTag ? (tagColorMap[firstTag] || 'var(--cat-guides)') : 'var(--cat-guides)';
+const badgeLabel = firstTag ? (tagDisplayNames[firstTag] || firstTag) : '';
+
+// JSON-LD Structured Data
+const isOrgAuthor = !author || author.toLowerCase().includes('team') || author.toLowerCase().includes('ollagraph');
+const blogPostingSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: title,
+  description: description,
+  datePublished: pubDate.toISOString(),
+  dateModified: (updatedDate ?? pubDate).toISOString(),
+  mainEntityOfPage: {
+    '@type': 'WebPage',
+    '@id': canonicalUrl,
+  },
+  url: canonicalUrl,
+  author: {
+    '@type': isOrgAuthor ? 'Organization' : 'Person',
+    name: author,
+    url: 'https://ollagraph.com',
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Ollagraph',
+    url: 'https://ollagraph.com',
+    logo: 'https://ollagraph.com/favicon.svg',
+  },
+  ...(tags.length > 0 ? { keywords: tags.join(', '), articleSection: tags[0] } : {}),
+};
+
+const breadcrumbSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    {
+      '@type': 'ListItem',
+      position: 1,
+      name: 'Home',
+      item: 'https://ollagraph.com/',
+    },
+    {
+      '@type': 'ListItem',
+      position: 2,
+      name: 'Blog',
+      item: 'https://ollagraph.com/blog/',
+    },
+    {
+      '@type': 'ListItem',
+      position: 3,
+      name: title,
+      item: canonicalUrl,
+    },
+  ],
+};
+
+const nav = navHtml('blog');
+const footer = footerHtml();
+---
+
+<BaseLayout
+  title={`${title} — Ollagraph Blog`}
+  description={description}
+  canonical={canonicalUrl}
+  updated={(updatedDate ?? pubDate).toISOString().slice(0, 10)}
+  jsonLd={[blogPostingSchema, breadcrumbSchema]}
+>
+  <!-- Reading Progress Bar -->
+  <div id="reading-progress-bar" aria-hidden="true"></div>
+
+  <Fragment set:html={nav} />
+
+  <div class="container blog-container">
+    <div class="page-grid">
+      <!-- Left Sidebar: Table of Contents -->
+      <TableOfContents headings={headings} />
+
+      <!-- Middle Column: Article Body (Pure white background card matching design) -->
+      <article class="post main-content">
+        <header class="post-header">
+          {tags && tags.length > 0 && (
+            <div class="post-badges">
+              {tags.map((tag: string) => {
+                const slugTag = tag.toLowerCase().replace(/\s+/g, '-').replace(/\./g, '-');
+                const label = tagDisplayNames[slugTag] || tag;
+                const color = tagColorMap[slugTag] || 'var(--cat-guides)';
+                return (
+                  <a href={`/blog/?tag=${slugTag}`} class={`badge badge--${slugTag}`} style={`background: ${color};`}>
+                    {label}
+                  </a>
+                );
+              })}
+            </div>
+          )}
+          <h1 class="post-title">{title}</h1>
+          {description && <p class="post-dek">{description}</p>}
+
+          <div class="post-meta-bar">
+            <span class="post-meta-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              <span>{author}</span>
+            </span>
+            <span class="post-meta-dot" aria-hidden="true">•</span>
+            <span class="post-meta-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              <FormattedDate date={pubDate} />
+            </span>
+            <span class="post-meta-dot" aria-hidden="true">•</span>
+            <span class="post-meta-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <span>{minutes} min read</span>
+            </span>
+          </div>
+        </header>
+
+        <div class="prose" id="article-content">
+          <slot />
+        </div>
+
+        <!-- Author Box -->
+        <div class="author-box">
+          <div class="author-avatar" aria-hidden="true">OG</div>
+          <div class="author-info">
+            <h3 class="author-name">{author}</h3>
+            <p class="author-bio">Technical research, crawler intelligence, and LLM search optimization at OllaGraph.</p>
+          </div>
+        </div>
+
+        <!-- Share & Post Actions Bar -->
+        <div class="post-actions-bar">
+          <span class="post-actions-label">Share article:</span>
+          <button class="action-btn" id="copy-link-btn" type="button" aria-label="Copy link to clipboard">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span id="copy-btn-text">Copy link</span>
+          </button>
+          <a
+            class="action-btn"
+            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(canonicalUrl)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Share on X (Twitter)"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            <span>Post</span>
+          </a>
+          <a
+            class="action-btn"
+            href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(canonicalUrl)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Share on LinkedIn"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45a1.6 1.6 0 0 0-1.6 1.6 1.6 1.6 0 0 0 1.6 1.6 1.6 1.6 0 0 0 1.6-1.6 1.6 1.6 0 0 0-1.6-1.6Z"/></svg>
+            <span>LinkedIn</span>
+          </a>
+        </div>
+      </article>
+
+      <!-- Right Sidebar: Related Articles -->
+      <RelatedSidebar posts={related} currentSlug={post.slug} />
+    </div>
+  </div>
+
+  <!-- Floating Back to Top Button -->
+  <button class="back-to-top-btn" id="floating-back-to-top" type="button" aria-label="Back to top">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="12" y1="19" x2="12" y2="5"></line>
+      <polyline points="5 12 12 5 19 12"></polyline>
+    </svg>
+  </button>
+
+  <Fragment set:html={footer} />
+</BaseLayout>
+
+<script>
+  function initPostInteractivity() {
+    // 1. Reading Progress Bar
+    const progressBar = document.getElementById('reading-progress-bar');
+    const article = document.getElementById('article-content');
+    const floatingBtn = document.getElementById('floating-back-to-top');
+
+    function updateProgress() {
+      if (!article || !progressBar) return;
+      const rect = article.getBoundingClientRect();
+      const windowH = window.innerHeight;
+      const total = rect.height - windowH;
+      const current = -rect.top;
+      
+      let pct = 0;
+      if (total > 0) {
+        pct = Math.min(100, Math.max(0, (current / total) * 100));
+      }
+      progressBar.style.width = `${pct}%`;
+
+      if (floatingBtn) {
+        if (window.scrollY > 400) {
+          floatingBtn.classList.add('visible');
+        } else {
+          floatingBtn.classList.remove('visible');
+        }
+      }
+    }
+
+    window.addEventListener('scroll', updateProgress, { passive: true });
+    updateProgress();
+
+    if (floatingBtn) {
+      floatingBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    }
+
+    // 2. Copy Link Button
+    const copyBtn = document.getElementById('copy-link-btn');
+    const copyText = document.getElementById('copy-btn-text');
+    if (copyBtn && copyText) {
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          copyText.textContent = 'Copied!';
+          copyBtn.classList.add('copied');
+          setTimeout(() => {
+            copyText.textContent = 'Copy link';
+            copyBtn.classList.remove('copied');
+          }, 2000);
+        } catch {
+          copyText.textContent = 'Copied!';
+          setTimeout(() => { copyText.textContent = 'Copy link'; }, 2000);
+        }
+      });
+    }
+
+    // 3. Wrap Tables for Responsive Scroll
+    document.querySelectorAll('.prose table').forEach((table) => {
+      if (!table.parentElement?.classList.contains('table-scroll-wrapper')) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-scroll-wrapper';
+        table.parentNode?.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+      }
+    });
+
+    // 4. Code Block Copy Buttons
+    document.querySelectorAll('.prose pre').forEach((pre) => {
+      if (pre.querySelector('.code-copy-btn')) return;
+      const btn = document.createElement('button');
+      btn.className = 'code-copy-btn';
+      btn.type = 'button';
+      btn.setAttribute('aria-label', 'Copy code snippet');
+      btn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        <span>Copy</span>
+      `;
+      btn.addEventListener('click', async () => {
+        const code = pre.querySelector('code')?.innerText || pre.innerText;
+        try {
+          await navigator.clipboard.writeText(code);
+          btn.classList.add('copied');
+          btn.querySelector('span')!.textContent = 'Copied!';
+          setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.querySelector('span')!.textContent = 'Copy';
+          }, 2000);
+        } catch {
+          // fallback
+        }
+      });
+      pre.appendChild(btn);
+    });
+
+    // 5. Heading Anchors for h2 and h3
+    document.querySelectorAll('.prose h2, .prose h3').forEach((heading) => {
+      if (!heading.id || heading.querySelector('.heading-anchor')) return;
+      const anchor = document.createElement('a');
+      anchor.className = 'heading-anchor';
+      anchor.href = `#${heading.id}`;
+      anchor.setAttribute('aria-label', `Link to ${heading.textContent}`);
+      anchor.textContent = '#';
+      heading.appendChild(anchor);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPostInteractivity);
+  } else {
+    initPostInteractivity();
+  }
+  document.addEventListener('astro:page-load', initPostInteractivity);
+</script>

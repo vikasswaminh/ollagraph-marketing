@@ -1,0 +1,181 @@
+---
+import { getPublishedPosts, readingTime } from '../../utils/posts';
+import FormattedDate from './FormattedDate.astro';
+
+const allPosts = await getPublishedPosts();
+// Top 4 popular/flagship posts
+const posts = allPosts.slice(0, 4);
+
+const tagColorMap: Record<string, string> = {
+  aeo: 'var(--cat-aeo)',
+  geo: 'var(--cat-geo)',
+  'ai-search': 'var(--cat-ai-search)',
+  rag: 'var(--cat-rag)',
+  citations: 'var(--cat-citations)',
+  guides: 'var(--cat-guides)',
+  announcements: 'var(--cat-announcements)',
+  'robots-txt': 'var(--cat-robots-txt)',
+  seo: 'var(--cat-seo)',
+};
+---
+
+<aside class="sidebar sidebar-left">
+  <div class="sidebar-header-row">
+    <span class="sidebar-badge">Popular</span>
+    <span class="sidebar-sub-label">Flagship</span>
+  </div>
+  <ul class="sidebar-links popular-list">
+    {posts.map((p, idx) => {
+      const firstTag = p.data.tags?.[0];
+      const dotColor = firstTag ? (tagColorMap[firstTag] || 'var(--accent)') : 'var(--accent)';
+      const minutes = readingTime(p.body);
+      const num = String(idx + 1).padStart(2, '0');
+      return (
+        <li class="popular-item">
+          <a class="popular-link" href={`/blog/${p.slug}/`}>
+            <span class="popular-num" aria-hidden="true">{num}</span>
+            <div class="popular-content">
+              <span class="popular-title">{p.data.title}</span>
+              <div class="popular-meta">
+                <span class="popular-dot" style={`background: ${dotColor};`}></span>
+                <FormattedDate date={p.data.pubDate} />
+                <span class="meta-sep" aria-hidden="true">·</span>
+                <span>{minutes}m read</span>
+              </div>
+            </div>
+          </a>
+        </li>
+      );
+    })}
+  </ul>
+  <a class="sidebar-view-all" href="/blog/#topics">View All Topics →</a>
+</aside>
+
+<style>
+  .sidebar-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.85rem;
+  }
+  .sidebar-header-row :global(.sidebar-badge) {
+    margin-bottom: 0;
+    line-height: 1.2;
+  }
+  .sidebar-sub-label {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid rgba(232, 68, 58, 0.2);
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    line-height: 1.2;
+  }
+
+  .popular-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0;
+    margin: 0.4rem 0 0.85rem;
+    list-style: none;
+  }
+
+  .popular-item {
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .popular-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .popular-link {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    text-decoration: none;
+    transition: transform 140ms ease;
+  }
+  .popular-link:hover {
+    transform: translateX(2px);
+  }
+
+  .popular-num {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-faint);
+    padding-top: 0.1rem;
+    flex-shrink: 0;
+    transition: color 140ms ease;
+  }
+  .popular-link:hover .popular-num {
+    color: var(--accent);
+  }
+
+  .popular-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .popular-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    transition: color 0.15s;
+  }
+
+  .popular-link:hover .popular-title {
+    color: var(--accent);
+  }
+
+  .popular-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.7rem;
+    color: var(--text-faint);
+  }
+
+  .popular-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .meta-sep {
+    opacity: 0.6;
+  }
+
+  .sidebar-view-all {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--border);
+    transition: color 0.15s, transform 0.15s;
+  }
+  .sidebar-view-all:hover {
+    color: var(--accent-hover);
+    transform: translateX(2px);
+    text-decoration: none;
+  }
+</style>

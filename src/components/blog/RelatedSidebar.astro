@@ -1,0 +1,109 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import FormattedDate from './FormattedDate.astro';
+import { readingTime } from '../../utils/posts';
+
+interface Props {
+  posts: CollectionEntry<'blog'>[];
+  currentSlug?: string;
+}
+
+const { posts, currentSlug } = Astro.props;
+const displayPosts = posts.filter((p) => p.slug !== currentSlug).slice(0, 4);
+
+const tagColorMap: Record<string, string> = {
+  aeo: 'var(--cat-aeo)',
+  geo: 'var(--cat-geo)',
+  'ai-search': 'var(--cat-ai-search)',
+  rag: 'var(--cat-rag)',
+  citations: 'var(--cat-citations)',
+  guides: 'var(--cat-guides)',
+  announcements: 'var(--cat-announcements)',
+  'robots-txt': 'var(--cat-robots-txt)',
+  seo: 'var(--cat-seo)',
+};
+---
+
+<aside class="sidebar sidebar-right">
+  <span class="sidebar-badge">More Articles</span>
+
+  <div class="related-list">
+    {displayPosts.map((p) => {
+      const firstTag = p.data.tags?.[0];
+      const dotColor = firstTag ? (tagColorMap[firstTag] || 'var(--accent)') : 'var(--accent)';
+      const minutes = readingTime(p.body);
+      return (
+        <a class="related-card" href={`/blog/${p.slug}/`}>
+          <p class="related-title">{p.data.title}</p>
+          <div class="related-meta">
+            <span class="related-dot" style={`background: ${dotColor};`}></span>
+            <FormattedDate date={p.data.pubDate} />
+            <span aria-hidden="true">·</span>
+            <span>{minutes}m read</span>
+          </div>
+        </a>
+      );
+    })}
+  </div>
+
+  <a class="sidebar-view-all" href="/blog/">View All Articles →</a>
+</aside>
+
+<style>
+  .related-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin: 0.5rem 0 0.85rem;
+  }
+
+  .related-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.85rem 0.95rem;
+    text-decoration: none;
+    transition: transform 0.18s var(--ease-out), border-color 0.18s, box-shadow 0.18s;
+  }
+
+  .related-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  }
+
+  .related-title {
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: var(--text);
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    transition: color 0.15s;
+  }
+
+  .related-card:hover .related-title {
+    color: var(--accent);
+  }
+
+  .related-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    color: var(--text-faint);
+  }
+
+  .related-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+</style>

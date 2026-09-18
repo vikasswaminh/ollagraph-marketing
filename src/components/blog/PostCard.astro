@@ -1,0 +1,76 @@
+---
+import FormattedDate from './FormattedDate.astro';
+
+interface Props {
+  url: string;
+  title: string;
+  description: string;
+  pubDate: Date;
+  tags?: string[];
+  minutes?: number;
+}
+const { url, title, description, pubDate, tags = [], minutes } = Astro.props;
+
+// Map first tag to a badge color
+const tagColorMap: Record<string, string> = {
+  aeo: 'var(--cat-aeo)',
+  geo: 'var(--cat-geo)',
+  'ai-search': 'var(--cat-ai-search)',
+  rag: 'var(--cat-rag)',
+  citations: 'var(--cat-citations)',
+  guides: 'var(--cat-guides)',
+  announcements: 'var(--cat-announcements)',
+  'robots-txt': 'var(--cat-robots-txt)',
+  seo: 'var(--cat-seo)',
+};
+const tagDisplayNames: Record<string, string> = {
+  aeo: 'AEO',
+  geo: 'GEO',
+  'ai-search': 'AI Search',
+  rag: 'RAG',
+  citations: 'Citations',
+  guides: 'Guides',
+  announcements: 'Announcements',
+  'robots-txt': 'Robots.txt',
+  seo: 'SEO',
+};
+
+const firstTag = tags[0];
+const badgeColor = firstTag ? (tagColorMap[firstTag] || 'var(--cat-guides)') : null;
+const badgeLabel = firstTag ? (tagDisplayNames[firstTag] || firstTag) : '';
+
+// Normalize tags and text for fast client-side searching
+const searchDataTags = tags.map((t) => t.toLowerCase()).join(' ');
+const searchDataTitle = title.toLowerCase();
+const searchDataDesc = description.toLowerCase();
+---
+
+<a
+  class="post-card"
+  href={url}
+  data-tags={searchDataTags}
+  data-title={searchDataTitle}
+  data-desc={searchDataDesc}
+>
+  {firstTag && (
+    <span class="post-card-badge" style={`--badge-color: ${badgeColor};`}>
+      {badgeLabel}
+    </span>
+  )}
+  <h2 class="post-card-title">{title}</h2>
+  <p class="post-card-desc">{description}</p>
+  <div class="post-card-meta">
+    <span class="meta-item">
+      <svg class="meta-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+      <FormattedDate date={pubDate} />
+    </span>
+    {minutes ? <span class="meta-sep" aria-hidden="true">·</span> : null}
+    {minutes ? (
+      <span class="meta-item">
+        <svg class="meta-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <span>{minutes} min read</span>
+      </span>
+    ) : null}
+    <span class="card-arrow" aria-hidden="true">→</span>
+  </div>
+</a>

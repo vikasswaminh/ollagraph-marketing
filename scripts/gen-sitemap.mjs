@@ -51,12 +51,28 @@ function sourceCandidates(path) {
     `src/bodies/${path.replace(/\//g, '-')}.body.html`,
   ];
   // Data-driven sections: per-item content lives in one data file.
+  if (segs[0] === 'blog' && segs.length > 1) c.push(`src/content/blog/${segs[1]}.md`);
   if (segs[0] === 'actors' && segs.length > 1) c.push('src/data/actors.ts', 'src/pages/actors/[slug].astro');
   if (segs[0] === 'vs' && segs.length > 1) c.push('src/data/comparisons.ts', 'src/pages/vs/[slug].astro');
-  if (segs[0] === 'bundles' && segs.length > 1) c.push('src/content/bundles.json', 'src/pages/bundles/[slug].astro');
+  if (segs[0] === 'bundles' && segs.length > 1) c.push('src/data/bundles.json', 'src/pages/bundles/[slug].astro');
   return c;
 }
 function lastmodFor(path) {
+  const segs = path.split('/');
+  // For blog articles, prefer frontmatter updatedDate then pubDate
+  if (segs[0] === 'blog' && segs.length > 1) {
+    const mdFile = `src/content/blog/${segs[1]}.md`;
+    if (existsSync(mdFile)) {
+      try {
+        const raw = readFileSync(mdFile, 'utf8');
+        const updatedMatch = raw.match(/^updatedDate:\s*["']?(\d{4}-\d{2}-\d{2})/m);
+        if (updatedMatch) return updatedMatch[1];
+        const pubMatch = raw.match(/^pubDate:\s*["']?(\d{4}-\d{2}-\d{2})/m);
+        if (pubMatch) return pubMatch[1];
+      } catch {}
+    }
+  }
+
   let best = null;
   for (const f of sourceCandidates(path)) {
     if (!existsSync(f)) continue;

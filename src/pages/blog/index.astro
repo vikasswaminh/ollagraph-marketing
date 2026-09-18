@@ -1,53 +1,441 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import LeftSidebar from '../../components/blog/LeftSidebar.astro';
+import RightSidebar from '../../components/blog/RightSidebar.astro';
+import PostCard from '../../components/blog/PostCard.astro';
+import FormattedDate from '../../components/blog/FormattedDate.astro';
 import { navHtml, footerHtml } from '../../chrome';
-import { posts } from '../../data/posts';
+import { getAllBlogPosts } from '../../utils/posts';
+import '../../styles/blog.css';
 
-const sorted = [...posts].sort((a, b) => b.date.localeCompare(a.date));
+const posts = await getAllBlogPosts();
+const featured = posts[0];
+const rest = posts.slice(1);
 
+// Calculate tag counts across all posts
+const tagCounts: Record<string, number> = {};
+for (const p of posts) {
+  for (const t of p.data.tags || []) {
+    tagCounts[t] = (tagCounts[t] || 0) + 1;
+  }
+}
+const sortedTags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
+
+// Tag color mapping (aligned 1:1 with tags directory)
+const tagHexMap: Record<string, string> = {
+  aeo: '#E8443A',
+  geo: '#8B5CF6',
+  'ai-search': '#2563EB',
+  rag: '#0EA5E9',
+  citations: '#10B981',
+  guides: '#F59E0B',
+  announcements: '#EC4899',
+  'robots-txt': '#6B7280',
+  seo: '#14B8A6',
+};
+
+const tagColorMap: Record<string, string> = {
+  aeo: 'var(--cat-aeo)',
+  geo: 'var(--cat-geo)',
+  'ai-search': 'var(--cat-ai-search)',
+  rag: 'var(--cat-rag)',
+  citations: 'var(--cat-citations)',
+  guides: 'var(--cat-guides)',
+  announcements: 'var(--cat-announcements)',
+  'robots-txt': 'var(--cat-robots-txt)',
+  seo: 'var(--cat-seo)',
+};
+
+const tagDisplayNames: Record<string, string> = {
+  aeo: 'AEO',
+  geo: 'GEO',
+  'ai-search': 'AI Search',
+  rag: 'RAG',
+  citations: 'Citations',
+  guides: 'Guides',
+  announcements: 'Announcements',
+  'robots-txt': 'Robots.txt',
+  seo: 'SEO',
+};
+
+const featuredTag = featured?.data.tags?.[0];
+const featuredBadgeColor = featuredTag ? (tagColorMap[featuredTag] || 'var(--cat-guides)') : 'var(--cat-guides)';
+const featuredBadgeLabel = featuredTag ? (tagDisplayNames[featuredTag] || featuredTag) : '';
+
+// Schema.org Blog collection
 const collectionLd = {
-  "@context": "https://schema.org",
-  "@type": "Blog",
-  name: "Ollagraph blog",
-  description: "In-depth writing on building with web data — for AI engineering, sales intelligence, real estate analytics, and more.",
-  url: "https://ollagraph.com/blog/",
-  blogPost: sorted.map((p) => ({
-    "@type": "BlogPosting",
-    headline: p.title,
-    description: p.description,
-    datePublished: p.date,
+  '@context': 'https://schema.org',
+  '@type': 'Blog',
+  name: 'OllaGraph Blog — Web Scraping & AI Search Intelligence',
+  description: 'Technical guides, architecture patterns, and engineering insights on web scraping, AI search intelligence, RAG vector pipelines, and crawl governance.',
+  url: 'https://ollagraph.com/blog/',
+  publisher: {
+    '@type': 'Organization',
+    name: 'Ollagraph',
+    url: 'https://ollagraph.com',
+    logo: 'https://ollagraph.com/favicon.svg',
+  },
+  blogPost: posts.map((p) => ({
+    '@type': 'BlogPosting',
+    headline: p.data.title,
+    description: p.data.description,
+    datePublished: p.data.pubDate.toISOString(),
     url: `https://ollagraph.com/blog/${p.slug}/`,
   })),
 };
+
 const nav = navHtml('blog');
 const footer = footerHtml();
 ---
+
 <BaseLayout
-  title="Blog — Ollagraph"
-  description="In-depth writing on building with web data — for AI teams, RevOps, and data engineers."
+  title="OllaGraph Blog — Web Scraping & AI Search Intelligence"
+  description="Technical guides, architecture patterns, and engineering insights on web scraping, AI search intelligence, RAG vector pipelines, and crawl governance."
+  canonical="https://ollagraph.com/blog/"
   jsonLd={[collectionLd]}
 >
   <Fragment set:html={nav} />
-  <section class="section" style="padding-top:80px; text-align:center;">
-    <div class="container" style="max-width:760px;">
-      <h1 class="h-display h-1" style="margin:0 0 18px;">Blog</h1>
-      <p class="copy-lg">
-        In-depth writing on the open web — for AI teams, RevOps, and data engineers.
-      </p>
-    </div>
-  </section>
-  <section class="section-tight">
-    <div class="container" style="max-width:760px; display:flex; flex-direction:column; gap:16px;">
-      {sorted.map((p) => (
-        <a class="recipe-card" href={`/blog/${p.slug}/`}>
-          <div style="font-size:12px; color:var(--text-dim); display:flex; gap:8px; flex-wrap:wrap;">
-            <span>{p.date}</span><span>·</span><span>{p.readingTime} min read</span><span>·</span><span>{p.tags.join(", ")}</span>
+
+  <div class="container blog-container">
+    <div class="page-grid">
+      <LeftSidebar />
+
+      <div class="main-content">
+        <!-- Clean Hero Headline -->
+        <section class="hero" style="margin-bottom: 1.5rem;">
+          <h1 class="hero-title" style="font-size: clamp(2rem, 3.8vw, 2.5rem); font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.4rem; color: #111827;">
+            OllaGraph Blog
+          </h1>
+          <p class="hero-subtitle" style="font-size: 0.98rem; color: #4B5563; max-width: 38rem;">
+            Technical guides, architecture patterns, and engineering insights on web scraping, AI search intelligence, RAG vector pipelines, and crawl governance.
+          </p>
+        </section>
+
+        {posts.length === 0 && <p class="empty">No posts yet — check back soon.</p>}
+
+        <!-- Featured Post Card -->
+        {featured && (
+          <a
+            id="featured-hero-card"
+            class="featured-card-nh"
+            href={`/blog/${featured.slug}/`}
+            data-title={featured.data.title.toLowerCase()}
+            data-desc={featured.data.description.toLowerCase()}
+            data-tags={(featured.data.tags || []).join(' ').toLowerCase()}
+          >
+            <div class="featured-card-nh-top">
+              {featuredTag && (
+                <span class="badge" style={`background: ${featuredBadgeColor}; font-size: 0.72rem; padding: 0.2rem 0.65rem; border-radius: 4px;`}>
+                  {featuredBadgeLabel}
+                </span>
+              )}
+              <span class="featured-nh-new">⚡ FEATURED</span>
+            </div>
+
+            <h2 class="featured-card-nh-title">{featured.data.title}</h2>
+            <p class="featured-card-nh-desc">{featured.data.description}</p>
+
+            <div class="featured-card-nh-footer">
+              <div class="featured-card-nh-meta">
+                <FormattedDate date={featured.data.pubDate} />
+                <span class="sep" aria-hidden="true">·</span>
+                <span>{featured.minutes} min read</span>
+                <span class="sep" aria-hidden="true">·</span>
+                <span>By {featured.data.author || 'Ollagraph Engineering'}</span>
+              </div>
+              <span class="featured-card-nh-cta">Read article →</span>
+            </div>
+          </a>
+        )}
+
+        <!-- Explorer Controls: Instant Search & Topic Filter Pills -->
+        <div class="explorer-toolbar">
+          <div class="search-input-wrapper">
+            <span class="search-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </span>
+            <input
+              type="search"
+              id="blog-search-input"
+              class="blog-search-input"
+              placeholder="Search articles by title, topic, or keyword (e.g. RAG, headless browser, JSON)..."
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Search articles"
+            />
+            <button type="button" id="search-clear-btn" class="search-clear-btn" aria-label="Clear search" style="display: none;">
+              ✕
+            </button>
+            <kbd class="search-shortcut" title="Press / or Cmd+K to search">/</kbd>
           </div>
-          <h3 style="font-size:18px; margin:8px 0;">{p.title}</h3>
-          <p>{p.description}</p>
-        </a>
-      ))}
+
+          <!-- Topic Filter Pills Bar -->
+          <div class="filter-pills-bar" role="tablist" aria-label="Filter by topic">
+            <button class="filter-pill active" data-filter="all" role="tab" aria-selected="true" style="--pill-color: #0F172A;">
+              <span class="pill-dot" style="background: #0F172A;"></span>
+              All <span class="pill-badge">{posts.length}</span>
+            </button>
+            {sortedTags.map((tag) => {
+              const hex = tagHexMap[tag] || '#6B7280';
+              const label = tagDisplayNames[tag] || tag;
+              return (
+                <button class="filter-pill" data-filter={tag} role="tab" aria-selected="false" style={`--pill-color: ${hex};`}>
+                  <span class="pill-dot" style={`background: ${hex};`}></span>
+                  {label} <span class="pill-badge">{tagCounts[tag]}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <!-- Live Results Status Bar -->
+          <div class="filter-status-bar" id="filter-status-bar" style="display: none;">
+            <span id="filter-status-text" class="filter-status-text"></span>
+            <button id="filter-reset-btn" class="filter-reset-btn">Reset filters</button>
+          </div>
+        </div>
+
+        <!-- Rest of Articles Grid -->
+        {rest.length > 0 && (
+          <section style="margin-top: 1rem;">
+            <div class="post-grid" id="main-post-grid">
+              {rest.map((p) => (
+                <PostCard
+                  url={`/blog/${p.slug}/`}
+                  title={p.data.title}
+                  description={p.data.description}
+                  pubDate={p.data.pubDate}
+                  tags={p.data.tags}
+                  minutes={p.minutes}
+                />
+              ))}
+            </div>
+
+            <!-- Empty State (No Search Matches) -->
+            <div class="search-empty-state" id="search-empty-state" style="display: none;">
+              <div class="empty-icon-wrap">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  <line x1="8" y1="11" x2="14" y2="11"></line>
+                </svg>
+              </div>
+              <h3 class="empty-title">No matching articles found</h3>
+              <p class="empty-desc">We couldn't find any articles matching your search query. Try searching for other terms or clear the filter.</p>
+              <button class="empty-reset-btn" id="empty-reset-btn">View all articles</button>
+            </div>
+
+            <!-- Grid Pacing: Load More Button -->
+            <div class="load-more-wrapper" id="load-more-wrapper">
+              <button class="load-more-btn" id="load-more-btn">
+                <span>Load more articles</span>
+                <span class="load-more-count" id="load-more-count"></span>
+                <span class="load-more-icon" aria-hidden="true">↓</span>
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
+
+      <RightSidebar />
     </div>
-  </section>
+  </div>
+
   <Fragment set:html={footer} />
 </BaseLayout>
+
+<script>
+  function initBlogExplorer() {
+    const searchInput = document.getElementById('blog-search-input') as HTMLInputElement | null;
+    const searchClear = document.getElementById('search-clear-btn');
+    const filterPills = document.querySelectorAll('.filter-pill');
+    const statusBar = document.getElementById('filter-status-bar');
+    const statusText = document.getElementById('filter-status-text');
+    const resetBtn = document.getElementById('filter-reset-btn');
+    const loadMoreWrapper = document.getElementById('load-more-wrapper');
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    const loadMoreCount = document.getElementById('load-more-count');
+    const emptyState = document.getElementById('search-empty-state');
+    const emptyResetBtn = document.getElementById('empty-reset-btn');
+    const postCards = Array.from(document.querySelectorAll('#main-post-grid .post-card')) as HTMLElement[];
+
+    const featuredCard = document.getElementById('featured-hero-card') as HTMLElement | null;
+    const featuredTitle = featuredCard?.getAttribute('data-title') || '';
+    const featuredDesc = featuredCard?.getAttribute('data-desc') || '';
+    const featuredTags = featuredCard?.getAttribute('data-tags') || '';
+
+    if (!searchInput || postCards.length === 0) return;
+
+    const PAGE_SIZE = 12;
+    let currentLimit = PAGE_SIZE;
+    let activeFilter = 'all';
+    let searchQuery = '';
+
+    function updateExplorer() {
+      const query = searchQuery.trim().toLowerCase();
+
+      // 0. Check if featured card matches
+      let featuredMatches = false;
+      if (featuredCard) {
+        const matchesCategory = activeFilter === 'all' || featuredTags.includes(activeFilter);
+        const matchesSearch = !query || featuredTitle.includes(query) || featuredDesc.includes(query) || featuredTags.includes(query);
+        featuredMatches = matchesCategory && matchesSearch;
+        featuredCard.style.display = featuredMatches ? 'block' : 'none';
+      }
+
+      const matchedCards: HTMLElement[] = [];
+
+      // 1. Filter cards by search query and category pill
+      postCards.forEach((card) => {
+        const title = card.getAttribute('data-title') || '';
+        const desc = card.getAttribute('data-desc') || '';
+        const tags = card.getAttribute('data-tags') || '';
+
+        const matchesCategory = activeFilter === 'all' || tags.includes(activeFilter);
+        const matchesSearch = !query || title.includes(query) || desc.includes(query) || tags.includes(query);
+
+        if (matchesCategory && matchesSearch) {
+          card.classList.remove('is-filter-hidden');
+          matchedCards.push(card);
+        } else {
+          card.classList.add('is-filter-hidden');
+          card.classList.add('is-paged-hidden');
+        }
+      });
+
+      // 2. Manage pagination pacing on matched cards
+      const totalGridMatched = matchedCards.length;
+      matchedCards.forEach((card, index) => {
+        if (index < currentLimit) {
+          card.classList.remove('is-paged-hidden');
+        } else {
+          card.classList.add('is-paged-hidden');
+        }
+      });
+
+      const totalMatchedAll = totalGridMatched + (featuredMatches ? 1 : 0);
+      const totalShownAll = Math.min(currentLimit, totalGridMatched) + (featuredMatches ? 1 : 0);
+      const remaining = totalGridMatched - Math.min(currentLimit, totalGridMatched);
+      const isFiltering = activeFilter !== 'all' || query.length > 0;
+
+      // 3. Update Load More button (counts include featured card: e.g. 13 of 103 shown · 90 remaining)
+      if (loadMoreWrapper && loadMoreCount && loadMoreBtn) {
+        if (remaining > 0) {
+          loadMoreWrapper.style.display = 'flex';
+          loadMoreCount.textContent = `(${totalShownAll} of ${totalMatchedAll} shown · ${remaining} remaining)`;
+        } else {
+          loadMoreWrapper.style.display = 'none';
+        }
+      }
+
+      // 4. Update Empty State
+      if (emptyState) {
+        emptyState.style.display = totalMatchedAll === 0 ? 'block' : 'none';
+      }
+
+      // 5. Update Status Bar & Clear button
+      if (searchClear) {
+        searchClear.style.display = query.length > 0 ? 'flex' : 'none';
+      }
+
+      if (statusBar && statusText) {
+        if (isFiltering) {
+          statusBar.style.display = 'flex';
+          let message = `Showing <strong>${totalMatchedAll}</strong> article${totalMatchedAll === 1 ? '' : 's'}`;
+          if (query) message += ` matching "<strong>${query}</strong>"`;
+          if (activeFilter !== 'all') {
+            const activeBtn = document.querySelector(`.filter-pill[data-filter="${activeFilter}"]`);
+            const label = activeBtn ? activeBtn.childNodes[0].textContent?.trim() : activeFilter;
+            message += ` in <strong>${label}</strong>`;
+          }
+          statusText.innerHTML = message;
+        } else {
+          statusBar.style.display = 'none';
+        }
+      }
+    }
+
+    // Load More click
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener('click', () => {
+        currentLimit += PAGE_SIZE;
+        updateExplorer();
+      });
+    }
+
+    // Filter pill clicks
+    filterPills.forEach((pill) => {
+      pill.addEventListener('click', () => {
+        filterPills.forEach((p) => {
+          p.classList.remove('active');
+          p.setAttribute('aria-selected', 'false');
+        });
+        pill.classList.add('active');
+        pill.setAttribute('aria-selected', 'true');
+        activeFilter = pill.getAttribute('data-filter') || 'all';
+        currentLimit = PAGE_SIZE;
+        updateExplorer();
+      });
+    });
+
+    // Search input typing
+    searchInput.addEventListener('input', (e) => {
+      searchQuery = (e.target as HTMLInputElement).value;
+      currentLimit = PAGE_SIZE;
+      updateExplorer();
+    });
+
+    // Clear search button
+    if (searchClear) {
+      searchClear.addEventListener('click', () => {
+        if (searchInput) {
+          searchInput.value = '';
+          searchQuery = '';
+          currentLimit = PAGE_SIZE;
+          searchInput.focus();
+          updateExplorer();
+        }
+      });
+    }
+
+    // Reset filters
+    function resetAll() {
+      if (searchInput) searchInput.value = '';
+      searchQuery = '';
+      activeFilter = 'all';
+      currentLimit = PAGE_SIZE;
+      filterPills.forEach((p) => {
+        const isAll = p.getAttribute('data-filter') === 'all';
+        p.classList.toggle('active', isAll);
+        p.setAttribute('aria-selected', String(isAll));
+      });
+      updateExplorer();
+    }
+
+    if (resetBtn) resetBtn.addEventListener('click', resetAll);
+    if (emptyResetBtn) emptyResetBtn.addEventListener('click', resetAll);
+
+    // Keyboard shortcut '/' or 'Cmd/Ctrl+K' to focus search
+    document.addEventListener('keydown', (e) => {
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
+      if (e.key === '/' && !isInput) {
+        e.preventDefault();
+        searchInput?.focus();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        searchInput?.focus();
+      } else if (e.key === 'Escape' && document.activeElement === searchInput) {
+        searchInput?.blur();
+      }
+    });
+
+    updateExplorer();
+  }
+
+  document.addEventListener('DOMContentLoaded', initBlogExplorer);
+  document.addEventListener('astro:page-load', initBlogExplorer);
+</script>

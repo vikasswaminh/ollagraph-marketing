@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
-const bundles = JSON.parse(readFileSync(join(root, 'src/content/bundles.json'), 'utf-8'));
+const bundles = JSON.parse(readFileSync(join(root, 'src/data/bundles.json'), 'utf-8'));
 const spec    = JSON.parse(readFileSync(join(root, 'src/openapi.json'),       'utf-8'));
 const livePaths = new Set(Object.keys(spec.paths || {}));
 const errors = [];

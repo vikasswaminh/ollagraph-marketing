@@ -1,0 +1,221 @@
+---
+/**
+ * Table of Contents — auto-generated from headings.
+ * Expects `headings` prop: array of { depth, slug, text }.
+ * Astro provides this from `post.render()`.
+ */
+interface Props {
+  headings: { depth: number; slug: string; text: string }[];
+}
+
+const { headings } = Astro.props;
+
+// Filter headings: include H2s and structural H3s, but keep FAQs unified as a single chapter
+let isInsideFaq = false;
+const tocItems = headings.filter((h) => {
+  if (h.depth === 2) {
+    const lower = h.text.toLowerCase();
+    isInsideFaq = lower.includes('faq') || lower.includes('frequently asked') || lower.includes('common questions');
+    return true;
+  }
+  if (h.depth === 3) {
+    // Keep FAQ section as a unified chapter so scrolling through questions doesn't skip/jump the FAQ item
+    if (isInsideFaq) return false;
+    const lower = h.text.toLowerCase().trim();
+    if (/^q\d+[:.]/i.test(lower) || lower.startsWith('q:')) return false;
+    return true;
+  }
+  return false;
+});
+
+const cleanHeadingText = (text: string) => {
+  const cleaned = text
+    .replace(/\*/g, '')
+    .replace(/_/g, '')
+    .replace(/`/g, '')
+    .trim();
+  
+  if (/^key takeaways/i.test(cleaned)) {
+    return 'TL;DR';
+  }
+  return cleaned;
+};
+---
+
+<aside class="sidebar sidebar-left">
+  <a class="toc-back" href="/blog/">← All posts</a>
+
+  {tocItems.length > 0 && (
+    <nav class="toc-nav" aria-label="Table of contents">
+      <span class="toc-label">On this page</span>
+      <ul class="toc-list" id="toc-list">
+        {tocItems.map((h) => (
+          <li class={h.depth === 3 ? 'toc-h3' : ''}>
+            <a href={`#${h.slug}`} data-toc-link>{cleanHeadingText(h.text)}</a>
+          </li>
+        ))}
+      </ul>
+      <div class="toc-bottom">
+        <button class="toc-back-to-top" id="toc-back-to-top" type="button" aria-label="Back to top">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="12" y1="19" x2="12" y2="5"></line>
+            <polyline points="5 12 12 5 19 12"></polyline>
+          </svg>
+          <span>Back to top</span>
+        </button>
+      </div>
+    </nav>
+  )}
+</aside>
+
+<script>
+  function initTableOfContents() {
+    const tocList = document.getElementById('toc-list');
+    const tocLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]'));
+    const backToTopBtn = document.getElementById('toc-back-to-top');
+
+    // Smooth Back to Top
+    if (backToTopBtn) {
+      backToTopBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (tocList) {
+          tocList.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      });
+    }
+
+    if (!tocLinks.length || !tocList) return;
+
+    // Collect corresponding headings
+    const headingEntries: { heading: HTMLElement; link: HTMLAnchorElement; id: string }[] = [];
+    tocLinks.forEach((link) => {
+      const href = link.getAttribute('href');
+      if (href && href.startsWith('#')) {
+        const id = href.slice(1);
+        const heading = document.getElementById(id);
+        if (heading) {
+          headingEntries.push({ heading, link, id });
+        }
+      }
+    });
+
+    if (!headingEntries.length) return;
+
+    let currentActiveId: string | null = null;
+    let isClickScrolling = false;
+    let clickTimeout: any = null;
+
+    // Smooth click handler on TOC links with offset for sticky header
+    tocLinks.forEach((link) => {
+      link.addEventListener('click', (e) => {
+        const href = link.getAttribute('href');
+        if (!href || !href.startsWith('#')) return;
+        const targetId = href.slice(1);
+        const targetEl = document.getElementById(targetId);
+        if (targetEl) {
+          e.preventDefault();
+          isClickScrolling = true;
+          clearTimeout(clickTimeout);
+
+          setActiveLink(targetId);
+
+          const headerOffset = 84;
+          const elementPosition = targetEl.getBoundingClientRect().top;
+          const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+          });
+
+          // Update URL hash without jumping
+          if (history.pushState) {
+            history.pushState(null, '', href);
+          }
+
+          clickTimeout = setTimeout(() => {
+            isClickScrolling = false;
+          }, 800);
+        }
+      });
+    });
+
+    function setActiveLink(activeId: string) {
+      if (currentActiveId === activeId) return;
+      currentActiveId = activeId;
+
+      let activeLink: HTMLAnchorElement | null = null;
+
+      tocLinks.forEach((link) => {
+        const isActive = link.getAttribute('href') === `#${activeId}`;
+        link.classList.toggle('active', isActive);
+        if (isActive) {
+          activeLink = link;
+        }
+      });
+
+      // Synchronize and auto-scroll the TOC sidebar container
+      if (activeLink && tocList) {
+        const activeLi = (activeLink as HTMLAnchorElement).closest('li') || activeLink;
+        const listRect = tocList.getBoundingClientRect();
+        const itemRect = activeLi.getBoundingClientRect();
+
+        // Check if item is outside or near the edges of TOC viewable box
+        const isAbove = itemRect.top < listRect.top + 20;
+        const isBelow = itemRect.bottom > listRect.bottom - 20;
+
+        if (isAbove || isBelow) {
+          activeLi.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'nearest'
+          });
+        }
+      }
+    }
+
+    // Scroll spy: precise position calculation that never skips sections
+    let ticking = false;
+    function updateScrollSpy() {
+      if (isClickScrolling) return;
+
+      const triggerOffset = 130;
+      let activeIndex = 0;
+
+      for (let i = 0; i < headingEntries.length; i++) {
+        const top = headingEntries[i].heading.getBoundingClientRect().top;
+        if (top <= triggerOffset) {
+          activeIndex = i;
+        } else {
+          break;
+        }
+      }
+
+      const activeEntry = headingEntries[activeIndex];
+      if (activeEntry) {
+        setActiveLink(activeEntry.id);
+      }
+    }
+
+    window.addEventListener('scroll', () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          updateScrollSpy();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    }, { passive: true });
+
+    // Initial check on load
+    updateScrollSpy();
+  }
+
+  // Execute when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTableOfContents);
+  } else {
+    initTableOfContents();
+  }
+  document.addEventListener('astro:page-load', initTableOfContents);
+</script>
