@@ -7,8 +7,57 @@ import { navHtml, footerHtml } from '../chrome';
 const rendered = bodyHtml
   .replace('<div id="nav-root"></div>', navHtml(""))
   .replace('<div id="footer-root"></div>', footerHtml());
+
+const softwareApp = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Ollagraph for SEO & AEO Consultants",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Cloud API",
+  url: "https://ollagraph.com/for-seo/",
+  description: "Run technical SEO, AEO, and structured-data audits as API calls: meta, headings, schema, broken links, llms.txt, and AI crawler access.",
+  offers: {
+    "@type": "AggregateOffer",
+    priceCurrency: "USD",
+    lowPrice: "0",
+    offerCount: "1",
+  },
+};
+
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: "https://ollagraph.com" },
+    { "@type": "ListItem", position: 2, name: "For SEO & AEO", item: "https://ollagraph.com/for-seo/" }
+  ]
+};
 ---
-<BaseLayout title="Ollagraph for SEO &amp; AEO — Technical Audits as APIs" description="Run technical SEO, AEO and structured-data audits as API calls: meta, headings, schema, broken links, llms.txt readiness and AI-crawler checks. One key, PAYG.">
+<BaseLayout
+  title="Ollagraph for SEO &amp; AEO — Technical Audits as APIs"
+  description="Run technical SEO, AEO and structured-data audits as API calls: meta, headings, schema, broken links, llms.txt readiness and AI-crawler checks. One key, PAYG."
+  jsonLd={[softwareApp, breadcrumbLd]}
+>
   <Fragment slot="head" set:html={headExtras} />
   <Fragment set:html={rendered} />
+
+  <script is:inline>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.quick-copy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var text = btn.getAttribute('data-copy');
+          if (text) {
+            navigator.clipboard.writeText(text).then(function() {
+              var span = btn.querySelector('span');
+              if (span) {
+                span.textContent = 'Copied!';
+                setTimeout(function() { span.textContent = 'Copy'; }, 1600);
+              }
+            });
+          }
+        });
+      });
+    });
+  </script>
 </BaseLayout>
+

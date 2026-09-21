@@ -10,7 +10,17 @@ export default {
     './src/bodies/mcp.head.html',
     './src/pages/aeo.astro',
     './src/bodies/aeo.body.html',
-    './src/bodies/aeo.head.html'
+    './src/bodies/aeo.head.html',
+    './src/pages/for-ai.astro',
+    './src/bodies/for-ai.body.html',
+    './src/bodies/for-ai.head.html',
+    './src/pages/for-seo.astro',
+    './src/bodies/for-seo.body.html',
+    './src/bodies/for-seo.head.html',
+    './src/pages/for-intel.astro',
+    './src/bodies/for-intel.body.html',
+    './src/bodies/for-intel.head.html',
+    './src/pages/for-aeo-agencies.astro'
   ],
   theme: {
     extend: {

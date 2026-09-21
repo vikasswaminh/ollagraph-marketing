@@ -3,12 +3,62 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import bodyHtml from '../bodies/for-ai.body.html?raw';
 import headExtras from '../bodies/for-ai.head.html?raw';
 import { navHtml, footerHtml } from '../chrome';
+import stats from '../data/api-stats.json';
 
 const rendered = bodyHtml
   .replace('<div id="nav-root"></div>', navHtml(""))
-  .replace('<div id="footer-root"></div>', footerHtml());
+  .replace('<div id="footer-root"></div>', footerHtml())
+  .split('%%ENDPOINT_COUNT%%').join(String(stats.endpointCount));
+
+const softwareApp = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Ollagraph for AI Agents",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Cloud API",
+  url: "https://ollagraph.com/for-ai/",
+  description: "One web API and native MCP server for AI agents. Scrape, extract, search, and audit the live web with zero content retention.",
+  offers: {
+    "@type": "AggregateOffer",
+    priceCurrency: "USD",
+    lowPrice: "0",
+    offerCount: "1",
+  },
+};
+
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: "https://ollagraph.com" },
+    { "@type": "ListItem", position: 2, name: "For AI Agents", item: "https://ollagraph.com/for-ai/" }
+  ]
+};
 ---
-<BaseLayout title="Ollagraph for AI Agents — One Web API, MCP-Native" description="Stop wiring six vendors into your agent. Scrape, extract, search and audit the live web through one MCP-native API with a no-content-retention guarantee.">
+<BaseLayout
+  title="Ollagraph for AI Agents — One Web API, MCP-Native"
+  description="Stop wiring six vendors into your agent. Scrape, extract, search and audit the live web through one MCP-native API with a no-content-retention guarantee."
+  jsonLd={[softwareApp, breadcrumbLd]}
+>
   <Fragment slot="head" set:html={headExtras} />
   <Fragment set:html={rendered} />
+
+  <script is:inline>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.quick-copy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var text = btn.getAttribute('data-copy');
+          if (text) {
+            navigator.clipboard.writeText(text).then(function() {
+              var span = btn.querySelector('span');
+              if (span) {
+                span.textContent = 'Copied!';
+                setTimeout(function() { span.textContent = 'Copy'; }, 1600);
+              }
+            });
+          }
+        });
+      });
+    });
+  </script>
 </BaseLayout>
