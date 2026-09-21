@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ollagraph.com/schemas/product-pricing/1.0.0",
+  "type": "object",
+  "required": ["product", "pricing"],
+  "properties": {
+    "product": {
+      "type": "object",
+      "required": ["name", "url"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+    "pricing": {
+      "type": "object",
+      "required": ["currency", "price", "availability"],
+      "properties": {
+        "currency": { "type": "string", "minLength": 3, "maxLength": 3 },
+        "price": { "type": "number", "minimum": 0 },
+        "availability": {
+          "type": "string",
+          "enum": ["in_stock", "out_of_stock", "preorder", "unknown"]
+        },
+        "lead_time_days": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
