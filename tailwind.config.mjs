@@ -7,7 +7,10 @@ export default {
     './src/bodies/pricing.body.html',
     './src/pages/mcp.astro',
     './src/bodies/mcp.body.html',
-    './src/bodies/mcp.head.html'
+    './src/bodies/mcp.head.html',
+    './src/pages/aeo.astro',
+    './src/bodies/aeo.body.html',
+    './src/bodies/aeo.head.html'
   ],
   theme: {
     extend: {
