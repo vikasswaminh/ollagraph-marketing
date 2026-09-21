@@ -4,7 +4,10 @@ export default {
     './src/pages/index.astro',
     './src/bodies/index.body.html',
     './src/pages/pricing.astro',
-    './src/bodies/pricing.body.html'
+    './src/bodies/pricing.body.html',
+    './src/pages/mcp.astro',
+    './src/bodies/mcp.body.html',
+    './src/bodies/mcp.head.html'
   ],
   theme: {
     extend: {

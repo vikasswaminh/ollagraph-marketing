@@ -3,42 +3,64 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import bodyHtml from '../bodies/mcp.body.html?raw';
 import headExtras from '../bodies/mcp.head.html?raw';
 import { navHtml, footerHtml } from '../chrome';
+import stats from '../data/api-stats.json';
 
 const rendered = bodyHtml
   .replace('<div id="nav-root"></div>', navHtml("mcp"))
-  .replace('<div id="footer-root"></div>', footerHtml());
+  .replace('<div id="footer-root"></div>', footerHtml())
+  .split('%%ENDPOINT_COUNT%%').join(String(stats.endpointCount));
+
+const softwareApp = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Ollagraph MCP Server",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "macOS, Windows, Linux",
+  url: "https://ollagraph.com/mcp/",
+  description: `Every Ollagraph endpoint, exposed as an MCP tool for AI agents. Run pipx run ollagraph-mcp to give Claude Desktop, Cursor, Windsurf, Cline, and Continue ${stats.endpointCount} callable live web data tools.`,
+  offers: {
+    "@type": "AggregateOffer",
+    priceCurrency: "USD",
+    lowPrice: "0",
+    offerCount: "1",
+  },
+};
+
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: "https://ollagraph.com" },
+    { "@type": "ListItem", position: 2, name: "MCP Server", item: "https://ollagraph.com/mcp/" }
+  ]
+};
 ---
-<BaseLayout title="Ollagraph MCP Server — %%ENDPOINT_COUNT%% Web Tools for Claude &amp; Cursor" description="Every Ollagraph endpoint, exposed as an MCP tool. pipx run ollagraph-mcp; drop into Claude Desktop, Cursor, Cline, Continue with one config line.">
+<BaseLayout
+  title={`Ollagraph MCP Server — ${stats.endpointCount} Web Tools for Claude & Cursor`}
+  description={`Every Ollagraph endpoint, exposed as an MCP tool. pipx run ollagraph-mcp; drop into Claude Desktop, Cursor, Windsurf, Cline, and Continue with one config line.`}
+  jsonLd={[softwareApp, breadcrumbLd]}
+>
   <Fragment slot="head" set:html={headExtras} />
   <Fragment set:html={rendered} />
 
-  <style is:global>
-    .quickstart-pre { position: relative; }
-    .qs-copy {
-      position: absolute; top: 10px; right: 10px;
-      padding: 4px 9px; border-radius: 6px; font-size: 11px; line-height: 1; cursor: pointer;
-      color: var(--text-muted); background: rgba(255,255,255,0.05);
-      border: 1px solid var(--border, rgba(255,255,255,0.12));
-    }
-    .qs-copy:hover { color: var(--text); background: rgba(255,255,255,0.10); }
-  </style>
-  <script>
-    // Copy buttons on the /mcp code blocks (external scan BUG-009). The page body
-    // is set:html-injected, so this bundled module script wires them at runtime.
-    document.querySelectorAll('pre.quickstart-pre').forEach((pre) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'qs-copy';
-      btn.textContent = 'Copy';
-      btn.addEventListener('click', () => {
-        const code = pre.querySelector('code');
-        const text = (code ? code.innerText : pre.innerText).trim();
-        navigator.clipboard.writeText(text).then(() => {
-          btn.textContent = 'Copied';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  <script is:inline>
+    // Wire quick copy buttons
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.quick-copy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var text = btn.getAttribute('data-copy');
+          if (text) {
+            navigator.clipboard.writeText(text).then(function() {
+              var span = btn.querySelector('span');
+              if (span) {
+                span.textContent = 'Copied!';
+                setTimeout(function() { span.textContent = 'Copy'; }, 1600);
+              }
+            });
+          }
         });
       });
-      pre.appendChild(btn);
     });
   </script>
 </BaseLayout>
+
