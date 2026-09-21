@@ -11,19 +11,19 @@ const faqs = [
 ];
 ---
 <Article
-  title="PDF to Markdown for RAG: Preserve Structure for Better Retrieval"
-  description="Convert PDFs to Markdown before chunking so headings, lists, tables, and captions survive. Cleaner structure improves retrieval accuracy and citations."
+  title="Layout-Aware PDF Parsing: Reconstructing Reading Order and Document Flow for LLMs"
+  description="How layout-aware PDF parsers detect reading order, resolve multi-column documents, strip running headers, and convert complex PDFs into semantic Markdown for RAG."
   date="2026-07-28"
   readingTime={26}
-  tags={["rag", "pdf", "markdown", "chunking", "document-ai"]}
+  tags={["pdf-parsing", "rag", "layout-analysis", "document-ai", "ocr"]}
   kind="blog"
   faqs={faqs}
 >
 <h2>Executive Summary</h2>
-<p>Most RAG pipelines fail before the first retrieval because the source documents arrive as flat, broken text. PDFs are the worst offender. A research paper becomes a wall of paragraphs. A financial report loses its tables. A product manual sheds its headings, lists, and captions. When that stripped text is chunked and embedded, the semantic relationships that help an LLM answer accurately disappear with the formatting.</p>
-<p>Converting PDFs to Markdown before chunking fixes this. Markdown keeps headings, lists, tables, and code blocks as explicit structure. That structure tells a chunker where ideas begin and end, helps embeddings understand hierarchy, and gives the LLM cleaner context in every retrieved window.</p>
-<p>In this article you will learn why PDFs are hard to parse for RAG, what “structure-preserving” extraction actually means, how layout-aware parsers work, how to chunk Markdown so retrieval improves, and how to automate the entire pipeline with the Ollagraph API. We tested multiple extraction approaches on real documents and measured the impact on answer correctness. The difference between naive text extraction and structure-aware Markdown conversion is large enough to determine whether a RAG system is usable in production.</p>
-<p><strong>Key takeaway:</strong> Structure is not decoration. In RAG, structure is signal. Preserve it by converting PDFs to Markdown with a layout-aware parser, then chunk by semantic boundaries instead of arbitrary character counts.</p>
+<p>Most RAG pipelines fail before the first retrieval because the source documents arrive as flat, broken text. PDFs are the worst offender. A research paper becomes a wall of paragraphs with multi-column reading orders scrambled. A financial report loses its headings and sections. A product manual sheds its captions and callouts. When that stripped text is chunked and embedded, the semantic relationships that help an LLM answer accurately disappear with the visual formatting.</p>
+<p>Layout-aware PDF parsing fixes this by reconstructing logical reading order, isolating multi-column flows, and preserving document hierarchy before converting text to Markdown. For table-specific preservation strategies and merged-cell handling, see our companion guide on <a href="/blog/pdf-to-markdown-for-rag-preserve-tables-layout-and-document-structure/">preserving tables and document structure in RAG</a>.</p>
+<p>In this guide, you will learn how layout-aware parsers use visual geometry and PDF operators to reconstruct reading order, how to eliminate header/footer noise, and how to automate the entire extraction pipeline using the Ollagraph API.</p>
+<p><strong>Key takeaway:</strong> PDF encodes visual geometry, not semantic reading order. Layout-aware parsers bridge this gap by recovering multi-column sequences and structural hierarchy before text reaches the embedding model.</p>
 
 <h2>Key Takeaways</h2>
 <ul>

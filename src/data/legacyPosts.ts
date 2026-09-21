@@ -358,11 +358,12 @@ export const LEGACY_BLOG_POSTS: LegacyBlogPost[] = [
   },
   {
     "slug": "pdf-to-markdown-for-rag",
-    "title": "PDF to Markdown for RAG: Preserve Structure for Better Retrieval",
-    "description": "Convert PDFs to Markdown before chunking so headings, lists, tables, and captions survive. Cleaner structure improves retrieval accuracy and citations.",
+    "title": "Layout-Aware PDF Parsing: Reconstructing Reading Order and Document Flow for LLMs",
+    "description": "How layout-aware PDF parsers detect reading order, resolve multi-column documents, strip running headers, and convert complex PDFs into semantic Markdown for RAG.",
     "pubDate": "2026-07-28",
     "readingTime": 26,
     "tags": [
+      "pdf-parsing",
       "rag",
       "guides"
     ]

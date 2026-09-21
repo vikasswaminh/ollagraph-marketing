@@ -82,6 +82,24 @@ function lastmodFor(path) {
   return best || today;
 }
 
+// Load redirected paths from public/_redirects so we never submit redirected URLs to search engines.
+const redirectedPaths = new Set();
+const redirectsFile = join('public', '_redirects');
+if (existsSync(redirectsFile)) {
+  for (const line of readFileSync(redirectsFile, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const parts = trimmed.split(/\s+/);
+    if (parts.length >= 2) {
+      const src = parts[0].replace(/\/+$/, '');
+      if (src) {
+        redirectedPaths.add(src);
+        redirectedPaths.add(src + '/');
+      }
+    }
+  }
+}
+
 const locs = new Set();
 for (const f of walk(DIST)) {
   const html = readFileSync(f, 'utf8');
@@ -89,7 +107,13 @@ for (const f of walk(DIST)) {
   // Only list pages that canonicalize to this domain. Pages that canonicalize
   // elsewhere (e.g. /login, /signup → app.ollagraph.com) are intentionally
   // excluded — they belong to another property's sitemap, not ours.
-  if (m && m[1].startsWith(SITE + '/')) locs.add(m[1]);
+  // Also exclude any paths configured as 301 redirects in public/_redirects.
+  if (m && m[1].startsWith(SITE + '/')) {
+    const relPath = m[1].slice(SITE.length);
+    if (!redirectedPaths.has(relPath) && !redirectedPaths.has(relPath.replace(/\/+$/, ''))) {
+      locs.add(m[1]);
+    }
+  }
 }
 
 const urls = [...locs].sort();
