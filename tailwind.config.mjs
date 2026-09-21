@@ -20,7 +20,13 @@ export default {
     './src/pages/for-intel.astro',
     './src/bodies/for-intel.body.html',
     './src/bodies/for-intel.head.html',
-    './src/pages/for-aeo-agencies.astro'
+    './src/pages/for-aeo-agencies.astro',
+    './src/pages/capabilities.astro',
+    './src/bodies/capabilities.body.html',
+    './src/bodies/capabilities.head.html',
+    './src/pages/enterprise.astro',
+    './src/bodies/enterprise.body.html',
+    './src/bodies/enterprise.head.html'
   ],
   theme: {
     extend: {
