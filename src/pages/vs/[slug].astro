@@ -19,72 +19,120 @@ const jsonLd = [
   ] },
   { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: c.faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) },
 ];
+
+// Index badge ("01 / 11") mirrors the /vs hub's "01 / 11" hero pill.
+const index = comparisons.findIndex((x) => x.slug === c.slug);
+const idxLabel = `${String(index + 1).padStart(2, "0")} / ${String(comparisons.length).padStart(2, "0")}`;
 ---
 <BaseLayout title={`${c.positioning} — honest comparison`} description={c.heroSub} jsonLd={jsonLd}>
-  <Fragment set:html={navHtml('')} />
-  <div class="article">
-    <span class="badge badge-mute" style="margin-bottom:16px;">COMPARISON</span>
-    <h1 class="h-display h-1">{c.positioning}</h1>
-    <p class="article-lede">{c.heroSub}</p>
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:18px;">
-      <a class="btn btn-primary" href="/contactus">Request access</a>
-      <a class="btn btn-secondary" href="/pricing">See pricing</a>
-    </div>
+  <Fragment set:html={navHtml('vs')} />
 
-    <article class="prose">
-      <h2>What {c.name} does well</h2>
-      <p>{c.whatTheyDoWell}</p>
+  <div class="vsd-page">
+    <!-- Hero header — matches the redesigned /vs hub -->
+    <header class="vsd-hero">
+      <div class="vsd-hero-inner">
+        <a class="vsd-back" href="/vs/"><span aria-hidden="true">&larr;</span> All comparisons</a>
+        <div class="vsd-pill">
+          <span class="vsd-pill-dot"></span>
+          <b>{idxLabel}</b>
+          <span class="vsd-pill-sep">•</span>
+          <span>HONEST COMPARISON</span>
+        </div>
+        <h1 class="vsd-title">{c.positioning}</h1>
+        <p class="vsd-lede">{c.heroSub}</p>
+        <div class="dx-btn-row">
+          <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
+          <a class="btn btn-secondary btn-lg" href="/pricing">See pricing</a>
+        </div>
+      </div>
+    </header>
 
-      <h2>Where Ollagraph goes further</h2>
-      <ul>
-        {c.whereWeGoFurther.map((b) => (<li set:html={bold(b)} />))}
-      </ul>
+    <main class="vsd-content">
+      <!-- What they do well -->
+      <section class="vsd-card">
+        <h2 class="dx-h2">What {c.name} does well</h2>
+        <p class="dx-p">{c.whatTheyDoWell}</p>
+      </section>
 
-      <h2>Side by side</h2>
-      <table style="width:100%; border-collapse:collapse; font-size:14px;">
-        <thead><tr>
-          <th style="text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text-muted);">Feature</th>
-          <th style="text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text-muted);">{c.name}</th>
-          <th style="text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--accent);">Ollagraph</th>
-        </tr></thead>
-        <tbody>
-          {c.matrix.map((row) => (
-            <tr>
-              <td style="padding:8px 10px; border-bottom:1px solid var(--border);">{row.feature}</td>
-              <td style="padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text-muted);">{row.them}</td>
-              <td style="padding:8px 10px; border-bottom:1px solid var(--border);">{row.us}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <!-- Where we go further -->
+      <section class="vsd-card">
+        <h2 class="dx-h2">Where Ollagraph goes further</h2>
+        <ul class="dx-ul">
+          {c.whereWeGoFurther.map((b) => (<li set:html={bold(b)} />))}
+        </ul>
+      </section>
 
-      <h2>Who each is best for</h2>
-      <p><strong>Choose {c.name} if:</strong> {c.bestForThem}</p>
-      <p><strong>Choose Ollagraph if:</strong> {c.bestForUs}</p>
+      <!-- Side by side -->
+      <section class="vsd-card">
+        <h2 class="dx-h2">Side by side</h2>
+        <div class="vsd-table-wrap">
+          <table class="vsd-table">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>{c.name}</th>
+                <th class="is-us">Ollagraph</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.matrix.map((row) => (
+                <tr>
+                  <td class="col-feature">{row.feature}</td>
+                  <td class="col-them">{row.them}</td>
+                  <td class="col-us">{row.us}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-      <h2>Sources &amp; further reading</h2>
-      <p>The standards behind every tool in this comparison, for readers who want the primary sources rather than our summary of them:</p>
-      <ul>
-        <li><a href="https://en.wikipedia.org/wiki/Web_scraping" target="_blank" rel="noopener">Web scraping</a> (Wikipedia) — the category these tools operate in, with its technical and legal background.</li>
-        <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the robots.txt standard a responsible crawler honors.</li>
-        <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format these tools extract.</li>
-        <li><a href="https://arxiv.org/abs/2005.11401" target="_blank" rel="noopener">Retrieval-Augmented Generation</a> (Lewis et al., 2020) — the AI pattern most of this web data ultimately feeds.</li>
-      </ul>
-    </article>
+      <!-- Who each is best for -->
+      <section class="vsd-card">
+        <h2 class="dx-h2">Who each is best for</h2>
+        <div class="vsd-grid">
+          <div class="vsd-pick">
+            <span class="vsd-pick-label">Choose {c.name} if:</span>
+            <p>{c.bestForThem}</p>
+          </div>
+          <div class="vsd-pick vsd-pick-us">
+            <span class="vsd-pick-label vsd-pick-label-us">Choose Ollagraph if:</span>
+            <p>{c.bestForUs}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sources & further reading -->
+      <section class="vsd-card">
+        <h2 class="dx-h2">Sources &amp; further reading</h2>
+        <p class="dx-p">The standards behind every tool in this comparison, for readers who want the primary sources rather than our summary of them:</p>
+        <ul class="dx-ul">
+          <li><a href="https://en.wikipedia.org/wiki/Web_scraping" target="_blank" rel="noopener">Web scraping</a> (Wikipedia) — the category these tools operate in, with its technical and legal background.</li>
+          <li><a href="https://datatracker.ietf.org/doc/html/rfc9309" target="_blank" rel="noopener">RFC 9309 — Robots Exclusion Protocol</a> (IETF, 2022) — the robots.txt standard a responsible crawler honors.</li>
+          <li><a href="https://www.w3.org/TR/json-ld11/" target="_blank" rel="noopener">JSON-LD 1.1</a> (W3C Recommendation) — the structured-data format these tools extract.</li>
+          <li><a href="https://arxiv.org/abs/2005.11401" target="_blank" rel="noopener">Retrieval-Augmented Generation</a> (Lewis et al., 2020) — the AI pattern most of this web data ultimately feeds.</li>
+        </ul>
+      </section>
+    </main>
+
+    <!-- FAQ -->
+    <section class="dx-faq">
+      <h2 class="dx-h2">Common questions</h2>
+      {c.faqs.map((f) => (<div class="dx-faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>))}
+    </section>
+
+    <!-- CTA -->
+    <section class="dx-cta">
+      <div class="dx-cta-card">
+        <h2 class="dx-cta-title">Try Ollagraph free.</h2>
+        <p class="dx-cta-sub">1,000 credits, one bearer token, every endpoint. Decide for yourself.</p>
+        <div class="dx-btn-row">
+          <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
+          <a class="btn btn-secondary btn-lg" href="/capabilities">See capabilities</a>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <section class="article-faq">
-    <h2 class="h-display h-2">Common questions</h2>
-    {c.faqs.map((f) => (<div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>))}
-  </section>
-
-  <section class="article-cta section-tight" style="text-align:center;">
-    <h2 class="h-display h-2" style="margin:0 0 16px;">Try Ollagraph free.</h2>
-    <p style="color:var(--text-muted); max-width:540px; margin:0 auto 22px;">1,000 credits, one bearer token, every endpoint. Decide for yourself.</p>
-    <div class="cta-row">
-      <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
-      <a class="btn btn-secondary btn-lg" href="/capabilities">See capabilities</a>
-    </div>
-  </section>
   <Fragment set:html={footerHtml()} />
 </BaseLayout>
