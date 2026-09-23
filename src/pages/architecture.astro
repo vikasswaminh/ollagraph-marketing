@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { navHtml, footerHtml } from '../chrome';
+import stats from '../data/api-stats.json';
 
 const envelopeExample = `# Every endpoint answers in the same envelope — scrape, extract, intel, jobs.
 {
@@ -39,16 +40,16 @@ curl https://api.ollagraph.com/v1/jobs/job_8f31... \\
 # -> {"status": "completed", "result": { ...same envelope as above... }}`;
 
 const pillars = [
-  { title: "One response envelope, everywhere", body: "Scrape, extract, domain intelligence, crawl, and async jobs all answer in the same shape: ok, status_code, final_url, text, and the diagnostic fields below. Learn the envelope once and every one of the %%ENDPOINT_COUNT%% endpoints reads the same. No per-endpoint parsing, no surprises when you add a new call." },
-  { title: "A tiered fetch path with automatic fallback", body: "Most pages return over a fast HTTP path in milliseconds. When a page needs JavaScript or pushes back with a bot wall, the request escalates to our managed stealth browser engine automatically — same request, same response shape. You never pick a tier by hand and you never get a half-rendered page back." },
-  { title: "It tells you which tier served the request", body: "Every response carries tier_used, cascade_path, and cascade_failures. You can see exactly how a page was fetched, what was tried first, and why it escalated — so you can trust the data, debug a flaky source, and right-size your own retries instead of guessing." },
-  { title: "Credit metering with refund-on-error", body: "Credits are reserved atomically in the same transaction as the call decision — two requests with one credit left will see exactly one succeed. A successful call writes one usage-log row and decrements the ledger once. Server-side faults refund automatically, so a timeout or an upstream failure never costs you a credit." },
-  { title: "Async jobs over a durable queue", body: "Async scrapes, batches, and full-site crawls hand off to a queue and return a job_id immediately. A pool of workers does the work, retries transient failures, and ends every job in completed, failed, or expired — never silently dropped. Poll the job endpoint or take a signed webhook on completion." },
-  { title: "Exposed to agents over MCP", body: "The same endpoints are published as Model Context Protocol tools, so an AI agent can scrape, extract, and enrich through one bearer token without bespoke glue code. The MCP surface mirrors the API one-to-one — the envelope an agent sees is the envelope your code sees." },
+  { title: "One response envelope, everywhere", body: `Scrape, extract, domain intelligence, crawl, and async jobs all answer in the same shape: ok, status_code, final_url, text, and the diagnostic fields below. Learn the envelope once and every one of the ${stats.endpointCount} endpoints reads the same. No per-endpoint parsing, no surprises when you add a new call.`, tag: "CONSISTENCY", color: "sky" },
+  { title: "A tiered fetch path with automatic fallback", body: "Most pages return over a fast HTTP path in milliseconds. When a page needs JavaScript or pushes back with a bot wall, the request escalates to our managed stealth browser engine automatically — same request, same response shape. You never pick a tier by hand and you never get a half-rendered page back.", tag: "INTELLIGENCE", color: "emerald" },
+  { title: "It tells you which tier served the request", body: "Every response carries tier_used, cascade_path, and cascade_failures. You can see exactly how a page was fetched, what was tried first, and why it escalated — so you can trust the data, debug a flaky source, and right-size your own retries instead of guessing.", tag: "TRANSPARENCY", color: "purple" },
+  { title: "Credit metering with refund-on-error", body: "Credits are reserved atomically in the same transaction as the call decision — two requests with one credit left will see exactly one succeed. A successful call writes one usage-log row and decrements the ledger once. Server-side faults refund automatically, so a timeout or an upstream failure never costs you a credit.", tag: "FAIR PRICING", color: "rose" },
+  { title: "Async jobs over a durable queue", body: "Async scrapes, batches, and full-site crawls hand off to a queue and return a job_id immediately. A pool of workers does the work, retries transient failures, and ends every job in completed, failed, or expired — never silently dropped. Poll the job endpoint or take a signed webhook on completion.", tag: "DURABILITY", color: "amber" },
+  { title: "Exposed to agents over MCP", body: "The same endpoints are published as Model Context Protocol tools, so an AI agent can scrape, extract, and enrich through one bearer token without bespoke glue code. The MCP surface mirrors the API one-to-one — the envelope an agent sees is the envelope your code sees.", tag: "AI-NATIVE", color: "teal" },
 ];
 
 const faqs = [
-  { q: "What is the response envelope, and is it really the same on every endpoint?", a: "Yes. Every endpoint returns the same canonical shape: ok (did it succeed), status_code (the origin's HTTP status), final_url (after redirects), text or the format you asked for, plus the diagnostic fields tier_used, cascade_path, and cascade_failures. Async endpoints return a job_id immediately and wrap that same envelope inside result when the job completes. You parse one shape across all 212 operations." },
+  { q: "What is the response envelope, and is it really the same on every endpoint?", a: `Yes. Every endpoint returns the same canonical shape: ok (did it succeed), status_code (the origin's HTTP status), final_url (after redirects), text or the format you asked for, plus the diagnostic fields tier_used, cascade_path, and cascade_failures. Async endpoints return a job_id immediately and wrap that same envelope inside result when the job completes. You parse one shape across all ${stats.endpointCount} endpoints.` },
   { q: "What does tier_used tell me?", a: "It names which part of the fetch path actually served your request — the fast HTTP path for static pages, or our managed stealth browser engine for pages that need JavaScript or push back with anti-bot defenses. cascade_path lists everything that was tried in order, and cascade_failures records why each earlier tier was abandoned. It is the same field that appears in your usage export, so you can audit how every request was fetched after the fact." },
   { q: "Do I have to choose between the fast path and the browser?", a: "No. The fetch path escalates automatically. A request starts on the fast HTTP path and falls forward to the stealth browser engine only when the page needs it — a JavaScript-rendered app, a bot wall, a captcha, an empty or blocked response. You send one request and get back a fully rendered result with a note in tier_used telling you which path served it." },
   { q: "When does a request escalate, and when does it not?", a: "It escalates on the signals that mean the page was not really served: blocks, rate-limit responses, server errors, captchas, timeouts, and empty-but-200 bodies. It does not escalate on clean terminal answers — a genuine not-found, a gone page, an unauthorized response, or a name that does not resolve. Those are real answers, so we return them rather than burning time and credits retrying." },
@@ -62,7 +63,7 @@ const faqs = [
 
 const url = "https://ollagraph.com/architecture/";
 const jsonLd = [
-  { "@context": "https://schema.org", "@type": "WebPage", name: "How Ollagraph works — architecture", url, description: "One canonical response envelope across every endpoint, a tiered fetch path that escalates automatically and reports which tier served the request, credit metering with refund-on-error, durable async jobs, and MCP exposure." },
+  { "@context": "https://schema.org", "@type": "WebPage", name: "How Ollagraph works — architecture", url, description: `One canonical response envelope across every endpoint, a tiered fetch path that escalates automatically and reports which tier served the request, credit metering with refund-on-error, durable async jobs, and MCP exposure across ${stats.endpointCount} endpoints.` },
   { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
     { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
     { "@type": "ListItem", position: 2, name: "How it works", item: url },
@@ -72,103 +73,408 @@ const jsonLd = [
 ---
 <BaseLayout
   title="How Ollagraph works — one envelope, a tiered fetch path, honest metering — Ollagraph"
-  description="The honest tour: one canonical response envelope across every endpoint, a tiered fetch path that escalates automatically and tells you which tier served the request, credit metering with refund-on-error, durable async jobs, and MCP exposure."
+  description={`The honest tour: one canonical response envelope across every endpoint, a tiered fetch path that escalates automatically and tells you which tier served the request, credit metering with refund-on-error, durable async jobs, and MCP exposure across ${stats.endpointCount} endpoints.`}
   jsonLd={jsonLd}
 >
+  <Fragment slot="head">
+    <link rel="stylesheet" href="/homepage-tailwind.css?v=28" />
+    <style>
+      body {
+        font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      details summary::-webkit-details-marker,
+      details summary::marker {
+        display: none;
+        content: "";
+      }
+    </style>
+  </Fragment>
+
   <Fragment set:html={navHtml('architecture')} />
 
-  <section class="section" style="padding-top:80px; text-align:center;">
-    <div class="container" style="max-width:760px;">
-      <span class="badge badge-mute" style="margin-bottom:16px;">HOW IT WORKS</span>
-      <h1 class="h-display h-1" style="margin:0 0 18px;">How Ollagraph actually works.</h1>
-      <p class="copy-lg">
-        No magic, no mystery box. One response envelope across every endpoint, a fetch path that escalates on its own and tells you which tier served the request, honest credit metering that refunds on our faults, and durable async jobs. Here is the whole story.
-      </p>
-      <div class="cta-row cta-row--mt">
-        <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
-        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+  <div class="relative overflow-hidden bg-white text-ink-950 font-sans">
+    
+    <!-- Hero Section -->
+    <section class="relative pt-16 pb-16 sm:pt-24 sm:pb-20 border-b border-ink-200 overflow-hidden bg-white">
+      <!-- Background Ambient Glow & Grid -->
+      <div class="absolute inset-0 pointer-events-none -z-10 flex items-center justify-center">
+        <div class="w-[700px] h-[400px] rounded-full bg-brand/5 blur-3xl opacity-60"></div>
       </div>
-      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
-        One bearer token spans the full <a href="/capabilities" class="text-accent">%%ENDPOINT_COUNT%%-endpoint surface</a> — see <a href="/observability" class="text-accent">observability</a> for what every response tells you.
-      </p>
-    </div>
-  </section>
+      <div class="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none -z-10"></div>
 
-  <section class="section-tight">
-    <div class="container" style="max-width:920px;">
-      <div class="grid-2">
-        {pillars.map((p) => (
-          <div class="pcard">
-            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
-            <p class="copy-muted">{p.body}</p>
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <!-- Eyebrow Pill -->
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-ink-200 bg-ink-50/80 text-xs font-mono mb-6 shadow-xs">
+          <span class="w-2 h-2 rounded-full bg-brand animate-pulse"></span>
+          <span class="text-ink-900 font-semibold">HOW IT WORKS</span>
+          <span class="text-ink-300 select-none">•</span>
+          <span class="text-ink-600 font-medium">Platform Architecture</span>
+        </div>
+
+        <!-- Headline -->
+        <h1 class="text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.1] font-bold tracking-tight text-ink-950 mb-6 max-w-4xl mx-auto">
+          How Ollagraph <span class="text-brand underline decoration-brand/30 decoration-4 underline-offset-4">actually works.</span>
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="text-base sm:text-lg lg:text-xl text-ink-600 max-w-3xl mx-auto leading-relaxed mb-8 font-normal">
+          No magic, no mystery box. One response envelope across every endpoint, a fetch path that escalates on its own and tells you which tier served the request, honest credit metering that refunds on our faults, and durable async jobs. Here is the whole story.
+        </p>
+
+        <!-- CTA Row -->
+        <div class="flex flex-wrap items-center justify-center gap-3">
+          <a class="relative group overflow-hidden inline-flex items-center px-5 py-2.5 text-sm font-semibold rounded bg-brand text-white shadow-sm hover:shadow-lg hover:shadow-brand/25 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+            <span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+            <span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+          </a>
+          <a class="inline-flex items-center px-5 py-2.5 text-sm font-medium rounded border border-ink-300 bg-white text-ink-700 hover:bg-ink-50 hover:text-ink-900 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs hover:shadow" href="/docs">
+            Read the docs <span class="ml-1 text-ink-400">→</span>
+          </a>
+        </div>
+
+                <p class="text-xs sm:text-sm text-ink-500 mt-6 max-w-xl mx-auto">
+          One bearer token spans the full <a href="/capabilities" class="text-brand hover:underline font-medium">{stats.endpointCount}-endpoint surface</a> — see <a href="/observability" class="text-brand hover:underline font-medium">observability</a> for what every response tells you.
+        </p>
+      </div>
+    </section>
+
+    <!-- Pillars Section -->
+    <section class="py-16 sm:py-24 border-b border-ink-200 bg-[#FAFAFA]">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            DESIGN PRINCIPLES
           </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <section class="section-tight">
-    <div class="container" style="max-width:760px;">
-      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">See it in the response.</h2>
-      <p class="section-intro">The envelope is the contract. These are real fields you get back today.</p>
-      <div class="code-block" style="margin-bottom:16px;">
-        <div class="code-head"><span>The canonical envelope</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape</span></div>
-        <div class="code-body"><pre class="m-0"><code>{envelopeExample}</code></pre></div>
-      </div>
-      <div class="code-block" style="margin-bottom:16px;">
-        <div class="code-head"><span>Automatic escalation, visible</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape</span></div>
-        <div class="code-body"><pre class="m-0"><code>{cascadeExample}</code></pre></div>
-      </div>
-      <div class="code-block">
-        <div class="code-head"><span>Async + job polling</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape/async</span></div>
-        <div class="code-body"><pre class="m-0"><code>{asyncExample}</code></pre></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="section-tight">
-    <div class="container" style="max-width:760px;">
-      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">The request lifecycle.</h2>
-      <p class="section-intro">What happens between the moment you send a request and the moment you get a response.</p>
-      <div style="display:grid; gap:12px;">
-        <div class="pcard">
-          <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px;">1. Authenticate</h3>
-          <p class="copy-muted">Your bearer key is checked against its stored hash. Invalid or expired keys are rejected before any real work is scheduled.</p>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950">
+            Six architectural guarantees behind every request.
+          </h2>
         </div>
-        <div class="pcard">
-          <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px;">2. Rate limit &amp; reserve credits</h3>
-          <p class="copy-muted">Per-plan limits are applied, then the credit ledger is decremented in the same atomic transaction as the call decision. Two simultaneous requests with one credit left will see exactly one succeed.</p>
-        </div>
-        <div class="pcard">
-          <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px;">3. Route &amp; fetch</h3>
-          <p class="copy-muted">Synchronous endpoints run inline; async endpoints register a job and return a job_id immediately. The fetch path starts fast and escalates to our managed stealth browser engine only when the page demands it.</p>
-        </div>
-        <div class="pcard">
-          <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 6px;">4. Respond, refund on fault, log</h3>
-          <p class="copy-muted">You get the canonical envelope back with tier_used and cascade_path filled in. Server-side faults refund the credit automatically. One usage-log row is written, and your dashboard surfaces it in real time.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {pillars.map((p, idx) => (
+            <div class={`platform-card ${idx === 0 ? 'platform-card-sky' : idx === 1 ? 'platform-card-emerald' : idx === 2 ? 'platform-card-purple' : idx === 3 ? 'platform-card-rose' : idx === 4 ? 'platform-card-amber' : 'platform-card-teal'} p-6 rounded-xl border border-ink-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default flex flex-col justify-between relative overflow-hidden`}>
+              <div>
+                <div class="flex items-center gap-3 mb-4">
+                  <div class={`platform-card-icon-wrap ${idx === 0 ? 'bg-sky-50 text-sky-600 border-sky-200/60' : idx === 1 ? 'bg-emerald-50 text-emerald-600 border-emerald-200/60' : idx === 2 ? 'bg-purple-50 text-purple-600 border-purple-200/60' : idx === 3 ? 'bg-rose-50 text-brand border-rose-200/60' : idx === 4 ? 'bg-amber-50 text-amber-600 border-amber-200/60' : 'bg-teal-50 text-teal-600 border-teal-200/60'} border`}>
+                    {idx === 0 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" /></svg>
+                    )}
+                    {idx === 1 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    )}
+                    {idx === 2 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    )}
+                    {idx === 3 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    )}
+                    {idx === 4 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                    )}
+                    {idx === 5 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                    )}
+                  </div>
+                  <div>
+                    <span class={`text-[10px] font-mono font-bold uppercase tracking-wider block ${idx === 0 ? 'text-sky-600' : idx === 1 ? 'text-emerald-600' : idx === 2 ? 'text-purple-600' : idx === 3 ? 'text-brand' : idx === 4 ? 'text-amber-600' : 'text-teal-600'}`}>
+                      {p.tag}
+                    </span>
+                    <h3 class="text-base font-semibold text-ink-900 group-hover:text-brand transition-colors duration-200">{p.title}</h3>
+                  </div>
+                </div>
+                <p class="text-xs sm:text-sm leading-relaxed text-ink-600">
+                  {p.body}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-      <p style="color:var(--text-dim); font-size:13px; text-align:center; margin-top:18px;">
-        The same lifecycle backs <a href="/scrape" class="text-accent">scraping</a>, <a href="/browser" class="text-accent">browser automation</a>, and the <a href="/mcp" class="text-accent">MCP server</a>.
-      </p>
-    </div>
-  </section>
+    </section>
 
-  <section class="article-faq">
-    <h2 class="h-display h-2">Architecture questions</h2>
-    {faqs.map((f) => (
-      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
-    ))}
-  </section>
+    <!-- Code Section: See it in the response. -->
+    <section class="py-16 sm:py-20 border-b border-ink-200 bg-white">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-2xl mx-auto mb-10">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            RESPONSE ENVELOPE
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            See it in the response.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600">
+            The envelope is the contract. These are real fields you get back today.
+          </p>
+        </div>
 
-  <section class="article-cta section-tight" style="text-align:center;">
-    <h2 class="h-display h-2" style="margin:0 0 16px;">One envelope. One token. Every endpoint.</h2>
-    <p class="lede-narrow">1,000 free credits, refund-on-error built in, and a response that always tells you how it was served.</p>
-    <div class="cta-row">
-      <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
-      <a class="btn btn-secondary btn-lg" href="/capabilities">See all endpoints</a>
-    </div>
-  </section>
+        <div class="space-y-6">
+          <!-- Terminal 1: Envelope -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                <span class="ml-2 text-ink-300 font-semibold text-[11px]">The canonical envelope</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={envelopeExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{envelopeExample}</code></pre>
+            </div>
+          </div>
+
+          <!-- Terminal 2: Cascade -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                <span class="ml-2 text-ink-300 font-semibold text-[11px]">Automatic escalation, visible</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={cascadeExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{cascadeExample}</code></pre>
+            </div>
+          </div>
+
+          <!-- Terminal 3: Async -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                <span class="ml-2 text-ink-300 font-semibold text-[11px]">Async + job polling</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape/async</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={asyncExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{asyncExample}</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Request Lifecycle Section -->
+    <section class="py-16 sm:py-24 border-b border-ink-200 bg-[#FAFAFA]">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-2xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            EXECUTION PIPELINE
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            The request lifecycle.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600">
+            What happens between the moment you send a request and the moment you get a response.
+          </p>
+        </div>
+
+        <div class="space-y-4">
+          <!-- Step 1 -->
+          <div class="bg-white rounded-xl border border-ink-200/90 p-6 shadow-xs hover:shadow-md hover:border-ink-300 transition-all duration-200 flex flex-col sm:flex-row items-start gap-4">
+            <div class="w-10 h-10 rounded-lg bg-sky-50 border border-sky-200/60 text-sky-600 font-mono text-sm font-bold flex items-center justify-center shrink-0">
+              01
+            </div>
+            <div class="flex-1">
+              <h3 class="text-base sm:text-lg font-semibold text-ink-900 mb-1">
+                1. Authenticate
+              </h3>
+              <p class="text-sm text-ink-600 leading-relaxed">
+                Your bearer key is checked against its stored hash. Invalid or expired keys are rejected before any real work is scheduled.
+              </p>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="bg-white rounded-xl border border-ink-200/90 p-6 shadow-xs hover:shadow-md hover:border-ink-300 transition-all duration-200 flex flex-col sm:flex-row items-start gap-4">
+            <div class="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200/60 text-emerald-600 font-mono text-sm font-bold flex items-center justify-center shrink-0">
+              02
+            </div>
+            <div class="flex-1">
+              <h3 class="text-base sm:text-lg font-semibold text-ink-900 mb-1">
+                2. Rate limit &amp; reserve credits
+              </h3>
+              <p class="text-sm text-ink-600 leading-relaxed">
+                Per-plan limits are applied, then the credit ledger is decremented in the same atomic transaction as the call decision. Two simultaneous requests with one credit left will see exactly one succeed.
+              </p>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="bg-white rounded-xl border border-ink-200/90 p-6 shadow-xs hover:shadow-md hover:border-ink-300 transition-all duration-200 flex flex-col sm:flex-row items-start gap-4">
+            <div class="w-10 h-10 rounded-lg bg-purple-50 border border-purple-200/60 text-purple-600 font-mono text-sm font-bold flex items-center justify-center shrink-0">
+              03
+            </div>
+            <div class="flex-1">
+              <h3 class="text-base sm:text-lg font-semibold text-ink-900 mb-1">
+                3. Route &amp; fetch
+              </h3>
+              <p class="text-sm text-ink-600 leading-relaxed">
+                Synchronous endpoints run inline; async endpoints register a job and return a job_id immediately. The fetch path starts fast and escalates to our managed stealth browser engine only when the page demands it.
+              </p>
+            </div>
+          </div>
+
+          <!-- Step 4 -->
+          <div class="bg-white rounded-xl border border-ink-200/90 p-6 shadow-xs hover:shadow-md hover:border-ink-300 transition-all duration-200 flex flex-col sm:flex-row items-start gap-4">
+            <div class="w-10 h-10 rounded-lg bg-rose-50 border border-rose-200/60 text-brand font-mono text-sm font-bold flex items-center justify-center shrink-0">
+              04
+            </div>
+            <div class="flex-1">
+              <h3 class="text-base sm:text-lg font-semibold text-ink-900 mb-1">
+                4. Respond, refund on fault, log
+              </h3>
+              <p class="text-sm text-ink-600 leading-relaxed">
+                You get the canonical envelope back with tier_used and cascade_path filled in. Server-side faults refund the credit automatically. One usage-log row is written, and your dashboard surfaces it in real time.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-xs sm:text-sm text-ink-500 text-center mt-8">
+          The same lifecycle backs <a href="/scrape" class="text-brand hover:underline font-medium">scraping</a>, <a href="/browser" class="text-brand hover:underline font-medium">browser automation</a>, and the <a href="/mcp" class="text-brand hover:underline font-medium">MCP server</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="py-16 sm:py-24 border-b border-ink-200 bg-white">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-2xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            FREQUENTLY ASKED QUESTIONS
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950">
+            Architecture questions
+          </h2>
+        </div>
+
+        <div class="space-y-4">
+          {faqs.map((f, idx) => (
+            <details class="group border border-ink-200 rounded-xl bg-white p-5 transition-all duration-200 open:shadow-sm">
+              <summary class="flex items-center justify-between cursor-pointer list-none select-none">
+                <div class="flex items-center gap-3">
+                  <span class="w-6 h-6 rounded-full bg-ink-100 group-open:bg-rose-50 text-ink-600 group-open:text-brand font-mono text-xs font-semibold flex items-center justify-center transition-colors shrink-0">
+                    {idx + 1}
+                  </span>
+                  <h3 class="font-semibold text-ink-900 group-hover:text-brand transition-colors text-base sm:text-lg">
+                    {f.q}
+                  </h3>
+                </div>
+                <div class="w-6 h-6 rounded-full flex items-center justify-center text-ink-400 group-hover:text-ink-600 transition-transform duration-200 group-open:rotate-180 shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </div>
+              </summary>
+              <div class="text-ink-600 text-sm sm:text-base leading-relaxed mt-4 pl-9 pr-2">
+                {f.a}
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom CTA Section -->
+    <section class="py-20 sm:py-28 bg-white relative overflow-hidden" id="signup">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div class="bottom-cta-card relative rounded-2xl border border-ink-800 text-white p-8 sm:p-12 lg:p-14 shadow-2xl shadow-ink-950/30 overflow-hidden text-center">
+          <!-- Ambient Glow Accents -->
+          <div class="absolute -top-28 -right-28 w-80 h-80 rounded-full bg-brand/20 blur-3xl pointer-events-none"></div>
+          <div class="absolute -bottom-28 -left-28 w-80 h-80 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none"></div>
+
+          <!-- Top Chip -->
+          <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-ink-900/90 border border-ink-700 text-xs font-mono mb-6 shadow-sm relative z-10">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-white font-semibold">1,000 free credits</span>
+            <span class="text-ink-500 select-none">•</span>
+            <span class="text-ink-300 font-normal">No card required</span>
+          </div>
+
+          <!-- Title -->
+          <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4 relative z-10">
+            One envelope. One token. Every endpoint.
+          </h2>
+
+          <!-- Subtitle -->
+          <p class="text-sm sm:text-base text-ink-300 max-w-xl mx-auto leading-relaxed mb-8 relative z-10">
+            1,000 free credits, refund-on-error built in, and a response that always tells you how it was served.
+          </p>
+
+          <!-- CTA Buttons -->
+          <div class="flex flex-wrap items-center justify-center gap-3 relative z-10">
+            <a class="relative group overflow-hidden inline-flex items-center px-6 py-3 text-sm font-semibold rounded-lg bg-brand text-white shadow-lg shadow-brand/25 hover:shadow-xl hover:shadow-brand/40 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+              <span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+              <span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+            </a>
+            <a class="inline-flex items-center px-6 py-3 text-sm font-medium rounded-lg border border-ink-700 bg-ink-900/80 text-ink-200 hover:bg-ink-800 hover:text-white transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs" href="/capabilities">
+              See all endpoints <span class="ml-1 text-ink-400">→</span>
+            </a>
+          </div>
+
+          <!-- Trust Badges -->
+          <div class="mt-8 pt-6 border-t border-ink-800/80 flex flex-wrap items-center justify-center gap-6 text-[11px] font-mono text-ink-400 relative z-10">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              No credit card required
+            </span>
+            <span class="text-ink-700 hidden sm:inline">•</span>
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              Refund on server faults
+            </span>
+            <span class="text-ink-700 hidden sm:inline">•</span>
+                        <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              {stats.endpointCount} endpoints live
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
 
   <Fragment set:html={footerHtml()} />
+
+  <script is:inline>
+    // Wire quick copy buttons
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.quick-copy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var text = btn.getAttribute('data-copy');
+          if (text) {
+            navigator.clipboard.writeText(text).then(function() {
+              var span = btn.querySelector('span');
+              if (span) {
+                var oldText = span.textContent;
+                span.textContent = 'Copied!';
+                setTimeout(function() { span.textContent = oldText; }, 1600);
+              }
+            });
+          }
+        });
+      });
+    });
+  </script>
 </BaseLayout>
