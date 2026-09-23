@@ -5,21 +5,71 @@ import FormattedDate from '../components/blog/FormattedDate.astro';
 import TableOfContents from '../components/blog/TableOfContents.astro';
 import RelatedSidebar from '../components/blog/RelatedSidebar.astro';
 import { navHtml, footerHtml } from '../chrome';
-import { readingTime, getRelatedPosts, getPublishedPosts } from '../utils/posts';
+import { readingTime, getRelatedPosts, getPublishedPosts, getAllBlogPosts } from '../utils/posts';
 import '../styles/blog.css';
 
+interface FAQItem { q: string; a: string; }
+
 interface Props {
-  post: CollectionEntry<'blog'>;
-  headings: { depth: number; slug: string; text: string }[];
+  post?: CollectionEntry<'blog'>;
+  headings?: { depth: number; slug: string; text: string }[];
+  title?: string;
+  description?: string;
+  pubDate?: Date | string;
+  updatedDate?: Date | string;
+  author?: string;
+  tags?: string[];
+  readingTime?: number;
+  slug?: string;
+  canonicalUrl?: string;
+  faqs?: FAQItem[];
 }
 
-const { post, headings } = Astro.props;
-const { title, description, pubDate, updatedDate, author = 'Ollagraph Team', tags = [] } = post.data;
-const minutes = readingTime(post.body);
-const canonicalUrl = `https://ollagraph.com/blog/${post.slug}/`;
+const {
+  post,
+  headings = [],
+  title: propTitle,
+  description: propDescription,
+  pubDate: propPubDate,
+  updatedDate: propUpdatedDate,
+  author: propAuthor,
+  tags: propTags,
+  readingTime: propReadingTime,
+  slug: propSlug,
+  canonicalUrl: propCanonicalUrl,
+  faqs = [],
+} = Astro.props;
 
-const allPosts = await getPublishedPosts();
-const related = getRelatedPosts(post, allPosts, 4);
+const title = post?.data.title ?? propTitle ?? '';
+const description = post?.data.description ?? propDescription ?? '';
+const rawPubDate = post?.data.pubDate ?? (propPubDate ? new Date(propPubDate) : new Date());
+const pubDate = rawPubDate instanceof Date && !isNaN(rawPubDate.valueOf()) ? rawPubDate : new Date();
+const rawUpdatedDate = post?.data.updatedDate ?? (propUpdatedDate ? new Date(propUpdatedDate) : undefined);
+const updatedDate = rawUpdatedDate instanceof Date && !isNaN(rawUpdatedDate.valueOf()) ? rawUpdatedDate : undefined;
+const author = post?.data.author ?? propAuthor ?? 'Amit Sharma';
+const tags = post?.data.tags ?? propTags ?? [];
+
+const pathSlug = Astro.url.pathname.replace(/^\/blog\/?/, '').replace(/\/$/, '');
+const slug = post?.slug ?? propSlug ?? pathSlug;
+const minutes = post ? readingTime(post.body) : (propReadingTime ?? 5);
+const canonicalUrl = propCanonicalUrl || `https://ollagraph.com/blog/${slug}/`;
+
+let related: any[] = [];
+if (post) {
+  const allPosts = await getPublishedPosts();
+  related = getRelatedPosts(post, allPosts, 4);
+} else {
+  const allUnified = await getAllBlogPosts();
+  const currentTags = new Set(tags.map((t: string) => t.toLowerCase()));
+  related = allUnified
+    .filter((p) => p.slug !== slug)
+    .map((p) => {
+      const shared = (p.data.tags ?? []).filter((t: string) => currentTags.has(t.toLowerCase())).length;
+      return { ...p, shared };
+    })
+    .sort((a, b) => b.shared - a.shared || b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+    .slice(0, 4);
+}
 
 // Category badge formatting
 const tagColorMap: Record<string, string> = {
@@ -103,6 +153,20 @@ const breadcrumbSchema = {
   ],
 };
 
+const faqSchema = faqs && faqs.length > 0
+  ? {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: faqs.map((f: FAQItem) => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
+    }
+  : null;
+
+const jsonLd = faqSchema ? [blogPostingSchema, breadcrumbSchema, faqSchema] : [blogPostingSchema, breadcrumbSchema];
+
 const nav = navHtml('blog');
 const footer = footerHtml();
 ---
@@ -112,7 +176,7 @@ const footer = footerHtml();
   description={description}
   canonical={canonicalUrl}
   updated={(updatedDate ?? pubDate).toISOString().slice(0, 10)}
-  jsonLd={[blogPostingSchema, breadcrumbSchema]}
+  jsonLd={jsonLd}
 >
   <!-- Reading Progress Bar -->
   <div id="reading-progress-bar" aria-hidden="true"></div>
@@ -166,6 +230,18 @@ const footer = footerHtml();
           <slot />
         </div>
 
+        {faqs && faqs.length > 0 && (
+          <section class="article-faq" style="margin-top: 40px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <h2 class="h-display h-2" style="margin-bottom: 20px;">Common questions</h2>
+            {faqs.map((f: FAQItem) => (
+              <div class="faq-item" style="margin-bottom: 24px;">
+                <h3 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 8px; color: var(--text);">{f.q}</h3>
+                <p style="color: var(--text-muted); line-height: 1.6; margin: 0;">{f.a}</p>
+              </div>
+            ))}
+          </section>
+        )}
+
         <!-- Author Box -->
         <div class="author-box">
           <div class="author-avatar" aria-hidden="true">OG</div>
@@ -206,7 +282,7 @@ const footer = footerHtml();
       </article>
 
       <!-- Right Sidebar: Related Articles -->
-      <RelatedSidebar posts={related} currentSlug={post.slug} />
+      <RelatedSidebar posts={related} currentSlug={slug} />
     </div>
   </div>
 
@@ -319,6 +395,12 @@ const footer = footerHtml();
 
     // 5. Heading Anchors for h2 and h3
     document.querySelectorAll('.prose h2, .prose h3').forEach((heading) => {
+      if (!heading.id) {
+        const text = heading.textContent?.trim().replace(/#$/, '').trim() || '';
+        if (text) {
+          heading.id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        }
+      }
       if (!heading.id || heading.querySelector('.heading-anchor')) return;
       const anchor = document.createElement('a');
       anchor.className = 'heading-anchor';

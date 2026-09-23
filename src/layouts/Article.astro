@@ -4,6 +4,7 @@
 // FAQ section, and a CTA. Emits TechArticle/BlogPosting + BreadcrumbList +
 // FAQPage JSON-LD via BaseLayout's jsonLd prop.
 import BaseLayout from './BaseLayout.astro';
+import PostLayout from './PostLayout.astro';
 import { navHtml, footerHtml } from '../chrome';
 
 interface FAQItem { q: string; a: string }
@@ -19,11 +20,13 @@ interface Props {
   faqs?: FAQItem[];
 }
 const { title, description, date, updated, image, readingTime, tags, kind = 'recipe', faqs = [] } = Astro.props;
+
+const isRecipe = kind === 'recipe';
+const slug = Astro.url.pathname.replace(/^\/blog\/?/, '').replace(/\/$/, '');
+
 // Article rich results want an image; default to the site OG card when a post
 // doesn't ship its own. dateModified is a REAL edit date (falls back to date).
 const articleImage = image || "https://ollagraph.com/og-image.png";
-
-const isRecipe = kind === 'recipe';
 const section = isRecipe ? { label: 'Recipes', path: '/recipes/' } : { label: 'Blog', path: '/blog/' };
 const url = Astro.url.href;
 
@@ -57,31 +60,47 @@ const jsonLd = faqLd ? [articleLd, breadcrumbLd, faqLd] : [articleLd, breadcrumb
 const nav = navHtml(isRecipe ? 'recipes' : 'blog');
 const footer = footerHtml();
 ---
-<BaseLayout title={`${title} — Ollagraph`} description={description} jsonLd={jsonLd} updated={updated}>
-  <Fragment set:html={nav} />
-  <div class="article">
-    <a class="article-back" href={section.path}>← All {section.label.toLowerCase()}</a>
-    <div class="article-meta"><span>By Amit Sharma</span><span>·</span><span>{date}</span><span>·</span><span>{readingTime} min read</span></div>
-    <h1 class="h-display h-1">{title}</h1>
-    <p class="article-lede">{description}</p>
-    <div class="article-tags">{tags.map((t) => <span class="badge badge-mute">{t}</span>)}</div>
-    <article class="prose"><slot /></article>
-  </div>
-  {faqs.length > 0 && (
-    <section class="article-faq">
-      <h2 class="h-display h-2">Common questions</h2>
-      {faqs.map((f) => (
-        <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
-      ))}
-    </section>
-  )}
-  <section class="article-cta section-tight" style="text-align:center;">
-    <h2 class="h-display h-2" style="margin:0 0 16px;">Start with 1,000 free credits.</h2>
-    <p style="color:var(--text-muted); max-width:540px; margin:0 auto 22px;">Every endpoint, one bearer token, no card. Build the pipeline above in an afternoon.</p>
-    <div class="cta-row">
-      <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
-      <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+{kind === 'blog' ? (
+  <PostLayout
+    title={title}
+    description={description}
+    pubDate={date}
+    updatedDate={updated}
+    author="Amit Sharma"
+    tags={tags}
+    readingTime={readingTime}
+    slug={slug}
+    faqs={faqs}
+  >
+    <slot />
+  </PostLayout>
+) : (
+  <BaseLayout title={`${title} — Ollagraph`} description={description} jsonLd={jsonLd} updated={updated}>
+    <Fragment set:html={nav} />
+    <div class="article">
+      <a class="article-back" href={section.path}>← All {section.label.toLowerCase()}</a>
+      <div class="article-meta"><span>By Amit Sharma</span><span>·</span><span>{date}</span><span>·</span><span>{readingTime} min read</span></div>
+      <h1 class="h-display h-1">{title}</h1>
+      <p class="article-lede">{description}</p>
+      <div class="article-tags">{tags.map((t) => <span class="badge badge-mute">{t}</span>)}</div>
+      <article class="prose"><slot /></article>
     </div>
-  </section>
-  <Fragment set:html={footer} />
-</BaseLayout>
+    {faqs.length > 0 && (
+      <section class="article-faq">
+        <h2 class="h-display h-2">Common questions</h2>
+        {faqs.map((f) => (
+          <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
+        ))}
+      </section>
+    )}
+    <section class="article-cta section-tight" style="text-align:center;">
+      <h2 class="h-display h-2" style="margin:0 0 16px;">Start with 1,000 free credits.</h2>
+      <p style="color:var(--text-muted); max-width:540px; margin:0 auto 22px;">Every endpoint, one bearer token, no card. Build the pipeline above in an afternoon.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
+        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+      </div>
+    </section>
+    <Fragment set:html={footer} />
+  </BaseLayout>
+)}

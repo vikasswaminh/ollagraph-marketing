@@ -5,10 +5,10 @@
  * Astro provides this from `post.render()`.
  */
 interface Props {
-  headings: { depth: number; slug: string; text: string }[];
+  headings?: { depth: number; slug: string; text: string }[];
 }
 
-const { headings } = Astro.props;
+const { headings = [] } = Astro.props;
 
 // Filter headings: include H2s and structural H3s, but keep FAQs unified as a single chapter
 let isInsideFaq = false;
@@ -45,33 +45,31 @@ const cleanHeadingText = (text: string) => {
 <aside class="sidebar sidebar-left">
   <a class="toc-back" href="/blog/">← All posts</a>
 
-  {tocItems.length > 0 && (
-    <nav class="toc-nav" aria-label="Table of contents">
-      <span class="toc-label">On this page</span>
-      <ul class="toc-list" id="toc-list">
-        {tocItems.map((h) => (
-          <li class={h.depth === 3 ? 'toc-h3' : ''}>
-            <a href={`#${h.slug}`} data-toc-link>{cleanHeadingText(h.text)}</a>
-          </li>
-        ))}
-      </ul>
-      <div class="toc-bottom">
-        <button class="toc-back-to-top" id="toc-back-to-top" type="button" aria-label="Back to top">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="12" y1="19" x2="12" y2="5"></line>
-            <polyline points="5 12 12 5 19 12"></polyline>
-          </svg>
-          <span>Back to top</span>
-        </button>
-      </div>
-    </nav>
-  )}
+  <nav class="toc-nav" id="toc-nav" aria-label="Table of contents" style={tocItems.length === 0 ? "display:none;" : undefined}>
+    <span class="toc-label">On this page</span>
+    <ul class="toc-list" id="toc-list">
+      {tocItems.map((h) => (
+        <li class={h.depth === 3 ? 'toc-h3' : ''}>
+          <a href={`#${h.slug}`} data-toc-link>{cleanHeadingText(h.text)}</a>
+        </li>
+      ))}
+    </ul>
+    <div class="toc-bottom">
+      <button class="toc-back-to-top" id="toc-back-to-top" type="button" aria-label="Back to top">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="19" x2="12" y2="5"></line>
+          <polyline points="5 12 12 5 19 12"></polyline>
+        </svg>
+        <span>Back to top</span>
+      </button>
+    </div>
+  </nav>
 </aside>
 
 <script>
   function initTableOfContents() {
+    const tocNav = document.getElementById('toc-nav');
     const tocList = document.getElementById('toc-list');
-    const tocLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]'));
     const backToTopBtn = document.getElementById('toc-back-to-top');
 
     // Smooth Back to Top
@@ -82,6 +80,75 @@ const cleanHeadingText = (text: string) => {
           tocList.scrollTo({ top: 0, behavior: 'smooth' });
         }
       });
+    }
+
+    // Check if server-rendered items exist
+    let tocLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]'));
+
+    // Dynamic extraction for pages without server-rendered headings (e.g. legacy .astro posts)
+    if (!tocLinks.length && tocList) {
+      const content = document.getElementById('article-content');
+      if (content) {
+        const headingsInContent = Array.from(content.querySelectorAll<HTMLElement>('h2, h3'));
+        let isInsideFaq = false;
+        const seenIds = new Set<string>();
+
+        headingsInContent.forEach((h, idx) => {
+          const rawText = h.textContent?.trim() || '';
+          const text = rawText.replace(/#$/, '').trim();
+          if (!text) return;
+          const lower = text.toLowerCase();
+
+          if (h.tagName === 'H2') {
+            isInsideFaq = lower.includes('faq') || lower.includes('frequently asked') || lower.includes('common questions');
+          } else if (h.tagName === 'H3') {
+            if (isInsideFaq || /^q\d+[:.]/i.test(lower) || lower.startsWith('q:')) {
+              return;
+            }
+          }
+
+          // Generate or standardize ID if missing
+          if (!h.id) {
+            let slug = lower
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/(^-|-$)/g, '');
+            if (!slug) slug = `section-${idx + 1}`;
+            let uniqueSlug = slug;
+            let counter = 1;
+            while (document.getElementById(uniqueSlug) || seenIds.has(uniqueSlug)) {
+              uniqueSlug = `${slug}-${counter++}`;
+            }
+            h.id = uniqueSlug;
+            seenIds.add(uniqueSlug);
+          } else {
+            seenIds.add(h.id);
+          }
+
+          // Ensure heading anchor # is added
+          if (!h.querySelector('.heading-anchor')) {
+            const anchor = document.createElement('a');
+            anchor.className = 'heading-anchor';
+            anchor.href = `#${h.id}`;
+            anchor.setAttribute('aria-label', `Link to ${text}`);
+            anchor.textContent = '#';
+            h.appendChild(anchor);
+          }
+
+          const li = document.createElement('li');
+          if (h.tagName === 'H3') li.className = 'toc-h3';
+          const a = document.createElement('a');
+          a.href = `#${h.id}`;
+          a.setAttribute('data-toc-link', '');
+          a.textContent = /^key takeaways/i.test(text) ? 'TL;DR' : text.replace(/[*_`]/g, '').trim();
+          li.appendChild(a);
+          tocList.appendChild(li);
+        });
+
+        tocLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]'));
+        if (tocLinks.length > 0 && tocNav) {
+          tocNav.style.display = '';
+        }
+      }
     }
 
     if (!tocLinks.length || !tocList) return;

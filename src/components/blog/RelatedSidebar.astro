@@ -3,8 +3,19 @@ import type { CollectionEntry } from 'astro:content';
 import FormattedDate from './FormattedDate.astro';
 import { readingTime } from '../../utils/posts';
 
+interface RelatedPostItem {
+  slug: string;
+  data: {
+    title: string;
+    pubDate: Date | string;
+    tags?: string[];
+  };
+  minutes?: number;
+  body?: string;
+}
+
 interface Props {
-  posts: CollectionEntry<'blog'>[];
+  posts: (CollectionEntry<'blog'> | RelatedPostItem | any)[];
   currentSlug?: string;
 }
 
@@ -29,9 +40,9 @@ const tagColorMap: Record<string, string> = {
 
   <div class="related-list">
     {displayPosts.map((p) => {
-      const firstTag = p.data.tags?.[0];
+      const firstTag = p.data?.tags?.[0];
       const dotColor = firstTag ? (tagColorMap[firstTag] || 'var(--accent)') : 'var(--accent)';
-      const minutes = readingTime(p.body);
+      const minutes = p.minutes ?? (p.body ? readingTime(p.body) : 5);
       return (
         <a class="related-card" href={`/blog/${p.slug}/`}>
           <p class="related-title">{p.data.title}</p>
