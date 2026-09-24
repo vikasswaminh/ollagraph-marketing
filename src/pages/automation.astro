@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { navHtml, footerHtml } from '../chrome';
+import stats from '../data/api-stats.json';
 
 const openExample = `# Open a persistent, LLM-driven browser session.
 # Free to open — you only pay per action (goto/act/observe/extract).
@@ -73,10 +74,30 @@ curl -X DELETE https://api.ollagraph.com/v1/session/$SID \\
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY"`;
 
 const pillars = [
-  { title: "Natural-language actions", body: "Tell the session what to do in plain English — goto, act, observe, extract. The model resolves each instruction to a concrete element and action (click, type, select, scroll), so a copy change on the target site does not break your script. No selectors to babysit." },
-  { title: "Persistent agent sessions", body: "Open a session once and drive it across many calls. Cookies, storage, and the logged-in context stay alive between steps, so multi-page journeys — log in, navigate, act, extract — run as one coherent flow instead of disconnected requests." },
-  { title: "JSON action macros too", body: "When you already know the page, skip the model and send a deterministic JSON array of click / type / wait / scroll steps to the scraping endpoint. Same hosted browser, fully reproducible, zero per-step model latency. Mix and match per task." },
-  { title: "No Playwright fleet to run", body: "You write instructions, not browser code. There is no headless Chrome to deploy, no Puppeteer or Playwright scripts to maintain, no stealth tuning — the hosted browser handles fingerprinting and rendering. Bring a managed model (no key required), or bring your own." },
+  {
+    title: "Natural-language actions",
+    body: "Tell the session what to do in plain English — goto, act, observe, extract. The model resolves each instruction to a concrete element and action (click, type, select, scroll), so a copy change on the target site does not break your script. No selectors to babysit.",
+    tag: "AGENT-DRIVEN",
+    color: "sky"
+  },
+  {
+    title: "Persistent agent sessions",
+    body: "Open a session once and drive it across many calls. Cookies, storage, and the logged-in context stay alive between steps, so multi-page journeys — log in, navigate, act, extract — run as one coherent flow instead of disconnected requests.",
+    tag: "PERSISTENT STATE",
+    color: "emerald"
+  },
+  {
+    title: "JSON action macros too",
+    body: "When you already know the page, skip the model and send a deterministic JSON array of click / type / wait / scroll steps to the scraping endpoint. Same hosted browser, fully reproducible, zero per-step model latency. Mix and match per task.",
+    tag: "DETERMINISTIC",
+    color: "purple"
+  },
+  {
+    title: "No Playwright fleet to run",
+    body: "You write instructions, not browser code. There is no headless Chrome to deploy, no Puppeteer or Playwright scripts to maintain, no stealth tuning — the hosted browser handles fingerprinting and rendering. Bring a managed model (no key required), or bring your own.",
+    tag: "SERVERLESS",
+    color: "rose"
+  },
 ];
 
 const flows = [
@@ -115,98 +136,405 @@ const jsonLd = [
   description="Drive a real browser through multi-step, agent-style flows. Natural-language goto/act/observe/extract, persistent sessions, and deterministic JSON action macros — no Playwright fleet to run."
   jsonLd={jsonLd}
 >
+  <Fragment slot="head">
+    <link rel="stylesheet" href="/homepage-tailwind.css?v=28" />
+    <style>
+      body {
+        font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      details summary::-webkit-details-marker,
+      details summary::marker {
+        display: none;
+        content: "";
+      }
+    </style>
+  </Fragment>
+
   <Fragment set:html={navHtml('automation')} />
 
-  <section class="section" style="padding-top:80px; text-align:center;">
-    <div class="container" style="max-width:760px;">
-      <span class="badge badge-mute" style="margin-bottom:16px;">AUTOMATION</span>
-      <h1 class="h-display h-1" style="margin:0 0 18px;">Drive a browser like an agent.</h1>
-      <p class="copy-lg">
-        Open a persistent session and steer it in plain English — navigate, act, observe, extract — or send a deterministic JSON action macro when you already know the page. Multi-step journeys across login walls and dynamic apps, without a single line of Playwright.
-      </p>
-      <div class="cta-row cta-row--mt">
-        <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
-        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+  <div class="relative overflow-hidden bg-white text-ink-950 font-sans">
+    
+    <!-- Hero Section -->
+    <section class="relative pt-16 pb-16 sm:pt-24 sm:pb-20 border-b border-ink-200 overflow-hidden bg-white">
+      <!-- Background Ambient Glow & Grid -->
+      <div class="absolute inset-0 pointer-events-none -z-10 flex items-center justify-center">
+        <div class="w-[700px] h-[400px] rounded-full bg-brand/5 blur-3xl opacity-60"></div>
       </div>
-      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
-        For single-page extraction see <a href="/scrape" class="text-accent">the scraping API</a>; for raw headless-session control see <a href="/browser" class="text-accent">the browser API</a>.
-      </p>
-    </div>
-  </section>
+      <div class="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none -z-10"></div>
 
-  <section class="section-tight">
-    <div class="container" style="max-width:920px;">
-      <div class="grid-2">
-        {pillars.map((p) => (
-          <div class="pcard">
-            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
-            <p class="copy-muted">{p.body}</p>
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <!-- Eyebrow Pill -->
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-ink-200 bg-ink-50/80 text-xs font-mono mb-6 shadow-xs">
+          <span class="w-2 h-2 rounded-full bg-brand animate-pulse"></span>
+          <span class="text-ink-900 font-semibold">AUTOMATION</span>
+          <span class="text-ink-300 select-none">•</span>
+          <span class="text-ink-600 font-medium">Agent-Driven Browser Control</span>
+        </div>
+
+        <!-- Headline -->
+        <h1 class="text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.1] font-bold tracking-tight text-ink-950 mb-6 max-w-4xl mx-auto">
+          Drive a browser <span class="text-brand underline decoration-brand/30 decoration-4 underline-offset-4">like an agent.</span>
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="text-base sm:text-lg lg:text-xl text-ink-600 max-w-3xl mx-auto leading-relaxed mb-8 font-normal">
+          Open a persistent session and steer it in plain English — navigate, act, observe, extract — or send a deterministic JSON action macro when you already know the page. Multi-step journeys across login walls and dynamic apps, without a single line of Playwright.
+        </p>
+
+        <!-- CTA Row -->
+        <div class="flex flex-wrap items-center justify-center gap-3">
+          <a class="relative group overflow-hidden inline-flex items-center px-5 py-2.5 text-sm font-semibold rounded bg-brand text-white shadow-sm hover:shadow-lg hover:shadow-brand/25 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+            <span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+            <span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+          </a>
+          <a class="inline-flex items-center px-5 py-2.5 text-sm font-medium rounded border border-ink-300 bg-white text-ink-700 hover:bg-ink-50 hover:text-ink-900 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs hover:shadow" href="/docs">
+            Read the docs <span class="ml-1 text-ink-400">→</span>
+          </a>
+        </div>
+
+        <p class="text-xs sm:text-sm text-ink-500 mt-6 max-w-xl mx-auto">
+          For single-page extraction see <a href="/scrape" class="text-brand hover:underline font-medium">the scraping API</a>; for raw headless-session control see <a href="/browser" class="text-brand hover:underline font-medium">the browser API</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- Pillars Section -->
+    <section class="py-16 sm:py-20 border-b border-ink-200 bg-[#FAFAFA]">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            CORE CAPABILITIES
           </div>
-        ))}
-      </div>
-    </div>
-  </section>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950">
+            Intelligent actions, persistent state, zero browser ops.
+          </h2>
+        </div>
 
-  <section class="section-tight">
-    <div class="container" style="max-width:760px;">
-      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Drive it four ways.</h2>
-      <p class="section-intro">Open a session, act in plain English, observe, extract — or fall back to deterministic macros and raw session control.</p>
-      <div class="code-block" style="margin-bottom:16px;">
-        <div class="code-head"><span>Open a session</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/stagehand</span></div>
-        <div class="code-body"><pre class="m-0"><code>{openExample}</code></pre></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {pillars.map((p, idx) => (
+            <div class={`platform-card ${idx === 0 ? 'platform-card-sky' : idx === 1 ? 'platform-card-emerald' : idx === 2 ? 'platform-card-purple' : 'platform-card-rose'} p-6 sm:p-7 rounded-xl border border-ink-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default flex flex-col justify-between relative overflow-hidden`}>
+              <div>
+                <div class="flex items-center gap-3 mb-4">
+                  <div class={`platform-card-icon-wrap ${idx === 0 ? 'bg-sky-50 text-sky-600 border-sky-200/60' : idx === 1 ? 'bg-emerald-50 text-emerald-600 border-emerald-200/60' : idx === 2 ? 'bg-purple-50 text-purple-600 border-purple-200/60' : 'bg-rose-50 text-brand border-rose-200/60'} border`}>
+                    {idx === 0 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                    )}
+                    {idx === 1 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                    )}
+                    {idx === 2 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                    )}
+                    {idx === 3 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7" /></svg>
+                    )}
+                  </div>
+                  <div>
+                    <span class={`text-[10px] font-mono font-bold uppercase tracking-wider block ${idx === 0 ? 'text-sky-600' : idx === 1 ? 'text-emerald-600' : idx === 2 ? 'text-purple-600' : 'text-brand'}`}>
+                      {p.tag}
+                    </span>
+                    <h3 class="text-lg font-semibold text-ink-900 group-hover:text-brand transition-colors duration-200">{p.title}</h3>
+                  </div>
+                </div>
+                <p class="text-sm leading-relaxed text-ink-600">
+                  {p.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-      <div class="code-block" style="margin-bottom:16px;">
-        <div class="code-head"><span>Navigate &amp; act</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/stagehand/{'{session_id}'}/act</span></div>
-        <div class="code-body"><pre class="m-0"><code>{actExample}</code></pre></div>
-      </div>
-      <div class="code-block" style="margin-bottom:16px;">
-        <div class="code-head"><span>Observe &amp; extract</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/stagehand/{'{session_id}'}/extract</span></div>
-        <div class="code-body"><pre class="m-0"><code>{extractExample}</code></pre></div>
-      </div>
-      <div class="code-block" style="margin-bottom:16px;">
-        <div class="code-head"><span>Deterministic JSON macro</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/scrape</span></div>
-        <div class="code-body"><pre class="m-0"><code>{macroExample}</code></pre></div>
-      </div>
-      <div class="code-block">
-        <div class="code-head"><span>Raw persistent session</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/session/{'{session_id}'}/render</span></div>
-        <div class="code-body"><pre class="m-0"><code>{sessionExample}</code></pre></div>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section-tight">
-    <div class="container" style="max-width:920px;">
-      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Flows that ship today.</h2>
-      <p class="section-intro">Patterns customers run in production — each is a handful of readable calls.</p>
-      <div class="grid-2">
-        {flows.map((f) => (
-          <div class="pcard">
-            <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 8px;">{f.title}</h3>
-            <p class="copy-muted">{f.steps}</p>
+    <!-- Code Examples Section: Drive it four ways -->
+    <section class="py-16 sm:py-20 border-b border-ink-200 bg-white">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-2xl mx-auto mb-10">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            EXECUTION MODES
           </div>
-        ))}
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            Drive it four ways.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600">
+            Open a session, act in plain English, observe, extract — or fall back to deterministic macros and raw session control.
+          </p>
+        </div>
+
+        <div class="space-y-6">
+          <!-- Terminal 1: Open a session -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Open a session</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/stagehand</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={openExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{openExample}</code></pre>
+            </div>
+          </div>
+
+          <!-- Terminal 2: Navigate & act -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Navigate &amp; act</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/stagehand/{'{session_id}'}/act</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={actExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{actExample}</code></pre>
+            </div>
+          </div>
+
+          <!-- Terminal 3: Observe & extract -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Observe &amp; extract</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/stagehand/{'{session_id}'}/extract</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={extractExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{extractExample}</code></pre>
+            </div>
+          </div>
+
+          <!-- Terminal 4: Deterministic JSON macro -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Deterministic JSON macro</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={macroExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{macroExample}</code></pre>
+            </div>
+          </div>
+
+          <!-- Terminal 5: Raw persistent session -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Raw persistent session</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/session/{'{session_id}'}/render</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={sessionExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{sessionExample}</code></pre>
+            </div>
+          </div>
+        </div>
       </div>
-      <p style="color:var(--text-dim); font-size:13px; text-align:center; margin-top:20px;">
-        Working through a login wall? See the <a href="/recipes/scrape-pages-behind-login" class="text-accent">behind-a-login recipe</a>, browse all <a href="/recipes" class="text-accent">recipes</a>, or wire results to your stack with <a href="/webhooks" class="text-accent">webhooks</a>.
-      </p>
-    </div>
-  </section>
+    </section>
 
-  <section class="article-faq">
-    <h2 class="h-display h-2">Automation questions</h2>
-    {faqs.map((f) => (
-      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
-    ))}
-  </section>
+    <!-- Flows Section: Flows that ship today -->
+    <section class="py-16 sm:py-20 border-b border-ink-200 bg-[#FAFAFA]">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            PRODUCTION PATTERNS
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            Flows that ship today.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600 leading-relaxed">
+            Patterns customers run in production — each is a handful of readable calls.
+          </p>
+        </div>
 
-  <section class="article-cta section-tight" style="text-align:center;">
-    <h2 class="h-display h-2" style="margin:0 0 16px;">Skip the headless-browser fleet.</h2>
-    <p class="lede-narrow">1,000 free credits, one bearer token, failed calls auto-refund. Sessions are free to open — you only pay per action.</p>
-    <div class="cta-row">
-      <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
-      <a class="btn btn-secondary btn-lg" href="/capabilities">See all %%ENDPOINT_COUNT%% endpoints</a>
-    </div>
-  </section>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {flows.map((f, idx) => (
+            <div class="p-6 rounded-xl border border-ink-200/90 bg-white shadow-xs hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all group flex flex-col justify-between">
+              <div>
+                <div class="w-8 h-8 rounded-lg bg-rose-50 text-brand border border-rose-200/60 flex items-center justify-center font-mono font-bold text-xs mb-3">
+                  {String(idx + 1).padStart(2, '0')}
+                </div>
+                <h3 class="text-base font-semibold text-ink-950 group-hover:text-brand transition-colors mb-2">
+                  {f.title}
+                </h3>
+                <p class="text-xs sm:text-sm text-ink-600 leading-relaxed mb-2">
+                  {f.steps}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p class="text-xs sm:text-sm text-ink-500 text-center mt-10">
+          Working through a login wall? See the <a href="/recipes/scrape-pages-behind-login" class="text-brand hover:underline font-medium">behind-a-login recipe</a>, browse all <a href="/recipes" class="text-brand hover:underline font-medium">recipes</a>, or wire results to your stack with <a href="/webhooks" class="text-brand hover:underline font-medium">webhooks</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="py-16 sm:py-24 border-b border-ink-200 bg-white">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-2xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            FREQUENTLY ASKED QUESTIONS
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950">
+            Automation questions
+          </h2>
+        </div>
+
+        <div class="space-y-4">
+          {faqs.map((f, idx) => (
+            <details class="group border border-ink-200 rounded-xl bg-white p-5 transition-all duration-200 open:shadow-sm">
+              <summary class="flex items-center justify-between cursor-pointer list-none select-none">
+                <div class="flex items-center gap-3">
+                  <span class="w-6 h-6 rounded-full bg-ink-100 group-open:bg-rose-50 text-ink-600 group-open:text-brand font-mono text-xs font-semibold flex items-center justify-center transition-colors shrink-0">
+                    {idx + 1}
+                  </span>
+                  <h3 class="font-semibold text-ink-900 group-hover:text-brand transition-colors text-base sm:text-lg">
+                    {f.q}
+                  </h3>
+                </div>
+                <div class="w-6 h-6 rounded-full flex items-center justify-center text-ink-400 group-hover:text-ink-600 transition-transform duration-200 group-open:rotate-180 shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </div>
+              </summary>
+              <div class="text-ink-600 text-sm sm:text-base leading-relaxed mt-4 pl-9 pr-2">
+                {f.a}
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom CTA Section -->
+    <section class="py-20 sm:py-28 bg-white relative overflow-hidden" id="signup">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div class="bottom-cta-card relative rounded-2xl border border-ink-800 text-white p-8 sm:p-12 lg:p-14 shadow-2xl shadow-ink-950/30 overflow-hidden text-center">
+          <!-- Ambient Glow Accents -->
+          <div class="absolute -top-28 -right-28 w-80 h-80 rounded-full bg-brand/20 blur-3xl pointer-events-none"></div>
+          <div class="absolute -bottom-28 -left-28 w-80 h-80 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none"></div>
+
+          <!-- Top Chip -->
+          <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-ink-900/90 border border-ink-700 text-xs font-mono mb-6 shadow-sm relative z-10">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-white font-semibold">1,000 free credits</span>
+            <span class="text-ink-500 select-none">•</span>
+            <span class="text-ink-300 font-normal">Free session opening</span>
+          </div>
+
+          <!-- Title -->
+          <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4 relative z-10">
+            Skip the <span class="text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-brand to-rose-300">headless-browser fleet</span>.
+          </h2>
+
+          <!-- Subtitle -->
+          <p class="text-sm sm:text-base text-ink-300 max-w-xl mx-auto leading-relaxed mb-8 relative z-10">
+            1,000 free credits, one bearer token, failed calls auto-refund. Sessions are free to open — you only pay per action.
+          </p>
+
+          <!-- CTA Buttons -->
+          <div class="flex flex-wrap items-center justify-center gap-3 relative z-10">
+            <a class="relative group overflow-hidden inline-flex items-center px-6 py-3 text-sm font-semibold rounded-lg bg-brand text-white shadow-lg shadow-brand/25 hover:shadow-xl hover:shadow-brand/40 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+              <span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+              <span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+            </a>
+            <a class="inline-flex items-center px-6 py-3 text-sm font-medium rounded-lg border border-ink-700 bg-ink-900/80 text-ink-200 hover:bg-ink-800 hover:text-white transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs" href="/capabilities">
+              See all {stats.endpointCount} endpoints <span class="ml-1 text-ink-400">→</span>
+            </a>
+          </div>
+
+          <!-- Trust Badges -->
+          <div class="mt-8 pt-6 border-t border-ink-800/80 flex flex-wrap items-center justify-center gap-6 text-[11px] font-mono text-ink-400 relative z-10">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              No credit card required
+            </span>
+            <span class="text-ink-700 hidden sm:inline">•</span>
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              Pay only for actions
+            </span>
+            <span class="text-ink-700 hidden sm:inline">•</span>
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              {stats.endpointCount} endpoints live
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
 
   <Fragment set:html={footerHtml()} />
+
+  <script is:inline>
+    // Wire quick copy buttons
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.quick-copy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var text = btn.getAttribute('data-copy');
+          if (text) {
+            navigator.clipboard.writeText(text).then(function() {
+              var span = btn.querySelector('span');
+              if (span) {
+                var oldText = span.textContent;
+                span.textContent = 'Copied!';
+                setTimeout(function() { span.textContent = oldText; }, 1600);
+              }
+            });
+          }
+        });
+      });
+    });
+  </script>
 </BaseLayout>

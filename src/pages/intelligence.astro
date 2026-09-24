@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { navHtml, footerHtml } from '../chrome';
+import stats from '../data/api-stats.json';
 
 const dnsExample = `# One call returns the full DNS + provider picture for a domain.
 curl -X POST https://api.ollagraph.com/v1/dns/intelligence \\
@@ -41,12 +42,42 @@ print(dns["nameserver_provider"])   # which provider runs their DNS
 print(company["name"], company["socials"])`;
 
 const pillars = [
-  { title: "The DNS surface, decoded", body: "Raw A / MX / TXT / NS / CNAME / AAAA records from /v1/dns/lookup, and a separate intelligence pass that names the email provider, the nameserver provider, and the SPF / DMARC posture from those records. One request replaces a stack of dig commands and a lookup table." },
-  { title: "Certificates and history", body: "Live certificate posture from /v1/intel/ssl — issuer, SANs, expiry, days remaining — plus the full Certificate Transparency history for a domain and every subdomain it has ever issued a cert for. Built for renewal monitoring and footprint mapping, not one-off curiosity." },
-  { title: "Network identity", body: "GeoIP and ASN resolution for any public IPv4 or IPv6 address, served from a local database with no per-lookup latency. Map an IP to its country, network operator, and autonomous system without leaving the call you are already making." },
-  { title: "Registration and ownership", body: "WHOIS / RDAP returns the registrar, creation and expiry dates, abuse contacts, and nameservers as structured fields — not a free-text blob you have to parse. Detect when infrastructure quietly changes hands." },
-  { title: "Email authentication", body: "Parse and score SPF, DKIM, DMARC, and BIMI for a domain in a single DNS-only call. No SMTP probing, no mail sent — just the published policy and a posture score you can gate deliverability decisions on." },
-  { title: "Domain to company", body: "Point /v1/enrich/company at a homepage or about page and get a lite company profile built from public structured data — organization markup, open-graph tags, social profiles, and contact patterns. No third-party company-data feed in the loop." },
+  {
+    title: "The DNS surface, decoded",
+    body: "Raw A / MX / TXT / NS / CNAME / AAAA records from /v1/dns/lookup, and a separate intelligence pass that names the email provider, the nameserver provider, and the SPF / DMARC posture from those records. One request replaces a stack of dig commands and a lookup table.",
+    tag: "DNS SIGNALS",
+    color: "sky"
+  },
+  {
+    title: "Certificates and history",
+    body: "Live certificate posture from /v1/intel/ssl — issuer, SANs, expiry, days remaining — plus the full Certificate Transparency history for a domain and every subdomain it has ever issued a cert for. Built for renewal monitoring and footprint mapping, not one-off curiosity.",
+    tag: "CT LOGS",
+    color: "emerald"
+  },
+  {
+    title: "Network identity",
+    body: "GeoIP and ASN resolution for any public IPv4 or IPv6 address, served from a local database with no per-lookup latency. Map an IP to its country, network operator, and autonomous system without leaving the call you are already making.",
+    tag: "GEOIP & ASN",
+    color: "purple"
+  },
+  {
+    title: "Registration and ownership",
+    body: "WHOIS / RDAP returns the registrar, creation and expiry dates, abuse contacts, and nameservers as structured fields — not a free-text blob you have to parse. Detect when infrastructure quietly changes hands.",
+    tag: "WHOIS / RDAP",
+    color: "rose"
+  },
+  {
+    title: "Email authentication",
+    body: "Parse and score SPF, DKIM, DMARC, and BIMI for a domain in a single DNS-only call. No SMTP probing, no mail sent — just the published policy and a posture score you can gate deliverability decisions on.",
+    tag: "DELIVERABILITY",
+    color: "amber"
+  },
+  {
+    title: "Domain to company",
+    body: "Point /v1/enrich/company at a homepage or about page and get a lite company profile built from public structured data — organization markup, open-graph tags, social profiles, and contact patterns. No third-party company-data feed in the loop.",
+    tag: "ENRICHMENT",
+    color: "teal"
+  },
 ];
 
 const families = [
@@ -88,91 +119,367 @@ const jsonLd = [
   description="Send a domain or IP, get the full signal picture. WHOIS/RDAP, DNS intelligence, SSL and Certificate Transparency, GeoIP and ASN, email authentication, and company enrichment — one API, one key, no paid threat-intel feeds."
   jsonLd={jsonLd}
 >
+  <Fragment slot="head">
+    <link rel="stylesheet" href="/homepage-tailwind.css?v=28" />
+    <style>
+      body {
+        font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      details summary::-webkit-details-marker,
+      details summary::marker {
+        display: none;
+        content: "";
+      }
+    </style>
+  </Fragment>
+
   <Fragment set:html={navHtml('intelligence')} />
 
-  <section class="section" style="padding-top:80px; text-align:center;">
-    <div class="container" style="max-width:760px;">
-      <span class="badge badge-mute" style="margin-bottom:16px;">INTELLIGENCE</span>
-      <h1 class="h-display h-1" style="margin:0 0 18px;">Every signal behind a domain. One key.</h1>
-      <p class="copy-lg">
-        WHOIS and RDAP, the full DNS surface, SSL and Certificate Transparency history, GeoIP and ASN, email authentication, and company enrichment from nothing but a domain — all from one API. Read public records and answer the questions that matter before you ever fetch a page.
-      </p>
-      <div class="cta-row cta-row--mt">
-        <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
-        <a class="btn btn-secondary btn-lg" href="/docs">Read the docs</a>
+  <div class="relative overflow-hidden bg-white text-ink-950 font-sans">
+    
+    <!-- Hero Section -->
+    <section class="relative pt-16 pb-16 sm:pt-24 sm:pb-20 border-b border-ink-200 overflow-hidden bg-white">
+      <!-- Background Ambient Glow & Grid -->
+      <div class="absolute inset-0 pointer-events-none -z-10 flex items-center justify-center">
+        <div class="w-[700px] h-[400px] rounded-full bg-brand/5 blur-3xl opacity-60"></div>
       </div>
-      <p style="color:var(--text-dim); font-size:13px; margin-top:16px;">
-        Built <a href="/for-intel" class="text-accent">for security teams</a> · packaged in the <a href="/bundles/domain-intelligence" class="text-accent">domain-intelligence bundle</a> · see the <a href="/recipes/enrich-leads-from-domain" class="text-accent">lead-enrichment recipe</a>.
-      </p>
-    </div>
-  </section>
+      <div class="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none -z-10"></div>
 
-  <section class="section-tight">
-    <div class="container" style="max-width:920px;">
-      <div class="grid-2">
-        {pillars.map((p) => (
-          <div class="pcard">
-            <h2 style="font-family:var(--font-display); font-size:18px; font-weight:600; margin:0 0 8px;">{p.title}</h2>
-            <p class="copy-muted">{p.body}</p>
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <!-- Eyebrow Pill -->
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-ink-200 bg-ink-50/80 text-xs font-mono mb-6 shadow-xs">
+          <span class="w-2 h-2 rounded-full bg-brand animate-pulse"></span>
+          <span class="text-ink-900 font-semibold">INTELLIGENCE</span>
+          <span class="text-ink-300 select-none">•</span>
+          <span class="text-ink-600 font-medium">Domain &amp; Network Reconnaissance</span>
+        </div>
+
+        <!-- Headline -->
+        <h1 class="text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.1] font-bold tracking-tight text-ink-950 mb-6 max-w-4xl mx-auto">
+          Every signal behind a domain. <span class="text-brand underline decoration-brand/30 decoration-4 underline-offset-4">One key.</span>
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="text-base sm:text-lg lg:text-xl text-ink-600 max-w-3xl mx-auto leading-relaxed mb-8 font-normal">
+          WHOIS and RDAP, the full DNS surface, SSL and Certificate Transparency history, GeoIP and ASN, email authentication, and company enrichment from nothing but a domain — all from one API. Read public records and answer the questions that matter before you ever fetch a page.
+        </p>
+
+        <!-- CTA Row -->
+        <div class="flex flex-wrap items-center justify-center gap-3">
+          <a class="relative group overflow-hidden inline-flex items-center px-5 py-2.5 text-sm font-semibold rounded bg-brand text-white shadow-sm hover:shadow-lg hover:shadow-brand/25 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+            <span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+            <span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+          </a>
+          <a class="inline-flex items-center px-5 py-2.5 text-sm font-medium rounded border border-ink-300 bg-white text-ink-700 hover:bg-ink-50 hover:text-ink-900 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs hover:shadow" href="/docs">
+            Read the docs <span class="ml-1 text-ink-400">→</span>
+          </a>
+        </div>
+
+        <p class="text-xs sm:text-sm text-ink-500 mt-6 max-w-xl mx-auto">
+          Built <a href="/for-intel" class="text-brand hover:underline font-medium">for security teams</a> · packaged in the <a href="/bundles/domain-intelligence" class="text-brand hover:underline font-medium">domain-intelligence bundle</a> · see the <a href="/recipes/enrich-leads-from-domain" class="text-brand hover:underline font-medium">lead-enrichment recipe</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- Pillars Section -->
+    <section class="py-16 sm:py-20 border-b border-ink-200 bg-[#FAFAFA]">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            CORE CAPABILITIES
           </div>
-        ))}
-      </div>
-    </div>
-  </section>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950">
+            Complete reconnaissance from DNS to company profiles.
+          </h2>
+        </div>
 
-  <section class="section-tight">
-    <div class="container" style="max-width:760px;">
-      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">Examples that work today.</h2>
-      <p class="section-intro">Drop any of these into a terminal or notebook.</p>
-      <div class="code-block" style="margin-bottom:16px;">
-        <div class="code-head"><span>DNS intelligence</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/dns/intelligence</span></div>
-        <div class="code-body"><pre class="m-0"><code>{dnsExample}</code></pre></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {pillars.map((p, idx) => (
+            <div class={`platform-card ${idx === 0 ? 'platform-card-sky' : idx === 1 ? 'platform-card-emerald' : idx === 2 ? 'platform-card-purple' : idx === 3 ? 'platform-card-rose' : idx === 4 ? 'platform-card-amber' : 'platform-card-teal'} p-6 rounded-xl border border-ink-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white group cursor-default flex flex-col justify-between relative overflow-hidden`}>
+              <div>
+                <div class="flex items-center gap-3 mb-4">
+                  <div class={`platform-card-icon-wrap ${idx === 0 ? 'bg-sky-50 text-sky-600 border-sky-200/60' : idx === 1 ? 'bg-emerald-50 text-emerald-600 border-emerald-200/60' : idx === 2 ? 'bg-purple-50 text-purple-600 border-purple-200/60' : idx === 3 ? 'bg-rose-50 text-brand border-rose-200/60' : idx === 4 ? 'bg-amber-50 text-amber-600 border-amber-200/60' : 'bg-teal-50 text-teal-600 border-teal-200/60'} border`}>
+                    {idx === 0 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                    )}
+                    {idx === 1 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                    )}
+                    {idx === 2 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    )}
+                    {idx === 3 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    )}
+                    {idx === 4 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                    )}
+                    {idx === 5 && (
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                    )}
+                  </div>
+                  <div>
+                    <span class={`text-[10px] font-mono font-bold uppercase tracking-wider block ${idx === 0 ? 'text-sky-600' : idx === 1 ? 'text-emerald-600' : idx === 2 ? 'text-purple-600' : idx === 3 ? 'text-brand' : idx === 4 ? 'text-amber-600' : 'text-teal-600'}`}>
+                      {p.tag}
+                    </span>
+                    <h3 class="text-base font-semibold text-ink-900 group-hover:text-brand transition-colors duration-200">{p.title}</h3>
+                  </div>
+                </div>
+                <p class="text-xs sm:text-sm leading-relaxed text-ink-600">
+                  {p.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-      <div class="code-block" style="margin-bottom:16px;">
-        <div class="code-head"><span>WHOIS + certificate posture</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/intel/whois · /v1/intel/ssl</span></div>
-        <div class="code-body"><pre class="m-0"><code>{whoisExample}</code></pre></div>
-      </div>
-      <div class="code-block">
-        <div class="code-head"><span>Domain to company profile</span><span class="text-mono" style="color:var(--text-dim);">POST /v1/enrich/company</span></div>
-        <div class="code-body"><pre class="m-0"><code>{enrichExample}</code></pre></div>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section-tight">
-    <div class="container" style="max-width:920px;">
-      <h2 class="h-display h-2" style="text-align:center; margin:0 0 8px;">The intelligence endpoint family.</h2>
-      <p class="section-intro">Every endpoint here reads public, free-to-query data — DNS, Certificate Transparency, RDAP, a local GeoIP database, and the page itself.</p>
-      <div class="grid-2">
-        {families.map((f) => (
-          <div class="pcard">
-            <div class="text-mono" style="color:var(--accent); font-size:12px; margin:0 0 8px;">{f.endpoint}</div>
-            <h3 style="font-family:var(--font-display); font-size:16px; font-weight:600; margin:0 0 8px;">{f.title}</h3>
-            <p class="copy-muted">{f.body}</p>
+    <!-- Code Examples Section -->
+    <section class="py-16 sm:py-20 border-b border-ink-200 bg-white">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-2xl mx-auto mb-10">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            CODE EXAMPLES
           </div>
-        ))}
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            Examples that work today.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600">
+            Drop any of these into a terminal or notebook.
+          </p>
+        </div>
+
+        <div class="space-y-6">
+          <!-- Terminal 1: DNS intelligence -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">DNS intelligence</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/dns/intelligence</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={dnsExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{dnsExample}</code></pre>
+            </div>
+          </div>
+
+          <!-- Terminal 2: WHOIS + certificate posture -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">WHOIS + certificate posture</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/intel/whois · /v1/intel/ssl</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={whoisExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{whoisExample}</code></pre>
+            </div>
+          </div>
+
+          <!-- Terminal 3: Domain to company profile -->
+          <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
+            <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
+              <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FF5F56]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
+                  <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
+                </div>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Domain to company profile</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/enrich/company</span>
+              </div>
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={enrichExample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="p-5 overflow-x-auto leading-relaxed">
+              <pre class="m-0 text-ink-100 whitespace-pre"><code>{enrichExample}</code></pre>
+            </div>
+          </div>
+        </div>
       </div>
-      <p style="color:var(--text-dim); font-size:13px; text-align:center; margin-top:20px;">
-        Part of the full <a href="/capabilities" class="text-accent">%%ENDPOINT_COUNT%%-endpoint surface</a> — browse it as the <a href="/bundles/domain-intelligence" class="text-accent">domain-intelligence bundle</a> or alongside the <a href="/scrape" class="text-accent">scraping</a> and <a href="/crawl" class="text-accent">crawl</a> families.
-      </p>
-    </div>
-  </section>
+    </section>
 
-  <section class="article-faq">
-    <h2 class="h-display h-2">Domain intelligence questions</h2>
-    {faqs.map((f) => (
-      <div class="faq-item"><h3>{f.q}</h3><p>{f.a}</p></div>
-    ))}
-  </section>
+    <!-- Endpoint Family Grid: The intelligence endpoint family -->
+    <section class="py-16 sm:py-20 border-b border-ink-200 bg-[#FAFAFA]">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            ENDPOINT DIRECTORY
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            The intelligence endpoint family.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600 leading-relaxed">
+            Every endpoint here reads public, free-to-query data — DNS, Certificate Transparency, RDAP, a local GeoIP database, and the page itself.
+          </p>
+        </div>
 
-  <section class="article-cta section-tight" style="text-align:center;">
-    <h2 class="h-display h-2" style="margin:0 0 16px;">Enrich your first domains free.</h2>
-    <p class="lede-narrow">1,000 free credits, one bearer token, failed calls auto-refund. No paid threat-intel feed in the path.</p>
-    <div class="cta-row">
-      <a class="btn btn-primary btn-lg" href="/contactus">Request access</a>
-      <a class="btn btn-secondary btn-lg" href="/recipes/enrich-leads-from-domain">Read the recipe</a>
-    </div>
-  </section>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {families.map((f) => (
+            <div class="p-6 rounded-xl border border-ink-200/90 bg-white shadow-xs hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all group flex flex-col justify-between">
+              <div>
+                <span class="inline-block px-2.5 py-1 rounded text-[11px] font-mono font-semibold bg-rose-50 text-brand border border-rose-200/60 mb-3">
+                  {f.endpoint}
+                </span>
+                <h3 class="text-base font-semibold text-ink-950 group-hover:text-brand transition-colors mb-2">
+                  {f.title}
+                </h3>
+                <p class="text-xs sm:text-sm text-ink-600 leading-relaxed">
+                  {f.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p class="text-xs sm:text-sm text-ink-500 text-center mt-10">
+          Part of the full <a href="/capabilities" class="text-brand hover:underline font-medium">{stats.endpointCount}-endpoint surface</a> — browse it as the <a href="/bundles/domain-intelligence" class="text-brand hover:underline font-medium">domain-intelligence bundle</a> or alongside the <a href="/scrape" class="text-brand hover:underline font-medium">scraping</a> and <a href="/crawl" class="text-brand hover:underline font-medium">crawl</a> families.
+        </p>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="py-16 sm:py-24 border-b border-ink-200 bg-white">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-2xl mx-auto mb-12">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            FREQUENTLY ASKED QUESTIONS
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950">
+            Domain intelligence questions
+          </h2>
+        </div>
+
+        <div class="space-y-4">
+          {faqs.map((f, idx) => (
+            <details class="group border border-ink-200 rounded-xl bg-white p-5 transition-all duration-200 open:shadow-sm">
+              <summary class="flex items-center justify-between cursor-pointer list-none select-none">
+                <div class="flex items-center gap-3">
+                  <span class="w-6 h-6 rounded-full bg-ink-100 group-open:bg-rose-50 text-ink-600 group-open:text-brand font-mono text-xs font-semibold flex items-center justify-center transition-colors shrink-0">
+                    {idx + 1}
+                  </span>
+                  <h3 class="font-semibold text-ink-900 group-hover:text-brand transition-colors text-base sm:text-lg">
+                    {f.q}
+                  </h3>
+                </div>
+                <div class="w-6 h-6 rounded-full flex items-center justify-center text-ink-400 group-hover:text-ink-600 transition-transform duration-200 group-open:rotate-180 shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </div>
+              </summary>
+              <div class="text-ink-600 text-sm sm:text-base leading-relaxed mt-4 pl-9 pr-2">
+                {f.a}
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom CTA Section -->
+    <section class="py-20 sm:py-28 bg-white relative overflow-hidden" id="signup">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div class="bottom-cta-card relative rounded-2xl border border-ink-800 text-white p-8 sm:p-12 lg:p-14 shadow-2xl shadow-ink-950/30 overflow-hidden text-center">
+          <!-- Ambient Glow Accents -->
+          <div class="absolute -top-28 -right-28 w-80 h-80 rounded-full bg-brand/20 blur-3xl pointer-events-none"></div>
+          <div class="absolute -bottom-28 -left-28 w-80 h-80 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none"></div>
+
+          <!-- Top Chip -->
+          <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-ink-900/90 border border-ink-700 text-xs font-mono mb-6 shadow-sm relative z-10">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-white font-semibold">1,000 free credits</span>
+            <span class="text-ink-500 select-none">•</span>
+            <span class="text-ink-300 font-normal">No card required</span>
+          </div>
+
+          <!-- Title -->
+          <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4 relative z-10">
+            Enrich your first domains <span class="text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-brand to-rose-300">free</span>.
+          </h2>
+
+          <!-- Subtitle -->
+          <p class="text-sm sm:text-base text-ink-300 max-w-xl mx-auto leading-relaxed mb-8 relative z-10">
+            1,000 free credits, one bearer token, failed calls auto-refund. No paid threat-intel feed in the path.
+          </p>
+
+          <!-- CTA Buttons -->
+          <div class="flex flex-wrap items-center justify-center gap-3 relative z-10">
+            <a class="relative group overflow-hidden inline-flex items-center px-6 py-3 text-sm font-semibold rounded-lg bg-brand text-white shadow-lg shadow-brand/25 hover:shadow-xl hover:shadow-brand/40 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+              <span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+              <span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+            </a>
+            <a class="inline-flex items-center px-6 py-3 text-sm font-medium rounded-lg border border-ink-700 bg-ink-900/80 text-ink-200 hover:bg-ink-800 hover:text-white transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs" href="/recipes/enrich-leads-from-domain">
+              Read the recipe <span class="ml-1 text-ink-400">→</span>
+            </a>
+          </div>
+
+          <!-- Trust Badges -->
+          <div class="mt-8 pt-6 border-t border-ink-800/80 flex flex-wrap items-center justify-center gap-6 text-[11px] font-mono text-ink-400 relative z-10">
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              No credit card required
+            </span>
+            <span class="text-ink-700 hidden sm:inline">•</span>
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              All public data sources
+            </span>
+            <span class="text-ink-700 hidden sm:inline">•</span>
+            <span class="flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
+              {stats.endpointCount} endpoints live
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
 
   <Fragment set:html={footerHtml()} />
+
+  <script is:inline>
+    // Wire quick copy buttons
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.quick-copy-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var text = btn.getAttribute('data-copy');
+          if (text) {
+            navigator.clipboard.writeText(text).then(function() {
+              var span = btn.querySelector('span');
+              if (span) {
+                var oldText = span.textContent;
+                span.textContent = 'Copied!';
+                setTimeout(function() { span.textContent = oldText; }, 1600);
+              }
+            });
+          }
+        });
+      });
+    });
+  </script>
 </BaseLayout>
