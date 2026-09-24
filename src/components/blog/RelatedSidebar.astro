@@ -17,9 +17,10 @@ interface RelatedPostItem {
 interface Props {
   posts: (CollectionEntry<'blog'> | RelatedPostItem | any)[];
   currentSlug?: string;
+  isRecipe?: boolean;
 }
 
-const { posts, currentSlug } = Astro.props;
+const { posts, currentSlug, isRecipe = false } = Astro.props;
 const displayPosts = posts.filter((p) => p.slug !== currentSlug).slice(0, 4);
 
 const tagColorMap: Record<string, string> = {
@@ -32,19 +33,28 @@ const tagColorMap: Record<string, string> = {
   announcements: 'var(--cat-announcements)',
   'robots-txt': 'var(--cat-robots-txt)',
   seo: 'var(--cat-seo)',
+  ecommerce: 'var(--cat-ecommerce)',
+  'real-estate': 'var(--cat-real-estate)',
+  local: 'var(--cat-local)',
+  leadgen: 'var(--cat-leadgen)',
+  ai: 'var(--cat-ai)',
+  intel: 'var(--cat-intel)',
+  crawling: 'var(--cat-crawling)',
+  ops: 'var(--cat-ops)',
 };
 ---
 
 <aside class="sidebar sidebar-right">
-  <span class="sidebar-badge">More Articles</span>
+  <span class="sidebar-badge">{isRecipe ? 'Related Recipes' : 'More Articles'}</span>
 
   <div class="related-list">
     {displayPosts.map((p) => {
       const firstTag = p.data?.tags?.[0];
       const dotColor = firstTag ? (tagColorMap[firstTag] || 'var(--accent)') : 'var(--accent)';
       const minutes = p.minutes ?? (p.body ? readingTime(p.body) : 5);
+      const postUrl = isRecipe ? `/recipes/${p.slug}/` : `/blog/${p.slug}/`;
       return (
-        <a class="related-card" href={`/blog/${p.slug}/`}>
+        <a class="related-card" href={postUrl}>
           <p class="related-title">{p.data.title}</p>
           <div class="related-meta">
             <span class="related-dot" style={`background: ${dotColor};`}></span>
@@ -57,7 +67,9 @@ const tagColorMap: Record<string, string> = {
     })}
   </div>
 
-  <a class="sidebar-view-all" href="/blog/">View All Articles →</a>
+  <a class="sidebar-view-all" href={isRecipe ? "/recipes/" : "/blog/"}>
+    {isRecipe ? 'View All Recipes →' : 'View All Articles →'}
+  </a>
 </aside>
 
 <style>

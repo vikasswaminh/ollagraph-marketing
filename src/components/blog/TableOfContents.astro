@@ -6,9 +6,15 @@
  */
 interface Props {
   headings?: { depth: number; slug: string; text: string }[];
+  backUrl?: string;
+  backText?: string;
 }
 
-const { headings = [] } = Astro.props;
+const {
+  headings = [],
+  backUrl = '/blog/',
+  backText = '← All posts',
+} = Astro.props;
 
 // Filter headings: include H2s and structural H3s, but keep FAQs unified as a single chapter
 let isInsideFaq = false;
@@ -43,7 +49,7 @@ const cleanHeadingText = (text: string) => {
 ---
 
 <aside class="sidebar sidebar-left">
-  <a class="toc-back" href="/blog/">← All posts</a>
+  <a class="toc-back" href={backUrl}>{backText}</a>
 
   <nav class="toc-nav" id="toc-nav" aria-label="Table of contents" style={tocItems.length === 0 ? "display:none;" : undefined}>
     <span class="toc-label">On this page</span>

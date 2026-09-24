@@ -1,20 +1,31 @@
----
+﻿---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { navHtml, footerHtml } from '../../chrome';
 import { recipes, categoryLabels, categoryOrder } from '../../data/recipes';
+import '../../styles/blog.css';
 
-const grouped = recipes.reduce<Record<string, typeof recipes>>((acc, r) => {
-  (acc[r.category] ||= []).push(r);
-  return acc;
-}, {});
+const activeCategories = categoryOrder.filter((c) => recipes.some((r) => r.category === c));
+
+const categoryClassMap: Record<string, string> = {
+  ecommerce: 'ecommerce',
+  'real-estate': 'real-estate',
+  local: 'local',
+  leadgen: 'leadgen',
+  ai: 'ai',
+  seo: 'seo',
+  intel: 'intel',
+  crawling: 'crawling',
+  ops: 'ops',
+};
 
 const collectionLd = {
   "@context": "https://schema.org",
   "@type": "CollectionPage",
-  name: "Ollagraph recipes — production playbooks for web data",
-  description: "End-to-end recipes for scraping, enrichment, AI ingestion, and crawling — the patterns real teams use in 2026.",
+  name: "Ollagraph recipes â€” production playbooks for web data",
+  description: "End-to-end recipes for scraping, enrichment, AI ingestion, and crawling â€” the patterns real teams use in 2026.",
   url: "https://ollagraph.com/recipes/",
 };
+
 const itemListLd = {
   "@context": "https://schema.org",
   "@type": "ItemList",
@@ -25,43 +36,693 @@ const itemListLd = {
     name: r.title,
   })),
 };
+
 const nav = navHtml('recipes');
 const footer = footerHtml();
 ---
+
 <BaseLayout
-  title="Web data recipes — production playbooks for 2026 — Ollagraph"
-  description="Step-by-step recipes for scraping Zillow, Google Maps, building RAG pipelines, monitoring pricing, enriching leads, and verifying email — the 2026 stack."
+  title="Web data recipes â€” production playbooks for 2026 â€” Ollagraph"
+  description="Step-by-step recipes for scraping Zillow, Google Maps, building RAG pipelines, monitoring pricing, enriching leads, and verifying email â€” the 2026 stack."
+  canonical="https://ollagraph.com/recipes/"
   jsonLd={[collectionLd, itemListLd]}
 >
   <Fragment set:html={nav} />
-  <section class="section" style="padding-top:80px; text-align:center;">
-    <div class="container" style="max-width:760px;">
-      <h1 class="h-display h-1" style="margin:0 0 18px;">Recipes that ship in 2026.</h1>
-      <p class="copy-lg">
-        Production-tested playbooks for the work data teams actually do. Each recipe walks the full pipeline — the tools, the trade-offs, the costs, the code.
+
+  <div class="container blog-container">
+    <!-- Modern Hero Section -->
+    <header class="recipes-hero">
+      <div class="recipes-hero-pill">
+        <span class="recipes-hero-pulse" aria-hidden="true"></span>
+        <span>PRODUCTION PLAYBOOKS &middot; {recipes.length} RECIPES</span>
+      </div>
+      <h1 class="recipes-hero-title">Recipes that ship in 2026.</h1>
+      <p class="recipes-hero-subtitle">
+        Production-tested playbooks for the work data teams actually do. Each recipe walks the full pipeline &mdash; the tools, the trade-offs, the costs, the code.
       </p>
+    </header>
+
+    <!-- Explorer Controls: Instant Search & Category Filter Pills -->
+    <div class="explorer-toolbar">
+      <div class="search-input-wrapper">
+        <span class="search-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </span>
+        <input
+          type="search"
+          id="recipes-search-input"
+          class="blog-search-input"
+          placeholder="Search recipes by keyword, tool, or target (e.g. Zillow, Amazon, RAG, headers, captcha)..."
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Search recipes"
+        />
+        <button type="button" id="recipes-search-clear" class="search-clear-btn" aria-label="Clear search" hidden>
+          &#10005;
+        </button>
+        <kbd class="search-shortcut" title="Press / or Cmd+K to search">/</kbd>
+      </div>
+
+      <!-- Category Filter Pills Bar -->
+      <div class="filter-pills-bar" role="tablist" aria-label="Filter by category">
+        <button class="filter-pill active pill-all" data-filter="all" role="tab" aria-selected="true" type="button">
+          <span class="pill-dot dot-all"></span>
+          All <span class="pill-badge">{recipes.length}</span>
+        </button>
+        {activeCategories.map((cat) => {
+          const catClass = categoryClassMap[cat] || 'guides';
+          const label = categoryLabels[cat];
+          const count = recipes.filter((r) => r.category === cat).length;
+          return (
+            <button class={`filter-pill pill-${catClass}`} data-filter={cat} role="tab" aria-selected="false" type="button">
+              <span class={`pill-dot dot-${catClass}`}></span>
+              {label} <span class="pill-badge">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <!-- Live Results Status Bar -->
+      <div class="filter-status-bar" id="recipes-status-bar" style="display:none;" hidden>
+        <span id="recipes-status-text" class="filter-status-text"></span>
+        <button id="recipes-reset-btn" class="filter-reset-btn" type="button">Reset filters</button>
+      </div>
     </div>
-  </section>
-  <section class="section-tight">
-    <div class="container" style="max-width:920px; display:flex; flex-direction:column; gap:48px;">
-      {categoryOrder.filter((c) => grouped[c]?.length).map((cat) => (
-        <div>
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
-            <h2 class="h-display h-2" style="margin:0; font-size:24px;">{categoryLabels[cat]}</h2>
-            <span class="badge badge-mute">{grouped[cat].length}</span>
+
+    <!-- Unified Seamless Recipe Cards Grid (Balanced 3-column, zero empty holes) -->
+    <div class="recipes-unified-grid" id="recipes-grid">
+      {recipes.map((r) => {
+        const catClass = categoryClassMap[r.category] || 'guides';
+        const label = categoryLabels[r.category] || r.category;
+        return (
+          <a
+            class={`post-card recipe-item-card card-${catClass}`}
+            href={`/recipes/${r.slug}/`}
+            data-cat={r.category}
+            data-title={r.title.toLowerCase()}
+            data-desc={r.description.toLowerCase()}
+          >
+            <div class="card-badge-wrap">
+              <span class={`post-card-badge badge--${catClass}`}>
+                {label}
+              </span>
+            </div>
+            <h2 class="post-card-title">{r.title}</h2>
+            <p class="post-card-desc">{r.description}</p>
+            <div class="post-card-meta">
+              <span class="meta-item">
+                <svg class="meta-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>{r.readingTime} min read</span>
+              </span>
+              <span class="card-arrow" aria-hidden="true">&rarr;</span>
+            </div>
+          </a>
+        );
+      })}
+    </div>
+
+    <!-- Empty Search State -->
+    <div class="search-empty-state" id="recipes-empty-state" hidden>
+      <div class="empty-icon-wrap">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          <line x1="8" y1="11" x2="14" y2="11"></line>
+        </svg>
+      </div>
+      <h3 class="empty-title">No matching recipes found</h3>
+      <p class="empty-desc">We couldn't find any recipes matching your query. Try searching for other terms or reset the filter.</p>
+      <button class="empty-reset-btn" id="recipes-empty-reset" type="button">View all recipes</button>
+    </div>
+
+    <!-- Compact Centered Developer CTA Card (Exact Reference Design Match) -->
+    <section class="recipes-compact-cta" aria-label="Developer access call to action">
+      <!-- Glow ambient effects -->
+      <div class="cta-glow-left" aria-hidden="true"></div>
+      <div class="cta-glow-right" aria-hidden="true"></div>
+
+      <div class="compact-cta-inner">
+        <!-- Top Pill -->
+        <div class="compact-cta-pill">
+          <span class="pill-green-dot" aria-hidden="true"></span>
+          <span class="pill-credits">1,000 free credits</span>
+          <span class="pill-sep">&middot;</span>
+          <span class="pill-tagline">No card required</span>
+        </div>
+
+        <!-- Headline (Exact match to reference) -->
+        <h2 class="compact-cta-title">Never miss a release.</h2>
+
+        <!-- Subtitle (Exact match to reference) -->
+        <p class="compact-cta-desc">
+          Start building today with 1,000 free credits. Follow our updates or connect webhooks for live change notifications.
+        </p>
+
+        <!-- Centered Buttons (Exact match to reference) -->
+        <div class="compact-cta-actions">
+          <a class="btn-cta-crimson" href="/contactus">
+            <span>Request access</span>
+            <span class="btn-arrow">&rarr;</span>
+          </a>
+          <a class="btn-cta-dark" href="/tools">
+            <span>Browse capabilities</span>
+            <span class="btn-arrow">&rarr;</span>
+          </a>
+        </div>
+
+        <!-- Bottom Trust Checklist Row (Exact match to reference) -->
+        <div class="compact-cta-trust">
+          <div class="trust-item">
+            <span class="trust-check">&#10003;</span>
+            <span>No credit card required</span>
           </div>
-          <div class="recipe-grid">
-            {grouped[cat].map((r) => (
-              <a class="recipe-card" href={`/recipes/${r.slug}/`}>
-                <div style="font-size:12px; color:var(--text-dim);">{r.readingTime} min read</div>
-                <h3>{r.title}</h3>
-                <p>{r.description}</p>
-              </a>
-            ))}
+          <span class="trust-sep">&middot;</span>
+          <div class="trust-item">
+            <span class="trust-check">&#10003;</span>
+            <span>Flat 1 credit / call</span>
+          </div>
+          <span class="trust-sep">&middot;</span>
+          <div class="trust-item">
+            <span class="trust-check">&#10003;</span>
+            <span>147 tools ready</span>
           </div>
         </div>
-      ))}
-    </div>
-  </section>
+      </div>
+    </section>
+  </div>
+
   <Fragment set:html={footer} />
 </BaseLayout>
+
+<style>
+  .recipes-unified-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 1.5rem !important;
+    margin-top: 1.5rem !important;
+    margin-bottom: 3.5rem !important;
+  }
+
+  @media (max-width: 1024px) {
+    .recipes-unified-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 1.25rem !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .recipes-unified-grid {
+      grid-template-columns: 1fr !important;
+      gap: 1rem !important;
+    }
+  }
+
+  .recipe-item-card {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 12px !important;
+    padding: 1.5rem 1.6rem !important;
+    text-decoration: none !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.2s ease !important;
+  }
+
+  .recipe-item-card.is-filter-hidden {
+    display: none !important;
+  }
+
+  .recipe-item-card:hover {
+    border-color: #ea580c !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(234, 88, 12, 0.08) !important;
+  }
+
+  .card-badge-wrap {
+    margin-bottom: 0.85rem;
+  }
+
+  .post-card-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    font-size: 0.7rem !important;
+    font-weight: 750 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+    padding: 0.2rem 0.65rem !important;
+    border-radius: 6px !important;
+    background: color-mix(in srgb, var(--badge-color, #ea580c) 14%, white) !important;
+    color: var(--badge-color, #ea580c) !important;
+    border: 1px solid color-mix(in srgb, var(--badge-color, #ea580c) 25%, transparent) !important;
+    line-height: 1.35 !important;
+  }
+
+  .recipe-item-card:hover .post-card-badge {
+    background: color-mix(in srgb, var(--badge-color, #ea580c) 22%, white) !important;
+    border-color: color-mix(in srgb, var(--badge-color, #ea580c) 40%, transparent) !important;
+  }
+
+  .post-card-title {
+    font-size: 1.1rem !important;
+    font-weight: 750 !important;
+    line-height: 1.38 !important;
+    letter-spacing: -0.015em !important;
+    color: #0f172a !important;
+    margin: 0 0 0.65rem 0 !important;
+    min-height: 2.8rem !important;
+    transition: color 0.15s ease !important;
+  }
+
+  .recipe-item-card:hover .post-card-title {
+    color: #ea580c !important;
+  }
+
+  .post-card-desc {
+    font-size: 0.88rem !important;
+    line-height: 1.6 !important;
+    color: #64748b !important;
+    margin: 0 0 1.35rem 0 !important;
+    flex-grow: 1 !important;
+  }
+
+  .post-card-meta {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding-top: 0.9rem !important;
+    border-top: 1px solid #f1f5f9 !important;
+    margin-top: auto !important;
+    font-size: 0.78rem !important;
+    color: #94a3b8 !important;
+  }
+
+  .recipe-item-card:hover .card-arrow {
+    color: #ea580c !important;
+    transform: translateX(3px) !important;
+  }
+
+  /* ==========================================================================
+     Compact Centered Developer CTA Card (Exact Reference Design Match)
+     ========================================================================== */
+  .recipes-compact-cta {
+    position: relative;
+    max-width: 860px;
+    margin: 3.5rem auto 4.5rem;
+    padding: 3.5rem 2.5rem 2.75rem;
+    background-color: #060911;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: center center;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 20px;
+    text-align: center;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -15px rgba(2, 6, 23, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+
+  /* Subtle ambient corner glow gradients matching reference image */
+  .cta-glow-left {
+    position: absolute;
+    bottom: -60px;
+    left: -60px;
+    width: 280px;
+    height: 280px;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.16) 0%, rgba(13, 148, 136, 0.08) 45%, transparent 70%);
+    filter: blur(48px);
+    pointer-events: none;
+  }
+
+  .cta-glow-right {
+    position: absolute;
+    top: -60px;
+    right: -60px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(225, 29, 72, 0.18) 0%, rgba(190, 18, 60, 0.08) 50%, transparent 70%);
+    filter: blur(52px);
+    pointer-events: none;
+  }
+
+  .compact-cta-inner {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Top Pill: Green dot + 1,000 free credits Â· No card required */
+  .compact-cta-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.82rem;
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 0.38rem 1.05rem;
+    border-radius: 9999px;
+    margin-bottom: 1.6rem;
+    backdrop-filter: blur(8px);
+  }
+
+  .pill-green-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    display: inline-block;
+  }
+
+  .pill-credits {
+    font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+    font-weight: 600;
+    color: #f1f5f9;
+  }
+
+  .pill-sep {
+    color: #475569;
+    font-size: 0.9rem;
+  }
+
+  .pill-tagline {
+    color: #94a3b8;
+  }
+
+  /* Headline */
+  .compact-cta-title {
+    font-size: clamp(2.2rem, 4.6vw, 3rem);
+    font-weight: 850;
+    letter-spacing: -0.035em;
+    line-height: 1.14;
+    color: #ffffff;
+    margin: 0 0 1.05rem;
+  }
+
+  /* Subtitle */
+  .compact-cta-desc {
+    font-size: 1.02rem;
+    line-height: 1.65;
+    color: #94a3b8;
+    max-width: 590px;
+    margin: 0 auto 2.1rem;
+  }
+
+  /* Centered Action Buttons Row */
+  .compact-cta-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.9rem;
+    margin-bottom: 2.5rem;
+    flex-wrap: wrap;
+  }
+
+  /* Crimson Gradient Glowing Button */
+  .btn-cta-crimson {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: linear-gradient(135deg, #e11d48 0%, #e8443a 100%);
+    color: #ffffff !important;
+    font-weight: 700;
+    font-size: 0.94rem;
+    padding: 0.76rem 1.55rem;
+    border-radius: 9px;
+    text-decoration: none !important;
+    box-shadow: 0 10px 26px -4px rgba(225, 29, 72, 0.48);
+    transition: all 0.18s ease;
+  }
+
+  .btn-cta-crimson:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 30px -2px rgba(225, 29, 72, 0.65);
+    filter: brightness(1.06);
+  }
+
+  /* Dark Navy Secondary Button */
+  .btn-cta-dark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #0d1322;
+    color: #e2e8f0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-weight: 600;
+    font-size: 0.94rem;
+    padding: 0.76rem 1.55rem;
+    border-radius: 9px;
+    text-decoration: none !important;
+    transition: all 0.18s ease;
+  }
+
+  .btn-cta-dark:hover {
+    background: #172033;
+    border-color: rgba(255, 255, 255, 0.24);
+    color: #ffffff !important;
+    transform: translateY(-1px);
+  }
+
+  .btn-arrow {
+    font-size: 1rem;
+    transition: transform 0.15s ease;
+  }
+
+  .btn-cta-crimson:hover .btn-arrow,
+  .btn-cta-dark:hover .btn-arrow {
+    transform: translateX(3px);
+  }
+
+  /* Bottom Trust Signals Row */
+  .compact-cta-trust {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+
+  .trust-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 500;
+    color: #94a3b8;
+  }
+
+  .trust-check {
+    color: #10b981;
+    font-weight: 800;
+  }
+
+  .trust-sep {
+    color: #334155;
+  }
+
+  @media (max-width: 640px) {
+    .recipes-compact-cta {
+      padding: 2.5rem 1.5rem 2rem;
+      margin: 2.5rem 1rem 3.5rem;
+    }
+    .compact-cta-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+    .btn-cta-crimson,
+    .btn-cta-dark {
+      width: 100%;
+      justify-content: center;
+    }
+    .compact-cta-trust {
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+    .trust-sep {
+      display: none;
+    }
+  }
+</style>
+
+<script is:inline>
+  function initRecipesExplorer() {
+    var searchInput = document.getElementById('recipes-search-input');
+    var searchClear = document.getElementById('recipes-search-clear');
+    var filterPills = document.querySelectorAll('.filter-pills-bar .filter-pill');
+    var statusBar = document.getElementById('recipes-status-bar');
+    var statusText = document.getElementById('recipes-status-text');
+    var resetBtn = document.getElementById('recipes-reset-btn');
+    var emptyState = document.getElementById('recipes-empty-state');
+    var emptyReset = document.getElementById('recipes-empty-reset');
+    var cards = document.querySelectorAll('.recipe-item-card');
+
+    if (!cards || cards.length === 0) return;
+
+    var activeFilter = 'all';
+    var searchQuery = '';
+
+    function updateExplorer() {
+      var query = searchQuery.trim().toLowerCase();
+      var totalVisibleCards = 0;
+
+      for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        var title = card.getAttribute('data-title') || '';
+        var desc = card.getAttribute('data-desc') || '';
+        var cardCat = card.getAttribute('data-cat') || '';
+
+        var matchesCat = (activeFilter === 'all') || (activeFilter === cardCat);
+        var matchesQuery = !query || (title.indexOf(query) !== -1) || (desc.indexOf(query) !== -1) || (cardCat.indexOf(query) !== -1);
+
+        if (matchesCat && matchesQuery) {
+          card.classList.remove('is-filter-hidden');
+          totalVisibleCards++;
+        } else {
+          card.classList.add('is-filter-hidden');
+        }
+      }
+
+      // Update empty state
+      if (emptyState) {
+        if (totalVisibleCards === 0) {
+          emptyState.removeAttribute('hidden');
+          emptyState.style.display = 'block';
+        } else {
+          emptyState.setAttribute('hidden', '');
+          emptyState.style.display = 'none';
+        }
+      }
+
+      // Update clear button
+      if (searchClear) {
+        if (query.length > 0) {
+          searchClear.removeAttribute('hidden');
+        } else {
+          searchClear.setAttribute('hidden', '');
+        }
+      }
+
+      // Update status bar
+      var isFiltering = (activeFilter !== 'all') || (query.length > 0);
+      if (statusBar && statusText) {
+        if (isFiltering) {
+          statusBar.removeAttribute('hidden');
+          statusBar.style.display = 'flex';
+          var msg = 'Showing <strong>' + totalVisibleCards + '</strong> recipe' + (totalVisibleCards === 1 ? '' : 's');
+          if (query) {
+            msg += ' matching "<strong>' + query + '</strong>"';
+          }
+          if (activeFilter !== 'all') {
+            var activeBtn = document.querySelector('.filter-pill[data-filter="' + activeFilter + '"]');
+            var label = activeBtn ? (activeBtn.childNodes[1] ? activeBtn.childNodes[1].textContent.trim() : activeFilter) : activeFilter;
+            msg += ' in <strong>' + label + '</strong>';
+          }
+          statusText.innerHTML = msg;
+        } else {
+          statusBar.setAttribute('hidden', '');
+          statusBar.style.display = 'none';
+        }
+      }
+    }
+
+    // Filter pill events
+    for (var j = 0; j < filterPills.length; j++) {
+      (function(pill) {
+        pill.addEventListener('click', function(e) {
+          var btn = e.target.closest('.filter-pill') || pill;
+          var newFilter = btn.getAttribute('data-filter') || 'all';
+
+          for (var k = 0; k < filterPills.length; k++) {
+            filterPills[k].classList.remove('active');
+            filterPills[k].setAttribute('aria-selected', 'false');
+          }
+          btn.classList.add('active');
+          btn.setAttribute('aria-selected', 'true');
+
+          activeFilter = newFilter;
+          updateExplorer();
+        });
+      })(filterPills[j]);
+    }
+
+    // Search input
+    if (searchInput) {
+      searchInput.addEventListener('input', function(e) {
+        searchQuery = e.target.value;
+        updateExplorer();
+      });
+    }
+
+    // Clear search
+    if (searchClear) {
+      searchClear.addEventListener('click', function() {
+        if (searchInput) {
+          searchInput.value = '';
+          searchQuery = '';
+          searchInput.focus();
+          updateExplorer();
+        }
+      });
+    }
+
+    // Reset filters
+    function resetFilters() {
+      if (searchInput) searchInput.value = '';
+      searchQuery = '';
+      activeFilter = 'all';
+      for (var m = 0; m < filterPills.length; m++) {
+        var isAll = filterPills[m].getAttribute('data-filter') === 'all';
+        if (isAll) {
+          filterPills[m].classList.add('active');
+          filterPills[m].setAttribute('aria-selected', 'true');
+        } else {
+          filterPills[m].classList.remove('active');
+          filterPills[m].setAttribute('aria-selected', 'false');
+        }
+      }
+      updateExplorer();
+    }
+
+    if (resetBtn) resetBtn.addEventListener('click', resetFilters);
+    if (emptyReset) emptyReset.addEventListener('click', resetFilters);
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+      var activeEl = document.activeElement;
+      var isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
+      if (e.key === '/' && !isInput) {
+        e.preventDefault();
+        if (searchInput) searchInput.focus();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (searchInput) searchInput.focus();
+      } else if (e.key === 'Escape' && document.activeElement === searchInput) {
+        if (searchInput) searchInput.blur();
+      }
+    });
+
+    updateExplorer();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initRecipesExplorer);
+  } else {
+    initRecipesExplorer();
+  }
+  document.addEventListener('astro:page-load', initRecipesExplorer);
+</script>

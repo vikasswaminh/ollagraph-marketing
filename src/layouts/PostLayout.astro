@@ -6,6 +6,7 @@ import TableOfContents from '../components/blog/TableOfContents.astro';
 import RelatedSidebar from '../components/blog/RelatedSidebar.astro';
 import { navHtml, footerHtml } from '../chrome';
 import { readingTime, getRelatedPosts, getPublishedPosts, getAllBlogPosts } from '../utils/posts';
+import { recipes as allRecipes } from '../data/recipes';
 import '../styles/blog.css';
 
 interface FAQItem { q: string; a: string; }
@@ -23,6 +24,7 @@ interface Props {
   slug?: string;
   canonicalUrl?: string;
   faqs?: FAQItem[];
+  kind?: 'recipe' | 'blog';
 }
 
 const {
@@ -38,8 +40,10 @@ const {
   slug: propSlug,
   canonicalUrl: propCanonicalUrl,
   faqs = [],
+  kind = 'blog',
 } = Astro.props;
 
+const isRecipe = kind === 'recipe';
 const title = post?.data.title ?? propTitle ?? '';
 const description = post?.data.description ?? propDescription ?? '';
 const rawPubDate = post?.data.pubDate ?? (propPubDate ? new Date(propPubDate) : new Date());
@@ -49,13 +53,34 @@ const updatedDate = rawUpdatedDate instanceof Date && !isNaN(rawUpdatedDate.valu
 const author = post?.data.author ?? propAuthor ?? 'Amit Sharma';
 const tags = post?.data.tags ?? propTags ?? [];
 
-const pathSlug = Astro.url.pathname.replace(/^\/blog\/?/, '').replace(/\/$/, '');
+const pathSlug = Astro.url.pathname.replace(/^\/(blog|recipes)\/?/, '').replace(/\/$/, '');
 const slug = post?.slug ?? propSlug ?? pathSlug;
 const minutes = post ? readingTime(post.body) : (propReadingTime ?? 5);
-const canonicalUrl = propCanonicalUrl || `https://ollagraph.com/blog/${slug}/`;
+const defaultCanonical = isRecipe ? `https://ollagraph.com/recipes/${slug}/` : `https://ollagraph.com/blog/${slug}/`;
+const canonicalUrl = propCanonicalUrl || defaultCanonical;
 
 let related: any[] = [];
-if (post) {
+if (isRecipe) {
+  const currentRecipe = allRecipes.find((r) => r.slug === slug);
+  const currentCat = currentRecipe?.category;
+  related = allRecipes
+    .filter((r) => r.slug !== slug)
+    .sort((a, b) => {
+      if (a.category === currentCat && b.category !== currentCat) return -1;
+      if (b.category === currentCat && a.category !== currentCat) return 1;
+      return 0;
+    })
+    .slice(0, 4)
+    .map((r) => ({
+      slug: r.slug,
+      data: {
+        title: r.title,
+        pubDate: r.date,
+        tags: [r.category],
+      },
+      minutes: r.readingTime,
+    }));
+} else if (post) {
   const allPosts = await getPublishedPosts();
   related = getRelatedPosts(post, allPosts, 4);
 } else {
@@ -82,6 +107,19 @@ const tagColorMap: Record<string, string> = {
   announcements: 'var(--cat-announcements)',
   'robots-txt': 'var(--cat-robots-txt)',
   seo: 'var(--cat-seo)',
+  ecommerce: 'var(--cat-ecommerce)',
+  'real-estate': 'var(--cat-real-estate)',
+  local: 'var(--cat-local)',
+  leadgen: 'var(--cat-leadgen)',
+  ai: 'var(--cat-ai)',
+  intel: 'var(--cat-intel)',
+  crawling: 'var(--cat-crawling)',
+  ops: 'var(--cat-ops)',
+  security: 'var(--cat-intel)',
+  'http-headers': 'var(--cat-intel)',
+  csp: 'var(--cat-intel)',
+  zillow: 'var(--cat-real-estate)',
+  proptech: 'var(--cat-real-estate)',
 };
 
 const tagDisplayNames: Record<string, string> = {
@@ -94,6 +132,19 @@ const tagDisplayNames: Record<string, string> = {
   announcements: 'Announcements',
   'robots-txt': 'Robots.txt',
   seo: 'SEO',
+  ecommerce: 'E-Commerce',
+  'real-estate': 'Real Estate',
+  local: 'Local & Maps',
+  leadgen: 'Lead Gen',
+  ai: 'AI & RAG',
+  intel: 'Domain Intel',
+  crawling: 'Crawling',
+  ops: 'RevOps',
+  security: 'Security',
+  'http-headers': 'HTTP Headers',
+  csp: 'CSP',
+  zillow: 'Zillow',
+  proptech: 'Proptech',
 };
 
 const firstTag = tags[0];
@@ -104,7 +155,7 @@ const badgeLabel = firstTag ? (tagDisplayNames[firstTag] || firstTag) : '';
 const isOrgAuthor = !author || author.toLowerCase().includes('team') || author.toLowerCase().includes('ollagraph');
 const blogPostingSchema = {
   '@context': 'https://schema.org',
-  '@type': 'BlogPosting',
+  '@type': isRecipe ? 'TechArticle' : 'BlogPosting',
   headline: title,
   description: description,
   datePublished: pubDate.toISOString(),
@@ -114,6 +165,7 @@ const blogPostingSchema = {
     '@id': canonicalUrl,
   },
   url: canonicalUrl,
+  image: 'https://ollagraph.com/og-image.png',
   author: {
     '@type': isOrgAuthor ? 'Organization' : 'Person',
     name: author,
@@ -141,8 +193,8 @@ const breadcrumbSchema = {
     {
       '@type': 'ListItem',
       position: 2,
-      name: 'Blog',
-      item: 'https://ollagraph.com/blog/',
+      name: isRecipe ? 'Recipes' : 'Blog',
+      item: isRecipe ? 'https://ollagraph.com/recipes/' : 'https://ollagraph.com/blog/',
     },
     {
       '@type': 'ListItem',
@@ -167,12 +219,12 @@ const faqSchema = faqs && faqs.length > 0
 
 const jsonLd = faqSchema ? [blogPostingSchema, breadcrumbSchema, faqSchema] : [blogPostingSchema, breadcrumbSchema];
 
-const nav = navHtml('blog');
+const nav = navHtml(isRecipe ? 'recipes' : 'blog');
 const footer = footerHtml();
 ---
 
 <BaseLayout
-  title={`${title} — Ollagraph Blog`}
+  title={isRecipe ? `${title} — Ollagraph` : `${title} — Ollagraph Blog`}
   description={description}
   canonical={canonicalUrl}
   updated={(updatedDate ?? pubDate).toISOString().slice(0, 10)}
@@ -186,7 +238,11 @@ const footer = footerHtml();
   <div class="container blog-container">
     <div class="page-grid">
       <!-- Left Sidebar: Table of Contents -->
-      <TableOfContents headings={headings} />
+      <TableOfContents
+        headings={headings}
+        backUrl={isRecipe ? '/recipes/' : '/blog/'}
+        backText={isRecipe ? '← All recipes' : '← All posts'}
+      />
 
       <!-- Middle Column: Article Body (Pure white background card matching design) -->
       <article class="post main-content">
@@ -198,7 +254,7 @@ const footer = footerHtml();
                 const label = tagDisplayNames[slugTag] || tag;
                 const color = tagColorMap[slugTag] || 'var(--cat-guides)';
                 return (
-                  <a href={`/blog/?tag=${slugTag}`} class={`badge badge--${slugTag}`} style={`background: ${color};`}>
+                  <a href={isRecipe ? '/recipes/' : `/blog/?tag=${slugTag}`} class={`badge badge--${slugTag}`} style={`background: ${color};`}>
                     {label}
                   </a>
                 );
@@ -231,16 +287,34 @@ const footer = footerHtml();
         </div>
 
         {faqs && faqs.length > 0 && (
-          <section class="article-faq" style="margin-top: 40px; padding-top: 32px; border-top: 1px solid var(--border);">
-            <h2 class="h-display h-2" style="margin-bottom: 20px;">Common questions</h2>
-            {faqs.map((f: FAQItem) => (
-              <div class="faq-item" style="margin-bottom: 24px;">
-                <h3 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 8px; color: var(--text);">{f.q}</h3>
-                <p style="color: var(--text-muted); line-height: 1.6; margin: 0;">{f.a}</p>
-              </div>
-            ))}
+          <section class="article-faq" aria-label="Frequently Asked Questions">
+            <h2 class="article-faq-title">Common questions</h2>
+            <div class="article-faq-list">
+              {faqs.map((f: FAQItem) => (
+                <div class="faq-item">
+                  <h3 class="faq-q">{f.q}</h3>
+                  <p class="faq-a">{f.a}</p>
+                </div>
+              ))}
+            </div>
           </section>
         )}
+
+        <!-- Modern Bottom CTA Box -->
+        <div class="article-cta-box">
+          <div class="article-cta-badge">{isRecipe ? 'PRODUCTION PLAYBOOK' : 'DEVELOPER API'}</div>
+          <h2 class="article-cta-title">Start with 1,000 free credits.</h2>
+          <p class="article-cta-desc">
+            Every endpoint, one bearer token, no credit card required. Build the pipeline above in an afternoon.
+          </p>
+          <div class="article-cta-actions">
+            <a class="btn-primary-cta" href="/contactus">
+              Request access
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </a>
+            <a class="btn-secondary-cta" href="/docs">Read the docs</a>
+          </div>
+        </div>
 
         <!-- Author Box -->
         <div class="author-box">
@@ -282,7 +356,7 @@ const footer = footerHtml();
       </article>
 
       <!-- Right Sidebar: Related Articles -->
-      <RelatedSidebar posts={related} currentSlug={slug} />
+      <RelatedSidebar posts={related} currentSlug={slug} isRecipe={isRecipe} />
     </div>
   </div>
 
