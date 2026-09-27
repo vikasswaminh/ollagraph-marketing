@@ -1,106 +1,3060 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import bodyHtml from '../bodies/bundles.body.html?raw';
-import headExtras from '../bodies/bundles.head.html?raw';
 import { navHtml, footerHtml } from '../chrome';
 import bundles from '../data/bundles.json';
 
-// Color map — bundle.color ↔ token. `lime` reuses the existing accent.
-const COLOR_MAP: Record<string, string> = {
-  lime:    'var(--accent)',
-  teal:    'var(--cyan)',
-  blue:    'var(--blue)',
-  amber:   'var(--amber)',
-  violet:  'var(--violet)',
-  rose:    'var(--rose)',
-  slate:   'var(--slate)',
-  emerald: 'var(--green)',
-  red:     'var(--red)',
-  cyan:    'var(--cyan)',
+interface Endpoint {
+  method: string;
+  path: string;
+  credits: number;
+  summary: string;
+}
+
+interface Bundle {
+  slug: string;
+  name: string;
+  tagline: string;
+  persona: string;
+  color: string;
+  endpoints: Endpoint[];
+  recipe: { title: string; steps: string[] };
+  samples: { curl: string; python: string; node: string };
+  faq: { q: string; a: string }[];
+}
+
+const allBundles = bundles as Bundle[];
+const totalEndpoints = allBundles.reduce((acc, b) => acc + b.endpoints.length, 0);
+
+interface ThemeDef {
+  accent: string;
+  bgSoft: string;
+  borderSoft: string;
+  badgeBg: string;
+  badgeColor: string;
+  glow: string;
+}
+
+const BUNDLE_THEMES: Record<string, ThemeDef> = {
+  lime: {
+    accent: '#10b981',
+    bgSoft: 'rgba(16, 185, 129, 0.1)',
+    borderSoft: 'rgba(16, 185, 129, 0.25)',
+    badgeBg: '#ecfdf5',
+    badgeColor: '#059669',
+    glow: 'rgba(16, 185, 129, 0.2)',
+  },
+  teal: {
+    accent: '#0d9488',
+    bgSoft: 'rgba(13, 148, 136, 0.1)',
+    borderSoft: 'rgba(13, 148, 136, 0.25)',
+    badgeBg: '#f0fdfa',
+    badgeColor: '#0f766e',
+    glow: 'rgba(13, 148, 136, 0.2)',
+  },
+  blue: {
+    accent: '#2563eb',
+    bgSoft: 'rgba(37, 99, 235, 0.1)',
+    borderSoft: 'rgba(37, 99, 235, 0.25)',
+    badgeBg: '#eff6ff',
+    badgeColor: '#1d4ed8',
+    glow: 'rgba(37, 99, 235, 0.2)',
+  },
+  amber: {
+    accent: '#f59e0b',
+    bgSoft: 'rgba(245, 158, 11, 0.1)',
+    borderSoft: 'rgba(245, 158, 11, 0.25)',
+    badgeBg: '#fffbeb',
+    badgeColor: '#b45309',
+    glow: 'rgba(245, 158, 11, 0.2)',
+  },
+  violet: {
+    accent: '#8b5cf6',
+    bgSoft: 'rgba(139, 92, 246, 0.1)',
+    borderSoft: 'rgba(139, 92, 246, 0.25)',
+    badgeBg: '#f5f3ff',
+    badgeColor: '#6d28d9',
+    glow: 'rgba(139, 92, 246, 0.2)',
+  },
+  rose: {
+    accent: '#e11d48',
+    bgSoft: 'rgba(225, 29, 72, 0.1)',
+    borderSoft: 'rgba(225, 29, 72, 0.25)',
+    badgeBg: '#fff1f2',
+    badgeColor: '#be123c',
+    glow: 'rgba(225, 29, 72, 0.2)',
+  },
+  slate: {
+    accent: '#64748b',
+    bgSoft: 'rgba(100, 116, 139, 0.1)',
+    borderSoft: 'rgba(100, 116, 139, 0.25)',
+    badgeBg: '#f1f5f9',
+    badgeColor: '#334155',
+    glow: 'rgba(100, 116, 139, 0.2)',
+  },
+  emerald: {
+    accent: '#059669',
+    bgSoft: 'rgba(5, 150, 105, 0.1)',
+    borderSoft: 'rgba(5, 150, 105, 0.25)',
+    badgeBg: '#ecfdf5',
+    badgeColor: '#047857',
+    glow: 'rgba(5, 150, 105, 0.2)',
+  },
+  red: {
+    accent: '#ef4444',
+    bgSoft: 'rgba(239, 68, 68, 0.1)',
+    borderSoft: 'rgba(239, 68, 68, 0.25)',
+    badgeBg: '#fef2f2',
+    badgeColor: '#b91c1c',
+    glow: 'rgba(239, 68, 68, 0.2)',
+  },
+  cyan: {
+    accent: '#06b6d4',
+    bgSoft: 'rgba(6, 182, 212, 0.1)',
+    borderSoft: 'rgba(6, 182, 212, 0.25)',
+    badgeBg: '#f0f9ff',
+    badgeColor: '#0369a1',
+    glow: 'rgba(6, 182, 212, 0.2)',
+  },
 };
 
-const escapeHtml = (s: string): string =>
-  String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+const CATEGORIES = [
+  { id: 'all', label: 'All Bundles', slugs: allBundles.map(b => b.slug) },
+  { id: 'ai', label: 'AI & Search', slugs: ['aeo', 'seo', 'agent-tools'] },
+  { id: 'data', label: 'Data & Scraping', slugs: ['scraping', 'conversion'] },
+  { id: 'infra', label: 'Domains & Infra', slugs: ['dns', 'email', 'domain-intelligence'] },
+  { id: 'security', label: 'Security & Audits', slugs: ['site-audit', 'security'] },
+];
 
-const truncate = (s: string, n: number): string =>
-  s.length <= n ? s : s.slice(0, n - 1).trimEnd() + '…';
+function getCategoryForSlug(slug: string): string {
+  if (['aeo', 'seo', 'agent-tools'].includes(slug)) return 'ai';
+  if (['scraping', 'conversion'].includes(slug)) return 'data';
+  if (['dns', 'email', 'domain-intelligence'].includes(slug)) return 'infra';
+  return 'security';
+}
 
-// 4 × 2 card grid. Each card: name, tagline, endpoint count, link to /bundles/{slug}.
-const cardHtml = bundles.map((b: any) => {
-  const accent = COLOR_MAP[b.color] || 'var(--accent)';
-  return `
-        <a class="pcard" href="/bundles/${escapeHtml(b.slug)}" style="border-left-color: ${accent}; text-decoration: none; color: inherit; display: block;">
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-            <div class="ico" style="background: ${accent}22; border-color: ${accent}55; color: ${accent};">${escapeHtml(b.name.slice(0, 2).toUpperCase())}</div>
-            <h3 class="m-0">${escapeHtml(b.name)}</h3>
-            <span class="badge badge-mute" style="margin-left:auto;">${b.endpoints.length} endpoints</span>
-          </div>
-          <p style="color: var(--text-muted); font-size: 13px; line-height: 1.55; margin: 0 0 16px;">
-            ${escapeHtml(b.tagline)}
-          </p>
-          <span style="font-family: var(--font-mono); font-size: 11px; color: ${accent};">
-            View bundle &rarr;
-          </span>
-        </a>`;
-}).join('');
+function getCategoryLabel(slug: string): string {
+  if (['aeo', 'seo', 'agent-tools'].includes(slug)) return 'AI & Search';
+  if (['scraping', 'conversion'].includes(slug)) return 'Data & Scraping';
+  if (['dns', 'email', 'domain-intelligence'].includes(slug)) return 'Domains & Infra';
+  return 'Security & Audits';
+}
 
-// Comparison table rows.
-const rowHtml = bundles.map((b: any) => {
-  const totalCredits = b.endpoints.reduce((acc: number, e: any) => acc + (e.credits ?? 0), 0);
-  const costBand = Math.round(totalCredits / 4);
-  const accent = COLOR_MAP[b.color] || 'var(--accent)';
-  return `
-            <tr>
-              <td class="cmp-name">
-                <a href="#b-${escapeHtml(b.slug)}" style="color: inherit; text-decoration: none; border-bottom: 2px solid ${accent}; padding-bottom: 1px;">${escapeHtml(b.name)}</a>
-              </td>
-              <td>${b.endpoints.length}</td>
-              <td><span class="text-mono">~${costBand} credits</span></td>
-              <td>${escapeHtml(truncate(b.persona, 70))}</td>
-            </tr>`;
-}).join('');
+const collectionLd = {
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  name: "API Bundles & Workflows — Ollagraph",
+  description: `Ten curated bundles compose Ollagraph’s ${totalEndpoints} API operations into workflows: AEO, SEO, DNS, Email, Domain Intelligence, Scraping, Conversion, Site Audit, Security, and Agent Tools.`,
+  url: "https://ollagraph.com/bundles/",
+};
 
-// Per-bundle anchored summary blocks.
-const anchorHtml = bundles.map((b: any) => {
-  const accent = COLOR_MAP[b.color] || 'var(--accent)';
-  const endpointItems = b.endpoints.map((e: any) => `
-            <li class="endpoint-row">
-              <span class="method">${escapeHtml(e.method)}</span>
-              <span>
-                <span class="path">${escapeHtml(e.path)}</span>
-                <span class="summary">${escapeHtml(e.summary || '')}</span>
-              </span>
-              <span class="cost">${e.credits} cr</span>
-            </li>`).join('');
-  return `
-        <section id="b-${escapeHtml(b.slug)}" class="bundle-anchor" style="border-left-color: ${accent};">
-          <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px;">
-            <h2 class="m-0">${escapeHtml(b.name)}</h2>
-            <span class="badge badge-mute">${b.endpoints.length} endpoints</span>
-          </div>
-          <p style="color: var(--text-muted); font-size: 15px; line-height: 1.55; margin: 0 0 8px;">${escapeHtml(b.tagline)}</p>
-          <p class="persona">${escapeHtml(b.persona)}</p>
-          <ul class="endpoint-list">${endpointItems}
-          </ul>
-          <a class="btn btn-secondary" href="/bundles/${escapeHtml(b.slug)}" style="border-color: ${accent}55; color: ${accent};">
-            Open the ${escapeHtml(b.name)} deep dive &rarr;
-          </a>
-        </section>`;
-}).join('');
+const itemListLd = {
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  itemListElement: allBundles.map((b, i) => ({
+    "@type": "ListItem",
+    position: i + 1,
+    url: `https://ollagraph.com/bundles/${b.slug}/`,
+    name: `${b.name} Bundle`,
+    description: b.tagline,
+  })),
+};
 
-const rendered = bodyHtml
-  .replace('<div id="nav-root"></div>', navHtml("bundles"))
-  .replace('<div id="footer-root"></div>', footerHtml())
-  .replace('<!-- __BUNDLE_CARDS__ -->', cardHtml)
-  .replace('<!-- __COMPARISON_ROWS__ -->', rowHtml)
-  .replace('<!-- __BUNDLE_ANCHORS__ -->', anchorHtml);
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
+    { "@type": "ListItem", position: 2, name: "Bundles", item: "https://ollagraph.com/bundles/" },
+  ],
+};
+
+const nav = navHtml('bundles');
+const footer = footerHtml();
 ---
-<BaseLayout title="API Bundles — 10 Use-Case Toolkits for AI Agents" description="Ten curated bundles group Ollagraph’s %%ENDPOINT_COUNT%% API operations into workflows: AEO, SEO, DNS, email, scraping, conversion, security and agent tools. One bearer token.">
-  <Fragment slot="head" set:html={headExtras} />
-  <Fragment set:html={rendered} />
+
+<BaseLayout
+  title={`API Bundles — 10 Use-Case Toolkits for AI Agents — Ollagraph`}
+  description={`Ten curated bundles group Ollagraph’s ${totalEndpoints} API operations into production workflows: AEO, SEO, DNS, email, scraping, conversion, security and agent tools. One bearer token.`}
+  canonical="https://ollagraph.com/bundles/"
+  jsonLd={[collectionLd, itemListLd, breadcrumbLd]}
+>
+  <Fragment set:html={nav} />
+
+  <main class="bundles-page">
+    <!-- Top Ambient Glow -->
+    <div class="bundles-hero-glow" aria-hidden="true"></div>
+
+    <!-- Hero Header -->
+    <header class="bundles-hero">
+      <div class="bundles-hero-inner">
+        <div class="bundles-pill">
+          <span class="bundles-pulse-dot" aria-hidden="true"></span>
+          <span>10 WORKFLOW BUNDLES · ONE BEARER TOKEN · {totalEndpoints} ENDPOINTS · MCP READY</span>
+        </div>
+
+        <h1 class="bundles-title">
+          Workflows, not endpoints.<br />
+          Pick a bundle. <span class="bundles-title-accent">Ship.</span>
+        </h1>
+
+        <p class="bundles-subtitle">
+          Ten curated bundles compose Ollagraph's API into the workflows autonomous AI agents and engineers actually run. Same token. Flat 1 credit base. One MCP server.
+        </p>
+
+        <div class="bundles-hero-cta">
+          <a class="btn-bundles-primary" href="/contactus">
+            <span>Request access</span>
+            <span class="btn-arrow" aria-hidden="true">&rarr;</span>
+          </a>
+          <a class="btn-bundles-secondary" href="#bundles-workbench">
+            <span>Open Interactive Studio</span>
+            <span class="btn-arrow" aria-hidden="true">&darr;</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Toolbar: Search & Category Filter Pills -->
+    <section class="bundles-toolbar-section">
+      <div class="bundles-container">
+        <div class="bundles-toolbar">
+          <div class="bundles-search-wrap">
+            <svg class="search-svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              type="search"
+              id="bundles-search-input"
+              class="bundles-search-input"
+              placeholder="Search bundles by name, keyword, or endpoint (e.g. AEO, DNS, WHOIS, PDF, scrape, robots)..."
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Search API bundles"
+            />
+            <button type="button" id="bundles-search-clear" class="search-clear-btn" aria-label="Clear search" hidden>
+              &#10005;
+            </button>
+            <kbd class="search-kbd" title="Press / to search">/</kbd>
+          </div>
+
+          <!-- Category Filter Pills -->
+          <div class="bundles-filter-pills" role="tablist" aria-label="Filter bundles by category">
+            {CATEGORIES.map((cat, idx) => (
+              <button
+                class={`filter-pill ${idx === 0 ? 'active' : ''}`}
+                data-category={cat.id}
+                type="button"
+                role="tab"
+                aria-selected={idx === 0 ? "true" : "false"}
+              >
+                {cat.id === 'all' && <span class="filter-dot"></span>}
+                <span>{cat.label}</span>
+                <span class="filter-badge">
+                  {cat.id === 'all' ? allBundles.length : cat.slugs.length}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div class="bundles-status-bar" id="bundles-status-bar" hidden>
+            <span id="bundles-status-text"></span>
+            <button id="bundles-reset-btn" class="bundles-reset-btn" type="button">Reset search</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Curated Bundles Grid (10 Cards) -->
+    <section class="bundles-section bundles-grid-section">
+      <div class="bundles-container">
+        <div class="section-heading-wrap">
+          <div class="h-eyebrow">CURATED TOOLKITS</div>
+          <h2 class="section-h2">10 Purpose-Built API Workflows</h2>
+          <p class="section-sub">
+            Click any bundle to inspect its full endpoint signature, autonomous agent recipe, and code samples in the Studio below.
+          </p>
+        </div>
+
+        <div class="bundles-grid" id="bundles-grid">
+          {allBundles.map((b, idx) => {
+            const theme = BUNDLE_THEMES[b.color] || BUNDLE_THEMES.rose;
+            const totalCredits = b.endpoints.reduce((acc, ep) => acc + (ep.credits ?? 0), 0);
+            const costBand = Math.round(totalCredits / 4);
+            const previewEndpoints = b.endpoints.slice(0, 3);
+            const categoryId = getCategoryForSlug(b.slug);
+            const categoryLabel = getCategoryLabel(b.slug);
+
+            return (
+              <div
+                class={`bundle-hub-card bundle-color-${b.color} ${idx === 0 ? 'is-active' : ''}`}
+                id={`card-${b.slug}`}
+                data-slug={b.slug}
+                data-category={categoryId}
+                data-name={b.name.toLowerCase()}
+                data-tagline={b.tagline.toLowerCase()}
+                data-persona={b.persona.toLowerCase()}
+                data-endpoints={b.endpoints.map(e => `${e.method} ${e.path} ${e.summary}`).join(' ').toLowerCase()}
+                style={`--bundle-accent: ${theme.accent}; --bundle-glow: ${theme.glow}; --bundle-border: ${theme.borderSoft};`}
+              >
+                <!-- Top Accent Line -->
+                <div class="card-accent-bar" style={`background-color: ${theme.accent};`}></div>
+
+                <div class="card-top-header">
+                  <div class="card-icon-wrap" style={`background-color: ${theme.bgSoft}; color: ${theme.accent}; border-color: ${theme.borderSoft};`}>
+                    <span class="card-monogram font-mono">{b.name.slice(0, 2).toUpperCase()}</span>
+                  </div>
+                  <div class="card-title-group">
+                    <div class="card-title-row">
+                      <h3 class="card-bundle-name">{b.name}</h3>
+                      <span class="card-category-tag">{categoryLabel}</span>
+                    </div>
+                    <span class="card-endpoints-badge">{b.endpoints.length} endpoints</span>
+                  </div>
+                </div>
+
+                <p class="card-tagline">{b.tagline}</p>
+
+                <!-- Persona snippet -->
+                <div class="card-persona-wrap">
+                  <span class="persona-label">Built for:</span>
+                  <span class="persona-text">{b.persona}</span>
+                </div>
+
+                <!-- Preview sample endpoints -->
+                <div class="card-endpoints-preview">
+                  <span class="preview-header">Sample endpoints</span>
+                  <div class="preview-list">
+                    {previewEndpoints.map(ep => (
+                      <div class="preview-item">
+                        <span class={`ep-mini-method ep-mini-${ep.method.toLowerCase()}`}>{ep.method}</span>
+                        <span class="ep-mini-path font-mono">{ep.path}</span>
+                      </div>
+                    ))}
+                    {b.endpoints.length > 3 && (
+                      <span class="ep-mini-more font-mono">+{b.endpoints.length - 3} more</span>
+                    )}
+                  </div>
+                </div>
+
+                <div class="card-footer">
+                  <span class="cost-band-pill">
+                    <span class="cost-band-dot" style={`background-color: ${theme.accent};`}></span>
+                    ~{costBand} credits / run
+                  </span>
+
+                  <div class="card-actions-group">
+                    <button
+                      type="button"
+                      class="btn-card-inspect"
+                      data-target-bundle={b.slug}
+                      title="Inspect this bundle in the Studio workbench"
+                    >
+                      <span>Inspect</span>
+                      <span class="inspect-arrow">&darr;</span>
+                    </button>
+                    <a
+                      href={`/bundles/${b.slug}/`}
+                      class="btn-card-dive"
+                      title={`Open full ${b.name} deep-dive page`}
+                    >
+                      <span>Deep Dive</span>
+                      <span class="action-arrow">&rarr;</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <!-- Empty search results state -->
+        <div class="bundles-empty-state" id="bundles-empty-state" hidden>
+          <div class="empty-icon-wrap">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+          <h3 class="empty-title">No matching bundles found</h3>
+          <p class="empty-desc">We couldn't find any bundle matching your query. Try searching for AEO, DNS, Scrape, or Python.</p>
+          <button class="empty-reset-btn" id="bundles-empty-reset" type="button">View all bundles</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- INTERACTIVE WORKBENCH STUDIO (Solves the 10-table stacking problem) -->
+    <section class="bundles-section bundles-workbench-section" id="bundles-workbench">
+      <div class="bundles-container">
+        <div class="workbench-header-block">
+          <div class="h-eyebrow">INTERACTIVE WORKFLOW STUDIO</div>
+          <h2 class="section-h2">Inspect Active Bundle &amp; Endpoints</h2>
+          <p class="section-sub">
+            Live operations, execution recipe chains, and plug-and-play code snippets for autonomous agents. Select any bundle to switch context immediately.
+          </p>
+        </div>
+
+        <!-- Bundle Quick Selector Tabs (2-Row Clean Grid) -->
+        <div class="workbench-selector-bar" role="tablist" aria-label="Select active bundle for studio">
+          {allBundles.map((b, idx) => {
+            const theme = BUNDLE_THEMES[b.color] || BUNDLE_THEMES.rose;
+            return (
+              <button
+                class={`bundle-selector-tab ${idx === 0 ? 'active' : ''}`}
+                data-slug={b.slug}
+                type="button"
+                role="tab"
+                aria-selected={idx === 0 ? "true" : "false"}
+                style={`--tab-accent: ${theme.accent}; --tab-glow: ${theme.glow};`}
+              >
+                <div class="tab-label-group">
+                  <span class="tab-color-dot" style={`background-color: ${theme.accent};`}></span>
+                  <span class="tab-name">{b.name}</span>
+                </div>
+                <span class="tab-count font-mono">{b.endpoints.length}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <!-- The Studio Console Container -->
+        <div class="workbench-console">
+          <!-- Top Window Bar -->
+          <div class="console-window-bar">
+            <div class="window-controls">
+              <span class="window-dot dot-red"></span>
+              <span class="window-dot dot-yellow"></span>
+              <span class="window-dot dot-green"></span>
+            </div>
+            <div class="console-title font-mono">
+              <span class="title-prefix">OLLAGRAPH STUDIO</span>
+              <span class="title-sep">//</span>
+              <span class="active-bundle-label font-bold" id="console-active-label">AEO BUNDLE</span>
+            </div>
+            <div class="console-window-actions">
+              <a href="/bundles/aeo/" id="console-deepdive-link" class="console-action-link">
+                <span>Open full deep dive</span>
+                <span aria-hidden="true">&rarr;</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Studio Panels (one per bundle, toggled by JS) -->
+          {allBundles.map((b, bIdx) => {
+            const theme = BUNDLE_THEMES[b.color] || BUNDLE_THEMES.rose;
+            const totalCredits = b.endpoints.reduce((acc, ep) => acc + (ep.credits ?? 0), 0);
+            const costBand = Math.round(totalCredits / 4);
+
+            return (
+              <div
+                class={`studio-bundle-panel ${bIdx === 0 ? 'is-active' : ''}`}
+                id={`panel-${b.slug}`}
+                data-bundle-slug={b.slug}
+              >
+                <!-- Bundle Summary Header inside Console -->
+                <div class="studio-summary-card">
+                  <div class="studio-summary-left">
+                    <div class="studio-badge-cluster">
+                      <div class="studio-monogram" style={`background-color: ${theme.bgSoft}; color: ${theme.accent}; border: 1px solid ${theme.borderSoft};`}>
+                        {b.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div class="studio-title-row">
+                          <h3 class="studio-h3">{b.name} Bundle</h3>
+                          <span class="studio-category-pill">{getCategoryLabel(b.slug)}</span>
+                        </div>
+                        <p class="studio-tagline">{b.tagline}</p>
+                      </div>
+                    </div>
+
+                    <div class="studio-persona-quote">
+                      <span class="persona-icon">&#128100;</span>
+                      <span>{b.persona}</span>
+                    </div>
+                  </div>
+
+                  <div class="studio-summary-right">
+                    <div class="studio-metric-box">
+                      <span class="metric-val font-mono">{b.endpoints.length}</span>
+                      <span class="metric-lbl">Operations</span>
+                    </div>
+                    <div class="studio-metric-box">
+                      <span class="metric-val font-mono">~{costBand} cr</span>
+                      <span class="metric-lbl">Est. Run Band</span>
+                    </div>
+                    <div class="studio-metric-box">
+                      <span class="metric-val font-mono">1 Token</span>
+                      <span class="metric-lbl">All Endpoints</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Studio Navigation Sub-Tabs -->
+                <div class="studio-subtabs" role="tablist">
+                  <button class="studio-subtab active" data-tab="endpoints" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                    <span>Endpoints ({b.endpoints.length})</span>
+                  </button>
+                  <button class="studio-subtab" data-tab="recipe" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span>Agent Recipe Workflow</span>
+                  </button>
+                  <button class="studio-subtab" data-tab="samples" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    <span>Live Code Samples</span>
+                  </button>
+                  <button class="studio-subtab" data-tab="faq" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <span>FAQs ({b.faq.length})</span>
+                  </button>
+                </div>
+
+                <!-- Tab Panel 1: Endpoints -->
+                <div class="studio-panel-content tab-panel-endpoints active">
+                  <div class="endpoints-control-bar">
+                    <div class="endpoints-search-wrap">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                      <input
+                        type="text"
+                        class="local-ep-search"
+                        placeholder={`Filter ${b.name} endpoints...`}
+                        aria-label={`Filter ${b.name} endpoints`}
+                      />
+                    </div>
+                    <div class="endpoints-meta font-mono">
+                      <span>Showing {b.endpoints.length} operations</span>
+                      <span>·</span>
+                      <span>Flat 1-3 cr / call</span>
+                    </div>
+                  </div>
+
+                  <div class="studio-table-wrap">
+                    <table class="studio-endpoint-table">
+                      <thead>
+                        <tr>
+                          <th style="width: 80px;">Method</th>
+                          <th style="width: 320px;">Endpoint Path</th>
+                          <th>Summary</th>
+                          <th style="width: 80px; text-align: right;">Credits</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {b.endpoints.map((ep) => (
+                          <tr class="ep-row" data-ep-search={`${ep.method} ${ep.path} ${ep.summary}`.toLowerCase()}>
+                            <td>
+                              <span class={`method-badge method-${ep.method.toLowerCase()}`}>{ep.method}</span>
+                            </td>
+                            <td class="font-mono ep-path-cell">
+                              <span class="ep-path-text">{ep.path}</span>
+                              <button
+                                type="button"
+                                class="btn-copy-path"
+                                data-copy-text={ep.path}
+                                title="Copy endpoint path"
+                                aria-label="Copy endpoint path"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                              </button>
+                            </td>
+                            <td class="ep-summary-cell">{ep.summary}</td>
+                            <td style="text-align: right;">
+                              <span class="credit-pill">{ep.credits} cr</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Tab Panel 2: Agent Recipe Workflow -->
+                <div class="studio-panel-content tab-panel-recipe">
+                  <div class="recipe-banner">
+                    <div class="recipe-badge">AGENT WORKFLOW RECIPE</div>
+                    <h4 class="recipe-title">{b.recipe.title}</h4>
+                    <p class="recipe-desc">Autonomous AI agents chain these endpoints in sequential execution loops to accomplish complex goals without human handoffs.</p>
+                  </div>
+
+                  <div class="recipe-flow-pipeline">
+                    {b.recipe.steps.map((step, sIdx) => (
+                      <div class="recipe-step-card">
+                        <div class="step-num-badge font-mono">
+                          <span>STEP {String(sIdx + 1).padStart(2, '0')}</span>
+                        </div>
+                        <div class="step-content">
+                          <p class="step-text">{step}</p>
+                        </div>
+                        {sIdx < b.recipe.steps.length - 1 && (
+                          <div class="step-connector" aria-hidden="true">
+                            <span class="connector-line"></span>
+                            <span class="connector-arrow">&darr;</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <!-- Tab Panel 3: Live Code Samples -->
+                <div class="studio-panel-content tab-panel-samples">
+                  <div class="code-console-wrapper">
+                    <div class="code-lang-selector">
+                      <button class="lang-tab active" data-lang="curl" type="button">cURL</button>
+                      <button class="lang-tab" data-lang="python" type="button">Python</button>
+                      <button class="lang-tab" data-lang="node" type="button">Node.js</button>
+                      <button class="btn-copy-code font-mono" type="button">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        <span>Copy snippet</span>
+                      </button>
+                    </div>
+
+                    <div class="code-blocks-container">
+                      <div class="code-lang-panel lang-curl active">
+                        <pre class="code-pre font-mono"><code>{b.samples.curl}</code></pre>
+                      </div>
+                      <div class="code-lang-panel lang-python">
+                        <pre class="code-pre font-mono"><code>{b.samples.python}</code></pre>
+                      </div>
+                      <div class="code-lang-panel lang-node">
+                        <pre class="code-pre font-mono"><code>{b.samples.node}</code></pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tab Panel 4: FAQs -->
+                <div class="studio-panel-content tab-panel-faq">
+                  <div class="studio-faq-list">
+                    {b.faq.map((item, fIdx) => (
+                      <details class="studio-faq-item" open={fIdx === 0}>
+                        <summary class="faq-summary">
+                          <span>{item.q}</span>
+                          <span class="faq-chevron">&darr;</span>
+                        </summary>
+                        <div class="faq-answer">
+                          <p>{item.a}</p>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </div>
+
+                <!-- Console Footer Action Bar -->
+                <div class="studio-console-footer">
+                  <div class="footer-left">
+                    <span class="dot-online" aria-hidden="true"></span>
+                    <span class="footer-text font-mono">Ready for Claude Desktop, Cursor &amp; MCP</span>
+                  </div>
+                  <div class="footer-actions">
+                    <a href={`/bundles/${b.slug}/`} class="btn-studio-deepdive">
+                      <span>Open full {b.name} deep-dive page</span>
+                      <span aria-hidden="true">&rarr;</span>
+                    </a>
+                    <a
+                      href={`https://api.ollagraph.com/docs#${(b.endpoints[0]?.path || '/').replace(/^\/+/, '').replace(/\//g, '-')}`}
+                      target="_blank"
+                      rel="noopener"
+                      class="btn-studio-docs"
+                    >
+                      <span>Interactive API Docs</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison Matrix Section -->
+    <section class="bundles-section bundles-matrix-section">
+      <div class="bundles-container">
+        <div class="section-heading-wrap">
+          <div class="h-eyebrow">COMPARE ALL WORKFLOWS</div>
+          <h2 class="section-h2">Which bundle fits your pipeline?</h2>
+          <p class="section-sub">
+            Workflow cost band is the sum of credits across bundle endpoints divided by four. Most production workflows touch a subset; treat the band as an upper bound on a single run.
+          </p>
+        </div>
+
+        <div class="matrix-card">
+          <div class="matrix-table-wrap">
+            <table class="matrix-table">
+              <thead>
+                <tr>
+                  <th>Bundle</th>
+                  <th>Category</th>
+                  <th>Endpoints</th>
+                  <th>Workflow Cost Band</th>
+                  <th>Best For</th>
+                  <th style="width: 200px; text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allBundles.map((b) => {
+                  const theme = BUNDLE_THEMES[b.color] || BUNDLE_THEMES.rose;
+                  const totalCredits = b.endpoints.reduce((acc, ep) => acc + (ep.credits ?? 0), 0);
+                  const costBand = Math.round(totalCredits / 4);
+
+                  return (
+                    <tr class="matrix-row" data-bundle={b.slug}>
+                      <td class="col-bundle">
+                        <button
+                          type="button"
+                          class="bundle-matrix-btn"
+                          data-target-bundle={b.slug}
+                        >
+                          <span class="bundle-row-bullet" style={`background-color: ${theme.accent};`}></span>
+                          <span class="bundle-row-name">{b.name}</span>
+                        </button>
+                      </td>
+                      <td class="col-category">
+                        <span class="matrix-cat-tag">{getCategoryLabel(b.slug)}</span>
+                      </td>
+                      <td class="col-count">
+                        <span class="count-badge font-mono">{b.endpoints.length}</span>
+                      </td>
+                      <td class="col-cost">
+                        <span class="cost-mono-tag font-mono">~{costBand} credits</span>
+                      </td>
+                      <td class="col-persona">
+                        <span class="persona-cell-text">{b.persona}</span>
+                      </td>
+                      <td class="col-action" style="text-align: right;">
+                        <div class="matrix-btn-group">
+                          <button
+                            type="button"
+                            class="matrix-inspect-btn"
+                            data-target-bundle={b.slug}
+                            title="Inspect this bundle in the Studio workbench"
+                          >
+                            <span>Inspect</span>
+                            <span class="btn-arrow" aria-hidden="true">&darr;</span>
+                          </button>
+                          <a
+                            href={`/bundles/${b.slug}/`}
+                            class="matrix-action-link"
+                            title={`Open full ${b.name} deep-dive page`}
+                          >
+                            <span>Deep Dive</span>
+                            <span class="btn-arrow" aria-hidden="true">&rarr;</span>
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compact Obsidian Dark CTA -->
+    <section class="bundles-compact-cta" aria-label="Access Ollagraph API">
+      <div class="cta-glow-left" aria-hidden="true"></div>
+      <div class="cta-glow-right" aria-hidden="true"></div>
+
+      <div class="compact-cta-inner">
+        <div class="compact-cta-pill">
+          <span class="pill-green-dot" aria-hidden="true"></span>
+          <span class="pill-credits">1,000 free credits</span>
+          <span class="pill-sep">·</span>
+          <span class="pill-tagline">No card required</span>
+        </div>
+
+        <h2 class="compact-cta-title">One Bearer token. Every bundle.</h2>
+
+        <p class="compact-cta-desc">
+          1,000 credits on signup. Every endpoint in every bundle, day one. No card. No vendor sprawl.
+        </p>
+
+        <div class="compact-cta-actions">
+          <a class="btn-cta-crimson" href="/contactus">
+            <span>Request access</span>
+            <span class="btn-arrow" aria-hidden="true">&rarr;</span>
+          </a>
+          <a class="btn-cta-dark" href="/docs">
+            <span>View docs</span>
+            <span class="btn-arrow" aria-hidden="true">&rarr;</span>
+          </a>
+        </div>
+
+        <div class="compact-cta-trust">
+          <div class="trust-item">
+            <span class="trust-check">&#10003;</span>
+            <span>No credit card required</span>
+          </div>
+          <span class="trust-sep">·</span>
+          <div class="trust-item">
+            <span class="trust-check">&#10003;</span>
+            <span>Flat 1 credit / call base</span>
+          </div>
+          <span class="trust-sep">·</span>
+          <div class="trust-item">
+            <span class="trust-check">&#10003;</span>
+            <span>{totalEndpoints} operations ready</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Fragment set:html={footer} />
 </BaseLayout>
+
+<style>
+  /* ==========================================================================
+     API BUNDLES HUB — REDESIGNED WORKBENCH & DEVELOPER DESIGN SYSTEM
+     ========================================================================== */
+
+  .bundles-page {
+    position: relative;
+    background: #030712;
+    color: #f8fafc;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .bundles-hero-glow {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 1300px;
+    height: 520px;
+    background: radial-gradient(ellipse 70% 55% at 50% 0%, rgba(225, 29, 72, 0.16) 0%, rgba(14, 165, 233, 0.08) 45%, transparent 75%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .bundles-container {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ---- Hero Header ---- */
+  .bundles-hero {
+    position: relative;
+    z-index: 1;
+    padding: 64px 20px 36px;
+    text-align: center;
+  }
+
+  .bundles-hero-inner {
+    max-width: 840px;
+    margin: 0 auto;
+  }
+
+  .bundles-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 16px;
+    border-radius: 9999px;
+    border: 1px solid rgba(225, 29, 72, 0.35);
+    background: rgba(225, 29, 72, 0.08);
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    color: #fda4af;
+    margin-bottom: 22px;
+    box-shadow: 0 0 20px rgba(225, 29, 72, 0.15);
+  }
+
+  .bundles-pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+    display: inline-block;
+  }
+
+  .bundles-title {
+    font-family: var(--font-display, 'Geist', 'Inter', sans-serif);
+    font-size: clamp(2.4rem, 5.2vw, 4rem);
+    font-weight: 850;
+    line-height: 1.1;
+    letter-spacing: -0.04em;
+    color: #ffffff;
+    margin: 0 0 20px;
+  }
+
+  .bundles-title-accent {
+    background: linear-gradient(135deg, #fb7185 0%, #e11d48 50%, #f43f5e 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-decoration: underline;
+    text-decoration-color: rgba(225, 29, 72, 0.5);
+    text-decoration-thickness: 4px;
+    text-underline-offset: 6px;
+  }
+
+  .bundles-subtitle {
+    font-size: clamp(1rem, 1.8vw, 1.15rem);
+    line-height: 1.65;
+    color: #94a3b8;
+    max-width: 700px;
+    margin: 0 auto 32px;
+  }
+
+  .bundles-hero-cta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 0;
+  }
+
+  .btn-bundles-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 22px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #e11d48 0%, #be123c 100%);
+    color: #ffffff !important;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none !important;
+    box-shadow: 0 6px 20px rgba(225, 29, 72, 0.35);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .btn-bundles-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(225, 29, 72, 0.5);
+    filter: brightness(1.08);
+  }
+
+  .btn-bundles-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 20px;
+    border-radius: 9px;
+    background: rgba(15, 23, 42, 0.8);
+    color: #f1f5f9 !important;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none !important;
+    backdrop-filter: blur(8px);
+    transition: all 0.2s ease;
+  }
+
+  .btn-bundles-secondary:hover {
+    background: rgba(30, 41, 59, 0.9);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #ffffff !important;
+    transform: translateY(-2px);
+  }
+
+  .btn-arrow {
+    display: inline-block;
+    transition: transform 0.2s ease;
+  }
+
+  .btn-bundles-primary:hover .btn-arrow,
+  .btn-bundles-secondary:hover .btn-arrow {
+    transform: translateX(3px);
+  }
+
+  /* ---- Toolbar: Search & Category Filter Pills ---- */
+  .bundles-toolbar-section {
+    padding-top: 20px;
+    padding-bottom: 24px;
+  }
+
+  .bundles-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+
+  .bundles-search-wrap {
+    position: relative;
+    width: 100%;
+  }
+
+  .search-svg {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #64748b;
+    pointer-events: none;
+    transition: color 0.15s ease;
+  }
+
+  .bundles-search-input {
+    width: 100%;
+    height: 48px;
+    background: #0a0f1d;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 0 80px 0 46px;
+    font-size: 14px;
+    color: #f8fafc;
+    font-family: inherit;
+    outline: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    transition: all 0.2s ease;
+  }
+
+  .bundles-search-input:focus {
+    border-color: #e11d48;
+    box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.2), 0 4px 20px rgba(0, 0, 0, 0.4);
+  }
+
+  .bundles-search-input:focus ~ .search-svg {
+    color: #e11d48;
+  }
+
+  .search-clear-btn {
+    position: absolute;
+    right: 44px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px 6px;
+  }
+
+  .search-clear-btn:hover {
+    color: #ffffff;
+  }
+
+  .search-kbd {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: var(--font-mono, monospace);
+    color: #94a3b8;
+    pointer-events: none;
+  }
+
+  .bundles-filter-pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 14px;
+    border-radius: 9px;
+    background: #0d1322;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 13px;
+    font-weight: 550;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+
+  .filter-pill:hover {
+    background: #172033;
+    border-color: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  .filter-pill.active {
+    background: #e11d48;
+    border-color: #e11d48;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(225, 29, 72, 0.35);
+  }
+
+  .filter-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ffffff;
+  }
+
+  .filter-badge {
+    font-family: var(--font-mono, monospace);
+    font-size: 10.5px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  .bundles-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(225, 29, 72, 0.1);
+    border: 1px solid rgba(225, 29, 72, 0.25);
+    border-radius: 9px;
+    font-size: 13px;
+    color: #fecdd3;
+  }
+
+  .bundles-status-bar[hidden],
+  .bundles-empty-state[hidden] {
+    display: none !important;
+  }
+
+  .bundles-reset-btn {
+    font-weight: 600;
+    color: #fda4af;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  /* ---- Section Common ---- */
+  .bundles-section {
+    padding: 48px 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .section-heading-wrap {
+    max-width: 780px;
+    margin: 0 auto 34px;
+    text-align: center;
+  }
+
+  .h-eyebrow {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #e11d48;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+
+  .section-h2 {
+    font-family: var(--font-display, 'Geist', 'Inter', sans-serif);
+    font-size: clamp(1.8rem, 3.4vw, 2.5rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #ffffff;
+    margin: 6px 0 12px;
+  }
+
+  .section-sub {
+    font-size: 15px;
+    line-height: 1.6;
+    color: #94a3b8;
+    margin: 0;
+  }
+
+  /* ---- Bundles Grid (10 Cards) ---- */
+  .bundles-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+  }
+
+  @media (max-width: 1100px) {
+    .bundles-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 680px) {
+    .bundles-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .bundle-hub-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 24px 22px 20px;
+    color: inherit;
+    overflow: hidden;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.2s ease;
+  }
+
+  .card-accent-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    opacity: 0.85;
+    transition: height 0.2s ease, opacity 0.2s ease;
+  }
+
+  .bundle-hub-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 255, 255, 0.04);
+  }
+
+  .bundle-hub-card.is-active {
+    border-color: var(--bundle-accent, #10b981);
+    box-shadow: 0 0 0 1px var(--bundle-accent, #10b981), 0 12px 36px -6px var(--bundle-glow, rgba(16, 185, 129, 0.35));
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, #090e1a 100%), #090e1a;
+  }
+
+  .bundle-hub-card.is-active .card-icon-wrap {
+    border-color: var(--bundle-accent, #10b981);
+    box-shadow: 0 0 14px var(--bundle-glow, rgba(16, 185, 129, 0.35));
+  }
+
+  .bundle-hub-card:hover .card-accent-bar,
+  .bundle-hub-card.is-active .card-accent-bar {
+    height: 4px;
+    opacity: 1;
+  }
+
+  .card-top-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .card-icon-wrap {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .card-monogram {
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .card-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .card-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .card-bundle-name {
+    font-family: var(--font-display, 'Geist', 'Inter', sans-serif);
+    font-size: 18px;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    color: #ffffff;
+    margin: 0;
+    line-height: 1.25;
+  }
+
+  .card-category-tag {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .card-endpoints-badge {
+    align-self: flex-start;
+    font-family: var(--font-mono, monospace);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #cbd5e1;
+    background: #131b2e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .card-tagline {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #94a3b8;
+    margin: 0 0 14px;
+    flex-grow: 1;
+  }
+
+  .card-persona-wrap {
+    background: #0f1626;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #cbd5e1;
+    margin-bottom: 14px;
+  }
+
+  .persona-label {
+    font-weight: 650;
+    color: #f1f5f9;
+    margin-right: 4px;
+  }
+
+  .persona-text {
+    color: #94a3b8;
+  }
+
+  .card-endpoints-preview {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 10px;
+    margin-bottom: 14px;
+  }
+
+  .preview-header {
+    display: block;
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    margin-bottom: 6px;
+  }
+
+  .preview-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .preview-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #cbd5e1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ep-mini-method {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    font-family: var(--font-mono, monospace);
+  }
+
+  .ep-mini-post { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+  .ep-mini-get  { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+  .ep-mini-put  { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+  .ep-mini-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #94a3b8;
+  }
+
+  .ep-mini-more {
+    font-size: 10.5px;
+    color: #64748b;
+    margin-top: 2px;
+  }
+
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    margin-top: auto;
+    font-size: 12px;
+  }
+
+  .cost-band-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+  }
+
+  .cost-band-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .card-actions-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .btn-card-inspect {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    background: #172033;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .btn-card-inspect:hover {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  .btn-card-dive {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    background: rgba(225, 29, 72, 0.1);
+    border: 1px solid rgba(225, 29, 72, 0.28);
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #fda4af !important;
+    text-decoration: none !important;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .btn-card-dive:hover {
+    background: #e11d48;
+    border-color: #e11d48;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+  }
+
+  /* Empty State */
+  .bundles-empty-state {
+    text-align: center;
+    padding: 56px 20px;
+    background: #090e1a;
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    margin-top: 16px;
+  }
+
+  .empty-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #172033;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 12px;
+  }
+
+  .empty-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 6px;
+  }
+
+  .empty-desc {
+    font-size: 13.5px;
+    color: #94a3b8;
+    margin: 0 0 16px;
+  }
+
+  .empty-reset-btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    background: #e11d48;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* ==========================================================================
+     INTERACTIVE WORKBENCH STUDIO STYLES
+     ========================================================================== */
+
+  .bundles-workbench-section {
+    padding-top: 56px;
+    padding-bottom: 56px;
+    scroll-margin-top: 40px;
+  }
+
+  .workbench-header-block {
+    max-width: 800px;
+    margin: 0 auto 28px;
+    text-align: center;
+  }
+
+  /* Selector Tab Bar — Snug, Balanced Pill Chips (No Awkward Empty Space) */
+  .workbench-selector-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px 10px;
+    max-width: 960px;
+    margin: 0 auto 24px;
+  }
+
+  .bundle-selector-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 9999px;
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    width: auto;
+  }
+
+  .tab-label-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .tab-name {
+    white-space: nowrap;
+  }
+
+  .bundle-selector-tab:hover {
+    background: #141c2e;
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.22);
+    transform: translateY(-1px);
+  }
+
+  .bundle-selector-tab.active {
+    background: #172033;
+    border-color: var(--tab-accent, #e11d48);
+    color: #ffffff;
+    box-shadow: 0 4px 18px var(--tab-glow, rgba(225, 29, 72, 0.28)), 0 0 0 1px var(--tab-accent, #e11d48);
+  }
+
+  .tab-color-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .bundle-selector-tab.active .tab-color-dot {
+    box-shadow: 0 0 8px currentColor;
+  }
+
+  .tab-count {
+    font-size: 11px;
+    color: #64748b;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .bundle-selector-tab.active .tab-count {
+    color: #ffffff;
+    background: var(--tab-accent, #e11d48);
+    border: 1px solid var(--tab-accent, #e11d48);
+  }
+
+  /* The Console Container */
+  .workbench-console {
+    background: #060911;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  }
+
+  /* Window Top Bar */
+  .console-window-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    background: #090e1a;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .window-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .window-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .dot-red { background: #ef4444; }
+  .dot-yellow { background: #f59e0b; }
+  .dot-green { background: #10b981; }
+
+  .console-title {
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .title-prefix {
+    color: #64748b;
+  }
+
+  .title-sep {
+    color: #334155;
+  }
+
+  .active-bundle-label {
+    color: #f1f5f9;
+  }
+
+  .console-action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #e11d48;
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }
+
+  .console-action-link:hover {
+    color: #fb7185;
+  }
+
+  /* Studio Panels */
+  .studio-bundle-panel {
+    display: none;
+    padding: 24px 24px 20px;
+  }
+
+  .studio-bundle-panel.is-active {
+    display: block;
+    animation: fadeIn 0.2s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Summary Card inside Console */
+  .studio-summary-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    padding: 20px 22px;
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    margin-bottom: 22px;
+  }
+
+  @media (max-width: 860px) {
+    .studio-summary-card {
+      flex-direction: column;
+    }
+  }
+
+  .studio-summary-left {
+    flex: 1;
+  }
+
+  .studio-badge-cluster {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+
+  .studio-monogram {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 800;
+    font-family: var(--font-mono, monospace);
+    flex-shrink: 0;
+  }
+
+  .studio-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .studio-h3 {
+    font-family: var(--font-display, 'Geist', 'Inter', sans-serif);
+    font-size: 22px;
+    font-weight: 800;
+    color: #ffffff;
+    margin: 0;
+  }
+
+  .studio-category-pill {
+    font-size: 11px;
+    font-weight: 600;
+    color: #cbd5e1;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px 8px;
+    border-radius: 5px;
+  }
+
+  .studio-tagline {
+    font-size: 14px;
+    line-height: 1.5;
+    color: #94a3b8;
+    margin: 0;
+  }
+
+  .studio-persona-quote {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.6);
+    border-left: 2px solid #e11d48;
+    padding: 8px 12px;
+    border-radius: 0 6px 6px 0;
+  }
+
+  .studio-summary-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .studio-metric-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    background: #0d1322;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    min-width: 100px;
+  }
+
+  .metric-val {
+    font-size: 17px;
+    font-weight: 750;
+    color: #ffffff;
+  }
+
+  .metric-lbl {
+    font-size: 10.5px;
+    color: #64748b;
+    margin-top: 2px;
+  }
+
+  /* Studio Sub-Tabs */
+  .studio-subtabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 18px;
+    overflow-x: auto;
+  }
+
+  .studio-subtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .studio-subtab:hover {
+    color: #ffffff;
+  }
+
+  .studio-subtab.active {
+    color: #e11d48;
+    border-bottom-color: #e11d48;
+  }
+
+  /* Studio Panel Content */
+  .studio-panel-content {
+    display: none;
+  }
+
+  .studio-panel-content.active {
+    display: block;
+  }
+
+  /* Table Tab */
+  .endpoints-control-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .endpoints-search-wrap {
+    position: relative;
+    width: 280px;
+  }
+
+  .endpoints-search-wrap svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #64748b;
+  }
+
+  .local-ep-search {
+    width: 100%;
+    height: 36px;
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 0 12px 0 34px;
+    font-size: 12.5px;
+    color: #ffffff;
+    outline: none;
+  }
+
+  .local-ep-search:focus {
+    border-color: #e11d48;
+  }
+
+  .endpoints-meta {
+    font-size: 11.5px;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .studio-table-wrap {
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow-x: auto;
+  }
+
+  .studio-endpoint-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .studio-endpoint-table thead th {
+    background: #0d1322;
+    text-align: left;
+    padding: 12px 16px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    white-space: nowrap;
+  }
+
+  .studio-endpoint-table tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    vertical-align: middle;
+    color: #cbd5e1;
+  }
+
+  .studio-endpoint-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .studio-endpoint-table tbody tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .method-badge {
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    font-weight: 750;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+    display: inline-block;
+  }
+
+  .method-post { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+  .method-get  { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+  .method-delete { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+  .method-put  { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+  .ep-path-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f1f5f9;
+  }
+
+  .ep-path-text {
+    word-break: break-all;
+  }
+
+  .btn-copy-path {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    opacity: 0.6;
+  }
+
+  .studio-endpoint-table tr:hover .btn-copy-path {
+    opacity: 1;
+  }
+
+  .btn-copy-path:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .ep-summary-cell {
+    color: #94a3b8;
+    line-height: 1.45;
+  }
+
+  .credit-pill {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffffff;
+    background: #172033;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px 7px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+
+  /* Recipe Workflow */
+  .recipe-banner {
+    padding: 16px 20px;
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    margin-bottom: 20px;
+  }
+
+  .recipe-badge {
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    font-weight: 700;
+    color: #e11d48;
+    letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+
+  .recipe-title {
+    font-size: 17px;
+    font-weight: 750;
+    color: #ffffff;
+    margin: 0 0 6px;
+  }
+
+  .recipe-desc {
+    font-size: 13.5px;
+    color: #94a3b8;
+    margin: 0;
+  }
+
+  .recipe-flow-pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 860px;
+  }
+
+  .recipe-step-card {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 20px;
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+  }
+
+  .step-num-badge {
+    padding: 4px 10px;
+    background: rgba(225, 29, 72, 0.15);
+    border: 1px solid rgba(225, 29, 72, 0.3);
+    border-radius: 6px;
+    color: #fb7185;
+    font-size: 11px;
+    font-weight: 750;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .step-content {
+    flex: 1;
+  }
+
+  .step-text {
+    font-size: 14px;
+    line-height: 1.55;
+    color: #e2e8f0;
+    margin: 0;
+  }
+
+  .step-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: absolute;
+    bottom: -14px;
+    left: 42px;
+    z-index: 2;
+    color: #e11d48;
+    font-size: 12px;
+  }
+
+  /* Code Console */
+  .code-console-wrapper {
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .code-lang-selector {
+    display: flex;
+    align-items: center;
+    background: #0d1322;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0 12px;
+  }
+
+  .lang-tab {
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #94a3b8;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .lang-tab:hover {
+    color: #ffffff;
+  }
+
+  .lang-tab.active {
+    color: #ffffff;
+    border-bottom-color: #e11d48;
+  }
+
+  .btn-copy-code {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #172033;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-copy-code:hover {
+    background: #1e293b;
+    color: #ffffff;
+  }
+
+  .code-blocks-container {
+    padding: 16px 20px;
+  }
+
+  .code-lang-panel {
+    display: none;
+  }
+
+  .code-lang-panel.active {
+    display: block;
+  }
+
+  .code-pre {
+    margin: 0;
+    padding: 0;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #38bdf8;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+  }
+
+  /* FAQs */
+  .studio-faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .studio-faq-item {
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .faq-summary {
+    padding: 14px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .faq-chevron {
+    color: #64748b;
+    transition: transform 0.2s ease;
+  }
+
+  .studio-faq-item[open] .faq-chevron {
+    transform: rotate(180deg);
+    color: #e11d48;
+  }
+
+  .faq-answer {
+    padding: 0 18px 14px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: #94a3b8;
+  }
+
+  .faq-answer p {
+    margin: 0;
+  }
+
+  /* Console Footer Bar */
+  .studio-console-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 20px;
+    background: #090e1a;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin-top: 24px;
+    border-radius: 12px;
+    flex-wrap: wrap;
+  }
+
+  .footer-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot-online {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+  }
+
+  .footer-text {
+    font-size: 12px;
+    color: #94a3b8;
+  }
+
+  .footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn-studio-deepdive {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #e11d48;
+    color: #ffffff !important;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none !important;
+    transition: all 0.18s ease;
+  }
+
+  .btn-studio-deepdive:hover {
+    background: #be123c;
+    transform: translateY(-1px);
+  }
+
+  .btn-studio-docs {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #172033;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cbd5e1 !important;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 8px;
+    text-decoration: none !important;
+    transition: all 0.18s ease;
+  }
+
+  .btn-studio-docs:hover {
+    background: #1e293b;
+    color: #ffffff !important;
+  }
+
+  /* ---- Comparison Matrix Section ---- */
+  .matrix-card {
+    background: #090e1a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .matrix-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+
+  .matrix-table thead th {
+    background: #0d1322;
+    text-align: left;
+    padding: 14px 18px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    white-space: nowrap;
+  }
+
+  .matrix-table tbody td {
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    vertical-align: middle;
+    color: #cbd5e1;
+  }
+
+  .matrix-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .matrix-table tbody tr:hover td {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .bundle-matrix-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 750;
+    color: #ffffff;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    text-align: left;
+    transition: color 0.15s ease;
+  }
+
+  .bundle-matrix-btn:hover {
+    color: #e11d48;
+  }
+
+  .bundle-row-bullet {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .matrix-cat-tag {
+    font-size: 11px;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+
+  .count-badge {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #172033;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+  }
+
+  .cost-mono-tag {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ffffff;
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .persona-cell-text {
+    color: #94a3b8;
+    line-height: 1.5;
+    font-size: 13px;
+  }
+
+  .matrix-btn-group {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .matrix-inspect-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    background: #172033;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 11.5px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .matrix-inspect-btn:hover {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  .matrix-action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    background: rgba(225, 29, 72, 0.1);
+    border: 1px solid rgba(225, 29, 72, 0.28);
+    border-radius: 6px;
+    color: #fda4af !important;
+    font-size: 11.5px;
+    font-weight: 600;
+    text-decoration: none !important;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .matrix-action-link:hover {
+    background: #e11d48;
+    border-color: #e11d48;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+  }
+
+  /* ---- Compact Obsidian Dark CTA ---- */
+  .bundles-compact-cta {
+    position: relative;
+    max-width: 920px;
+    margin: 48px auto 80px;
+    padding: 48px 32px 40px;
+    background-color: #060911;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: center center;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    text-align: center;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -15px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+
+  .cta-glow-left {
+    position: absolute;
+    bottom: -60px;
+    left: -60px;
+    width: 280px;
+    height: 280px;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.18) 0%, rgba(13, 148, 136, 0.08) 45%, transparent 70%);
+    filter: blur(48px);
+    pointer-events: none;
+  }
+
+  .cta-glow-right {
+    position: absolute;
+    top: -60px;
+    right: -60px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(225, 29, 72, 0.22) 0%, rgba(190, 18, 60, 0.08) 50%, transparent 70%);
+    filter: blur(52px);
+    pointer-events: none;
+  }
+
+  .compact-cta-inner {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .compact-cta-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.82rem;
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 0.38rem 1.05rem;
+    border-radius: 9999px;
+    margin-bottom: 1.4rem;
+    backdrop-filter: blur(8px);
+  }
+
+  .pill-green-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 10px #10b981;
+    display: inline-block;
+  }
+
+  .pill-credits {
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+    color: #f1f5f9;
+  }
+
+  .pill-sep {
+    color: #475569;
+  }
+
+  .pill-tagline {
+    color: #94a3b8;
+  }
+
+  .compact-cta-title {
+    font-family: var(--font-display, 'Geist', 'Inter', sans-serif);
+    font-size: clamp(2rem, 4.4vw, 2.8rem);
+    font-weight: 850;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
+    color: #ffffff;
+    margin: 0 0 1rem;
+  }
+
+  .compact-cta-desc {
+    font-size: 1.02rem;
+    line-height: 1.65;
+    color: #94a3b8;
+    max-width: 590px;
+    margin: 0 auto 2rem;
+  }
+
+  .compact-cta-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.9rem;
+    margin-bottom: 2.2rem;
+    flex-wrap: wrap;
+  }
+
+  .btn-cta-crimson {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: linear-gradient(135deg, #e11d48 0%, #e8443a 100%);
+    color: #ffffff !important;
+    font-weight: 700;
+    font-size: 0.94rem;
+    padding: 0.76rem 1.55rem;
+    border-radius: 9px;
+    text-decoration: none !important;
+    box-shadow: 0 10px 26px -4px rgba(225, 29, 72, 0.48);
+    transition: all 0.18s ease;
+  }
+
+  .btn-cta-crimson:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 30px -2px rgba(225, 29, 72, 0.65);
+    filter: brightness(1.06);
+  }
+
+  .btn-cta-dark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: #0d1322;
+    color: #e2e8f0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-weight: 600;
+    font-size: 0.94rem;
+    padding: 0.76rem 1.55rem;
+    border-radius: 9px;
+    text-decoration: none !important;
+    transition: all 0.18s ease;
+  }
+
+  .btn-cta-dark:hover {
+    background: #172033;
+    border-color: rgba(255, 255, 255, 0.24);
+    color: #ffffff !important;
+    transform: translateY(-1px);
+  }
+
+  .compact-cta-trust {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+
+  .trust-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 500;
+    color: #94a3b8;
+  }
+
+  .trust-check {
+    color: #10b981;
+    font-weight: 800;
+  }
+
+  .trust-sep {
+    color: #334155;
+  }
+
+  @media (max-width: 640px) {
+    .bundles-hero {
+      padding: 42px 16px 24px;
+    }
+    .bundles-container {
+      padding: 0 16px;
+    }
+    .bundles-compact-cta {
+      padding: 32px 18px 24px;
+      margin: 36px 12px 60px;
+    }
+    .compact-cta-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+    .btn-cta-crimson, .btn-cta-dark {
+      width: 100%;
+      justify-content: center;
+    }
+    .compact-cta-trust {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .trust-sep {
+      display: none;
+    }
+  }
+</style>
+
+<script is:inline>
+  function initBundlesExplorer() {
+    var searchInput = document.getElementById('bundles-search-input');
+    var searchClear = document.getElementById('bundles-search-clear');
+    var statusBar = document.getElementById('bundles-status-bar');
+    var statusText = document.getElementById('bundles-status-text');
+    var resetBtn = document.getElementById('bundles-reset-btn');
+    var emptyState = document.getElementById('bundles-empty-state');
+    var emptyReset = document.getElementById('bundles-empty-reset');
+    var cards = document.querySelectorAll('.bundle-hub-card');
+    var filterPills = document.querySelectorAll('.filter-pill');
+
+    var currentCategory = 'all';
+    var searchQuery = '';
+
+    function updateGrid() {
+      var query = searchQuery.trim().toLowerCase();
+      var visibleCount = 0;
+
+      for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        var name = card.getAttribute('data-name') || '';
+        var tagline = card.getAttribute('data-tagline') || '';
+        var persona = card.getAttribute('data-persona') || '';
+        var endpoints = card.getAttribute('data-endpoints') || '';
+        var category = card.getAttribute('data-category') || '';
+
+        var matchesCategory = (currentCategory === 'all') || (category === currentCategory);
+        var matchesQuery = !query ||
+          (name.indexOf(query) !== -1) ||
+          (tagline.indexOf(query) !== -1) ||
+          (persona.indexOf(query) !== -1) ||
+          (endpoints.indexOf(query) !== -1);
+
+        if (matchesCategory && matchesQuery) {
+          card.style.display = 'flex';
+          visibleCount++;
+        } else {
+          card.style.display = 'none';
+        }
+      }
+
+      if (emptyState) {
+        if (visibleCount === 0) {
+          emptyState.removeAttribute('hidden');
+          emptyState.style.display = 'block';
+        } else {
+          emptyState.setAttribute('hidden', '');
+          emptyState.style.display = 'none';
+        }
+      }
+
+      if (searchClear) {
+        if (query.length > 0) {
+          searchClear.removeAttribute('hidden');
+        } else {
+          searchClear.setAttribute('hidden', '');
+        }
+      }
+
+      if (statusBar && statusText) {
+        if (query.length > 0 || currentCategory !== 'all') {
+          statusBar.removeAttribute('hidden');
+          statusBar.style.display = 'flex';
+          var text = 'Showing <strong>' + visibleCount + '</strong> of ' + cards.length + ' bundles';
+          if (query.length > 0) text += ' matching "<strong>' + query + '</strong>"';
+          statusText.innerHTML = text;
+        } else {
+          statusBar.setAttribute('hidden', '');
+          statusBar.style.display = 'none';
+        }
+      }
+    }
+
+    // Category filter pills
+    for (var p = 0; p < filterPills.length; p++) {
+      filterPills[p].addEventListener('click', function() {
+        for (var k = 0; k < filterPills.length; k++) {
+          filterPills[k].classList.remove('active');
+          filterPills[k].setAttribute('aria-selected', 'false');
+        }
+        this.classList.add('active');
+        this.setAttribute('aria-selected', 'true');
+        currentCategory = this.getAttribute('data-category') || 'all';
+        updateGrid();
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', function(e) {
+        searchQuery = e.target.value;
+        updateGrid();
+      });
+    }
+
+    if (searchClear) {
+      searchClear.addEventListener('click', function() {
+        if (searchInput) {
+          searchInput.value = '';
+          searchQuery = '';
+          searchInput.focus();
+          updateGrid();
+        }
+      });
+    }
+
+    function resetAllFilters() {
+      if (searchInput) searchInput.value = '';
+      searchQuery = '';
+      currentCategory = 'all';
+      for (var k = 0; k < filterPills.length; k++) {
+        if (filterPills[k].getAttribute('data-category') === 'all') {
+          filterPills[k].classList.add('active');
+        } else {
+          filterPills[k].classList.remove('active');
+        }
+      }
+      updateGrid();
+    }
+
+    if (resetBtn) resetBtn.addEventListener('click', resetAllFilters);
+    if (emptyReset) emptyReset.addEventListener('click', resetAllFilters);
+
+    // ==========================================
+    // STUDIO WORKBENCH SWITCHER
+    // ==========================================
+    var selectorTabs = document.querySelectorAll('.bundle-selector-tab');
+    var studioPanels = document.querySelectorAll('.studio-bundle-panel');
+    var activeLabel = document.getElementById('console-active-label');
+    var deepdiveLink = document.getElementById('console-deepdive-link');
+
+    function setActiveBundle(slug, shouldScroll) {
+      if (!slug) return;
+
+      // Update selector tabs
+      for (var t = 0; t < selectorTabs.length; t++) {
+        var tab = selectorTabs[t];
+        if (tab.getAttribute('data-slug') === slug) {
+          tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
+        } else {
+          tab.classList.remove('active');
+          tab.setAttribute('aria-selected', 'false');
+        }
+      }
+
+      // Update cards is-active ring
+      for (var c = 0; c < cards.length; c++) {
+        if (cards[c].getAttribute('data-slug') === slug) {
+          cards[c].classList.add('is-active');
+        } else {
+          cards[c].classList.remove('is-active');
+        }
+      }
+
+      // Update panels
+      for (var p = 0; p < studioPanels.length; p++) {
+        var panel = studioPanels[p];
+        if (panel.getAttribute('data-bundle-slug') === slug) {
+          panel.classList.add('is-active');
+        } else {
+          panel.classList.remove('is-active');
+        }
+      }
+
+      // Update topbar title & link
+      if (activeLabel) {
+        activeLabel.textContent = slug.toUpperCase() + ' BUNDLE';
+      }
+      if (deepdiveLink) {
+        deepdiveLink.setAttribute('href', '/bundles/' + slug + '/');
+      }
+
+      if (shouldScroll) {
+        var workbenchEl = document.getElementById('bundles-workbench');
+        if (workbenchEl) {
+          workbenchEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+
+      // Update hash without jumping
+      try {
+        if (history.replaceState) {
+          history.replaceState(null, '', '#b-' + slug);
+        }
+      } catch (err) {}
+    }
+
+    // Selector tab click
+    for (var st = 0; st < selectorTabs.length; st++) {
+      selectorTabs[st].addEventListener('click', function() {
+        var slug = this.getAttribute('data-slug');
+        setActiveBundle(slug, false);
+      });
+    }
+
+    // Cards "Inspect" click & card body click
+    var inspectBtns = document.querySelectorAll('[data-target-bundle]');
+    for (var ib = 0; ib < inspectBtns.length; ib++) {
+      inspectBtns[ib].addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var targetSlug = this.getAttribute('data-target-bundle');
+        setActiveBundle(targetSlug, true);
+      });
+    }
+
+    for (var c = 0; c < cards.length; c++) {
+      cards[c].addEventListener('click', function(e) {
+        if (e.target.closest('.btn-card-dive') || e.target.closest('.btn-card-inspect')) return;
+        var slug = this.getAttribute('data-slug');
+        setActiveBundle(slug, true);
+      });
+    }
+
+    // Initialize from URL hash if present
+    if (window.location.hash) {
+      var hashSlug = window.location.hash.replace(/^#b-/, '').replace(/^#/, '');
+      if (hashSlug) {
+        setActiveBundle(hashSlug, false);
+      }
+    }
+
+    // ==========================================
+    // STUDIO SUB-TABS (Endpoints, Recipe, Samples, FAQ)
+    // ==========================================
+    for (var sp = 0; sp < studioPanels.length; sp++) {
+      (function(panel) {
+        var subtabs = panel.querySelectorAll('.studio-subtab');
+        var panelContents = {
+          endpoints: panel.querySelector('.tab-panel-endpoints'),
+          recipe: panel.querySelector('.tab-panel-recipe'),
+          samples: panel.querySelector('.tab-panel-samples'),
+          faq: panel.querySelector('.tab-panel-faq'),
+        };
+
+        for (var st = 0; st < subtabs.length; st++) {
+          subtabs[st].addEventListener('click', function() {
+            var tabName = this.getAttribute('data-tab');
+            for (var k = 0; k < subtabs.length; k++) subtabs[k].classList.remove('active');
+            this.classList.add('active');
+
+            for (var key in panelContents) {
+              if (panelContents[key]) {
+                if (key === tabName) {
+                  panelContents[key].classList.add('active');
+                } else {
+                  panelContents[key].classList.remove('active');
+                }
+              }
+            }
+          });
+        }
+
+        // Local endpoint search inside this bundle
+        var epSearch = panel.querySelector('.local-ep-search');
+        if (epSearch) {
+          epSearch.addEventListener('input', function(e) {
+            var epQuery = e.target.value.toLowerCase().trim();
+            var rows = panel.querySelectorAll('.ep-row');
+            for (var r = 0; r < rows.length; r++) {
+              var searchData = rows[r].getAttribute('data-ep-search') || '';
+              if (!epQuery || searchData.indexOf(epQuery) !== -1) {
+                rows[r].style.display = '';
+              } else {
+                rows[r].style.display = 'none';
+              }
+            }
+          });
+        }
+
+        // Code sample language tabs
+        var langTabs = panel.querySelectorAll('.lang-tab');
+        var langPanels = {
+          curl: panel.querySelector('.lang-curl'),
+          python: panel.querySelector('.lang-python'),
+          node: panel.querySelector('.lang-node'),
+        };
+
+        for (var lt = 0; lt < langTabs.length; lt++) {
+          langTabs[lt].addEventListener('click', function() {
+            var lang = this.getAttribute('data-lang');
+            for (var j = 0; j < langTabs.length; j++) langTabs[j].classList.remove('active');
+            this.classList.add('active');
+
+            for (var lk in langPanels) {
+              if (langPanels[lk]) {
+                if (lk === lang) {
+                  langPanels[lk].classList.add('active');
+                } else {
+                  langPanels[lk].classList.remove('active');
+                }
+              }
+            }
+          });
+        }
+
+        // Copy Code button
+        var copyCodeBtn = panel.querySelector('.btn-copy-code');
+        if (copyCodeBtn) {
+          copyCodeBtn.addEventListener('click', function() {
+            var activeCodePre = panel.querySelector('.code-lang-panel.active code');
+            if (activeCodePre) {
+              var text = activeCodePre.textContent || '';
+              navigator.clipboard.writeText(text).then(function() {
+                var originalHtml = copyCodeBtn.innerHTML;
+                copyCodeBtn.innerHTML = '<span>Copied! &#10003;</span>';
+                copyCodeBtn.style.color = '#34d399';
+                setTimeout(function() {
+                  copyCodeBtn.innerHTML = originalHtml;
+                  copyCodeBtn.style.color = '';
+                }, 2000);
+              });
+            }
+          });
+        }
+      })(studioPanels[sp]);
+    }
+
+    // Copy endpoint path buttons
+    var copyPathBtns = document.querySelectorAll('.btn-copy-path');
+    for (var cp = 0; cp < copyPathBtns.length; cp++) {
+      copyPathBtns[cp].addEventListener('click', function(e) {
+        e.stopPropagation();
+        var pathText = this.getAttribute('data-copy-text');
+        var btn = this;
+        if (pathText) {
+          navigator.clipboard.writeText(pathText).then(function() {
+            btn.style.color = '#34d399';
+            setTimeout(function() {
+              btn.style.color = '';
+            }, 1500);
+          });
+        }
+      });
+    }
+
+    // Keyboard shortcut /
+    document.addEventListener('keydown', function(e) {
+      var activeEl = document.activeElement;
+      var isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
+      if (e.key === '/' && !isInput) {
+        e.preventDefault();
+        if (searchInput) searchInput.focus();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        if (searchInput) searchInput.focus();
+      } else if (e.key === 'Escape' && document.activeElement === searchInput) {
+        if (searchInput) searchInput.blur();
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initBundlesExplorer);
+  } else {
+    initBundlesExplorer();
+  }
+  document.addEventListener('astro:page-load', initBundlesExplorer);
+</script>
