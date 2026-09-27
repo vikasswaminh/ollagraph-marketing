@@ -139,6 +139,8 @@ export function footerHtml(): string {
         { label: "Terms",          href: "/legal/terms" },
         { label: "Acceptable Use", href: "/legal/acceptable-use" },
         { label: "Subprocessors",  href: "/legal/subprocessors" },
+        { label: "API Versioning", href: "/legal/api-versioning" },
+        { label: "OSS Licenses",   href: "/legal/oss-licenses" },
       ],
     },
   ];

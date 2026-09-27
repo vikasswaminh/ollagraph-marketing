@@ -110,72 +110,250 @@ const familyEntries = Object.entries(families).sort((a, b) => b[1] - a[1]);
 ---
 <BaseLayout title="Open-source licenses — Ollagraph" description="Complete list of every open-source dependency used in the Ollagraph API, with each one's license, version, and family.">
   <Fragment set:html={navHtml('')} />
-  <div class="article">
-    <h1 class="h-display h-1">Open-source licenses</h1>
-    <article class="prose">
-      <p>Last updated: 2026-05-24</p>
-      <p>
-        Ollagraph is built on a foundation of carefully chosen open-source
-        software. This page lists every Python dependency in our production API
-        image along with its license and version, generated directly from the
-        running production environment via <code>pip-licenses</code>. Updated on
-        every dependency-bump release.
-      </p>
+  
+  <div class="legal-page">
+    <div class="legal-hero-glow" aria-hidden="true"></div>
 
-      <h2>License-family summary</h2>
-      <table>
-        <thead>
-          <tr><th>License family</th><th>Packages</th></tr>
-        </thead>
-        <tbody>
-          {familyEntries.map(([f, count]) => (
-            <tr><td>{f}</td><td>{count}</td></tr>
-          ))}
-        </tbody>
-      </table>
+    <header class="legal-hero">
+      <div class="legal-hero-inner">
+        <div class="legal-badge">
+          <span class="legal-badge-dot" aria-hidden="true"></span>
+          OPEN SOURCE
+        </div>
+        <h1 class="legal-title">Open-source licenses</h1>
+        <div class="legal-meta-row">
+          <span class="legal-meta-item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            Last updated: 2026-05-24
+          </span>
+          <span class="legal-meta-sep">•</span>
+          <span class="legal-meta-pill">Production Dependencies</span>
+          <span class="legal-meta-sep">•</span>
+          <span class="legal-meta-pill">76 Packages</span>
+          <span class="legal-meta-sep">•</span>
+          <span class="legal-meta-pill">Permissive &amp; Copyleft Audit</span>
+        </div>
 
-      <h2>Note on pyphen (LGPL / MPL)</h2>
-      <p>
-        The <code>pyphen</code> hyphenation library is dual-licensed under
-        GPLv2+, LGPLv2+, or MPL-1.1. We use it only internally as a transitive
-        dependency of <code>textstat</code> (which powers
-        <code>/v1/seo/readability</code>). Both LGPL and MPL are file-level
-        (weak) copyleft licenses: they permit commercial network-service use
-        without requiring source disclosure. We do not modify, re-distribute, or
-        expose <code>pyphen</code> directly to customers. If you would prefer us
-        to remove this dependency, contact
-        <a href="mailto:legal@ollagraph.com">legal@ollagraph.com</a>.
-      </p>
+        <nav class="legal-nav-bar" aria-label="Legal policies">
+          <a href="/legal/terms" class="legal-nav-item">Terms of Service</a>
+          <a href="/legal/privacy" class="legal-nav-item">Privacy Policy</a>
+          <a href="/legal/cookies" class="legal-nav-item">Cookie Policy</a>
+          <a href="/legal/acceptable-use" class="legal-nav-item">Acceptable Use</a>
+          <a href="/legal/subprocessors" class="legal-nav-item">Subprocessors</a>
+          <a href="/legal/api-versioning" class="legal-nav-item">API Versioning</a>
+          <a href="/legal/oss-licenses" class="legal-nav-item active" aria-current="page"><span class="legal-nav-dot"></span>OSS Licenses</a>
+        </nav>
+      </div>
+    </header>
 
-      <h2>Full dependency list</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Package</th>
-            <th>Version</th>
-            <th>License</th>
-            <th>Family</th>
-          </tr>
-        </thead>
-        <tbody>
-          {packages.map((p) => (
-            <tr>
-              <td><code>{p.name}</code></td>
-              <td>{p.version}</td>
-              <td>{p.license}</td>
-              <td>{p.family}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div class="legal-container">
+      <!-- Intro Card -->
+      <div class="legal-card legal-card--intro">
+        <p class="legal-p">
+          Ollagraph is built on a foundation of carefully chosen open-source software. This page lists every Python dependency in our production API image along with its license and version, generated directly from the running production environment via <code class="legal-code">pip-licenses</code>. Updated on every dependency-bump release.
+        </p>
+      </div>
 
-      <p>
-        Don't see a package you expected? It may be a JavaScript dependency
-        (those live on the marketing-site build pipeline, not the API). Email
-        <a href="mailto:legal@ollagraph.com">legal@ollagraph.com</a> with the
-        package name.
-      </p>
-    </article>
+      <!-- License-family summary Card -->
+      <div class="legal-card">
+        <div class="legal-card-header">
+          <div class="legal-card-title-group">
+            <span class="legal-card-icon legal-card-icon--default">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+                <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+              </svg>
+            </span>
+            <h2 class="legal-card-h2">License-family summary</h2>
+          </div>
+        </div>
+        <div class="legal-table-wrap">
+          <table class="legal-table">
+            <thead>
+              <tr>
+                <th>License family</th>
+                <th class="legal-th-right">Packages</th>
+              </tr>
+            </thead>
+            <tbody>
+              {familyEntries.map(([f, count]) => (
+                <tr>
+                  <td><strong>{f}</strong></td>
+                  <td class="legal-td-right"><span class="legal-count-badge">{count}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Note on pyphen (LGPL / MPL) -->
+      <div class="legal-card">
+        <div class="legal-card-header">
+          <div class="legal-card-title-group">
+            <span class="legal-card-icon legal-card-icon--default">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+            </span>
+            <h2 class="legal-card-h2">Note on pyphen (LGPL / MPL)</h2>
+          </div>
+        </div>
+        <p class="legal-p">
+          The <code class="legal-code">pyphen</code> hyphenation library is dual-licensed under GPLv2+, LGPLv2+, or MPL-1.1. We use it only internally as a transitive dependency of <code class="legal-code">textstat</code> (which powers <code class="legal-code">/v1/seo/readability</code>). Both LGPL and MPL are file-level (weak) copyleft licenses: they permit commercial network-service use without requiring source disclosure. We do not modify, re-distribute, or expose <code class="legal-code">pyphen</code> directly to customers. If you would prefer us to remove this dependency, contact <a href="mailto:legal@ollagraph.com">legal@ollagraph.com</a>.
+        </p>
+      </div>
+
+      <!-- Full dependency list -->
+      <div class="legal-card">
+        <div class="legal-card-header">
+          <div class="legal-card-title-group">
+            <span class="legal-card-icon legal-card-icon--default">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+            </span>
+            <h2 class="legal-card-h2">Full dependency list</h2>
+          </div>
+          <span class="subp-badge">{packages.length} production packages</span>
+        </div>
+        <div class="legal-table-wrap">
+          <table class="legal-table">
+            <thead>
+              <tr>
+                <th>Package</th>
+                <th>Version</th>
+                <th>License</th>
+                <th>Family</th>
+              </tr>
+            </thead>
+            <tbody>
+              {packages.map((p) => (
+                <tr>
+                  <td><code class="legal-code">{p.name}</code></td>
+                  <td class="font-mono text-xs text-ink-600">{p.version}</td>
+                  <td>{p.license}</td>
+                  <td>
+                    <span class={`license-pill ${
+                      p.family.includes('MIT') ? 'license-pill--mit' :
+                      p.family.includes('BSD') ? 'license-pill--bsd' :
+                      p.family.includes('Apache') ? 'license-pill--apache' :
+                      'license-pill--other'
+                    }`}>
+                      {p.family}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="legal-p legal-p--spaced">
+          Don't see a package you expected? It may be a JavaScript dependency (those live on the marketing-site build pipeline, not the API). Email <a href="mailto:legal@ollagraph.com">legal@ollagraph.com</a> with the package name.
+        </p>
+      </div>
+    </div>
   </div>
+
   <Fragment set:html={footerHtml()} />
+
+  <style>
+    .legal-table-wrap {
+      overflow-x: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: #ffffff;
+      margin-top: 6px;
+    }
+    .legal-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      text-align: left;
+    }
+    .legal-table th {
+      background: #f8fafc;
+      color: #0f172a;
+      font-family: var(--font-mono, monospace);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 11px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    .legal-th-right,
+    .legal-td-right {
+      text-align: right;
+    }
+    .legal-p--spaced {
+      margin-top: 20px;
+    }
+    .legal-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #475569;
+      font-size: 13.5px;
+      line-height: 1.5;
+    }
+    .legal-table tr:last-child td {
+      border-bottom: none;
+    }
+    .legal-table tr:hover td {
+      background: #fafbfd;
+    }
+    .legal-count-badge {
+      display: inline-block;
+      font-family: var(--font-mono, monospace);
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #0f172a;
+      background: #f1f5f9;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+    }
+    .license-pill {
+      display: inline-block;
+      font-family: var(--font-mono, monospace);
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .license-pill--mit {
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    .license-pill--bsd {
+      background: #eff6ff;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+    }
+    .license-pill--apache {
+      background: #fefce8;
+      color: #854d0e;
+      border: 1px solid #fef08a;
+    }
+    .license-pill--other {
+      background: #f8fafc;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+  </style>
 </BaseLayout>
