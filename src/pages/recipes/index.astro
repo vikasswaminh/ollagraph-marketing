@@ -1,4 +1,4 @@
-﻿---
+---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { navHtml, footerHtml } from '../../chrome';
 import { recipes, categoryLabels, categoryOrder } from '../../data/recipes';
@@ -50,15 +50,22 @@ const footer = footerHtml();
   <Fragment set:html={nav} />
 
   <div class="container blog-container">
+    <!-- Top Ambient Glow -->
+    <div class="recipes-hero-glow" aria-hidden="true"></div>
+
     <!-- Modern Hero Section -->
     <header class="recipes-hero">
       <div class="recipes-hero-pill">
         <span class="recipes-hero-pulse" aria-hidden="true"></span>
-        <span>PRODUCTION PLAYBOOKS &middot; {recipes.length} RECIPES</span>
+        <span class="pill-label-bold">PRODUCTION PLAYBOOKS</span>
+        <span class="pill-sep-dot" aria-hidden="true">&middot;</span>
+        <span class="pill-count-tag">{recipes.length} RECIPES</span>
       </div>
-      <h1 class="recipes-hero-title">Recipes that ship in 2026.</h1>
+      <h1 class="recipes-hero-title">
+        Recipes that ship in <span class="recipes-title-accent">2026.</span>
+      </h1>
       <p class="recipes-hero-subtitle">
-        Production-tested playbooks for the work data teams actually do. Each recipe walks the full pipeline &mdash; the tools, the trade-offs, the costs, the code.
+        Production-tested playbooks for the work data teams actually do. Each recipe walks the full pipeline &mdash; <span class="subtitle-highlight">the tools</span>, <span class="subtitle-highlight">the trade-offs</span>, <span class="subtitle-highlight">the costs</span>, and <span class="subtitle-highlight">the code</span>.
       </p>
     </header>
 
@@ -221,28 +228,180 @@ const footer = footerHtml();
 </BaseLayout>
 
 <style>
+  /* ==========================================================================
+     Enhanced Modern Hero Section
+     ========================================================================== */
+  .recipes-hero-glow {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 900px;
+    height: 280px;
+    background: radial-gradient(ellipse 65% 240px at 50% 0%, rgba(234, 88, 12, 0.08) 0%, rgba(225, 29, 72, 0.03) 50%, transparent 80%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .recipes-hero {
+    position: relative;
+    text-align: center;
+    margin: 1.25rem auto 1.65rem !important;
+    max-width: 760px;
+  }
+
+  .recipes-hero-pill {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.45rem !important;
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 2px 8px -2px rgba(234, 88, 12, 0.08) !important;
+    padding: 0.28rem 0.85rem !important;
+    border-radius: 9999px !important;
+    margin-bottom: 0.95rem !important;
+    font-family: var(--font-mono, monospace) !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.06em !important;
+    color: #334155 !important;
+    text-transform: uppercase !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  .recipes-hero-pulse {
+    width: 6.5px !important;
+    height: 6.5px !important;
+    border-radius: 50% !important;
+    background: #ea580c !important;
+    box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.22) !important;
+    display: inline-block !important;
+    flex-shrink: 0 !important;
+    animation: pulse-ring 2.5s infinite ease-in-out !important;
+  }
+
+  @keyframes pulse-ring {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.22); }
+    50% { box-shadow: 0 0 0 6px rgba(234, 88, 12, 0.08); }
+  }
+
+  .pill-sep-dot {
+    color: #cbd5e1 !important;
+  }
+
+  .pill-count-tag {
+    color: #ea580c !important;
+    font-weight: 800 !important;
+  }
+
+  .recipes-hero-title {
+    font-family: var(--font-display, 'Geist', 'Inter', sans-serif) !important;
+    font-size: clamp(2.3rem, 4.8vw, 3.25rem) !important;
+    font-weight: 850 !important;
+    letter-spacing: -0.035em !important;
+    line-height: 1.14 !important;
+    color: #0f172a !important;
+    margin: 0 0 0.85rem !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  .recipes-title-accent {
+    background: linear-gradient(135deg, #ea580c 0%, #e11d48 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    display: inline-block !important;
+  }
+
+  .recipes-hero-subtitle {
+    font-size: 1.05rem !important;
+    line-height: 1.62 !important;
+    color: #475569 !important;
+    max-width: 620px !important;
+    margin: 0 auto !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  .subtitle-highlight {
+    color: #0f172a !important;
+    font-weight: 600 !important;
+  }
+
+  /* Tightened Explorer Toolbar & Pills */
+  .explorer-toolbar {
+    margin: 0 0 1rem 0 !important;
+    gap: 0.85rem !important;
+  }
+
+  .filter-pills-bar {
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0.35rem 0.42rem !important;
+  }
+
+  .filter-pill {
+    padding: 0.28rem 0.62rem !important;
+    font-size: 0.78rem !important;
+    gap: 0.38rem !important;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .pill-dot {
+    width: 6.5px !important;
+    height: 6.5px !important;
+  }
+
+  .pill-badge {
+    padding: 0.08rem 0.38rem !important;
+    font-size: 0.68rem !important;
+    line-height: 1.25 !important;
+    border-radius: 9999px !important;
+  }
+
+  @media (max-width: 1040px) {
+    .filter-pills-bar {
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      scrollbar-width: none !important;
+      -webkit-overflow-scrolling: touch !important;
+      padding-bottom: 4px !important;
+    }
+    .filter-pills-bar::-webkit-scrollbar {
+      display: none !important;
+    }
+  }
+
+  /* Compact Recipe Cards Grid */
   .recipes-unified-grid {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr) !important;
-    gap: 1.5rem !important;
-    margin-top: 1.5rem !important;
-    margin-bottom: 3.5rem !important;
+    gap: 1.15rem !important;
+    margin-top: 0.75rem !important;
+    margin-bottom: 2.75rem !important;
   }
 
   @media (max-width: 1024px) {
     .recipes-unified-grid {
       grid-template-columns: repeat(2, 1fr) !important;
-      gap: 1.25rem !important;
+      gap: 1rem !important;
     }
   }
 
   @media (max-width: 640px) {
     .recipes-unified-grid {
       grid-template-columns: 1fr !important;
-      gap: 1rem !important;
+      gap: 0.9rem !important;
     }
   }
 
+  /* Snug, Content-Fitted Recipe Cards */
   .recipe-item-card {
     display: flex !important;
     flex-direction: column !important;
@@ -250,7 +409,7 @@ const footer = footerHtml();
     background: #ffffff !important;
     border: 1px solid #e2e8f0 !important;
     border-radius: 12px !important;
-    padding: 1.5rem 1.6rem !important;
+    padding: 1.25rem 1.35rem !important;
     text-decoration: none !important;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.02) !important;
     transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
@@ -269,22 +428,22 @@ const footer = footerHtml();
   }
 
   .card-badge-wrap {
-    margin-bottom: 0.85rem;
+    margin-bottom: 0.65rem !important;
   }
 
   .post-card-badge {
     display: inline-flex !important;
     align-items: center !important;
-    font-size: 0.7rem !important;
+    font-size: 0.68rem !important;
     font-weight: 750 !important;
     letter-spacing: 0.05em !important;
     text-transform: uppercase !important;
-    padding: 0.2rem 0.65rem !important;
+    padding: 0.18rem 0.55rem !important;
     border-radius: 6px !important;
     background: color-mix(in srgb, var(--badge-color, #ea580c) 14%, white) !important;
     color: var(--badge-color, #ea580c) !important;
     border: 1px solid color-mix(in srgb, var(--badge-color, #ea580c) 25%, transparent) !important;
-    line-height: 1.35 !important;
+    line-height: 1.3 !important;
   }
 
   .recipe-item-card:hover .post-card-badge {
@@ -293,13 +452,13 @@ const footer = footerHtml();
   }
 
   .post-card-title {
-    font-size: 1.1rem !important;
+    font-size: 1.05rem !important;
     font-weight: 750 !important;
-    line-height: 1.38 !important;
+    line-height: 1.35 !important;
     letter-spacing: -0.015em !important;
     color: #0f172a !important;
-    margin: 0 0 0.65rem 0 !important;
-    min-height: 2.8rem !important;
+    margin: 0 0 0.5rem 0 !important;
+    min-height: auto !important;
     transition: color 0.15s ease !important;
   }
 
@@ -308,21 +467,25 @@ const footer = footerHtml();
   }
 
   .post-card-desc {
-    font-size: 0.88rem !important;
-    line-height: 1.6 !important;
+    font-size: 0.85rem !important;
+    line-height: 1.55 !important;
     color: #64748b !important;
-    margin: 0 0 1.35rem 0 !important;
+    margin: 0 0 0.85rem 0 !important;
     flex-grow: 1 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 3 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
   }
 
   .post-card-meta {
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
-    padding-top: 0.9rem !important;
+    padding-top: 0.75rem !important;
     border-top: 1px solid #f1f5f9 !important;
     margin-top: auto !important;
-    font-size: 0.78rem !important;
+    font-size: 0.76rem !important;
     color: #94a3b8 !important;
   }
 
