@@ -1,14 +1,740 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import bodyHtml from '../bodies/observability.body.html?raw';
-import headExtras from '../bodies/observability.head.html?raw';
 import { navHtml, footerHtml } from '../chrome';
 
-const rendered = bodyHtml
-  .replace('<div id="nav-root"></div>', navHtml(""))
-  .replace('<div id="footer-root"></div>', footerHtml());
+const traceCodeSample = `# Top-level request span
+POST /v1/aeo/page-audit                              4,217ms
+  http.method="POST" http.status_code=200
+  ollagraph.request_id="678185b6b19243bbb5bc49b55971b9ea"
+  ollagraph.user_id=42
+
+  # Auth + credit ledger (database auto-instrumented)
+  db.query  auth + API-key lookup                      3ms
+  db.query  credit ledger write                        2ms
+
+  # Nine parallel components (manual spans)
+  aeo.component.meta_audit                            1,840ms
+  aeo.component.schema_coverage                       2,103ms
+  aeo.component.citation_readiness                    1,650ms
+  aeo.component.ai_bot_allowlist                        412ms
+  aeo.component.llm_fetch_simulator                   3,890ms  <- slowest
+  aeo.component.redirects                              220ms
+  aeo.component.llms_txt_audit                          355ms
+  aeo.component.readability                            128ms
+  aeo.component.snippet_candidates                     94ms
+
+  # Each component's outbound HTTP fetch (httpx auto-instrumented)
+  HTTP GET brd.superproxy.io  status=200          1,612ms
+  HTTP GET brd.superproxy.io  status=200          1,503ms
+  ... etc`;
+
+const headersCodeSample = `# Response headers from a real /v1/scrape call
+HTTP/1.1 200 OK
+content-type:            application/json
+x-request-id:            678185b6b19243bbb5bc49b55971b9ea
+traceparent:             00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+server-timing:           total;dur=1247
+x-credits-cost:          1
+x-credits-charged:       1
+x-credits-balance:       9824
+x-tier-used:             render
+x-cascade-path:          direct,render
+x-ratelimit-limit:       60
+x-ratelimit-remaining:   59
+x-ratelimit-reset:       1717610412
+RateLimit-Limit:         60            # IETF alias
+RateLimit-Remaining:     59
+RateLimit-Reset:         1717610412
+Cache-Control:           no-store     # auto on authed responses`;
+
+const steps = [
+  {
+    num: "01",
+    tag: "CONFIGURATION",
+    title: "Pick a destination",
+    desc: "In your dashboard's Forwarders tab, pick one of five vendor presets (each has a free tier) or paste a raw OTLP endpoint + auth header.",
+    badge: "5 presets + raw OTLP",
+    pills: ["Better Stack", "Logfire", "Honeycomb", "Axiom", "Grafana", "Custom OTLP"]
+  },
+  {
+    num: "02",
+    tag: "AUTO-INSTRUMENTED",
+    title: "Make API calls",
+    desc: "Every request produces a top-level span with method, status_code, request_id, child spans for each Postgres query and each outbound proxy/render call.",
+    badge: "Zero SDK overhead",
+    pills: ["HTTP Root", "Postgres Auth", "Credit Ledger", "Outbound HTTPX"]
+  },
+  {
+    num: "03",
+    tag: "REAL-TIME STREAMING",
+    title: "See it in your tool",
+    desc: "Spans show up in your existing observability stack within seconds. If your agent emits a traceparent header, our spans nest under your trace.",
+    badge: "Instant telemetry",
+    pills: ["< 5s Delivery", "W3C Nested", "Full Waterfall", "Flame Graph"]
+  }
+];
+
+const vendors = [
+  {
+    name: "Better Stack",
+    tier: "Free tier · 3 GB / 3 days",
+    accent: "emerald",
+    badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    desc: "Modern, dev-focused. Logs + traces + uptime in one UI. Popular with startups.",
+    endpoint: "https://in.logs.betterstack.com",
+    header: "Authorization: Bearer ***",
+    link: "https://betterstack.com/logs",
+    linkLabel: "Get a free account",
+    iconPath: "M3 5h18v4H3V5zm0 5h18v4H3v-4zm0 5h18v4H3v-4z"
+  },
+  {
+    name: "Logfire (Pydantic)",
+    tier: "Free tier · generous monthly span budget",
+    accent: "amber",
+    badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
+    desc: "Built by the Pydantic team. Python-first, OTel-pure, friendly UI for trace inspection.",
+    endpoint: "https://logfire-api.pydantic.dev",
+    header: "Authorization: Bearer pylf_v1_***",
+    link: "https://pydantic.dev/logfire",
+    linkLabel: "Get a free account",
+    iconPath: "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"
+  },
+  {
+    name: "Honeycomb",
+    tier: "Free tier · 20M events / month",
+    accent: "rose",
+    badgeColor: "bg-rose-50 text-rose-700 border-rose-200",
+    desc: "Trace-focused, engineering-led teams. Great for \"why is this slow today\" deep-dives.",
+    endpoint: "https://api.honeycomb.io",
+    header: "x-honeycomb-team: hcaik_***",
+    link: "https://www.honeycomb.io/pricing",
+    linkLabel: "Get a free account",
+    iconPath: "M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2zm0 10l8-4.5M12 12v10M12 12L4 7.5"
+  },
+  {
+    name: "Axiom",
+    tier: "Free tier · 500 GB / month",
+    accent: "purple",
+    badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
+    desc: "Cheap, fast log + trace storage. Generous free tier; pay-as-you-go above.",
+    endpoint: "https://api.axiom.co",
+    header: "Authorization: Bearer xaat-***",
+    link: "https://axiom.co/pricing",
+    linkLabel: "Get a free account",
+    iconPath: "M12 2L3 20h4.5l1.8-4h5.4l1.8 4H21L12 2zm-1.2 10.5L12 7.8l1.2 4.7h-2.4z"
+  },
+  {
+    name: "Grafana Cloud",
+    tier: "Free tier · 50 GB traces / month",
+    accent: "sky",
+    badgeColor: "bg-sky-50 text-sky-700 border-sky-200",
+    desc: "Open-source-friendly. Loki + Tempo + Prometheus, all OTel-native.",
+    endpoint: "https://otlp-gateway-prod-us-central-0.grafana.net/otlp",
+    header: "Authorization: Basic ***",
+    link: "https://grafana.com/products/cloud/",
+    linkLabel: "Get a free account",
+    iconPath: "M12 4a8 8 0 0 0-8 8c0 2.2.9 4.2 2.3 5.7L8 16a5.5 5.5 0 1 1 8 0l1.7 1.7A8 8 0 0 0 12 4zm0 5v4l2.5 1.5"
+  },
+  {
+    name: "Advanced OTLP",
+    tier: "Any OTLP receiver",
+    accent: "slate",
+    badgeColor: "bg-slate-100 text-slate-800 border-slate-300",
+    desc: "Datadog, New Relic, Splunk, AWS CloudWatch, GCP, Azure, self-hosted Tempo/Jaeger. Paste your endpoint + auth header.",
+    endpoint: "https://<your-receiver>/v1/traces",
+    header: "<your-auth-header>: <value>",
+    link: "https://app.ollagraph.com/dashboard",
+    linkLabel: "Configure",
+    iconPath: "M12 11a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-4.95-2.05a7 7 0 0 0 0 9.9m9.9-9.9a7 7 0 0 1 0 9.9M4.22 6.12a11 11 0 0 0 0 15.56m15.56-15.56a11 11 0 0 1 0 15.56"
+  }
+];
+
+const standards = [
+  {
+    name: "traceparent",
+    tier: "W3C Trace Context",
+    badgeClass: "bg-blue-50 text-blue-700 border-blue-200",
+    accentBorder: "border-t-blue-500",
+    desc: "Our server-side OTel trace+span ID, echoed on every response. If your agent sends an inbound traceparent, our spans nest under your trace. If it doesn't, paste the value from this header into your APM's trace search and pull up the full picture."
+  },
+  {
+    name: "server-timing",
+    tier: "W3C Server-Timing",
+    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    accentBorder: "border-t-emerald-500",
+    desc: "Wall-clock breakdown for the request. Chrome DevTools -> Network -> Timing renders it natively, no code. Customers grep server-timing in their CDN logs to spot regressions before they trip a synthetic check."
+  },
+  {
+    name: "x-credits-*",
+    tier: "Ollagraph-specific",
+    badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
+    accentBorder: "border-t-amber-500",
+    desc: "Three numbers per response: cost (sticker), charged (what we actually deducted — failures refund), balance (left after this call). Tail these on a noisy crawl instead of polling /v1/me/credits."
+  },
+  {
+    name: "x-tier-used · x-cascade-path",
+    tier: "Ollagraph-specific",
+    badgeClass: "bg-rose-50 text-rose-700 border-rose-200",
+    accentBorder: "border-t-rose-500",
+    desc: "Which fetch tier served the call — direct, render, or residential — plus the full ordered cascade we tried. Grep your logs by tier to see exactly which path your traffic takes."
+  },
+  {
+    name: "RateLimit-*",
+    tier: "IETF draft-ietf-httpapi-ratelimit-headers",
+    badgeClass: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    accentBorder: "border-t-indigo-500",
+    desc: "Token-bucket state in the IETF spelling that generic HTTP clients (k6, Bruno, Hey) auto-honour for backoff. We emit both the legacy x-ratelimit-* form and the IETF form on every response."
+  },
+  {
+    name: "Deprecation · Sunset",
+    tier: "RFC 8594 + IETF deprecation draft",
+    badgeClass: "bg-purple-50 text-purple-700 border-purple-200",
+    accentBorder: "border-t-purple-500",
+    desc: "When we schedule a route for removal you'll see machine-readable Deprecation, Sunset (an HTTP-date), and Link (pointing at the successor) on every response from that route — long before we ever ship the removal."
+  }
+];
+
+const url = "https://ollagraph.com/observability/";
+const webPageLd = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  name: "Observability — Ollagraph",
+  url,
+  description: "Stream every API call, Postgres query, and outbound fetch we make on your behalf to Datadog, Better Stack, Logfire, Honeycomb, Axiom, Grafana Cloud, or any OTLP receiver. OpenTelemetry-native. Zero vendor lock-in."
+};
+
+const nav = navHtml('observability');
+const footer = footerHtml();
 ---
-<BaseLayout title="Observability — Ollagraph" description="Stream every API call, Postgres query, and outbound fetch we make on your behalf to Datadog, Better Stack, Logfire, Honeycomb, Axiom, Grafana Cloud, or any OTLP receiver. OpenTelemetry-native. Zero vendor lock-in.">
-  <Fragment slot="head" set:html={headExtras} />
-  <Fragment set:html={rendered} />
+
+<BaseLayout
+  title="Observability — Ollagraph"
+  description="Stream every API call, Postgres query, and outbound fetch we make on your behalf to Datadog, Better Stack, Logfire, Honeycomb, Axiom, Grafana Cloud, or any OTLP receiver. OpenTelemetry-native. Zero vendor lock-in."
+  canonical={url}
+  jsonLd={[webPageLd]}
+>
+  <Fragment slot="head">
+    <link rel="stylesheet" href="/homepage-tailwind.css?v=31" />
+    <style>
+      .trace-workbench {
+        background-color: #080C15;
+        border-color: #1E293B;
+      }
+      .trace-window {
+        background-color: #060911;
+        border: 1px solid #1E293B;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+      }
+      .trace-header {
+        background-color: #0A0F1D;
+        border-bottom: 1px solid #1E293B;
+      }
+      .waterfall-bar-bg {
+        background-color: #131B2E;
+      }
+      .trace-line-guide {
+        border-left: 1px dashed rgba(255, 255, 255, 0.12);
+      }
+      .config-snippet-box {
+        background-color: #0B0F19;
+        border: 1px solid #1E293B;
+      }
+      .quick-copy-btn:hover {
+        background-color: rgba(255, 255, 255, 0.08);
+      }
+      .copied-tooltip {
+        display: none;
+      }
+      .copied-tooltip.active {
+        display: inline-flex;
+      }
+    </style>
+  </Fragment>
+
+  <Fragment set:html={nav} />
+
+  <div class="relative overflow-hidden bg-white text-ink-950 font-sans selection:bg-brand/10 selection:text-brand">
+    
+    <!-- 1. Hero Section -->
+    <section class="relative pt-16 pb-20 sm:pt-24 sm:pb-24 border-b border-ink-200 overflow-hidden bg-white">
+      <!-- Background Ambient Glow & Subtle Technical Grid -->
+      <div class="absolute inset-0 pointer-events-none -z-10 flex items-center justify-center">
+        <div class="w-[850px] h-[450px] rounded-full bg-brand/5 blur-3xl opacity-60"></div>
+      </div>
+      <div class="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none -z-10"></div>
+
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <!-- Eyebrow Pill -->
+        <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-ink-200 bg-ink-50/90 text-xs font-mono mb-6 shadow-xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="text-ink-900 font-semibold uppercase tracking-wider">OpenTelemetry-native</span>
+          <span class="text-ink-300 select-none">•</span>
+          <span class="text-ink-600 font-medium">Bring your own stack</span>
+        </div>
+
+        <!-- Headline -->
+        <h1 class="text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.12] font-bold tracking-tight text-ink-950 mb-6 max-w-4xl mx-auto">
+          Your AI agent&rsquo;s web traffic, in the <span class="text-brand">observability tool</span> you already use.
+        </h1>
+
+        <!-- Subtitle -->
+        <p class="text-base sm:text-lg lg:text-xl text-ink-600 max-w-3xl mx-auto leading-relaxed mb-8 font-normal">
+          Every API call, every Postgres query, every outbound fetch we make on your behalf is emitted as an OpenTelemetry span. Stream them to Datadog, Better Stack, Logfire, Honeycomb, Axiom, Grafana Cloud, or any OTLP receiver. No new dashboard to learn. We pay zero vendor bills.
+        </p>
+
+        <!-- CTA Row -->
+        <div class="flex flex-wrap items-center justify-center gap-3 mb-10">
+          <a class="relative group overflow-hidden inline-flex items-center px-6 py-3 text-sm font-semibold rounded-lg bg-brand text-white shadow-sm hover:shadow-lg hover:shadow-brand/25 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+            <span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+            <span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+          </a>
+          <a class="inline-flex items-center px-6 py-3 text-sm font-medium rounded-lg border border-ink-300 bg-white text-ink-700 hover:bg-ink-50 hover:text-ink-900 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 shadow-xs hover:shadow" href="https://app.ollagraph.com/dashboard">
+            Configure a forwarder <span class="ml-1 text-ink-400">→</span>
+          </a>
+        </div>
+
+        <!-- Vendor Integration Badges Row -->
+        <div class="pt-6 border-t border-ink-100 max-w-3xl mx-auto">
+          <div class="text-[11px] font-mono uppercase tracking-wider text-ink-400 mb-3 font-semibold">
+            Supported native OTLP destinations
+          </div>
+          <div class="flex flex-wrap items-center justify-center gap-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-ink-200 shadow-2xs text-xs font-medium text-ink-700 hover:border-emerald-300 hover:text-emerald-700 transition-colors">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              Better Stack
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-ink-200 shadow-2xs text-xs font-medium text-ink-700 hover:border-amber-300 hover:text-amber-700 transition-colors">
+              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+              Logfire
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-ink-200 shadow-2xs text-xs font-medium text-ink-700 hover:border-rose-300 hover:text-rose-700 transition-colors">
+              <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+              Honeycomb
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-ink-200 shadow-2xs text-xs font-medium text-ink-700 hover:border-purple-300 hover:text-purple-700 transition-colors">
+              <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+              Axiom
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-ink-200 shadow-2xs text-xs font-medium text-ink-700 hover:border-sky-300 hover:text-sky-700 transition-colors">
+              <span class="w-2 h-2 rounded-full bg-sky-500"></span>
+              Grafana Cloud
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white border border-ink-200 shadow-2xs text-xs font-medium text-ink-700 hover:border-ink-400 hover:text-ink-950 transition-colors">
+              <span class="w-2 h-2 rounded-full bg-ink-400"></span>
+              Datadog &amp; Custom OTLP
+            </span>
+          </div>
+        </div>
+
+        <!-- Telemetry Guarantee Micro-Pills -->
+        <div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 mt-8 text-xs font-mono text-ink-500">
+          <span class="inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Zero Vendor Lock-In
+          </span>
+          <span class="text-ink-300 select-none hidden sm:inline">•</span>
+          <span class="inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            0ms In-Process Overhead
+          </span>
+          <span class="text-ink-300 select-none hidden sm:inline">•</span>
+          <span class="inline-flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            W3C Traceparent Nesting
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. How It Works Section: 3-Step Pipeline -->
+    <section class="py-16 sm:py-24 border-b border-ink-200 bg-[#FAFAFA]" id="how-it-works">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-14">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            PIPELINE ARCHITECTURE
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            Three steps. One trace.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600 leading-relaxed">
+            Your agent calls our API. Each call produces a span tree with HTTP, DB, and outbound-fetch detail. The span tree streams to whichever destination you configured. End-to-end visibility, same view your other infrastructure uses.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
+          {steps.map((step, idx) => (
+            <div class="bg-white p-6 sm:p-7 rounded-2xl border border-ink-200/90 shadow-xs hover:shadow-lg hover:-translate-y-1 hover:border-ink-300 transition-all duration-300 flex flex-col justify-between relative group">
+              <div>
+                <!-- Top Row: Number on Left, Single-Line Pill on Right -->
+                <div class="flex items-center justify-between gap-3 mb-5">
+                  <span class="w-8 h-8 rounded-lg bg-ink-950 text-white font-mono text-xs font-bold flex items-center justify-center shadow-xs shrink-0">
+                    {step.num}
+                  </span>
+                  <span class="text-xs font-mono font-semibold text-brand bg-brand/10 border border-brand/20 px-3 py-1 rounded-full whitespace-nowrap shrink-0">
+                    {step.badge}
+                  </span>
+                </div>
+
+                <!-- Title & Body -->
+                <h3 class="text-lg font-bold text-ink-950 mb-2.5 group-hover:text-brand transition-colors">
+                  {step.title}
+                </h3>
+                <p class="text-xs sm:text-sm text-ink-600 leading-relaxed mb-6">
+                  {step.desc}
+                </p>
+              </div>
+
+              <!-- Symmetrical Bottom Pill Block -->
+              <div class="pt-4 border-t border-ink-100">
+                <div class={`grid gap-1.5 ${idx === 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  {step.pills.map((pill) => (
+                    <span class="text-[11px] font-mono text-ink-700 bg-ink-50 border border-ink-200/80 px-2 py-1 rounded-md text-center font-medium truncate">
+                      {pill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Destinations / Vendor Presets Section -->
+    <section class="py-16 sm:py-24 border-b border-ink-200 bg-white" id="destinations">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-14">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            ZERO CONFIGURATION PRESETS
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            Five vendor presets, plus raw OTLP.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600 leading-relaxed">
+            Each preset below has a real free tier. Start there if you don&rsquo;t have an observability stack yet. Paid tiers (Datadog, New Relic) work too via the Advanced OTLP option.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {vendors.map((v) => (
+            <div class="bg-white rounded-2xl border border-ink-200/90 p-6 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group">
+              <div>
+                <!-- Vendor Header -->
+                <div class="flex items-start justify-between gap-3 mb-2.5">
+                  <div class="flex items-center gap-2.5">
+                    <div class={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                      v.accent === 'emerald' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' :
+                      v.accent === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-600' :
+                      v.accent === 'rose' ? 'bg-rose-50 border-rose-200 text-rose-600' :
+                      v.accent === 'purple' ? 'bg-purple-50 border-purple-200 text-purple-600' :
+                      v.accent === 'sky' ? 'bg-sky-50 border-sky-200 text-sky-600' :
+                      'bg-slate-100 border-slate-300 text-slate-700'
+                    }`}>
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d={v.iconPath} />
+                      </svg>
+                    </div>
+                    <h3 class="text-base font-bold text-ink-950 group-hover:text-brand transition-colors">
+                      {v.name}
+                    </h3>
+                  </div>
+                </div>
+
+                <!-- Tier Badge -->
+                <div class="mb-3.5">
+                  <span class={`inline-block text-[11px] font-mono font-medium px-2.5 py-0.5 rounded-full border ${v.badgeColor}`}>
+                    {v.tier}
+                  </span>
+                </div>
+
+                <!-- Description -->
+                <p class="text-xs sm:text-sm text-ink-600 leading-relaxed mb-4 min-h-[44px]">
+                  {v.desc}
+                </p>
+
+                <!-- Configuration Snippet Box -->
+                <div class="config-snippet-box rounded-xl p-3.5 mb-4 text-xs font-mono">
+                  <div class="flex items-center justify-between text-[10px] text-ink-400 pb-2 mb-2 border-b border-ink-800">
+                    <span class="uppercase tracking-wider font-semibold text-ink-300">FORWARDER SPEC</span>
+                    <button type="button" class="quick-copy-btn text-ink-400 hover:text-white px-2 py-0.5 rounded flex items-center gap-1 transition-colors" data-copy={`endpoint: ${v.endpoint}\nheader:   ${v.header}`}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                      <span>Copy</span>
+                    </button>
+                  </div>
+                  <div class="space-y-1">
+                    <div class="text-[11px] leading-tight flex items-baseline gap-2 truncate">
+                      <span class="text-ink-500 shrink-0">endpoint:</span>
+                      <span class="text-emerald-400 truncate select-all">{v.endpoint}</span>
+                    </div>
+                    <div class="text-[11px] leading-tight flex items-baseline gap-2 truncate">
+                      <span class="text-ink-500 shrink-0">header:</span>
+                      <span class="text-sky-300 truncate select-all">{v.header}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer Link -->
+              <div class="pt-3 border-t border-ink-100 flex items-center justify-between">
+                <a class="text-xs font-semibold text-brand hover:text-brand-hover inline-flex items-center gap-1.5 transition-colors group/link" href={v.link} target="_blank" rel="noopener noreferrer">
+                  <span>{v.linkLabel}</span>
+                  <span class="transition-transform duration-200 group-hover/link:translate-x-1">&rarr;</span>
+                </a>
+                <span class="text-[11px] font-mono text-ink-400">
+                  OTLP 1.0
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. What We Emit (Dark Developer Workbench Section) -->
+    <section class="py-16 sm:py-24 trace-workbench text-white relative overflow-hidden" id="what-we-emit">
+      <!-- Dark ambient glow effect -->
+      <div class="w-[600px] h-[350px] bg-brand/10 blur-3xl rounded-full absolute -top-24 -left-20 pointer-events-none"></div>
+      <div class="w-[500px] h-[350px] bg-emerald-500/10 blur-3xl rounded-full absolute -bottom-24 -right-20 pointer-events-none"></div>
+      <div class="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none"></div>
+
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div class="text-center max-w-3xl mx-auto mb-10">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            TELEMETRY WATERFALL
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-3">
+            Every call, traced end-to-end.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-400 leading-relaxed">
+            One example span tree from a real <code class="font-mono text-emerald-400 bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/80">/v1/aeo/page-audit</code> call. Nine parallel probes, each with its own child span, each with timing.
+          </p>
+        </div>
+
+        <!-- Terminal Window Card (compact, fitted to code width) -->
+        <div class="max-w-[740px] mx-auto trace-window rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
+          <!-- Terminal Header Bar -->
+          <div class="trace-header flex items-center justify-between px-4 py-2.5 select-none">
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
+              <div class="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
+              <div class="w-3 h-3 rounded-full bg-[#27C93F]"></div>
+              <span class="ml-2 text-ink-300 font-semibold text-xs">span-tree &mdash; POST /v1/aeo/page-audit</span>
+              <span class="text-emerald-400 text-xs hidden sm:inline font-bold">• 4,217ms total</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" class="quick-copy-btn text-ink-400 hover:text-white px-2 py-0.5 rounded bg-ink-900 border border-ink-700/80 flex items-center gap-1.5 text-xs transition-colors" data-copy={traceCodeSample}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Trace Waterfall Timing Bar -->
+          <div class="waterfall-bar-bg px-4 py-1.5 border-b border-ink-800 text-[11px] flex flex-wrap items-center justify-between gap-3 text-ink-400">
+            <div class="flex items-center gap-4">
+              <span class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                <span>Database: 5ms</span>
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+                <span>Audit Probes: 2,103ms</span>
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span>LLM Simulation: 3,890ms</span>
+              </span>
+            </div>
+            <span class="text-[10px] font-mono text-ink-500">9 Spans in parallel</span>
+          </div>
+
+          <!-- Terminal Code Content with Syntax Highlighting -->
+          <div class="p-4 sm:p-5 overflow-x-auto leading-normal text-ink-200 bg-[#060911]">
+            <pre class="m-0 whitespace-pre"><code><span class="text-ink-500 italic"># Top-level request span</span>
+<span class="text-sky-400 font-bold">POST</span> <span class="text-white font-semibold">/v1/aeo/page-audit</span>                              <span class="text-emerald-400 font-bold">4,217ms</span>
+  http.method=<span class="text-emerald-300">"POST"</span> http.status_code=<span class="text-amber-400">200</span>
+  ollagraph.request_id=<span class="text-emerald-300">"678185b6b19243bbb5bc49b55971b9ea"</span>
+  ollagraph.user_id=<span class="text-amber-400">42</span>
+
+  <span class="text-ink-500 italic"># Auth + credit ledger (database auto-instrumented)</span>
+  <span class="text-purple-400">db.query</span>  auth + API-key lookup                      <span class="text-sky-400">3ms</span>
+  <span class="text-purple-400">db.query</span>  credit ledger write                        <span class="text-sky-400">2ms</span>
+
+  <span class="text-ink-500 italic"># Nine parallel components (manual spans)</span>
+  <span class="text-sky-300">aeo.component.meta_audit</span>                            <span class="text-sky-400">1,840ms</span>
+  <span class="text-sky-300">aeo.component.schema_coverage</span>                       <span class="text-sky-400">2,103ms</span>
+  <span class="text-sky-300">aeo.component.citation_readiness</span>                    <span class="text-sky-400">1,650ms</span>
+  <span class="text-sky-300">aeo.component.ai_bot_allowlist</span>                        <span class="text-sky-400">412ms</span>
+  <span class="text-sky-300 font-bold">aeo.component.llm_fetch_simulator</span>                   <span class="text-amber-400 font-bold">3,890ms</span>  <span class="text-amber-400 font-bold bg-amber-950/80 border border-amber-800 px-1.5 py-0.5 rounded text-[10px]">&larr; slowest</span>
+  <span class="text-sky-300">aeo.component.redirects</span>                              <span class="text-sky-400">220ms</span>
+  <span class="text-sky-300">aeo.component.llms_txt_audit</span>                          <span class="text-sky-400">355ms</span>
+  <span class="text-sky-300">aeo.component.readability</span>                            <span class="text-sky-400">128ms</span>
+  <span class="text-sky-300">aeo.component.snippet_candidates</span>                     <span class="text-sky-400">94ms</span>
+
+  <span class="text-ink-500 italic"># Each component's outbound HTTP fetch (httpx auto-instrumented)</span>
+  <span class="text-emerald-400">HTTP GET</span> brd.superproxy.io  status=<span class="text-amber-400">200</span>          <span class="text-sky-400">1,612ms</span>
+  <span class="text-emerald-400">HTTP GET</span> brd.superproxy.io  status=<span class="text-amber-400">200</span>          <span class="text-sky-400">1,503ms</span>
+  <span class="text-ink-500 italic">... etc</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Standards on Every Response Section -->
+    <section class="py-16 sm:py-24 border-b border-ink-200 bg-[#FAFAFA]" id="standards">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-10">
+          <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
+            ZERO CONFIGURATION SIGNALS
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
+            Standards on every response. No SDK required.
+          </h2>
+          <p class="text-sm sm:text-base text-ink-600 leading-relaxed">
+            Forward the spans to your stack if you want full traces. Or just read the response headers &mdash; nine standards-based signals shipped on every request, zero setup.
+          </p>
+        </div>
+
+        <!-- Terminal: Response Headers Window (compact, fitted to code width) -->
+        <div class="max-w-[740px] mx-auto trace-window rounded-xl overflow-hidden font-mono text-xs mb-14 shadow-xl">
+          <div class="trace-header flex items-center justify-between px-4 py-2.5 select-none">
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
+              <div class="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
+              <div class="w-3 h-3 rounded-full bg-[#27C93F]"></div>
+              <span class="ml-2 text-ink-300 font-semibold text-xs">Response Headers &mdash; HTTP/1.1 200 OK</span>
+              <span class="text-ink-500 text-xs hidden sm:inline">• POST /v1/scrape</span>
+            </div>
+            <button type="button" class="quick-copy-btn text-ink-400 hover:text-white px-2 py-0.5 rounded bg-ink-900 border border-ink-700/80 flex items-center gap-1.5 text-xs transition-colors" data-copy={headersCodeSample}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span>Copy</span>
+            </button>
+          </div>
+          <div class="p-4 sm:p-5 overflow-x-auto leading-normal text-ink-200 bg-[#060911]">
+            <pre class="m-0 whitespace-pre"><code><span class="text-ink-500 italic"># Response headers from a real /v1/scrape call</span>
+<span class="text-sky-400">HTTP/1.1</span> <span class="text-emerald-400 font-bold">200 OK</span>
+<span class="text-ink-400">content-type:</span>            <span class="text-ink-100">application/json</span>
+<span class="text-ink-400">x-request-id:</span>            <span class="text-emerald-300">678185b6b19243bbb5bc49b55971b9ea</span>
+<span class="text-ink-400">traceparent:</span>             <span class="text-emerald-300">00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01</span>
+<span class="text-ink-400">server-timing:</span>           total;dur=<span class="text-amber-400 font-semibold">1247</span>
+<span class="text-ink-400">x-credits-cost:</span>          <span class="text-amber-400">1</span>
+<span class="text-ink-400">x-credits-charged:</span>       <span class="text-amber-400">1</span>
+<span class="text-ink-400">x-credits-balance:</span>       <span class="text-amber-400 font-semibold">9824</span>
+<span class="text-ink-400">x-tier-used:</span>             <span class="text-emerald-300">render</span>
+<span class="text-ink-400">x-cascade-path:</span>          <span class="text-emerald-300">direct,render</span>
+<span class="text-ink-400">x-ratelimit-limit:</span>       <span class="text-amber-400">60</span>
+<span class="text-ink-400">x-ratelimit-remaining:</span>   <span class="text-amber-400">59</span>
+<span class="text-ink-400">x-ratelimit-reset:</span>       <span class="text-amber-400">1717610412</span>
+<span class="text-ink-400">RateLimit-Limit:</span>         <span class="text-amber-400">60</span>            <span class="text-ink-500 italic"># IETF alias</span>
+<span class="text-ink-400">RateLimit-Remaining:</span>     <span class="text-amber-400">59</span>
+<span class="text-ink-400">RateLimit-Reset:</span>         <span class="text-amber-400">1717610412</span>
+<span class="text-ink-400">Cache-Control:</span>           <span class="text-emerald-300">no-store</span>     <span class="text-ink-500 italic"># auto on authed responses</span></code></pre>
+          </div>
+        </div>
+
+        <!-- 6 Standards Breakdown Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {standards.map((s) => (
+            <div class="bg-white rounded-2xl border border-ink-200/90 p-6 shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between group relative overflow-hidden">
+              <div class={`absolute top-0 left-0 right-0 h-1 border-t-2 ${s.accentBorder}`}></div>
+              <div>
+                <div class="flex items-start justify-between gap-2 mb-3">
+                  <code class="font-mono text-xs font-bold text-ink-950 bg-ink-100 border border-ink-200 px-2 py-0.5 rounded group-hover:border-brand/40 group-hover:text-brand transition-colors">
+                    {s.name}
+                  </code>
+                </div>
+                <span class={`inline-block text-[11px] font-mono font-medium px-2.5 py-0.5 rounded-full border mb-3 ${s.badgeClass}`}>
+                  {s.tier}
+                </span>
+                <p class="text-xs sm:text-sm text-ink-600 leading-relaxed">
+                  {s.desc}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Bottom Developer CTA (Platform Standard) -->
+    <section class="py-16 sm:py-24 bg-white">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="relative rounded-3xl bg-[#060911] border border-white/10 p-8 sm:p-14 text-center overflow-hidden shadow-2xl">
+          <!-- Ambient glowing gradients -->
+          <div class="absolute -bottom-16 -left-16 w-72 h-72 rounded-full bg-emerald-500/15 blur-3xl pointer-events-none"></div>
+          <div class="absolute -top-16 -right-16 w-72 h-72 rounded-full bg-brand/20 blur-3xl pointer-events-none"></div>
+          <div class="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none"></div>
+
+          <div class="relative z-10 max-w-2xl mx-auto">
+            <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-white/10 bg-ink-900/80 text-xs font-mono text-ink-300 mb-6 backdrop-blur-sm">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span class="text-white font-semibold">1,000 free credits</span>
+              <span class="text-ink-600">•</span>
+              <span>No card required</span>
+            </div>
+
+            <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4">
+              Trace your agent. Today.
+            </h2>
+            
+            <p class="text-sm sm:text-base text-ink-400 mb-8 leading-relaxed max-w-xl mx-auto">
+              1,000 free credits on signup. Each free-tier observability vendor takes ~5 minutes to set up. The configure-a-forwarder UI takes ~30 seconds.
+            </p>
+
+            <div class="flex flex-wrap items-center justify-center gap-3">
+              <a class="relative group overflow-hidden inline-flex items-center px-6 py-3 text-sm font-semibold rounded-lg bg-brand text-white shadow-lg shadow-brand/25 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40" href="/contactus">
+                <span class="relative z-10 flex items-center">Request access <span class="ml-1.5 transition-transform duration-200 group-hover:translate-x-1">→</span></span>
+                <span class="absolute top-0 -left-full w-full h-full bg-white/20 transform -skew-x-12 group-hover:translate-x-[250%] transition-transform duration-700 ease-out"></span>
+              </a>
+              <a class="inline-flex items-center px-6 py-3 text-sm font-medium rounded-lg border border-white/20 bg-white/5 text-white hover:bg-white/10 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 backdrop-blur-sm" href="/docs">
+                Browse the API <span class="ml-1 text-ink-400">→</span>
+              </a>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-center gap-6 mt-8 text-xs font-mono text-ink-400">
+              <span class="flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                5-minute setup
+              </span>
+              <span class="text-ink-600 select-none">•</span>
+              <span class="flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Zero vendor lock-in
+              </span>
+              <span class="text-ink-600 select-none">•</span>
+              <span class="flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                OTLP 1.0 Compliant
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <Fragment set:html={footer} />
+
+  <!-- Interactive copy button logic -->
+  <script is:inline>
+    document.querySelectorAll('.quick-copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const textToCopy = btn.getAttribute('data-copy');
+        if (!textToCopy) return;
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          const origHtml = btn.innerHTML;
+          btn.innerHTML = `
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span class="text-emerald-400 font-semibold">Copied!</span>
+          `;
+          setTimeout(() => {
+            btn.innerHTML = origHtml;
+          }, 2000);
+        } catch (e) {
+          console.error('Failed to copy', e);
+        }
+      });
+    });
+  </script>
 </BaseLayout>

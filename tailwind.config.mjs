@@ -2,6 +2,9 @@
 export default {
   content: [
     './src/**/*.{astro,html,js,ts}',
+    'src/**/*.{astro,html,js,ts}',
+    './src/pages/observability.astro',
+    './src/pages/architecture.astro',
     './src/pages/index.astro',
     './src/bodies/index.body.html',
     './src/pages/pricing.astro',
