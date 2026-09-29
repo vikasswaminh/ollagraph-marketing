@@ -935,6 +935,12 @@ summary,
 }
 
 @media (max-width: 920px) {
+  .nav-inner {
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+  }
+
   .nav-links {
     display: none;
     position: absolute;
@@ -958,12 +964,18 @@ summary,
     display: flex;
   }
 
+  .nav-right {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
   .nav-burger {
     display: inline-flex;
     align-items: center;
     color: var(--text);
     cursor: pointer;
     padding: 4px;
+    flex-shrink: 0;
   }
 
   .btn.nav-hide-sm,
@@ -977,6 +989,84 @@ summary,
     margin-top: 10px;
     padding-top: 12px;
     border-top: 1px solid var(--border);
+  }
+}
+
+/* ── Mobile: comfortable touch target for burger + full-width mobile CTA ── */
+@media (max-width: 768px) {
+  .container-wide {
+    padding: 0 16px;
+  }
+
+  .nav-inner {
+    gap: 8px;
+  }
+
+  .nav-logo {
+    gap: 6px;
+    font-size: 18px !important;
+  }
+
+  .nav-logo svg {
+    width: 26px;
+    height: 29px;
+  }
+
+  .nav-logo span,
+  .nav-logo .nav-brand-name {
+    font-size: 18px !important;
+  }
+
+  .nav-right {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .nav-right .btn-primary {
+    padding: 0 10px;
+    height: 32px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .nav-burger {
+    /* 40px touch target with 44px hit-box via min-size */
+    min-width: 40px;
+    min-height: 40px;
+    width: 40px;
+    height: 40px;
+    padding: 6px;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .nav-mobile-cta .btn,
+  .nav-mobile-cta .btn-primary,
+  .nav-mobile-cta .btn-ghost {
+    flex: 1 1 auto;
+    height: 40px;
+    justify-content: center;
+  }
+
+  .nav-link {
+    /* taller, easier-to-tap rows in the mobile dropdown */
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 380px) {
+  .container-wide {
+    padding: 0 12px;
+  }
+
+  .nav-logo .badge,
+  .nav-logo .badge-mute,
+  .nav-logo .nav-badge-beta {
+    display: none !important;
+  }
+
+  .nav-right .btn-arrow {
+    display: none;
   }
 }
 
@@ -2742,6 +2832,51 @@ summary,
 .api-panes pre,
 .code-body {
   max-width: 100%;
+}
+
+/* ── Mobile: stack the API request/response panes + trust strip vertically ──
+   Desktop keeps the 0.84fr / 1.16fr two-column split (unchanged). On phones
+   the two panes become a single readable column; the trust strip collapses
+   from 3-across to 1-across. */
+@media (max-width: 768px) {
+  .api-panes {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  /* Replace the left border separator with a top border when stacked */
+  .api-pane+.api-pane {
+    border-left: 0;
+    border-top: 1px solid #1E293B;
+  }
+
+  .api-trust {
+    grid-template-columns: 1fr;
+  }
+
+  .api-trust>div+div {
+    border-left: 0;
+    border-top: 1px solid #1E293B;
+  }
+
+  /* Hero stats: allow the hairline-divided spec readout to wrap on phones
+     instead of overflowing horizontally. */
+  .hero-stats {
+    flex-wrap: wrap;
+    gap: 6px 0;
+    max-width: 100%;
+  }
+
+  .hero-stats span {
+    padding: 4px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-stats {
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+  }
 }
 
 /* ─── Stitch Technical Precision Animations ─── */
