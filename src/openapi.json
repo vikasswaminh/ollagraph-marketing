@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "info": {
         "title": "Ollagraph API",
-        "description": "**Ollagraph** is web infrastructure for AI agents \u00e2\u20ac\u201d 197 endpoints across fetch, extract, audit, intelligence, and AEO/SEO, all behind one Bearer token and one MCP server.\n\nEvery endpoint authenticates the same way: `Authorization: Bearer osk_\u00e2\u20ac\u00a6`. Your API key is created at [app.ollagraph.com](https://app.ollagraph.com/) and is shown once at creation time.\n\nSuccessful calls cost one credit (some premium endpoints cost 3\u00e2\u20ac\u201c5); server-side failures refund automatically. See the [capabilities page](https://ollagraph.com/capabilities) for the full catalog and [docs](https://ollagraph.com/docs) for the operational contract.\n\n## Response headers (every response)\n\n| Header | What it tells you | Standard |\n| --- | --- | --- |\n| `x-request-id` | Stable correlation ID; pass back to support, grep in your logs. | de-facto |\n| `traceparent` | Our server-side OTel trace + span ID, so you can correlate with your own trace. | W3C Trace Context |\n| `server-timing` | Wall-clock breakdown: at minimum `total;dur=<ms>`. Renders natively in Chrome DevTools. | W3C Server-Timing |\n| `x-credits-cost` / `x-credits-charged` / `x-credits-balance` | Sticker cost, what we actually deducted, what's left after this call. | \u00e2\u20ac\u201d |\n| `x-tier-used` | Which fetch tier served the call (`direct`, `render`, `residential`). | \u00e2\u20ac\u201d |\n| `x-cascade-path` | Full ordered list of tiers we attempted before one succeeded. | \u00e2\u20ac\u201d |\n| `x-ratelimit-limit` / `RateLimit-Limit` (and `-remaining` / `-reset`) | Token-bucket state for your plan. Both legacy GitHub-style and the IETF draft spelling are emitted. | IETF draft-ietf-httpapi-ratelimit-headers |\n| `Cache-Control: no-store` | Auto-set on every authenticated response so corporate proxies and CDNs don't cache your data. | RFC 7234 |\n| `Deprecation` + `Sunset` + `Link` | Set when you're calling a route scheduled for removal. Empty today; will surface here when we ever deprecate. | RFC 8594 + draft-ietf-httpapi-deprecation |\n| `Idempotency-Replayed: true` | Returned when an `Idempotency-Key` matched a cached response. | Stripe-style |\n\nFree tier: 1,000 credits on signup, every endpoint, no credit card.\n\n_Note: `api.qcrawl.com` continues to serve the same backend during the rebrand transition. New integrations should use `api.ollagraph.com`._",
+        "description": "**Ollagraph** is web infrastructure for AI agents \u2014 197 endpoints across fetch, extract, audit, intelligence, and AEO/SEO, all behind one Bearer token and one MCP server.\n\nEvery endpoint authenticates the same way: `Authorization: Bearer osk_\u2026`. Your API key is created at [app.ollagraph.com](https://app.ollagraph.com/) and is shown once at creation time.\n\nSuccessful calls cost one credit (some premium endpoints cost 3\u20135); server-side failures refund automatically. See the [capabilities page](https://ollagraph.com/capabilities) for the full catalog and [docs](https://ollagraph.com/docs) for the operational contract.\n\n## Response headers (every response)\n\n| Header | What it tells you | Standard |\n| --- | --- | --- |\n| `x-request-id` | Stable correlation ID; pass back to support, grep in your logs. | de-facto |\n| `traceparent` | Our server-side OTel trace + span ID, so you can correlate with your own trace. | W3C Trace Context |\n| `server-timing` | Wall-clock breakdown: at minimum `total;dur=<ms>`. Renders natively in Chrome DevTools. | W3C Server-Timing |\n| `x-credits-cost` / `x-credits-charged` / `x-credits-balance` | Sticker cost, what we actually deducted, what's left after this call. | \u2014 |\n| `x-tier-used` | Which fetch tier served the call (`direct`, `render`, `residential`). | \u2014 |\n| `x-cascade-path` | Full ordered list of tiers we attempted before one succeeded. | \u2014 |\n| `x-ratelimit-limit` / `RateLimit-Limit` (and `-remaining` / `-reset`) | Token-bucket state for your plan. Both legacy GitHub-style and the IETF draft spelling are emitted. | IETF draft-ietf-httpapi-ratelimit-headers |\n| `Cache-Control: no-store` | Auto-set on every authenticated response so corporate proxies and CDNs don't cache your data. | RFC 7234 |\n| `Deprecation` + `Sunset` + `Link` | Set when you're calling a route scheduled for removal. Empty today; will surface here when we ever deprecate. | RFC 8594 + draft-ietf-httpapi-deprecation |\n| `Idempotency-Replayed: true` | Returned when an `Idempotency-Key` matched a cached response. | Stripe-style |\n\nFree tier: 1,000 credits on signup, every endpoint, no credit card.\n\n_Note: `api.qcrawl.com` continues to serve the same backend during the rebrand transition. New integrations should use `api.ollagraph.com`._",
         "termsOfService": "https://ollagraph.com/legal/terms/",
         "contact": {
             "name": "Ollagraph support",
@@ -10,7 +10,7 @@
             "email": "support@ollagraph.com"
         },
         "license": {
-            "name": "Commercial \u00e2\u20ac\u201d see Terms of Service",
+            "name": "Commercial \u2014 see Terms of Service",
             "url": "https://ollagraph.com/legal/terms/"
         },
         "version": "1.0.0"
@@ -22,7 +22,7 @@
         },
         {
             "url": "https://api.qcrawl.com",
-            "description": "Legacy alias \u00e2\u20ac\u201d same backend; new integrations should use api.ollagraph.com"
+            "description": "Legacy alias \u2014 same backend; new integrations should use api.ollagraph.com"
         }
     ],
     "paths": {
@@ -332,7 +332,7 @@
                     "Automation"
                 ],
                 "summary": "Vscode Run Endpoint",
-                "description": "Run a VS Code UI test headless and get structured pass/fail + failure\nscreenshots. **Limited access** \u00e2\u20ac\u201d the submitted code executes in an isolated\ncontainer with network access; authorized/own use only. Returns a job_id;\npoll `GET /v1/jobs/{job_id}`.",
+                "description": "Run a VS Code UI test headless and get structured pass/fail + failure\nscreenshots. **Limited access** \u2014 the submitted code executes in an isolated\ncontainer with network access; authorized/own use only. Returns a job_id;\npoll `GET /v1/jobs/{job_id}`.",
                 "operationId": "vscode_run_endpoint_v1_vscode_runs_post",
                 "parameters": [
                     {
@@ -625,7 +625,7 @@
                     "Account"
                 ],
                 "summary": "Delete My Account",
-                "description": "Permanently delete the signed-in account and all associated data\n(API keys, usage log, credit ledger, OTel forwarders, personal org).\nIrreversible. GDPR/CCPA right-to-erasure.\n\nConfirmation: send `password` (password accounts) or `confirm_email`\n(OAuth-only accounts). If you OWN a team org that still has other members,\ndeletion is refused (409) until you transfer ownership\n(`POST /v1/orgs/{id}/transfer`) or remove the members. An active\nsubscription is cancelled at the next billing date before deletion.\n\nNo scraped content is ever stored on our side, and invoices live with the\npayment provider \u00e2\u20ac\u201d so this removes your complete footprint here.",
+                "description": "Permanently delete the signed-in account and all associated data\n(API keys, usage log, credit ledger, OTel forwarders, personal org).\nIrreversible. GDPR/CCPA right-to-erasure.\n\nConfirmation: send `password` (password accounts) or `confirm_email`\n(OAuth-only accounts). If you OWN a team org that still has other members,\ndeletion is refused (409) until you transfer ownership\n(`POST /v1/orgs/{id}/transfer`) or remove the members. An active\nsubscription is cancelled at the next billing date before deletion.\n\nNo scraped content is ever stored on our side, and invoices live with the\npayment provider \u2014 so this removes your complete footprint here.",
                 "operationId": "delete_my_account_v1_me_delete_post",
                 "parameters": [
                     {
@@ -676,7 +676,7 @@
                     "Account"
                 ],
                 "summary": "Export My Data",
-                "description": "Machine-readable export of all personal data we hold for the signed-in\naccount (GDPR Art. 20 portability). Returns a single JSON document as a\ndownload: profile, credit ledger, usage log (capped \u00e2\u20ac\u201d see `usage.note`),\nAPI-key METADATA (the key secret is never recoverable, so it is never\nincluded), OTel forwarders (auth values masked), and org memberships.\n\nNo scraped content is stored on our side, so none appears here \u00e2\u20ac\u201d the only\nURLs present are your own requested URLs from your usage log.",
+                "description": "Machine-readable export of all personal data we hold for the signed-in\naccount (GDPR Art. 20 portability). Returns a single JSON document as a\ndownload: profile, credit ledger, usage log (capped \u2014 see `usage.note`),\nAPI-key METADATA (the key secret is never recoverable, so it is never\nincluded), OTel forwarders (auth values masked), and org memberships.\n\nNo scraped content is stored on our side, so none appears here \u2014 the only\nURLs present are your own requested URLs from your usage log.",
                 "operationId": "export_my_data_v1_me_export_get",
                 "parameters": [
                     {
@@ -973,7 +973,7 @@
         "/v1/me/cost-estimate": {
             "post": {
                 "summary": "Cost Estimate",
-                "description": "Return what the next call to `endpoint` would cost this user.\n\nNo execution, no charge, no rate-limit consumption. Reads the same\n`ENDPOINT_CREDIT_COST` map the actual billing path uses, applies the\noptional residential-proxy surcharge, and honours BYPASS_PLANS\n(internal / superadmin \u00e2\u2020\u2019 0). Customers price-check before they commit.",
+                "description": "Return what the next call to `endpoint` would cost this user.\n\nNo execution, no charge, no rate-limit consumption. Reads the same\n`ENDPOINT_CREDIT_COST` map the actual billing path uses, applies the\noptional residential-proxy surcharge, and honours BYPASS_PLANS\n(internal / superadmin \u2192 0). Customers price-check before they commit.",
                 "operationId": "cost_estimate_v1_me_cost_estimate_post",
                 "parameters": [
                     {
@@ -1165,7 +1165,7 @@
         "/v1/me/forwarders/{forwarder_id}": {
             "delete": {
                 "summary": "Delete My Forwarder",
-                "description": "Remove a forwarder.\n\nKicks an immediate background refresh so the deleted destination\nstops receiving spans within a few milliseconds \u00e2\u20ac\u201d no privacy concern\nof continuing to forward to an endpoint the customer just removed.\nSpans already buffered inside the soon-to-be-shut-down\nBatchSpanProcessor still flush; spans created after the refresh\ncompletes do not.",
+                "description": "Remove a forwarder.\n\nKicks an immediate background refresh so the deleted destination\nstops receiving spans within a few milliseconds \u2014 no privacy concern\nof continuing to forward to an endpoint the customer just removed.\nSpans already buffered inside the soon-to-be-shut-down\nBatchSpanProcessor still flush; spans created after the refresh\ncompletes do not.",
                 "operationId": "delete_my_forwarder_v1_me_forwarders__forwarder_id__delete",
                 "parameters": [
                     {
@@ -1304,7 +1304,7 @@
             },
             "post": {
                 "summary": "Create My Key",
-                "description": "Mint a new API key. The raw key is returned ONCE; we only store the hash.\n\nIf org_id is supplied (team-org keys), caller must already be a\nmember of that org \u00e2\u20ac\u201d we 403 otherwise. The new key inherits its\nbilling context from the org.",
+                "description": "Mint a new API key. The raw key is returned ONCE; we only store the hash.\n\nIf org_id is supplied (team-org keys), caller must already be a\nmember of that org \u2014 we 403 otherwise. The new key inherits its\nbilling context from the org.",
                 "operationId": "create_my_key_v1_keys_post",
                 "parameters": [
                     {
@@ -1613,7 +1613,7 @@
         "/v1/extract/contacts": {
             "post": {
                 "summary": "Extract Contacts Endpoint",
-                "description": "Pull emails, phone numbers, and social-profile URLs from a text/HTML\nblob the customer supplies. No fetch, no network \u00e2\u20ac\u201d pure regex extraction.",
+                "description": "Pull emails, phone numbers, and social-profile URLs from a text/HTML\nblob the customer supplies. No fetch, no network \u2014 pure regex extraction.",
                 "operationId": "extract_contacts_endpoint_v1_extract_contacts_post",
                 "parameters": [
                     {
@@ -1664,7 +1664,7 @@
         "/v1/extract/tables": {
             "post": {
                 "summary": "Extract Tables Endpoint",
-                "description": "Extract every <table> from an HTML blob as structured JSON.\nHeaders detected from <thead> or all-<th> first rows. Colspan/rowspan\nexpanded. No fetch \u00e2\u20ac\u201d caller supplies the HTML.",
+                "description": "Extract every <table> from an HTML blob as structured JSON.\nHeaders detected from <thead> or all-<th> first rows. Colspan/rowspan\nexpanded. No fetch \u2014 caller supplies the HTML.",
                 "operationId": "extract_tables_endpoint_v1_extract_tables_post",
                 "parameters": [
                     {
@@ -1817,7 +1817,7 @@
         "/v1/aeo/heading-hierarchy-score": {
             "post": {
                 "summary": "Aeo Heading Hierarchy Endpoint",
-                "description": "Audit H1-H6 hierarchy on a page. Surfaces missing H1, multiple H1s,\nhierarchy skips (H2 -> H4 without H3 between), and the count of\nquestion-style headings \u00e2\u20ac\u201d important for AI Overview eligibility.",
+                "description": "Audit H1-H6 hierarchy on a page. Surfaces missing H1, multiple H1s,\nhierarchy skips (H2 -> H4 without H3 between), and the count of\nquestion-style headings \u2014 important for AI Overview eligibility.",
                 "operationId": "aeo_heading_hierarchy_endpoint_v1_aeo_heading_hierarchy_score_post",
                 "parameters": [
                     {
@@ -2225,7 +2225,7 @@
         "/v1/intel/subdomain-enumerate": {
             "post": {
                 "summary": "Intel Subdomain Enumerate Endpoint",
-                "description": "Enumerate subdomains for a domain via Certificate Transparency.\n\nPublic CT logs (crt.sh) \u00e2\u20ac\u201d no DNS brute-forcing, no paid feeds. Returns the\ndeduplicated SAN list. Stale entries are possible since we don't resolve;\npair with a resolver if you need live-only hostnames.",
+                "description": "Enumerate subdomains for a domain via Certificate Transparency.\n\nPublic CT logs (crt.sh) \u2014 no DNS brute-forcing, no paid feeds. Returns the\ndeduplicated SAN list. Stale entries are possible since we don't resolve;\npair with a resolver if you need live-only hostnames.",
                 "operationId": "intel_subdomain_enumerate_endpoint_v1_intel_subdomain_enumerate_post",
                 "parameters": [
                     {
@@ -2276,7 +2276,7 @@
         "/v1/enrich/company": {
             "post": {
                 "summary": "Enrich Company Endpoint",
-                "description": "Lite company profile from a single page. Pulls Organization JSON-LD,\nog:* tags, social anchors, contact patterns. Best when pointed at a\nhomepage or /about \u00e2\u20ac\u201d no paid company-data feeds involved.",
+                "description": "Lite company profile from a single page. Pulls Organization JSON-LD,\nog:* tags, social anchors, contact patterns. Best when pointed at a\nhomepage or /about \u2014 no paid company-data feeds involved.",
                 "operationId": "enrich_company_endpoint_v1_enrich_company_post",
                 "parameters": [
                     {
@@ -2429,7 +2429,7 @@
         "/v1/seo/meta-audit": {
             "post": {
                 "summary": "Seo Meta Audit Endpoint",
-                "description": "Audit a page's SEO meta fields and grade them 0\u00e2\u20ac\u201c100 / A\u00e2\u20ac\u201cF.",
+                "description": "Audit a page's SEO meta fields and grade them 0\u2013100 / A\u2013F.",
                 "operationId": "seo_meta_audit_endpoint_v1_seo_meta_audit_post",
                 "parameters": [
                     {
@@ -2531,7 +2531,7 @@
         "/v1/seo/snippet-candidates": {
             "post": {
                 "summary": "Seo Snippet Candidates Endpoint",
-                "description": "Extract candidate featured-snippet paragraphs, lists, and tables\nfrom an HTML blob OR from a URL we fetch on your behalf. When `url` is\nsupplied with `use_residential_proxy=true`, fetches with JS rendering \u00e2\u20ac\u201d\nfinds snippets on div-soup docs sites.",
+                "description": "Extract candidate featured-snippet paragraphs, lists, and tables\nfrom an HTML blob OR from a URL we fetch on your behalf. When `url` is\nsupplied with `use_residential_proxy=true`, fetches with JS rendering \u2014\nfinds snippets on div-soup docs sites.",
                 "operationId": "seo_snippet_candidates_endpoint_v1_seo_snippet_candidates_post",
                 "parameters": [
                     {
@@ -2633,7 +2633,7 @@
         "/v1/aeo/citation-readiness": {
             "post": {
                 "summary": "Aeo Citation Readiness Endpoint",
-                "description": "Score a page against the post-ChatGPT EEAT signals: numerical specifics,\nnamed entities, authoritative outbound links, author byline, last-updated\ndate, content length. Mechanical scoring \u00e2\u20ac\u201d no LLM call. Opt-in residential\nproxy is available for sites with strict access controls.",
+                "description": "Score a page against the post-ChatGPT EEAT signals: numerical specifics,\nnamed entities, authoritative outbound links, author byline, last-updated\ndate, content length. Mechanical scoring \u2014 no LLM call. Opt-in residential\nproxy is available for sites with strict access controls.",
                 "operationId": "aeo_citation_readiness_endpoint_v1_aeo_citation_readiness_post",
                 "parameters": [
                     {
@@ -2735,7 +2735,7 @@
         "/v1/aeo/page-audit": {
             "post": {
                 "summary": "Aeo Page Audit Endpoint",
-                "description": "Full AEO audit \u00e2\u20ac\u201d runs 9 component probes in parallel and returns one\nheadline 0\u00e2\u20ac\u201c100 score, five category breakdowns, top issues, and ranked\nrecommendations. Bills 3 credits (premium orchestration).",
+                "description": "Full AEO audit \u2014 runs 9 component probes in parallel and returns one\nheadline 0\u2013100 score, five category breakdowns, top issues, and ranked\nrecommendations. Bills 3 credits (premium orchestration).",
                 "operationId": "aeo_page_audit_endpoint_v1_aeo_page_audit_post",
                 "parameters": [
                     {
@@ -2837,7 +2837,7 @@
         "/v1/dns/lookup": {
             "post": {
                 "summary": "Dns Lookup Endpoint",
-                "description": "Look up DNS records for a domain. Pass `type` for a single record type\n(e.g. \"MX\"), or `records` for a list; `type` takes precedence when both are\ngiven. A resolver query \u00e2\u20ac\u201d does NOT require the domain to have an A record.",
+                "description": "Look up DNS records for a domain. Pass `type` for a single record type\n(e.g. \"MX\"), or `records` for a list; `type` takes precedence when both are\ngiven. A resolver query \u2014 does NOT require the domain to have an A record.",
                 "operationId": "dns_lookup_endpoint_v1_dns_lookup_post",
                 "parameters": [
                     {
@@ -3188,7 +3188,7 @@
         "/v1/intel/whois": {
             "post": {
                 "summary": "Intel Whois Endpoint",
-                "description": "WHOIS registry lookup (registrar, creation/expiry dates, name servers).\nA registry lookup \u00e2\u20ac\u201d does NOT require the domain to resolve, so domains\nwhose apex has no A record (e.g. for expiry monitoring) work fine.",
+                "description": "WHOIS registry lookup (registrar, creation/expiry dates, name servers).\nA registry lookup \u2014 does NOT require the domain to resolve, so domains\nwhose apex has no A record (e.g. for expiry monitoring) work fine.",
                 "operationId": "intel_whois_endpoint_v1_intel_whois_post",
                 "parameters": [
                     {
@@ -3389,7 +3389,7 @@
         "/v1/intel/geoip": {
             "post": {
                 "summary": "Intel Geoip Endpoint",
-                "description": "IP geolocation \u00e2\u20ac\u201d country, city, lat/lon, timezone for any public IP.\nBacked by the DB-IP Lite database (CC-BY, db-ip.com). No SSRF guard\nneeded: the IP is only a key into a local DB read, never fetched.",
+                "description": "IP geolocation \u2014 country, city, lat/lon, timezone for any public IP.\nBacked by the DB-IP Lite database (CC-BY, db-ip.com). No SSRF guard\nneeded: the IP is only a key into a local DB read, never fetched.",
                 "operationId": "intel_geoip_endpoint_v1_intel_geoip_post",
                 "parameters": [
                     {
@@ -3440,7 +3440,7 @@
         "/v1/intel/asn": {
             "post": {
                 "summary": "Intel Asn Endpoint",
-                "description": "ASN \u00e2\u2020\u2019 operator name + every routed CIDR prefix.\n\nReuses the same iptoasn.com data the geoip endpoint indexes. Read-only,\nno network. Useful for compiling per-network IP allow/deny lists, mapping\ncustomer infrastructure, or auditing ASN ownership claims.",
+                "description": "ASN \u2192 operator name + every routed CIDR prefix.\n\nReuses the same iptoasn.com data the geoip endpoint indexes. Read-only,\nno network. Useful for compiling per-network IP allow/deny lists, mapping\ncustomer infrastructure, or auditing ASN ownership claims.",
                 "operationId": "intel_asn_endpoint_v1_intel_asn_post",
                 "parameters": [
                     {
@@ -3491,7 +3491,7 @@
         "/v1/intel/geoip/bulk": {
             "post": {
                 "summary": "Intel Geoip Bulk Endpoint",
-                "description": "Bulk IP geolocation \u00e2\u20ac\u201d up to 100 IPs per call.\n\nBilled N credits per N IPs (handled via check_limits_batch). Wraps the\nsame `geoip.lookup()` used by /v1/intel/geoip \u00e2\u20ac\u201d each IP gets the full\nenrichment (country/region/city/lat-lon/timezone/ASN/ISP/postal).",
+                "description": "Bulk IP geolocation \u2014 up to 100 IPs per call.\n\nBilled N credits per N IPs (handled via check_limits_batch). Wraps the\nsame `geoip.lookup()` used by /v1/intel/geoip \u2014 each IP gets the full\nenrichment (country/region/city/lat-lon/timezone/ASN/ISP/postal).",
                 "operationId": "intel_geoip_bulk_endpoint_v1_intel_geoip_bulk_post",
                 "parameters": [
                     {
@@ -3797,7 +3797,7 @@
         "/v1/intel/cookies": {
             "post": {
                 "summary": "Intel Cookies Endpoint",
-                "description": "Set-Cookie header analysis: name, domain, path, SameSite, Secure,\nHttpOnly, Max-Age, Expires, is_session, third-party-or-not. Header\ncookies only \u00e2\u20ac\u201d JS-set cookies need a real browser and are NOT\nvisible from server-side fetch.",
+                "description": "Set-Cookie header analysis: name, domain, path, SameSite, Secure,\nHttpOnly, Max-Age, Expires, is_session, third-party-or-not. Header\ncookies only \u2014 JS-set cookies need a real browser and are NOT\nvisible from server-side fetch.",
                 "operationId": "intel_cookies_endpoint_v1_intel_cookies_post",
                 "parameters": [
                     {
@@ -3899,7 +3899,7 @@
         "/v1/intel/sri-audit": {
             "post": {
                 "summary": "Intel Sri Audit Endpoint",
-                "description": "Subresource Integrity audit. Lists every external <script src>\nand <link rel=stylesheet|preload> on the page, and reports how many\nare pinned with an `integrity` attribute. Supply-chain hygiene\ncheck \u00e2\u20ac\u201d your CDN-hosted JS can be tampered with if you don't pin it.",
+                "description": "Subresource Integrity audit. Lists every external <script src>\nand <link rel=stylesheet|preload> on the page, and reports how many\nare pinned with an `integrity` attribute. Supply-chain hygiene\ncheck \u2014 your CDN-hosted JS can be tampered with if you don't pin it.",
                 "operationId": "intel_sri_audit_endpoint_v1_intel_sri_audit_post",
                 "parameters": [
                     {
@@ -4154,7 +4154,7 @@
         "/v1/intel/dnssec": {
             "post": {
                 "summary": "Intel Dnssec Endpoint",
-                "description": "DNSSEC posture: does the domain publish DNSKEY records, has the\nparent delegated DS, did the upstream resolver set AD on a fresh\nlookup? We surface the three discrete observations rather than try\nto give a single 'is it valid' verdict \u00e2\u20ac\u201d chain validation has too\nmany edge cases (NSEC3, expired sigs, CDS conventions) to compress\ninto one bit honestly.",
+                "description": "DNSSEC posture: does the domain publish DNSKEY records, has the\nparent delegated DS, did the upstream resolver set AD on a fresh\nlookup? We surface the three discrete observations rather than try\nto give a single 'is it valid' verdict \u2014 chain validation has too\nmany edge cases (NSEC3, expired sigs, CDS conventions) to compress\ninto one bit honestly.",
                 "operationId": "intel_dnssec_endpoint_v1_intel_dnssec_post",
                 "parameters": [
                     {
@@ -4205,7 +4205,7 @@
         "/v1/intel/nameservers": {
             "post": {
                 "summary": "Intel Nameservers Endpoint",
-                "description": "Authoritative nameservers for a domain plus the IPv4/IPv6 each\nNS resolves to. Includes a `diversified` boolean \u00e2\u20ac\u201d false means all\nNS sit in the same /16 (single-provider, single point of failure).",
+                "description": "Authoritative nameservers for a domain plus the IPv4/IPv6 each\nNS resolves to. Includes a `diversified` boolean \u2014 false means all\nNS sit in the same /16 (single-provider, single point of failure).",
                 "operationId": "intel_nameservers_endpoint_v1_intel_nameservers_post",
                 "parameters": [
                     {
@@ -4307,7 +4307,7 @@
         "/v1/intel/reverse-dns": {
             "post": {
                 "summary": "Intel Reverse Dns Endpoint",
-                "description": "Reverse-DNS (PTR) lookup. IP \u00e2\u2020\u2019 hostname. Useful for log\nenrichment, abuse handling, and 'is this an AWS EC2 IP or a\nresidential ISP?' at a glance.",
+                "description": "Reverse-DNS (PTR) lookup. IP \u2192 hostname. Useful for log\nenrichment, abuse handling, and 'is this an AWS EC2 IP or a\nresidential ISP?' at a glance.",
                 "operationId": "intel_reverse_dns_endpoint_v1_intel_reverse_dns_post",
                 "parameters": [
                     {
@@ -4358,7 +4358,7 @@
         "/v1/dns/over-https": {
             "post": {
                 "summary": "Dns Over Https Endpoint",
-                "description": "Forward a DNS query through Cloudflare 1.1.1.1 or Google 8.8.8.8\nvia DoH (RFC 8484 JSON encoding). Use when you want a DNS answer\nfrom a specific public resolver without running your own DoH\nclient \u00e2\u20ac\u201d handy for privacy-aware lookups or 'what does Cloudflare\nsee vs Google'.",
+                "description": "Forward a DNS query through Cloudflare 1.1.1.1 or Google 8.8.8.8\nvia DoH (RFC 8484 JSON encoding). Use when you want a DNS answer\nfrom a specific public resolver without running your own DoH\nclient \u2014 handy for privacy-aware lookups or 'what does Cloudflare\nsee vs Google'.",
                 "operationId": "dns_over_https_endpoint_v1_dns_over_https_post",
                 "parameters": [
                     {
@@ -4409,7 +4409,7 @@
         "/v1/intel/ip-reputation": {
             "post": {
                 "summary": "Intel Ip Reputation Endpoint",
-                "description": "Classify an IP \u00e2\u20ac\u201d datacenter / Tor exit / cloud range. Local DB lookup.",
+                "description": "Classify an IP \u2014 datacenter / Tor exit / cloud range. Local DB lookup.",
                 "operationId": "intel_ip_reputation_endpoint_v1_intel_ip_reputation_post",
                 "parameters": [
                     {
@@ -4460,7 +4460,7 @@
         "/v1/intel/url-reputation": {
             "post": {
                 "summary": "Intel Url Reputation Endpoint",
-                "description": "Is this URL (or its host) a known phishing / malware URL? Local lookup\nagainst the abuse.ch URLhaus feed (CC0). Does NOT fetch the URL \u00e2\u20ac\u201d it is\nmatched against the feed only, so there is no SSRF surface.",
+                "description": "Is this URL (or its host) a known phishing / malware URL? Local lookup\nagainst the abuse.ch URLhaus feed (CC0). Does NOT fetch the URL \u2014 it is\nmatched against the feed only, so there is no SSRF surface.",
                 "operationId": "intel_url_reputation_endpoint_v1_intel_url_reputation_post",
                 "parameters": [
                     {
@@ -4511,7 +4511,7 @@
         "/v1/intel/hash-reputation": {
             "post": {
                 "summary": "Intel Hash Reputation Endpoint",
-                "description": "Is this file hash a known malware sample? Lookup against abuse.ch\nMalwareBazaar. Only the hash is sent upstream \u00e2\u20ac\u201d never a file.",
+                "description": "Is this file hash a known malware sample? Lookup against abuse.ch\nMalwareBazaar. Only the hash is sent upstream \u2014 never a file.",
                 "operationId": "intel_hash_reputation_endpoint_v1_intel_hash_reputation_post",
                 "parameters": [
                     {
@@ -4562,7 +4562,7 @@
         "/v1/intel/threat": {
             "post": {
                 "summary": "Intel Threat Endpoint",
-                "description": "One indicator (IP / domain / URL / file hash) \u00e2\u2020\u2019 a combined verdict from\nthe free threat sources we carry: Feodo C2 + IP reputation (IP), URLhaus\n(URL/domain), MalwareBazaar (hash). Type is auto-detected. All free-data.",
+                "description": "One indicator (IP / domain / URL / file hash) \u2192 a combined verdict from\nthe free threat sources we carry: Feodo C2 + IP reputation (IP), URLhaus\n(URL/domain), MalwareBazaar (hash). Type is auto-detected. All free-data.",
                 "operationId": "intel_threat_endpoint_v1_intel_threat_post",
                 "parameters": [
                     {
@@ -4664,7 +4664,7 @@
         "/v1/intel/whoami": {
             "get": {
                 "summary": "Intel Whoami Endpoint",
-                "description": "What does the internet see about you? Pure request-inspection \u00e2\u20ac\u201d the\ncaller's public IP, IP family, geoIP, ASN, datacenter/Tor reputation,\nparsed User-Agent, and a curated echo of the most useful request\nheaders.\n\nAggregator of /v1/intel/geoip + /v1/intel/asn + /v1/intel/ip-reputation\n+ /v1/parse/useragent in one billed call. No outbound network \u00e2\u20ac\u201d every\nlookup is against local databases or the request itself.",
+                "description": "What does the internet see about you? Pure request-inspection \u2014 the\ncaller's public IP, IP family, geoIP, ASN, datacenter/Tor reputation,\nparsed User-Agent, and a curated echo of the most useful request\nheaders.\n\nAggregator of /v1/intel/geoip + /v1/intel/asn + /v1/intel/ip-reputation\n+ /v1/parse/useragent in one billed call. No outbound network \u2014 every\nlookup is against local databases or the request itself.",
                 "operationId": "intel_whoami_endpoint_v1_intel_whoami_get",
                 "parameters": [
                     {
@@ -4705,7 +4705,7 @@
         "/v1/intel/http-versions": {
             "post": {
                 "summary": "Intel Http Versions Endpoint",
-                "description": "Detect which HTTP versions a URL serves: HTTP/1.1, HTTP/2 (via TLS\nALPN), and HTTP/3 (via Alt-Svc advertisement). Also returns the\nnegotiated ALPN protocol, TLS version, cipher, and HSTS posture\n(max_age + includeSubDomains + preload).\n\nh3_advertised reflects the server's Alt-Svc header \u00e2\u20ac\u201d we do not\nactively probe QUIC. h1 + h2 are confirmed at the handshake/HEAD\nlayer. Useful for origin audits (\"is my origin H/3-ready?\") and CDN\nposture checks.",
+                "description": "Detect which HTTP versions a URL serves: HTTP/1.1, HTTP/2 (via TLS\nALPN), and HTTP/3 (via Alt-Svc advertisement). Also returns the\nnegotiated ALPN protocol, TLS version, cipher, and HSTS posture\n(max_age + includeSubDomains + preload).\n\nh3_advertised reflects the server's Alt-Svc header \u2014 we do not\nactively probe QUIC. h1 + h2 are confirmed at the handshake/HEAD\nlayer. Useful for origin audits (\"is my origin H/3-ready?\") and CDN\nposture checks.",
                 "operationId": "intel_http_versions_endpoint_v1_intel_http_versions_post",
                 "parameters": [
                     {
@@ -5306,7 +5306,7 @@
         "/v1/convert/html-to-markdown": {
             "post": {
                 "summary": "Html To Markdown Endpoint",
-                "description": "Convert raw HTML to clean Markdown. No fetch \u00e2\u20ac\u201d the customer supplies\nthe HTML directly. Same converter as the scrape endpoint's markdown\noutput, exposed standalone for LLM/RAG pipelines that already have HTML.",
+                "description": "Convert raw HTML to clean Markdown. No fetch \u2014 the customer supplies\nthe HTML directly. Same converter as the scrape endpoint's markdown\noutput, exposed standalone for LLM/RAG pipelines that already have HTML.",
                 "operationId": "html_to_markdown_endpoint_v1_convert_html_to_markdown_post",
                 "parameters": [
                     {
@@ -5408,7 +5408,7 @@
         "/v1/extract/document": {
             "post": {
                 "summary": "Extract Document Endpoint",
-                "description": "Extract a PDF into STRUCTURED JSON via Docling \u00e2\u20ac\u201d text blocks with labels,\ntables with cells, reading order, and page layout, plus markdown. For\ndocument-AI workflows (invoices, receipts, forms, reports) where structure\nmatters, not just text. The `document` field is Docling's lossless export.\nIn-memory; never stored. Heavier than /v1/convert/pdf-to-markdown.",
+                "description": "Extract a PDF into STRUCTURED JSON via Docling \u2014 text blocks with labels,\ntables with cells, reading order, and page layout, plus markdown. For\ndocument-AI workflows (invoices, receipts, forms, reports) where structure\nmatters, not just text. The `document` field is Docling's lossless export.\nIn-memory; never stored. Heavier than /v1/convert/pdf-to-markdown.",
                 "operationId": "extract_document_endpoint_v1_extract_document_post",
                 "parameters": [
                     {
@@ -5459,7 +5459,7 @@
         "/v1/transcribe": {
             "post": {
                 "summary": "Transcribe Endpoint",
-                "description": "Transcribe audio (or a video's audio track) to text + timestamped\nsegments, auto-detecting language. Provide `audio_url` (we download it,\nSSRF-guarded) or `audio_base64`. Owned ASR (faster-whisper) on our own infra\n\u00e2\u20ac\u201d free-data, no per-minute vendor fee. v1 is synchronous with a 5-minute\naudio cap; long-form async is coming.",
+                "description": "Transcribe audio (or a video's audio track) to text + timestamped\nsegments, auto-detecting language. Provide `audio_url` (we download it,\nSSRF-guarded) or `audio_base64`. Owned ASR (faster-whisper) on our own infra\n\u2014 free-data, no per-minute vendor fee. v1 is synchronous with a 5-minute\naudio cap; long-form async is coming.",
                 "operationId": "transcribe_endpoint_v1_transcribe_post",
                 "parameters": [
                     {
@@ -5510,7 +5510,7 @@
         "/v1/search": {
             "post": {
                 "summary": "Search Endpoint",
-                "description": "**Beta.** Multi-engine web search: queries several major\nsearch engines in parallel, then merges and de-duplicates the results, ranking a\nresult higher when more engines agree on it. Bing, DuckDuckGo and Google are the\ndefaults; Bing and DuckDuckGo are the most reliable, Google is best-effort (if it is\ncaptcha-blocked it lands in `engines_failed` and the call still succeeds on the\nothers). Each result carries its 1-based organic `rank`.\n\n**Locale + rank:** set `region` (e.g. \"India\"/\"Bangalore\") and `lang` (e.g. \"EN\") to\nlocalize the SERP, `engines:[\"google\"]` for Google's own un-merged ranking, and\n`target_domain` to get a `target` object with where your domain ranks. Locale is\napproximate \u00e2\u20ac\u201d our egress IPs are US/CA/GB, so `region` shifts results toward a locale\nbut is not IP-exact to a city (not a full substitute for local rank tracking, and a\nlive SERP will differ from Search Console average-position by nature). Set `deep=true`\nto retrieve additional result pages. Ecosia is opt-in.",
+                "description": "**Beta.** Multi-engine web search: queries several major\nsearch engines in parallel, then merges and de-duplicates the results, ranking a\nresult higher when more engines agree on it. Bing, DuckDuckGo and Google are the\ndefaults; Bing and DuckDuckGo are the most reliable, Google is best-effort (if it is\ncaptcha-blocked it lands in `engines_failed` and the call still succeeds on the\nothers). Each result carries its 1-based organic `rank`.\n\n**Locale + rank:** set `region` (e.g. \"India\"/\"Bangalore\") and `lang` (e.g. \"EN\") to\nlocalize the SERP, `engines:[\"google\"]` for Google's own un-merged ranking, and\n`target_domain` to get a `target` object with where your domain ranks. Locale is\napproximate \u2014 our egress IPs are US/CA/GB, so `region` shifts results toward a locale\nbut is not IP-exact to a city (not a full substitute for local rank tracking, and a\nlive SERP will differ from Search Console average-position by nature). Set `deep=true`\nto retrieve additional result pages. Ecosia is opt-in.",
                 "operationId": "search_endpoint_v1_search_post",
                 "parameters": [
                     {
@@ -5564,7 +5564,7 @@
                     "Automation"
                 ],
                 "summary": "Screenshot Endpoint",
-                "description": "Render a URL on a real headless Chromium and return a **screenshot**.\n\nFull-page or element-scoped, PNG or JPEG, high-DPI, with viewport/clip and\nwait controls. Returns the raw image bytes by default (`Content-Type:\nimage/png|jpeg`); set `output:\"json\"` for base64 + metadata. Nothing is\nstored \u00e2\u20ac\u201d the image exists only for the life of the request.",
+                "description": "Render a URL on a real headless Chromium and return a **screenshot**.\n\nFull-page or element-scoped, PNG or JPEG, high-DPI, with viewport/clip and\nwait controls. Returns the raw image bytes by default (`Content-Type:\nimage/png|jpeg`); set `output:\"json\"` for base64 + metadata. Nothing is\nstored \u2014 the image exists only for the life of the request.",
                 "operationId": "screenshot_endpoint_v1_screenshot_post",
                 "parameters": [
                     {
@@ -5663,7 +5663,7 @@
         "/v1/convert/xlsx-to-markdown": {
             "post": {
                 "summary": "Xlsx To Markdown Endpoint",
-                "description": "Convert an Excel .xlsx workbook to Markdown \u00e2\u20ac\u201d one section per sheet,\nformatted as Markdown tables.",
+                "description": "Convert an Excel .xlsx workbook to Markdown \u2014 one section per sheet,\nformatted as Markdown tables.",
                 "operationId": "xlsx_to_markdown_endpoint_v1_convert_xlsx_to_markdown_post",
                 "parameters": [
                     {
@@ -5714,7 +5714,7 @@
         "/v1/convert/pptx-to-markdown": {
             "post": {
                 "summary": "Pptx To Markdown Endpoint",
-                "description": "Convert a PowerPoint .pptx deck to Markdown \u00e2\u20ac\u201d one section per slide.\nExtracts titles, bullets, and speaker notes. Image-only slides are flagged.",
+                "description": "Convert a PowerPoint .pptx deck to Markdown \u2014 one section per slide.\nExtracts titles, bullets, and speaker notes. Image-only slides are flagged.",
                 "operationId": "pptx_to_markdown_endpoint_v1_convert_pptx_to_markdown_post",
                 "parameters": [
                     {
@@ -5869,325 +5869,8 @@
                     "Automation"
                 ],
                 "summary": "Render Endpoint",
-                "description": "Render a URL through our managed browser engine and return HTML + metadata.",
+                "description": "Render a URL on a managed headless browser (Cloudflare Browser Rendering) and\nreturn the post-hydration HTML + final URL. Nothing is stored.",
                 "operationId": "render_endpoint_v1_render_post",
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/billing/dodo/checkout": {
-            "post": {
-                "tags": [
-                    "Billing"
-                ],
-                "summary": "Create Dodo Checkout Session",
-                "description": "Create a subscription checkout session.\n\nReturns a hosted-page URL the customer should be redirected to. The\nsubscription is fulfilled asynchronously via our internal webhook.\n\nReturns a mock URL when OBSCURA_BILLING_MODE=mock so the dashboard wiring\ncan be tested before keys are minted.\n\nIdempotency: pass `Idempotency-Key: <uuid>` to make this safe to retry \u00e2\u20ac\u201d\nreplays within 24 h return the cached checkout URL with\n`Idempotency-Replayed: true`. Without the header, every call creates a\nbrand-new Dodo checkout session.",
-                "operationId": "create_dodo_checkout_session_v1_billing_dodo_checkout_post",
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/DodoCheckoutRequest"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/billing/dodo/credits/packs": {
-            "get": {
-                "tags": [
-                    "Billing"
-                ],
-                "summary": "List Dodo Credit Packs",
-                "description": "List configured pay-as-you-go credit packs (one-time purchases).\n\nReturned shape is purposefully minimal \u00e2\u20ac\u201d the dashboard only needs\n{product_id, credits} to render a buy button; price + description\nlive in the Dodo dashboard.",
-                "operationId": "list_dodo_credit_packs_v1_billing_dodo_credits_packs_get",
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/billing/dodo/credits/checkout": {
-            "post": {
-                "tags": [
-                    "Billing"
-                ],
-                "summary": "Create Dodo Credits Checkout",
-                "description": "Pay-as-you-go: buy a one-time credit pack via Dodo. Returns a\nhosted-page URL the customer is redirected to. Credits are granted\nby the webhook on payment.succeeded \u00e2\u20ac\u201d NOT inline here.\n\nUnlike subscription checkout, this does not touch the user's plan.\nA free-tier user can buy a credit pack and stay on free.\n\nIdempotency: pass `Idempotency-Key: <uuid>` to make this safe to retry \u00e2\u20ac\u201d\nreplays within 24 h return the cached checkout URL with\n`Idempotency-Replayed: true`.",
-                "operationId": "create_dodo_credits_checkout_v1_billing_dodo_credits_checkout_post",
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/DodoCreditsCheckoutRequest"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/billing/dodo/subscription": {
-            "get": {
-                "tags": [
-                    "Billing"
-                ],
-                "summary": "Get Dodo Subscription State",
-                "description": "Return the user's current Dodo subscription state.\n\nUsed by the dashboard's BillingView to decide whether to render the\n\"Current subscription\" card with a Cancel button (when is_active=true).",
-                "operationId": "get_dodo_subscription_state_v1_billing_dodo_subscription_get",
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/billing/dodo/subscription/cancel": {
-            "post": {
-                "tags": [
-                    "Billing"
-                ],
-                "summary": "Cancel Dodo Subscription",
-                "description": "Cancel the user's active Dodo subscription at the end of the current\nbilling period. Returns immediately; the plan downgrade is finalised by\nthe `subscription.cancelled` webhook when Dodo fires it.",
-                "operationId": "cancel_dodo_subscription_v1_billing_dodo_subscription_cancel_post",
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/billing/dodo/subscription/change-plan": {
-            "post": {
-                "tags": [
-                    "Billing"
-                ],
-                "summary": "Change Dodo Subscription Plan",
-                "description": "Change the user's active Dodo subscription to a different plan.\n\n`effective_at=immediately` charges a prorated amount and applies now;\n`next_billing_date` defers the swap to renewal (preferred for\ndowngrades). Final plan state is reconciled via the webhook.",
-                "operationId": "change_dodo_subscription_plan_v1_billing_dodo_subscription_change_plan_post",
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/DodoChangePlanRequest"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/billing/dodo/portal": {
-            "post": {
-                "tags": [
-                    "Billing"
-                ],
-                "summary": "Open Dodo Customer Portal",
-                "description": "Mint a Dodo customer-portal session URL for full self-service.\n\nThe portal is Dodo's hosted surface \u00e2\u20ac\u201d supports cancel, plan change,\npayment-method update, and viewing invoices/receipts. Use this in the\ndashboard as the \"Manage billing\" link.",
-                "operationId": "open_dodo_customer_portal_v1_billing_dodo_portal_post",
                 "parameters": [
                     {
                         "name": "authorization",
@@ -6307,7 +5990,7 @@
         "/v1/auth/verify/resend": {
             "post": {
                 "summary": "Auth Verify Resend",
-                "description": "Re-send the email-verification link for an account that hasn't verified\nyet. Always returns success \u00e2\u20ac\u201d it never reveals whether the email exists or is\nalready verified. Throttled per-IP like signup to prevent email-bombing.",
+                "description": "Re-send the email-verification link for an account that hasn't verified\nyet. Always returns success \u2014 it never reveals whether the email exists or is\nalready verified. Throttled per-IP like signup to prevent email-bombing.",
                 "operationId": "auth_verify_resend_v1_auth_verify_resend_post",
                 "requestBody": {
                     "content": {
@@ -6347,7 +6030,7 @@
         "/v1/auth/password/forgot": {
             "post": {
                 "summary": "Auth Password Forgot",
-                "description": "Start a password reset: emails a one-time, 1-hour reset link. Always\nreturns success \u00e2\u20ac\u201d never reveals whether the email is registered. Throttled\nper-IP. This is the self-service recovery for a forgotten password (the\nauthenticated /v1/me/password route still requires the current password).",
+                "description": "Start a password reset: emails a one-time, 1-hour reset link. Always\nreturns success \u2014 never reveals whether the email is registered. Throttled\nper-IP. This is the self-service recovery for a forgotten password (the\nauthenticated /v1/me/password route still requires the current password).",
                 "operationId": "auth_password_forgot_v1_auth_password_forgot_post",
                 "requestBody": {
                     "content": {
@@ -6427,7 +6110,7 @@
         "/v1/auth/login": {
             "post": {
                 "summary": "Auth Login",
-                "description": "Verify password. Returns the user's API key prefix as a hint \u00e2\u20ac\u201d\nthe raw key is not recoverable (we only store its hash). Users who\nhave lost their key should rotate via a future /v1/keys/rotate\nendpoint.",
+                "description": "Verify password. Returns the user's API key prefix as a hint \u2014\nthe raw key is not recoverable (we only store its hash). Users who\nhave lost their key should rotate via a future /v1/keys/rotate\nendpoint.",
                 "operationId": "auth_login_v1_auth_login_post",
                 "requestBody": {
                     "content": {
@@ -6554,7 +6237,7 @@
                     "domain": {
                         "type": "string",
                         "title": "Domain",
-                        "description": "Domain or origin to inspect \u00e2\u20ac\u201d qcrawl.com, https://ollagraph.com, or example.org all accepted."
+                        "description": "Domain or origin to inspect \u2014 qcrawl.com, https://ollagraph.com, or example.org all accepted."
                     }
                 },
                 "type": "object",
@@ -6610,7 +6293,7 @@
                         "maxItems": 5,
                         "minItems": 2,
                         "title": "Urls",
-                        "description": "2\u00e2\u20ac\u201c5 URLs. First entry is treated as 'your' page; the rest are competitors. Bills 3 credits regardless of count."
+                        "description": "2\u20135 URLs. First entry is treated as 'your' page; the rest are competitors. Bills 3 credits regardless of count."
                     }
                 },
                 "type": "object",
@@ -6671,7 +6354,7 @@
                     "url": {
                         "type": "string",
                         "title": "Url",
-                        "description": "Page URL to run the full AEO audit on. Bills 3 credits \u00e2\u20ac\u201d runs 9 component probes in parallel."
+                        "description": "Page URL to run the full AEO audit on. Bills 3 credits \u2014 runs 9 component probes in parallel."
                     }
                 },
                 "type": "object",
@@ -6695,7 +6378,7 @@
                     "use_residential_proxy": {
                         "type": "boolean",
                         "title": "Use Residential Proxy",
-                        "description": "When True, fetches with JS rendering through our premium proxy pool \u00e2\u20ac\u201d sees JSON-LD that's hydrated client-side on Next.js / SvelteKit sites. Bills +3 credits.",
+                        "description": "When True, fetches with JS rendering through our premium proxy pool \u2014 sees JSON-LD that's hydrated client-side on Next.js / SvelteKit sites. Bills +3 credits.",
                         "default": false
                     }
                 },
@@ -7224,32 +6907,6 @@
                     }
                 ]
             },
-            "ConvertOcrRequest": {
-                "properties": {
-                    "image_b64": {
-                        "type": "string",
-                        "title": "Image B64",
-                        "description": "Base64-encoded image bytes (PNG / JPEG / WebP / BMP / TIFF). Max 15 MB after decode."
-                    },
-                    "return_boxes": {
-                        "type": "boolean",
-                        "title": "Return Boxes",
-                        "description": "When True, return bounding boxes + per-region confidence scores alongside the text.",
-                        "default": false
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "image_b64"
-                ],
-                "title": "ConvertOcrRequest",
-                "examples": [
-                    {
-                        "image_b64": "iVBORw0KGgoAAAANSUhEUg...",
-                        "return_boxes": false
-                    }
-                ]
-            },
             "CostEstimateRequest": {
                 "properties": {
                     "endpoint": {
@@ -7369,7 +7026,7 @@
                             }
                         ],
                         "title": "Org Id",
-                        "description": "Org to bind this key to. Defaults to the caller's personal org. To mint a team-org key, pass the team org id \u00e2\u20ac\u201d caller must be a member."
+                        "description": "Org to bind this key to. Defaults to the caller's personal org. To mint a team-org key, pass the team org id \u2014 caller must be a member."
                     },
                     "daily_cap_credits": {
                         "anyOf": [
@@ -7387,7 +7044,7 @@
                     "redact_query_string": {
                         "type": "boolean",
                         "title": "Redact Query String",
-                        "description": "When true, the query string + fragment are stripped from the URL recorded in your usage log for calls made with this key \u00e2\u20ac\u201d for URLs that carry PII or tokens in query params. The path is kept.",
+                        "description": "When true, the query string + fragment are stripped from the URL recorded in your usage log for calls made with this key \u2014 for URLs that carry PII or tokens in query params. The path is kept.",
                         "default": false
                     }
                 },
@@ -7631,154 +7288,6 @@
                     }
                 ]
             },
-            "DodoChangePlanRequest": {
-                "properties": {
-                    "plan": {
-                        "type": "string",
-                        "enum": [
-                            "tiny",
-                            "small",
-                            "medium",
-                            "large"
-                        ],
-                        "title": "Plan",
-                        "description": "Target subscription plan"
-                    },
-                    "effective_at": {
-                        "type": "string",
-                        "enum": [
-                            "immediately",
-                            "next_billing_date"
-                        ],
-                        "title": "Effective At",
-                        "description": "When the change takes effect",
-                        "default": "immediately"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "plan"
-                ],
-                "title": "DodoChangePlanRequest",
-                "examples": [
-                    {
-                        "effective_at": "immediately",
-                        "plan": "medium"
-                    }
-                ]
-            },
-            "DodoCheckoutRequest": {
-                "properties": {
-                    "plan": {
-                        "type": "string",
-                        "title": "Plan",
-                        "description": "Plan to subscribe to. Must be a key in DODO_PLAN_PRODUCT_MAP (typically: tiny | small | medium | large).",
-                        "default": "small",
-                        "examples": [
-                            "small"
-                        ]
-                    },
-                    "country": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                                "maxLength": 2,
-                                "minLength": 2,
-                                "pattern": "^[A-Z]{2}$"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Country",
-                        "description": "ISO 3166-1 alpha-2 country code (e.g. 'US', 'GB', 'DE'). Omit to let the customer fill it in on Dodo's hosted page."
-                    },
-                    "org_id": {
-                        "anyOf": [
-                            {
-                                "type": "integer"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Org Id",
-                        "description": "Bill a TEAM org instead of your personal account. Caller must be owner/admin of the team. Omit for personal billing."
-                    }
-                },
-                "type": "object",
-                "title": "DodoCheckoutRequest",
-                "examples": [
-                    {
-                        "plan": "small"
-                    },
-                    {
-                        "country": "US",
-                        "plan": "medium"
-                    },
-                    {
-                        "org_id": 42,
-                        "plan": "large"
-                    }
-                ]
-            },
-            "DodoCreditsCheckoutRequest": {
-                "properties": {
-                    "product_id": {
-                        "type": "string",
-                        "title": "Product Id",
-                        "description": "Dodo product_id for the credit pack to purchase. Must be a key in DODO_PAYG_PRODUCT_MAP.",
-                        "examples": [
-                            "prod_aaa"
-                        ]
-                    },
-                    "country": {
-                        "anyOf": [
-                            {
-                                "type": "string",
-                                "maxLength": 2,
-                                "minLength": 2,
-                                "pattern": "^[A-Z]{2}$"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Country",
-                        "description": "ISO 3166-1 alpha-2 country code (e.g. 'US', 'GB', 'DE'). Omit to let the customer fill it in on Dodo's hosted page."
-                    },
-                    "org_id": {
-                        "anyOf": [
-                            {
-                                "type": "integer"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Org Id",
-                        "description": "Buy the credit pack for a TEAM org instead of your personal account. Caller must be owner/admin of the team."
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "product_id"
-                ],
-                "title": "DodoCreditsCheckoutRequest",
-                "examples": [
-                    {
-                        "product_id": "prod_aaa"
-                    },
-                    {
-                        "country": "GB",
-                        "product_id": "prod_aaa"
-                    },
-                    {
-                        "org_id": 42,
-                        "product_id": "prod_aaa"
-                    }
-                ]
-            },
             "EmailVerifyRequest": {
                 "properties": {
                     "email": {
@@ -7802,7 +7311,7 @@
                     "url": {
                         "type": "string",
                         "title": "Url",
-                        "description": "Company URL \u00e2\u20ac\u201d typically a homepage or /about page. We extract JSON-LD Organization, og:* tags, social anchors, contact patterns."
+                        "description": "Company URL \u2014 typically a homepage or /about page. We extract JSON-LD Organization, og:* tags, social anchors, contact patterns."
                     },
                     "use_residential_proxy": {
                         "type": "boolean",
@@ -8145,7 +7654,7 @@
                     "hash": {
                         "type": "string",
                         "title": "Hash",
-                        "description": "md5 (32), sha1 (40), or sha256 (64) hex hash to look up on MalwareBazaar. Only the hash is sent upstream \u00e2\u20ac\u201d never a file.",
+                        "description": "md5 (32), sha1 (40), or sha256 (64) hex hash to look up on MalwareBazaar. Only the hash is sent upstream \u2014 never a file.",
                         "examples": [
                             "44d88612fea8a8f36de82e1278abb02f"
                         ]
@@ -8381,7 +7890,7 @@
                     "domain": {
                         "type": "string",
                         "title": "Domain",
-                        "description": "Domain to inspect \u00e2\u20ac\u201d e.g. example.com."
+                        "description": "Domain to inspect \u2014 e.g. example.com."
                     }
                 },
                 "type": "object",
@@ -8550,7 +8059,7 @@
                     "url": {
                         "type": "string",
                         "title": "Url",
-                        "description": "Any URL on the target \u00e2\u20ac\u201d we derive the origin and probe /.well-known/security.txt then /security.txt."
+                        "description": "Any URL on the target \u2014 we derive the origin and probe /.well-known/security.txt then /security.txt."
                     }
                 },
                 "type": "object",
@@ -8719,7 +8228,7 @@
                             }
                         ],
                         "title": "Url",
-                        "description": "URL to fetch \u00e2\u20ac\u201d we'll extract the clean article body and run TextRank over it."
+                        "description": "URL to fetch \u2014 we'll extract the clean article body and run TextRank over it."
                     },
                     "top_k": {
                         "type": "integer",
@@ -9334,7 +8843,7 @@
                             }
                         ],
                         "title": "Engines",
-                        "description": "Search engines to query. Defaults to bing + duckduckgo + google. bing and duckduckgo are the most reliable; google is on by default but best-effort \u00e2\u20ac\u201d it can be captcha-blocked or rate-limited, in which case it is reported in engines_failed and the call still succeeds on the others. Pass engines:[\"google\"] to get Google-only results in Google's own order (no cross-engine merge). ecosia is opt-in and flaky.",
+                        "description": "Search engines to query. Defaults to bing + duckduckgo + google. bing and duckduckgo are the most reliable; google is on by default but best-effort \u2014 it can be captcha-blocked or rate-limited, in which case it is reported in engines_failed and the call still succeeds on the others. Pass engines:[\"google\"] to get Google-only results in Google's own order (no cross-engine merge). ecosia is opt-in and flaky.",
                         "examples": [
                             [
                                 "bing",
@@ -9354,7 +8863,7 @@
                     "deep": {
                         "type": "boolean",
                         "title": "Deep",
-                        "description": "Beta: retrieve additional result pages to return more results than a single page. Slower per call and best-effort \u00e2\u20ac\u201d falls back to standard results if deeper pages are unavailable.",
+                        "description": "Beta: retrieve additional result pages to return more results than a single page. Slower per call and best-effort \u2014 falls back to standard results if deeper pages are unavailable.",
                         "default": false
                     },
                     "region": {
@@ -9367,7 +8876,7 @@
                             }
                         ],
                         "title": "Region",
-                        "description": "Locale/market hint (a country, locale, or city \u00e2\u20ac\u201d e.g. \"India\", \"Bangalore\", \"en-GB\") that shifts results toward that locale. Note: our search egress IPs are US/CA/GB, so region approximates the locale but is not IP-exact to a city; city-level precision needs a local exit.",
+                        "description": "Locale/market hint (a country, locale, or city \u2014 e.g. \"India\", \"Bangalore\", \"en-GB\") that shifts results toward that locale. Note: our search egress IPs are US/CA/GB, so region approximates the locale but is not IP-exact to a city; city-level precision needs a local exit.",
                         "examples": [
                             "India"
                         ]
@@ -9477,7 +8986,7 @@
                             }
                         ],
                         "title": "Url",
-                        "description": "Alternative: page URL to fetch and analyse. When supplied with `use_residential_proxy=true`, fetches with JS rendering \u00e2\u20ac\u201d finds snippet candidates on JS-hydrated docs sites that have 0 <p> tags in their server-rendered HTML."
+                        "description": "Alternative: page URL to fetch and analyse. When supplied with `use_residential_proxy=true`, fetches with JS rendering \u2014 finds snippet candidates on JS-hydrated docs sites that have 0 <p> tags in their server-rendered HTML."
                     },
                     "use_residential_proxy": {
                         "type": "boolean",
@@ -9592,67 +9101,6 @@
                 "examples": [
                     {
                         "format": "markdown",
-                        "url": "https://example.com"
-                    }
-                ]
-            },
-            "SnapshotRequest": {
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "title": "Url",
-                        "description": "Absolute http(s) URL to capture as a single-file MHTML archive.",
-                        "examples": [
-                            "https://example.com"
-                        ]
-                    },
-                    "width": {
-                        "type": "integer",
-                        "maximum": 3840.0,
-                        "minimum": 64.0,
-                        "title": "Width",
-                        "default": 1280
-                    },
-                    "height": {
-                        "type": "integer",
-                        "maximum": 3840.0,
-                        "minimum": 64.0,
-                        "title": "Height",
-                        "default": 720
-                    },
-                    "wait_until": {
-                        "type": "string",
-                        "title": "Wait Until",
-                        "description": "'load' | 'domcontentloaded' | 'networkidle'.",
-                        "default": "load"
-                    },
-                    "delay_ms": {
-                        "type": "integer",
-                        "maximum": 15000.0,
-                        "minimum": 0.0,
-                        "title": "Delay Ms",
-                        "default": 0
-                    },
-                    "include_dom": {
-                        "type": "boolean",
-                        "title": "Include Dom",
-                        "description": "Also return a flattened DOM snapshot.",
-                        "default": false
-                    },
-                    "include_accessibility": {
-                        "type": "boolean",
-                        "title": "Include Accessibility",
-                        "description": "Also return the full accessibility tree.",
-                        "default": false
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "url"
-                ],
-                "title": "SnapshotRequest",
-                "examples": [
-                    {
                         "url": "https://example.com"
                     }
                 ]
@@ -9806,7 +9254,7 @@
                     "indicator": {
                         "type": "string",
                         "title": "Indicator",
-                        "description": "A single indicator \u00e2\u20ac\u201d IP, domain, URL, or file hash. The type is auto-detected and routed to the relevant free threat sources.",
+                        "description": "A single indicator \u2014 IP, domain, URL, or file hash. The type is auto-detected and routed to the relevant free threat sources.",
                         "examples": [
                             "8.8.8.8"
                         ]
@@ -9948,7 +9396,7 @@
                     "url": {
                         "type": "string",
                         "title": "Url",
-                        "description": "URL to check against the URLhaus phishing/malware feed. The URL is matched locally \u00e2\u20ac\u201d we do NOT fetch it.",
+                        "description": "URL to check against the URLhaus phishing/malware feed. The URL is matched locally \u2014 we do NOT fetch it.",
                         "examples": [
                             "http://malware.example/login"
                         ]
@@ -10081,7 +9529,7 @@
                     "testCode"
                 ],
                 "title": "VsCodeRunRequest",
-                "description": "Submit a VS Code UI test (Mocha + ExTester page objects) to run headless\nin an isolated container. Async \u00e2\u20ac\u201d poll GET /v1/jobs/{job_id} for the result.",
+                "description": "Submit a VS Code UI test (Mocha + ExTester page objects) to run headless\nin an isolated container. Async \u2014 poll GET /v1/jobs/{job_id} for the result.",
                 "examples": [
                     {
                         "testCode": "const assert=require('assert');const {VSBrowser,ActivityBar}=require('vscode-extension-tester');describe('smoke',function(){this.timeout(180000);it('workbench renders',async()=>{await VSBrowser.instance.waitForWorkbench();const c=await new ActivityBar().getViewControls();assert.ok(c.length>0);});});",
@@ -10141,8 +9589,8 @@
             "BearerAuth": {
                 "type": "http",
                 "scheme": "bearer",
-                "bearerFormat": "osk_\u00e2\u20ac\u00a6 API key",
-                "description": "Pass your API key as `Authorization: Bearer osk_\u00e2\u20ac\u00a6`. Create or rotate keys at [app.ollagraph.com](https://app.ollagraph.com/)."
+                "bearerFormat": "osk_\u2026 API key",
+                "description": "Pass your API key as `Authorization: Bearer osk_\u2026`. Create or rotate keys at [app.ollagraph.com](https://app.ollagraph.com/)."
             },
             "AdminToken": {
                 "type": "apiKey",
@@ -10171,7 +9619,7 @@
         },
         {
             "name": "Captcha",
-            "description": "Solve reCAPTCHA v3 invisible challenges. v3 only \u00e2\u20ac\u201d by design."
+            "description": "Solve reCAPTCHA v3 invisible challenges. v3 only \u2014 by design."
         },
         {
             "name": "Parsing",
@@ -10179,7 +9627,7 @@
         },
         {
             "name": "Conversion",
-            "description": "Pure HTML \u00e2\u2020\u2019 Markdown transformation. No fetch \u00e2\u20ac\u201d caller supplies the HTML."
+            "description": "Pure HTML \u2192 Markdown transformation. No fetch \u2014 caller supplies the HTML."
         },
         {
             "name": "SEO",
@@ -10203,7 +9651,7 @@
         },
         {
             "name": "Automation",
-            "description": "Run VS Code UI tests headless (ExTester) and get structured pass/fail + failure screenshots. Limited access \u00e2\u20ac\u201d submitted code executes in an isolated container; enabled per-account."
+            "description": "Run VS Code UI tests headless (ExTester) and get structured pass/fail + failure screenshots. Limited access \u2014 submitted code executes in an isolated container; enabled per-account."
         },
         {
             "name": "Jobs",

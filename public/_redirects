@@ -12,6 +12,12 @@
 /actors                                                                                  /capabilities                                                                            301
 /actors/*                                                                                /capabilities                                                                            301
 
+# OCR was retired 2026-10-03 (standalone /v1/convert/ocr removed; scanned PDFs are
+# now OCR'd inline by Docling inside /v1/convert/pdf-to-markdown). Point the retired
+# OCR recipe at the document-conversion recipe.
+/recipes/ocr-images-and-scanned-docs/                                                    /recipes/convert-documents-to-markdown/                                                  301
+/recipes/ocr-images-and-scanned-docs                                                     /recipes/convert-documents-to-markdown/                                                  301
+
 # Legacy sub-docs paths redirect to the right page.
 # NOTE: do NOT add a `/docs/*` catch-all here — the splat matches `/docs/` itself,
 # which CF then 308s back to `/docs` → `/docs/` → … an infinite redirect loop that
