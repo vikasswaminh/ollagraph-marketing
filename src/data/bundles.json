@@ -691,12 +691,6 @@
       },
       {
         "method": "POST",
-        "path": "/v1/convert/ocr",
-        "credits": 1,
-        "summary": "Image OCR."
-      },
-      {
-        "method": "POST",
         "path": "/v1/extract/document",
         "credits": 3,
         "summary": "PDF to structured JSON (Docling): text blocks, tables with cells, reading order, page layout."
@@ -712,7 +706,6 @@
       "title": "Mixed-format knowledge-base ingest",
       "steps": [
         "Inspect the file's MIME type and route to the corresponding /v1/convert/* endpoint.",
-        "For scanned PDFs where pdf-to-markdown returns empty or very low text density, fall back to /v1/convert/ocr page by page.",
         "Post-process the returned markdown into chunks of your preferred size, embed, and write to your store."
       ]
     },
@@ -729,10 +722,6 @@
       {
         "q": "Does pdf-to-markdown preserve tables?",
         "a": "Yes, as markdown table syntax when the layout is recoverable. Complex multi-column layouts with merged cells degrade to plain text rows."
-      },
-      {
-        "q": "What OCR engine backs /convert/ocr?",
-        "a": "Built-in OCR in our standard tier. Layout-aware OCR is in pilot on a separate worker — contact us for access."
       }
     ]
   },
