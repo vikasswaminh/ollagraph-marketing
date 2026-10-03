@@ -12,12 +12,14 @@
 /actors                                                                                  /capabilities                                                                            301
 /actors/*                                                                                /capabilities                                                                            301
 
-# Sub-docs paths redirect to main /docs documentation
+# Legacy sub-docs paths redirect to the right page.
+# NOTE: do NOT add a `/docs/*` catch-all here — the splat matches `/docs/` itself,
+# which CF then 308s back to `/docs` → `/docs/` → … an infinite redirect loop that
+# makes the whole API reference blank. List sub-paths explicitly instead.
 /docs/aeo-api/                                                                           /docs                                                                                    301
 /docs/aeo-api                                                                            /docs                                                                                    301
 /docs/aeo/                                                                               /aeo                                                                                     301
 /docs/aeo                                                                                /aeo                                                                                     301
-/docs/*                                                                                  /docs                                                                                    301
 
 # Schemas directory redirects
 /schemas                                                                                 /tools/schema-generator                                                                  301
