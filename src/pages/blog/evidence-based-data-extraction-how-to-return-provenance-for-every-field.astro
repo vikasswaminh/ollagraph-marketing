@@ -329,7 +329,7 @@ class ProductRecord(BaseModel):
     specs: List[ProductSpec] = Field(..., min_items=1)
     last_updated: datetime
 
-OLLAGRAPH_API_URL = "https://api.ollagraph.com/v1/extract/document"
+OLLAGRAPH_API_URL = "https://api.ollagraph.com/v1/extract/structured"
 API_KEY = "og_your_api_key_here"
 
 def extract_with_provenance(url: str, schema_model: BaseModel, depth: str = "full") -&gt; Dict[str, Any]:
@@ -390,7 +390,7 @@ const ProductRecordSchema = z.object(&#123;
 type ProductRecord = z.infer&lt;typeof ProductRecordSchema&gt;;
 
 async function extractWithProvenance&lt;T&gt;(url: string, schema: z.ZodSchema&lt;T&gt;): Promise&lt;&#123; data: T; provenance: any &#125;&gt; &#123;
-  const resp = await fetch("https://api.ollagraph.com/v1/extract/document", &#123;
+  const resp = await fetch("https://api.ollagraph.com/v1/extract/structured", &#123;
     method: "POST",
     headers: &#123; Authorization: "Bearer og_your_api_key_here", "Content-Type": "application/json" &#125;,
     body: JSON.stringify(&#123; url, schema_contract: schema.description, execution_mode: "auto", provenance: &#123; enabled: true, depth: "full", includeRawHtml: true, includeDomSnapshot: false, includeNormalizationTrace: true &#125; &#125;),

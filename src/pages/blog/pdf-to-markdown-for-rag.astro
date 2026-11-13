@@ -56,7 +56,7 @@ const faqs = [
 <p>For years, the standard way to get text out of a PDF was to treat it like a printed page and run optical character recognition. OCR gave you a string of words in reading order. That was enough for keyword search and simple indexing. It was not enough for semantic retrieval.</p>
 <p>Early RAG systems in 2022 and 2023 often used exactly this approach. They extracted text with basic PDF parsers or OCR tools, split it every 500 characters, and embedded the chunks. The results were acceptable for simple questions on clean documents. They fell apart on anything with tables, columns, footnotes, or mixed layouts.</p>
 <p>Three things changed around 2024 and 2025.</p>
-<p>First, layout-aware models arrived. Ollagraph and similar extraction systems began using vision transformers or PDF operator analysis to recover headings, tables, and reading order instead of guessing from raw text.</p>
+<p>First, layout-aware models arrived. Extraction systems began using vision transformers or PDF operator analysis to recover headings, tables, and reading order instead of guessing from raw text.</p>
 <p>Second, Markdown became the preferred intermediate format for RAG preprocessing. Unlike HTML, it is readable to both humans and LLMs. Unlike plain text, it preserves hierarchy. Unlike JSON, it does not explode token counts with nested objects.</p>
 <p>Third, retrieval evaluation matured. Teams stopped measuring chunk recall and started measuring answer correctness, citation precision, and faithfulness. That shift made extraction quality visible. A pipeline that looked fine on cosine similarity could still fail on real questions because the chunks lacked structure.</p>
 
@@ -149,7 +149,7 @@ Paragraph text in a single logical flow, even if the original was laid out in tw
 [Generation Layer]  -&gt; LLM answers from retrieved context</code></pre>
 
 <h3>Extraction Layer</h3>
-<p>This layer turns bytes into structured text. The best approach depends on the PDF. Native digital PDFs with embedded fonts can be parsed from operators. Scanned PDFs need OCR. Mixed PDFs need both. Layout-aware parsers such as Marker, Docling, and the Ollagraph PDF-to-Markdown API use vision models or PDF operator analysis to recover structure.</p>
+<p>This layer turns bytes into structured text. The best approach depends on the PDF. Native digital PDFs with embedded fonts can be parsed from operators. Scanned PDFs need OCR. Mixed PDFs need both. Layout-aware parsers such as Marker and Docling use vision models or PDF operator analysis to recover structure. The Ollagraph PDF-to-Markdown API reads the text layer of digital PDFs and flags scans; it does not run OCR.</p>
 
 <h3>Structure Layer</h3>
 <p>The output of extraction is Markdown. Headings become # through ######. Tables become pipe tables. Lists become - or 1. items. Code blocks become triple-backtick fences. Captions and footnotes become italicized paragraphs. The goal is a single coherent Markdown document that a human could read and a chunker can navigate.</p>
@@ -185,7 +185,7 @@ High-volume ingestion	Managed API such as Ollagraph	Removes tuning and scaling b
 <p>Vision models treat each page as an image and predict Markdown or structured text directly. This works well on scanned documents and complex layouts but is slower and more expensive. Marker and Nougat use this approach. The quality is high for academic papers and reports.</p>
 
 <h3>Hybrid Extraction</h3>
-<p>A hybrid pipeline first tries operator-based extraction, measures confidence, and falls back to OCR or vision models for low-confidence pages. This balances speed and accuracy. The Ollagraph API uses a hybrid approach with automatic page classification.</p>
+<p>A hybrid pipeline first tries operator-based extraction, measures confidence, and falls back to OCR or vision models for low-confidence pages. This balances speed and accuracy.</p>
 
 <h3>When to Use OCR</h3>
 <p>Use OCR when pages are image-based or when operator extraction returns empty or garbled text. Modern OCR engines such as Tesseract, EasyOCR, and PaddleOCR can output text with bounding boxes. For RAG, bounding boxes matter because they let you reconstruct reading order and detect tables.</p>
@@ -592,7 +592,7 @@ tables_detected	integer	Number of tables found</code></pre>
 <h2>Alternatives and Comparison</h2>
 <p>Several tools can convert PDFs to Markdown for RAG. Here is how they compare.</p>
 <pre><code>Tool | Approach | Strengths | Weaknesses | Best For
-Ollagraph API | Hybrid layout + OCR + cleaning | Accurate, fast, chunk-ready output, managed scaling | Paid service | Production RAG pipelines
+Ollagraph API | Text-layer extraction, scans flagged (no OCR) | Accurate, fast, chunk-ready output, managed scaling | Paid service | Production RAG pipelines
 Marker | Vision-based | Excellent on academic papers and reports | Requires GPU for speed, setup complexity | Research papers, self-hosted teams
 Docling | Layout-aware operator + vision | IBM-backed, good table handling | Newer, evolving API | Enterprise document processing
 Nougat | Vision + LaTeX | Best for math and scientific papers | Slow, specialized | Academic papers with equations
@@ -601,7 +601,7 @@ pdfplumber | Operator-based | Good table extraction | Slower on large documents 
 Tesseract OCR | OCR only | Mature, many languages | No layout understanding | Scanned documents</code></pre>
 
 <h2>When to Choose Ollagraph</h2>
-<p>Choose Ollagraph when you need a production pipeline without maintaining parsers, GPUs, or OCR workers. The API handles document classification, structure preservation, cleaning, and chunk-ready Markdown output. It is the fastest path from PDF upload to accurate retrieval.</p>
+<p>Choose Ollagraph when you need a production pipeline on digital PDFs without maintaining parsers or GPUs. The API handles document classification, structure preservation, cleaning, and chunk-ready Markdown output. It is the fastest path from PDF upload to accurate retrieval.</p>
 
 <h2>When to Build In-House</h2>
 <p>Build in-house when you have unusual document types, strict data residency requirements, or a team with deep PDF parsing expertise. Be prepared to spend significant time on heuristics, table reconstruction, and evaluation.</p>

@@ -5405,57 +5405,6 @@
                 ]
             }
         },
-        "/v1/extract/document": {
-            "post": {
-                "summary": "Extract Document Endpoint",
-                "description": "Extract a PDF into STRUCTURED JSON via Docling \u2014 text blocks with labels,\ntables with cells, reading order, and page layout, plus markdown. For\ndocument-AI workflows (invoices, receipts, forms, reports) where structure\nmatters, not just text. The `document` field is Docling's lossless export.\nIn-memory; never stored. Heavier than /v1/convert/pdf-to-markdown.",
-                "operationId": "extract_document_endpoint_v1_extract_document_post",
-                "parameters": [
-                    {
-                        "name": "authorization",
-                        "in": "header",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "title": "Authorization"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "$ref": "#/components/schemas/ExtractDocumentRequest"
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                },
-                "tags": [
-                    "Extraction"
-                ]
-            }
-        },
         "/v1/transcribe": {
             "post": {
                 "summary": "Transcribe Endpoint",
@@ -6457,6 +6406,12 @@
                     },
                     "format": {
                         "type": "string",
+                        "enum": [
+                            "markdown",
+                            "html",
+                            "text",
+                            "links"
+                        ],
                         "title": "Format",
                         "default": "markdown"
                     },
@@ -6644,6 +6599,12 @@
                     },
                     "format": {
                         "type": "string",
+                        "enum": [
+                            "markdown",
+                            "html",
+                            "text",
+                            "links"
+                        ],
                         "title": "Format",
                         "default": "markdown"
                     },
@@ -6954,6 +6915,7 @@
                         "maximum": 10.0,
                         "minimum": 1.0,
                         "title": "Depth",
+                        "description": "How many URL path levels below the start URL to crawl (like Firecrawl's maxDepth), not link hops. A trailing slash counts as a level: /docs/ is one deeper than /docs.",
                         "default": 3
                     },
                     "concurrency": {
@@ -7361,25 +7323,6 @@
                 "examples": [
                     {
                         "text": "Reach us at sales@example.com or +1 (415) 555-0142. We're on https://twitter.com/example and https://linkedin.com/in/jane-doe."
-                    }
-                ]
-            },
-            "ExtractDocumentRequest": {
-                "properties": {
-                    "file_base64": {
-                        "type": "string",
-                        "title": "File Base64",
-                        "description": "Base64-encoded PDF to extract into structured JSON (Docling): text blocks with labels, tables with cells, reading order, page layout, plus markdown. Max ~3.75 MB file (5 MB base64). Processed in-memory; never stored."
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "file_base64"
-                ],
-                "title": "ExtractDocumentRequest",
-                "examples": [
-                    {
-                        "file_base64": "<base64-encoded-pdf>"
                     }
                 ]
             },

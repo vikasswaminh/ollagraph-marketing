@@ -323,17 +323,6 @@ export const LEGACY_BLOG_POSTS: LegacyBlogPost[] = [
     ]
   },
   {
-    "slug": "ocr-for-rag-how-layout",
-    "title": "OCR for RAG: Why Layout Preservation Boosts Accuracy",
-    "description": "Plain OCR flattens structure and degrades RAG retrieval. Layout-preserving OCR keeps document semantics intact, improving answer accuracy and reducing hallucinations.",
-    "pubDate": "2026-07-27",
-    "readingTime": 26,
-    "tags": [
-      "guides",
-      "rag"
-    ]
-  },
-  {
     "slug": "ollagraph-n8n-integration",
     "title": "Ollagraph for n8n: web scraping, crawling, and enrichment (a Firecrawl alternative)",
     "description": "Add web scraping, crawling, structured extraction, and domain intelligence to your n8n workflows with Ollagraph — through the HTTP Request node, no custom code. Includes ready workflows and the async-crawl pattern.",

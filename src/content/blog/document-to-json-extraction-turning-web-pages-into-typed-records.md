@@ -348,7 +348,7 @@ class JobPostingRecord(BaseModel):
 
 # 2. Document Extraction Client
 def extract_typed_job_posting(target_url: str) -> JobPostingRecord:
-    ollagraph_api_url = "https://api.ollagraph.com/v1/extract/document"
+    ollagraph_api_url = "https://api.ollagraph.com/v1/extract/structured"
     api_key = "OG_SECRET_KEY"
 
     payload = {
