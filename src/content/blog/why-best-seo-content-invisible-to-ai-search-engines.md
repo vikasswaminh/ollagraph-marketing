@@ -192,53 +192,64 @@ Store URL, query, before/after extracts, scores, and the diff of the answer bloc
 - A list of ranked URLs that underperform in AI answers
 - Target queries mapped to each URL
 
-### Step 1: Install the client
+### Step 1: Install an HTTP client
+
+There is no SDK to install. The API is plain HTTPS with a Bearer key, so any HTTP client works.
 
 ```bash
-pip install ollagraph-client
+pip install requests
+export OLLAGRAPH_API_KEY="osk_your_key_here"
 ```
 
-Or for Node.js:
-
-```bash
-npm install ollagraph-client
-```
+On Node.js 22+, the built-in `fetch` is enough; there is nothing to install.
 
 ### Step 2: Simulate fetch and extract the AI-visible body
 
 ```python
-from ollagraph import OllagraphClient
+import os
 
-client = OllagraphClient(api_key="your_api_key")
+import requests
+
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
+
+
+def post(path, body):
+    resp = requests.post(f"{API}{path}", json=body, headers=HEADERS, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
 
 url = "https://example.com/blog/your-ranked-pillar"
 
-# What an AI-like fetch path can access / extract
-sim = client.aeo.llm_fetch_simulator(url=url)
+# What each named AI crawler receives: status, content length,
+# visible-text preview, plus JS-only and cloaking detection
+sim = post("/v1/aeo/llm-fetch-simulator", {"url": url})
 
 # Clean main-content extraction
-clean = client.extract.clean(url=url, include_metadata=True)
+clean = post("/v1/extract/clean", {"url": url})
 
 # LLM-ready chunks for RAG-style inspection
-llm_ready = client.scrape.llm_ready(url=url)
+llm_ready = post("/v1/scrape/llm-ready", {"url": url})
 
-# Markdown view of the HTML (structure survival check)
-md = client.convert.html_to_markdown(url=url)
+# Markdown view of the page (structure survival check). If you already
+# have the HTML, POST it as {"html": ...} to /v1/convert/html-to-markdown.
+md = post("/v1/scrape", {"url": url, "format": "markdown"})
 
-print("simulator_status:", sim.get("status"))
-print("extract_preview:", (clean.get("content") or "")[:500])
+print("simulator_summary:", sim.get("summary"))
 print("chunk_count:", len(llm_ready.get("chunks") or []))
-print("markdown_preview:", (md.get("markdown") or "")[:500])
+print("extract:", clean)
+print("markdown:", md)
 ```
 
 ### Step 3: Score citation readiness and run a page audit
 
 ```python
-crs = client.aeo.citation_readiness(url=url)
-audit = client.aeo.page_audit(url=url)
+crs = post("/v1/aeo/citation-readiness", {"url": url})
+audit = post("/v1/aeo/page-audit", {"url": url})
 
-print("citation_readiness:", crs.get("score"), crs.get("subscores"))
-print("page_audit_findings:", audit.get("findings"))
+print("citation_readiness:", crs.get("score"), crs.get("signals"))
+print("page_audit_top_issues:", audit.get("top_issues"))
 ```
 
 ### Step 4: Build a remediation orchestrator
@@ -246,6 +257,8 @@ print("page_audit_findings:", audit.get("findings"))
 ```python
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+
+import requests
 
 @dataclass
 class InvisibilityReport:
@@ -260,17 +273,22 @@ class InvisibilityReport:
 
 class SeoToAeoRemediation:
     def __init__(self, api_key: str):
-        self.client = OllagraphClient(api_key=api_key)
+        self.headers = {"Authorization": f"Bearer {api_key}"}
+
+    def _post(self, path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        resp = requests.post(f"https://api.ollagraph.com{path}", json=body,
+                             headers=self.headers, timeout=120)
+        resp.raise_for_status()
+        return resp.json()
 
     def diagnose(self, url: str, query: str) -> InvisibilityReport:
-        sim = self.client.aeo.llm_fetch_simulator(url=url)
-        clean = self.client.extract.clean(url=url, include_metadata=True)
-        crs = self.client.aeo.citation_readiness(url=url)
-        audit = self.client.aeo.page_audit(url=url)
-        chunks = self.client.scrape.llm_ready(url=url).get("chunks") or []
+        sim = self._post("/v1/aeo/llm-fetch-simulator", {"url": url})
+        crs = self._post("/v1/aeo/citation-readiness", {"url": url})
+        audit = self._post("/v1/aeo/page-audit", {"url": url})
+        chunks = self._post("/v1/scrape/llm-ready", {"url": url}).get("chunks") or []
 
-        content = (clean.get("content") or "").strip()
-        modes = self._detect_modes(content, chunks, sim, audit)
+        content = " ".join(c.get("text") or "" for c in chunks).strip()
+        modes = self._detect_modes(content, chunks, sim, crs)
         issues = self._top_issues(crs, audit, modes)
 
         return InvisibilityReport(
@@ -289,7 +307,7 @@ class SeoToAeoRemediation:
             },
         )
 
-    def _detect_modes(self, content: str, chunks: List[Dict], sim: Dict, audit: Dict) -> List[str]:
+    def _detect_modes(self, content: str, chunks: List[Dict], sim: Dict, crs: Dict) -> List[str]:
         modes: List[str] = []
         head = content[:600].lower()
 
@@ -306,11 +324,11 @@ class SeoToAeoRemediation:
         if content and content.lower().count(" we ") + content.lower().count(" our ") > 25:
             modes.append("entity_fog")
 
-        if (sim or {}).get("needs_js") or (sim or {}).get("empty_static_body"):
+        if ((sim or {}).get("summary") or {}).get("js_only_count", 0) > 0:
             modes.append("render_mismatch")
 
-        findings = str((audit or {}).get("findings") or "").lower()
-        if "author" in findings or "date" in findings or "freshness" in findings:
+        signals = (crs or {}).get("signals") or {}
+        if not signals.get("has_author_byline") or not signals.get("has_last_updated"):
             modes.append("authority_silence")
 
         return modes or ["unknown_review_manually"]
@@ -319,12 +337,12 @@ class SeoToAeoRemediation:
         issues = [f"mode:{m}" for m in modes]
         for item in (crs or {}).get("recommendations") or []:
             issues.append(str(item))
-        for item in (audit or {}).get("priority_fixes") or []:
+        for item in (audit or {}).get("top_issues") or []:
             issues.append(str(item))
         return issues[:12]
 
     def rescore(self, report: InvisibilityReport) -> InvisibilityReport:
-        crs = self.client.aeo.citation_readiness(url=report.url)
+        crs = self._post("/v1/aeo/citation-readiness", {"url": report.url})
         report.readiness_after = (crs or {}).get("score")
         report.evidence["citation_readiness_after"] = crs
         return report
@@ -366,7 +384,7 @@ We audited 120 commercially ranked URLs (positions 1–10 for their primary quer
 | **Render-mismatch on article body** | 14% | 3% |
 | **Entity-fog flag on answer blocks** | 48% | 16% |
 | **Mean time to remediate one URL (editorial)** | — | 45–90 min |
-| **API cost per URL diagnose+rescore** | — | ~8–14 credits |
+| **API cost per URL diagnose+rescore** | — | A handful of credits (see `/v1/me/cost-estimate`) |
 
 ### Interpretation:
 
@@ -375,7 +393,7 @@ We audited 120 commercially ranked URLs (positions 1–10 for their primary quer
 - Schema-only changes without visible answer rewrites produced weak lifts.
 - A one-hour remediation pass per money page is usually enough to clear the worst failure mode.
 
-**Cost framing for a 50-page pilot:** diagnosis + rescore is typically low double-digit credits per URL depending on which audit orchestrators you call. The expensive part is editor time—and that is also where the value is.
+**Cost framing for a 50-page pilot:** diagnosis + rescore costs a handful of credits per URL, depending on which endpoints you call; `POST /v1/me/cost-estimate` returns the current cost of each. The expensive part is editor time—and that is also where the value is.
 
 ## 9. Security considerations
 

@@ -14,22 +14,22 @@ tags: ['guides', 'ai-search']
 
 Connecting Cursor IDE to a web search Model Context Protocol (MCP) server using [Ollagraph](https://ollagraph.com) gives your AI coding agent real-time, multi-engine search capabilities and web-scraping powers directly inside your editor. This setup—much like [integrating MCP web tools into LangGraph multi-agent workflows](/blog/integrating-mcp-web-tools-into-langgraph-autonomous-multi-agent-workflows/)—eliminates model knowledge cutoffs, hallucinated API syntax, and stale library documentation.
 
-To configure it, add an entry to your workspace's `.cursor/mcp.json` (or Cursor's global features settings) pointing to `@ollagraph/mcp` via `npx` with your `OLLAGRAPH_API_KEY`. Once connected, Cursor automatically discovers over 219 live web tools—enabling it to search the live web, render client-side JavaScript, perform [entity extraction for AI agents](/blog/entity-extraction-for-ai-agents-extract-companies-people-products-and-more/), and ingest documentation as clean Markdown without breaking your coding flow.
+To configure it, add an entry to your workspace's `.cursor/mcp.json` (or Cursor's global MCP settings) that runs the `ollagraph-mcp` package from PyPI with `pipx run ollagraph-mcp` and passes your `OLLAGRAPH_API_KEY`. Once connected, Cursor discovers every Ollagraph endpoint as a tool—enabling it to search the live web, render client-side JavaScript, perform [entity extraction for AI agents](/blog/entity-extraction-for-ai-agents-extract-companies-people-products-and-more/), and ingest documentation as clean Markdown without breaking your coding flow.
 
 Connecting an IDE to the live web used to mean constantly copying documentation URLs, switching back and forth between browser tabs, and manually pasting code snippets into chat windows. With the Model Context Protocol (MCP) standard, Cursor IDE can now call external web APIs programmatically.
 
-By linking Cursor to Ollagraph's cloud infrastructure through MCP, you grant Cursor's agent direct access to real-time search engine indexes (understanding [how LLMs index the web](/blog/how-llms-index-the-web-from-crawler-fetch-queues-to-vectorized-knowledge-graphs/)), stealth browser pools, document-to-markdown parsers, and specialized platform actors such as GitHub repositories, SEC EDGAR filings, arXiv papers, and job board detectors.
+By linking Cursor to Ollagraph's cloud infrastructure through MCP, you grant Cursor's agent direct access to real-time search engine indexes (understanding [how LLMs index the web](/blog/how-llms-index-the-web-from-crawler-fetch-queues-to-vectorized-knowledge-graphs/)), stealth browser pools, document-to-markdown converters, and domain-intelligence and SEO/AEO audit endpoints.
 
-The underlying process runs locally via an unprivileged stdio subprocess (`@ollagraph/mcp`), which intercepts JSON-RPC requests from Cursor and routes them securely over TLS 1.3 to Ollagraph's API gateway. The cloud engine performs multi-engine aggregation, renders dynamic JavaScript single-page applications via headless Chromium when required, strips HTML boilerplate, and returns token-efficient Markdown context directly to Cursor's reasoning loop.
+The underlying process runs locally via an unprivileged stdio subprocess (`ollagraph-mcp`), which intercepts JSON-RPC requests from Cursor and routes them securely over TLS 1.3 to Ollagraph's API gateway. The cloud engine performs multi-engine aggregation, renders dynamic JavaScript single-page applications via headless Chromium when required, strips HTML boilerplate, and returns token-efficient Markdown context directly to Cursor's reasoning loop.
 
 ---
 
 ## Key Takeaways
 
 - **Zero Knowledge Cutoffs:** Cursor Agent queries live web engines to retrieve up-to-second library releases, breaking API changes, and current documentation without depending on fixed training cutoff dates.
-- **Token-Efficient Context:** Ollagraph automatically strips HTML navigation noise, scripts, and CSS, serving pre-processed, citation-backed Markdown directly into Cursor's prompt context window to save up to 88% on context window token utilization.
-- **Simple JSON-RPC Setup:** Configured in under two minutes via `.cursor/mcp.json` using standard input/output (`stdio`) process streams or remote Server-Sent Events (`SSE`) transport layers.
-- **Flat Credit Predictability:** Ollagraph bills a flat rate of 1 credit per tool call, with automatic credit refunds if upstream target servers fail, return HTTP 5xx errors, or experience connection timeouts.
+- **Token-Efficient Context:** Ollagraph automatically strips HTML navigation noise, scripts, and CSS, serving pre-processed, citation-backed Markdown directly into Cursor's prompt context window and cutting the tokens wasted on page chrome.
+- **Simple JSON-RPC Setup:** Configured in under two minutes via `.cursor/mcp.json`, with Cursor talking to the local `ollagraph-mcp` process over standard input/output (`stdio`).
+- **Credit Predictability:** Each Ollagraph endpoint has its own credit cost, and calls that fail are refunded automatically.
 - **Enterprise Security Isolation:** Operates under ephemeral memory processing where zero scraped content, context payloads, or search queries are stored on persistent disk or used to train machine learning models.
 
 ---
@@ -67,10 +67,8 @@ The Model Context Protocol (MCP) is an open standard based on JSON-RPC 2.0 that 
 When connecting Cursor to Ollagraph's Web Search MCP server, the architecture relies on three primary components:
 
 - **MCP Client:** Cursor IDE runs a local orchestrator process that manages communication with the LLM context window, registers tool definitions into the prompt system, and routes tool calls.
-- **MCP Server (`@ollagraph/mcp`):** A lightweight client wrapper launched locally via `npx` or connected remotely via HTTP Server-Sent Events (SSE). It translates MCP tool execution requests into authenticated API calls against Ollagraph's backend infrastructure.
-- **Transport Layer (`stdio` or `SSE`):**
-  - **`stdio`:** Cursor launches `@ollagraph/mcp` as a child process, communicating through standard input (`stdin`) and standard output (`stdout`) pipes.
-  - **`SSE`:** Cursor connects to a secure remote HTTP endpoint, receiving streaming updates over long-lived HTTP connections.
+- **MCP Server (`ollagraph-mcp`):** A small Python package from PyPI, launched locally with `pipx run ollagraph-mcp`. Built on FastMCP, it reads Ollagraph's OpenAPI spec at startup and translates MCP tool execution requests into authenticated API calls against `api.ollagraph.com`.
+- **Transport Layer (`stdio`):** Cursor launches `ollagraph-mcp` as a child process, communicating through standard input (`stdin`) and standard output (`stdout`) pipes. Ollagraph does not host a remote MCP endpoint, so there is no SSE or HTTP URL to connect to.
 
 ```json
 // Core JSON-RPC 2.0 Message Concept Executed Under the Hood
@@ -78,10 +76,10 @@ When connecting Cursor to Ollagraph's Web Search MCP server, the architecture re
   "jsonrpc": "2.0",
   "method": "tools/call",
   "params": {
-    "name": "ollagraph_search",
+    "name": "search",
     "arguments": {
       "query": "Next.js 15 Server Actions breaking changes site:nextjs.org",
-      "scrape_top_n": 3
+      "limit": 3
     }
   },
   "id": 42
@@ -97,7 +95,7 @@ The integration architecture separates heavy computational infrastructure from t
 ### 1. Local Developer Workstation Layer
 - **Developer Prompt UI:** The engineer enters a query or code instruction inside Cursor IDE Chat, Inline Edit, or Agent mode.
 - **Cursor Agent Orchestrator:** Analyzes prompt intent, detects missing context, and decides which registered MCP tool to invoke based on parameter schemas.
-- **Local Subprocess (`@ollagraph/mcp`):** Spawns via `npx` or `python`, communicating with Cursor over bidirectional stdio IPC streams using JSON-RPC 2.0 payloads.
+- **Local Subprocess (`ollagraph-mcp`):** Spawns via `pipx`, communicating with Cursor over bidirectional stdio IPC streams using JSON-RPC 2.0 payloads.
 
 ### 2. Transport & Cloud Gateway Layer
 - **TLS 1.3 Communication:** Encrypted HTTPS communication passing sanitized JSON-RPC tool payloads over port 443.
@@ -121,19 +119,19 @@ Cursor IPC <----- {"result": {"protocolVersion": "2024-11-05", "capabilities": {
 
 [Phase 2: Tool Discovery]
 Cursor IPC -----> {"method": "tools/list"} -----> Ollagraph MCP
-Cursor IPC <----- {"result": {"tools": [{"name": "ollagraph_search", "description": "..."}, ...]}} <----- Ollagraph MCP
+Cursor IPC <----- {"result": {"tools": [{"name": "search", "description": "..."}, {"name": "scrape_llm_ready", ...}, ...]}} <----- Ollagraph MCP
 
 [Phase 3: Execution Loop]
 Developer Prompt: "Find the latest tailwind v4 grid syntax"
-Cursor Agent decides to call tool: "ollagraph_search"
-Cursor IPC -----> {"method": "tools/call", "params": {"name": "ollagraph_search", "arguments": {...}}} -----> Ollagraph MCP
+Cursor Agent decides to call tool: "search", then "scrape_llm_ready" on the best result
+Cursor IPC -----> {"method": "tools/call", "params": {"name": "scrape_llm_ready", "arguments": {"url": "..."}}} -----> Ollagraph MCP
 Ollagraph MCP ---> Cloud API ---> Fetches, Renders & Converts to Markdown
-Cursor IPC <----- {"result": {"content": [{"type": "text", "text": "# Tailwind v4 Grid Guide..."}]}} <----- Ollagraph MCP
+Cursor IPC <----- {"result": {"content": [{"type": "text", "text": "..."}]}} <----- Ollagraph MCP
 ```
 
 ### Detailed Execution Phase Description
-- **Initialization:** Cursor spawns `npx -y @ollagraph/mcp` as a background child process. The client and server negotiate protocol capability limits and verify version compatibility (`2024-11-05` protocol specification).
-- **Dynamic Schema Registration:** `@ollagraph/mcp` registers available tool definitions with Cursor—including JSON Schemas defining required parameters (e.g., query strings, domain filters, extraction schemas).
+- **Initialization:** Cursor spawns `pipx run ollagraph-mcp` as a background child process. The client and server negotiate protocol capability limits and verify version compatibility (`2024-11-05` protocol specification).
+- **Dynamic Schema Registration:** `ollagraph-mcp` reads Ollagraph's OpenAPI spec at startup and registers one tool per endpoint with Cursor, each carrying the JSON Schema of that endpoint's request (e.g., query strings, URLs, result limits).
 - **Autonomous Invocation:** When Cursor's agent determines it needs external information to complete a coding task, it invokes the corresponding Ollagraph tool autonomously.
 - **Context Window Formatting:** The tool response returns clean Markdown text blocks. Cursor appends this result directly into the active LLM context window as an observation, enabling the model to generate accurate code based on live documentation.
 
@@ -144,8 +142,8 @@ Cursor IPC <----- {"result": {"content": [{"type": "text", "text": "# Tailwind v
 The complete Cursor + Ollagraph integration consists of five decoupled operational modules:
 
 1. **Cursor Client Core:** Monitors prompt inputs for keywords or missing technical context. It triggers agent tool calls when parametric memory confidence is low.
-2. **Transport Adapter (`@ollagraph/mcp`):** Manages local process lifecycle, handles standard input/output serialization, and passes requests securely to the cloud.
-3. **API Gateway & Router:** Validates authentication tokens (`osk_live_...`), tracks account credit consumption, and routes requests to specialized backend workers.
+2. **Transport Adapter (`ollagraph-mcp`):** Manages local process lifecycle, handles standard input/output serialization, and passes requests securely to the cloud.
+3. **API Gateway & Router:** Validates authentication tokens (`osk_...`), tracks account credit consumption, and routes requests to specialized backend workers.
 4. **Search Aggregator & Stealth Browser Pool:** Queries live search engines and provisions headless Chromium instances to render complex JavaScript applications.
 5. **Markdown & Extraction Engine:** Transforms raw DOM subtrees into semantic Markdown, maintaining table structures, code blocks, and source URLs.
 
@@ -156,12 +154,12 @@ The complete Cursor + Ollagraph integration consists of five decoupled operation
 The life cycle of a live search and documentation retrieval request follows a clean 8-step execution path:
 
 1. **Developer Prompting:** Developer submits a prompt in Cursor Chat: *"How do I use React 19 useActionState hook?"*
-2. **Agent Reasoner:** Cursor's LLM determines it requires external knowledge. It selects the registered `ollagraph_search` MCP tool.
-3. **Local JSON-RPC Issue:** Cursor writes a `tools/call` JSON-RPC message over standard input (`stdin`) to the local `@ollagraph/mcp` process.
-4. **API Gateway Dispatch:** `@ollagraph/mcp` validates environment credentials and issues an authenticated HTTPS POST request to Ollagraph Cloud.
-5. **Search Engine & Page Fetch:** Ollagraph executes multi-engine search, identifies relevant documentation URLs, and fetches page contents.
+2. **Agent Reasoner:** Cursor's LLM determines it requires external knowledge. It selects the registered `search` MCP tool.
+3. **Local JSON-RPC Issue:** Cursor writes a `tools/call` JSON-RPC message over standard input (`stdin`) to the local `ollagraph-mcp` process.
+4. **API Gateway Dispatch:** `ollagraph-mcp` attaches your API key and issues an authenticated HTTPS POST request to `api.ollagraph.com`.
+5. **Search & Page Fetch:** Ollagraph runs a multi-engine search and returns ranked result URLs; the agent then calls a fetch tool such as `scrape_llm_ready` or `extract_clean` on the most relevant documentation URL.
 6. **Dynamic JS Rendering & Parsing:** If target pages require JavaScript, stealth headless Chromium renders the DOM. The engine strips HTML noise and converts output to structured Markdown.
-7. **JSON-RPC Response Return:** Ollagraph returns the Markdown payload to `@ollagraph/mcp`, which streams it to Cursor's standard output (`stdout`).
+7. **JSON-RPC Response Return:** Ollagraph returns the payload to `ollagraph-mcp`, which streams it to Cursor's standard output (`stdout`).
 8. **Prompt Context Ingestion:** Cursor injects the retrieved Markdown into the LLM context window. The agent synthesizes the code solution, complete with grounded source citations.
 
 ---
@@ -173,8 +171,8 @@ Configuring Cursor IDE to connect to Ollagraph takes less than two minutes acros
 ### Prerequisites
 Before starting, ensure you have:
 - Cursor IDE (v0.45.0 or newer).
-- Node.js (v18.0.0+ LTS installed locally for `npx` execution).
-- Ollagraph API Key (Obtain your `osk_live_...` key from the [Ollagraph Dashboard](https://ollagraph.com)).
+- Python 3.10+ with [pipx](https://pipx.pypa.io) installed (no Node.js needed—the server is the `ollagraph-mcp` package on PyPI).
+- Ollagraph API Key (Obtain your `osk_...` key from the [Ollagraph Dashboard](https://ollagraph.com)).
 
 ### Option A: Workspace Configuration (Recommended)
 Workspace configuration ensures everyone on your team shares the exact same MCP tools when working on a repository.
@@ -189,14 +187,11 @@ Workspace configuration ensures everyone on your team shares the exact same MCP 
    ```json
    {
      "mcpServers": {
-       "ollagraph-web-search": {
-         "command": "npx",
-         "args": [
-           "-y",
-           "@ollagraph/mcp"
-         ],
+       "ollagraph": {
+         "command": "pipx",
+         "args": ["run", "ollagraph-mcp"],
          "env": {
-           "OLLAGRAPH_API_KEY": "osk_live_YOUR_ACTUAL_OLLAGRAPH_API_KEY_HERE"
+           "OLLAGRAPH_API_KEY": "osk_..."
          }
        }
      }
@@ -210,31 +205,25 @@ If you want Ollagraph available across every repository you open in Cursor:
 2. Navigate to **Cursor Settings -> Features -> MCP Servers**.
 3. Click **+ Add New MCP Server**.
 4. Fill in the form fields:
-   - **Name:** `ollagraph-web-search`
+   - **Name:** `ollagraph`
    - **Type:** `stdio`
-   - **Command:** `npx -y @ollagraph/mcp`
-   - **Environment Variables:** Set `OLLAGRAPH_API_KEY` to `osk_live_YOUR_ACTUAL_API_KEY`.
+   - **Command:** `pipx run ollagraph-mcp`
+   - **Environment Variables:** Set `OLLAGRAPH_API_KEY` to your `osk_...` key.
 
-Alternatively, directly edit Cursor's global configuration file:
-- **macOS:** `~/.config/Cursor/User/globalStorage/storage.json` or `~/.cursor/mcp.json`
-- **Linux:** `~/.config/Cursor/User/globalStorage/storage.json`
-- **Windows:** `%APPDATA%\Cursor\User\globalStorage\storage.json`
+Alternatively, put the same JSON shown in Option A into Cursor's global configuration file, `~/.cursor/mcp.json` (on Windows, `%USERPROFILE%\.cursor\mcp.json`).
 
 ### Option C: Windows WSL2 & PowerShell Configuration
-On Windows 11 environments using Windows Subsystem for Linux (WSL2), node paths must be explicitly passed to prevent path resolution failures between Windows host processes and Ubuntu environments.
+On Windows 11 environments using Windows Subsystem for Linux (WSL2), make sure `pipx` resolves on the `PATH` that Cursor's process sees, to prevent path resolution failures between Windows host processes and Ubuntu environments.
 
-#### PowerShell Host Setup (`%APPDATA%\Cursor\User\globalStorage\storage.json`)
+#### Native Windows Setup (`%USERPROFILE%\.cursor\mcp.json`)
 ```json
 {
   "mcpServers": {
-    "ollagraph-powershell": {
-      "command": "cmd.exe",
-      "args": [
-        "/c",
-        "npx -y @ollagraph/mcp"
-      ],
+    "ollagraph": {
+      "command": "pipx",
+      "args": ["run", "ollagraph-mcp"],
       "env": {
-        "OLLAGRAPH_API_KEY": "osk_live_YOUR_ACTUAL_API_KEY"
+        "OLLAGRAPH_API_KEY": "osk_..."
       }
     }
   }
@@ -245,14 +234,11 @@ On Windows 11 environments using Windows Subsystem for Linux (WSL2), node paths 
 ```json
 {
   "mcpServers": {
-    "ollagraph-wsl": {
-      "command": "/usr/bin/npx",
-      "args": [
-        "-y",
-        "@ollagraph/mcp"
-      ],
+    "ollagraph": {
+      "command": "/usr/bin/pipx",
+      "args": ["run", "ollagraph-mcp"],
       "env": {
-        "OLLAGRAPH_API_KEY": "osk_live_YOUR_ACTUAL_API_KEY",
+        "OLLAGRAPH_API_KEY": "osk_...",
         "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       }
     }
@@ -264,34 +250,28 @@ On Windows 11 environments using Windows Subsystem for Linux (WSL2), node paths 
 
 ## 9. Production Code Examples & Scenarios
 
-Below are advanced production configurations demonstrating custom wrapper scripts, tool allowlisting, and programmatic SDK integration.
+Below are production configurations demonstrating server tuning, programmatic MCP client integration, and tool verification.
 
-### Example 1: Advanced MCP Tool Allowlisting & Denylisting (`.cursor/mcp.json`)
-To prevent Cursor from seeing unneeded endpoints and keep the context window focused on search, web scraping, and document conversion:
+### Example 1: Tuning the Server with Environment Variables (`.cursor/mcp.json`)
+`ollagraph-mcp` reads three environment variables: `OLLAGRAPH_API_KEY` (required), `OLLAGRAPH_API_URL` (defaults to `https://api.ollagraph.com`) and `OLLAGRAPH_TIMEOUT_SECONDS` (per-tool-call HTTP timeout, default 60). It always registers every endpoint; there are no allow/deny flags. To keep the context window focused on search, web scraping, and document conversion, switch off tools you don't need in your client's MCP settings if it supports per-tool toggles.
 
 ```json
 {
   "mcpServers": {
-    "ollagraph-focused": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@ollagraph/mcp",
-        "--allow-tools", "ollagraph_search,ollagraph_scrape,ollagraph_convert_pdf",
-        "--deny-tools", "ollagraph_intel_whois,ollagraph_intel_dns"
-      ],
+    "ollagraph": {
+      "command": "pipx",
+      "args": ["run", "ollagraph-mcp"],
       "env": {
-        "OLLAGRAPH_API_KEY": "osk_live_9f8e7d6c5b4a3f2e1d0c9b8a",
-        "OLLAGRAPH_DEFAULT_SEARCH_ENGINE": "unified",
-        "OLLAGRAPH_SCRAPE_MODE": "smart"
+        "OLLAGRAPH_API_KEY": "osk_...",
+        "OLLAGRAPH_TIMEOUT_SECONDS": "90"
       }
     }
   }
 }
 ```
 
-### Example 2: Programmatic TypeScript SDK Integration (`client-mcp-bridge.ts`)
-If you are building custom developer CLI extensions or internal developer tooling that invokes Ollagraph MCP programmatically:
+### Example 2: Programmatic TypeScript MCP Client Integration (`client-mcp-bridge.ts`)
+If you are building custom developer CLI extensions or internal developer tooling that invokes Ollagraph MCP programmatically with the official MCP TypeScript SDK:
 
 ```typescript
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -300,10 +280,10 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 async function initializeOllagraphBridge() {
   // 1. Configure local Stdio Transport launching Ollagraph MCP
   const transport = new StdioClientTransport({
-    command: "npx",
-    args: ["-y", "@ollagraph/mcp"],
+    command: "pipx",
+    args: ["run", "ollagraph-mcp"],
     env: {
-      OLLAGRAPH_API_KEY: process.env.OLLAGRAPH_API_KEY || "osk_live_your_key_here",
+      OLLAGRAPH_API_KEY: process.env.OLLAGRAPH_API_KEY || "osk_your_key_here",
     },
   });
 
@@ -322,10 +302,10 @@ async function initializeOllagraphBridge() {
 
   // 4. Execute Multi-Engine Live Search
   const searchResult = await client.callTool({
-    name: "ollagraph_search",
+    name: "search",
     arguments: {
       query: "Next.js 15 Server Actions breaking changes",
-      scrape_top_n: 2,
+      limit: 5,
     },
   });
 
@@ -346,7 +326,8 @@ Open Cursor Chat (`Cmd+L` or `Ctrl+L`) and switch to **Agent Mode**. Test the se
 
 Cursor will invoke Ollagraph's web tool autonomously:
 ```text
-[Tool Call Executed] -> ollagraph_search({"query": "Pydantic v2.10 breaking changes", "scrape_top_n": 2})
+[Tool Call Executed] -> search({"query": "Pydantic v2.10 breaking changes", "limit": 5})
+[Tool Call Executed] -> scrape_llm_ready({"url": "https://docs.pydantic.dev/2.10/migration/"})
 [Reading Live Context] -> Ingested https://docs.pydantic.dev/2.10/migration/
 [Generating Code] -> Outputting fully updated Python code based on live documentation.
 ```
@@ -355,26 +336,17 @@ Cursor will invoke Ollagraph's web tool autonomously:
 
 ## 10. Performance Benchmarks & Optimization
 
-We benchmarked the latency, token overhead, and accuracy of Cursor IDE operating with and without the Ollagraph MCP server:
-
-### Test Benchmark Conditions
-- **Query Suite:** 500 complex developer queries regarding newly released software frameworks.
-- **Environment:** macOS Sonoma (M3 Max), Cursor v0.45.2, 1Gbps connection.
-
-### Execution Speed Summary
-- **Without MCP (Manual Search + Copy-Paste):** 48.2 seconds average task completion time.
-- **Naive HTTP Scraper Extension:** 14.6 seconds average completion time.
-- **Ollagraph MCP Server (Stdio + Smart Fetch):** 2.8 seconds average task completion time.
+We haven't published benchmark figures for this setup. Latency depends on the target site, whether a page needs JavaScript rendering, and how many tool calls the agent chains together. To evaluate it for your team, run the same set of developer questions with and without the server and compare time-to-correct-answer and the number of tokens pulled into context.
 
 ### Context Window Optimization Tips
-- **Use Smart Fetching:** Keep `"OLLAGRAPH_SCRAPE_MODE": "smart"` enabled. Static sites use fast HTTP requests, while JavaScript applications automatically scale up to headless Chromium instances.
-- **Limit Max Top-N Results:** When querying search tools inside Cursor prompt rules, instruct the agent to fetch `scrape_top_n: 2` or `3` to keep prompt context focused.
+- **Fetch Pages as LLM-Ready Chunks:** Prefer the `scrape_llm_ready` tool (with `max_tokens` set) over raw HTML scrapes so each page arrives as clean, size-bounded text.
+- **Limit Search Results:** When querying search tools inside Cursor prompt rules, instruct the agent to pass a small `limit` (3 to 5) and fetch only the one or two most relevant pages to keep prompt context focused.
 
 ---
 
 ## 11. Security, Zero Trust & Compliance
 
-Connecting developer tools to external APIs requires clear security controls. Ollagraph implements enterprise-grade Zero Trust architecture for all MCP traffic across five operational layers:
+Connecting developer tools to external APIs requires clear security controls. Put these in place for your MCP traffic:
 
 ### 1. Workstation & Secret Isolation
 Never hardcode your `OLLAGRAPH_API_KEY` directly inside shared project repositories. Always store keys in environment variables or local, uncommitted `.cursor/mcp.json` files included in your `.gitignore` rules.
@@ -391,7 +363,7 @@ const DLP_PATTERNS = [
   { name: "Database URL", regex: /(postgres|mysql|mongodb):\/\/[^:]+:[^@]+@[^/]+\/[^\s]+/g },
   { name: "AWS Key ID", regex: /AKIA[0-9A-Z]{16}/g },
   { name: "Generic Secret", regex: /(secret|password|bearer|token)\s*=\s*['"][^'"]+['"]/gi },
-  { name: "Ollagraph Key", regex: /osk_live_[a-zA-Z0-9]{24,32}/g }
+  { name: "Ollagraph Key", regex: /osk_[0-9a-f]{48}/g }
 ];
 
 function sanitizeMCPArgument(argValue) {
@@ -410,21 +382,8 @@ function sanitizeMCPArgument(argValue) {
 module.exports = { sanitizeMCPArgument };
 ```
 
-### 3. WireGuard Private Network Tunnel Configuration
-Route Ollagraph API calls through a secure, encrypted WireGuard tunnel (`/etc/wireguard/wg0.conf`):
-
-```ini
-[Interface]
-PrivateKey = CLIENT_PRIVATE_KEY_HEX
-Address = 10.200.0.5/32
-DNS = 1.1.1.1
-
-[Peer]
-PublicKey = OLLAGRAPH_ENTERPRISE_GATEWAY_PUBLIC_KEY
-Endpoint = egress-vpn.ollagraph-enterprise.net:51820
-AllowedIPs = 185.220.100.0/24 # Ollagraph Egress Gateway Subnet
-PersistentKeepalive = 25
-```
+### 3. Egress Allowlisting
+Ollagraph is a public HTTPS API; there is no private tunnel or dedicated enterprise gateway. If your workstations sit behind an allowlist-based firewall, allow outbound HTTPS (port 443) to `api.ollagraph.com`. The MCP server fetches the OpenAPI spec from that host at startup and sends every tool call there, so that one host is all it needs. If `pipx run` has to download the package, it also needs access to PyPI.
 
 ### 4. Zero Persistent Data Retention Architecture
 Content fetched and transformed by Ollagraph (scraped web pages, converted PDFs, extracted JSON) is processed entirely in ephemeral RAM buffers. Content is never written to persistent disk storage or used to train public machine learning models.
@@ -433,7 +392,7 @@ Content fetched and transformed by Ollagraph (scraped web pages, converted PDFs,
 
 ## 12. Troubleshooting & Log Diagnostics
 
-If Cursor fails to discover tools or display the green active status indicator next to `ollagraph-web-search`, follow these diagnostic steps.
+If Cursor fails to discover tools or display the green active status indicator next to `ollagraph`, follow these diagnostic steps.
 
 ### Step-by-Step Diagnostic Inspection
 
@@ -441,28 +400,20 @@ If Cursor fails to discover tools or display the green active status indicator n
 1. Open Cursor IDE.
 2. Navigate to **Output Panel** (`Cmd+Shift+U` or `Ctrl+Shift+U`).
 3. Select **Model Context Protocol** or **Cursor Agent** from the dropdown menu.
-4. Look for initialization logs:
-   ```text
-   [info] Spawning MCP server: ollagraph-web-search
-   [info] Standard output: Registered 219 tools from Ollagraph API.
-   [info] Server ollagraph-web-search state changed to: CONNECTED.
-   ```
+4. Look for the `ollagraph` server starting, its tool list being loaded, and any error text the process printed.
 
-#### Step 2: Test `@ollagraph/mcp` Directly via CLI
-Open your terminal and test stdio execution manually:
+#### Step 2: Test `ollagraph-mcp` Directly via CLI
+Open your terminal and run the server manually:
 ```bash
-export OLLAGRAPH_API_KEY="osk_live_YOUR_KEY"
-npx -y @ollagraph/mcp
+export OLLAGRAPH_API_KEY="osk_..."
+pipx run ollagraph-mcp
 ```
 
-If the bridge is working, it will wait quietly for standard input. Type the following test payload and press Enter:
-```json
-{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05"},"id":1}
-```
+If the server is working, it will wait quietly for standard input. If it exits instead, read the message: `OLLAGRAPH_API_KEY is not set` means the key never reached the process, and `cannot fetch OpenAPI spec` means it couldn't reach `api.ollagraph.com`.
 
-Expected output:
-```json
-{"jsonrpc":"2.0","result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"ollagraph-mcp","version":"2.4.1"}},"id":1}
+To list and call the tools without Cursor, open the official MCP Inspector (a Node.js tool) against the same command:
+```bash
+npx @modelcontextprotocol/inspector pipx run ollagraph-mcp
 ```
 
 ---
@@ -477,8 +428,8 @@ Follow these production guidelines when integrating MCP web tools into team work
   {
     "mcpServers": {
       "ollagraph": {
-        "command": "npx",
-        "args": ["-y", "@ollagraph/mcp"],
+        "command": "pipx",
+        "args": ["run", "ollagraph-mcp"],
         "env": {
           "OLLAGRAPH_API_KEY": "${OLLAGRAPH_API_KEY}"
         }
@@ -490,7 +441,7 @@ Follow these production guidelines when integrating MCP web tools into team work
   ```markdown
   # .cursorrules - Web Search Execution Guidelines
   When asked about external libraries, API syntax, or error codes:
-  1. Use the `ollagraph_search` tool to fetch live documentation.
+  1. Use the `search` tool to find live documentation, then `scrape_llm_ready` to read the best page.
   2. Always ground your code answers using the Markdown returned from Ollagraph.
   3. Include inline source URL comments pointing to the retrieved documentation.
   ```
@@ -518,7 +469,7 @@ Developers needing live web context inside Cursor IDE generally consider four pa
 1. **Manual Browser Copy-Paste:** Free, but slow, inefficient, and pollutes token context with unparsed HTML noise.
 2. **Naive IDE Scraping Plugins:** Cheap, but fails on 80%+ of dynamic JavaScript portals and Cloudflare-protected sites.
 3. **Custom Playwright/Puppeteer Scripts:** Flexible, but requires maintaining local browser clusters, managing proxy rotations, and handling CAPTCHA solvers yourself.
-4. **Ollagraph MCP Integration (Recommended):** Fully managed cloud infrastructure, 219+ tools, stealth browser rendering, flat credit billing, and 2-minute setup.
+4. **Ollagraph MCP Integration (Recommended):** Fully managed cloud infrastructure, every Ollagraph endpoint as a tool, stealth browser rendering, refunds on failed calls, and 2-minute setup.
 
 ---
 
@@ -526,129 +477,56 @@ Developers needing live web context inside Cursor IDE generally consider four pa
 
 | Feature / Metric | Ollagraph MCP | Manual Copy-Paste | Naive IDE Plugins | Firecrawl MCP |
 | :--- | :--- | :--- | :--- | :--- |
-| **Setup Speed** | Under 2 minutes (`npx -y @ollagraph/mcp`) | Wastes developer time | 5+ minutes | 5+ minutes |
+| **Setup Speed** | Under 2 minutes (`pipx run ollagraph-mcp`) | Wastes developer time | 5+ minutes | 5+ minutes |
 | **Live Web Search** | Unified multi-engine real-time search | Slow manual search | No search | No search |
-| **JS / SPA Rendering** | Stealth Chromium included at no extra cost | Manual browser render | Fails on JS/SPAs | Heavy credit multipliers |
-| **Document Parsing** | PDFs, DOCX, XLSX, PPTX, OCR to Markdown | Manual copy | None | Basic PDF only |
-| **Security Recon** | 36+ endpoints (WHOIS, DNS, SSL, WAF) | None | None | None |
-| **Tool Ecosystem** | 219+ ready-to-use tools | 0 | 1 | 5–10 |
-| **Predictable Billing** | Flat 1-credit rule + auto-refunds | N/A | Variable / Subscription | Complex multipliers |
+| **JS / SPA Rendering** | Stealth Chromium rendering | Manual browser render | Fails on JS/SPAs | Heavy credit multipliers |
+| **Document Parsing** | Text-layer PDFs, DOCX, XLSX, PPTX to Markdown (no OCR) | Manual copy | None | Basic PDF only |
+| **Security Recon** | Domain intel endpoints (WHOIS, DNS, SSL, WAF) | None | None | None |
+| **Tool Ecosystem** | Every Ollagraph endpoint as a tool | 0 | 1 | 5–10 |
+| **Predictable Billing** | Per-endpoint credit costs + refunds on failed calls | N/A | Variable / Subscription | Complex multipliers |
 | **Data Privacy** | Zero Persistent Data Retention (RAM only) | Local only | Varies | Logs retained |
 
 ---
 
 ## 17. Enterprise Deployment Architecture
 
-For enterprise engineering teams operating behind strict corporate firewalls, VPNs, or SD-WAN networks (such as WireGuard or Cloudflare Zero Trust), Ollagraph supports a centralized Remote SSE MCP Gateway.
+For enterprise engineering teams operating behind strict corporate firewalls, VPNs, or SD-WAN networks (such as WireGuard or Cloudflare Zero Trust), keep the deployment simple: Ollagraph does not offer a hosted or self-hosted MCP gateway. Each developer's Cursor runs its own local `ollagraph-mcp` process over stdio, and every tool call goes out as HTTPS to `api.ollagraph.com`.
 
-### NGINX Reverse Proxy Configuration for Remote SSE Gateway (`nginx.conf`)
-When reverse proxying Server-Sent Events (SSE) connections, proxy buffering must be disabled to prevent TCP stream delays:
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name mcp-gateway.internal.enterprise.com;
-
-    ssl_certificate /etc/ssl/certs/mcp-gateway.crt;
-    ssl_certificate_key /etc/ssl/private/mcp-gateway.key;
-
-    location /v1/mcp {
-        proxy_pass http://127.0.0.1:8080;
-        
-        # SSE Required Configuration Headers
-        proxy_set_header Connection '';
-        proxy_http_version 1.1;
-        proxy_buffering off;
-        proxy_cache off;
-        chunked_transfer_encoding off;
-
-        # Forwarded Host Headers
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Extended Timeouts for Long-Lived Streaming Connections
-        proxy_read_timeout 86400s;
-        proxy_send_timeout 86400s;
-    }
-}
-```
+That means the controls that matter are:
+- **Network:** allow outbound HTTPS to `api.ollagraph.com` (and PyPI, if `pipx` needs to download the package).
+- **Keys:** issue one API key per developer or environment so usage can be attributed and capped (see the FAQ below).
+- **Version pinning:** if you need reproducible installs, pin the package version, e.g. `pipx run --spec ollagraph-mcp==<version> ollagraph-mcp`, or install it from an internal PyPI mirror.
 
 ---
 
 ## 18. Cloud & Container Deployment
 
-To run `@ollagraph/mcp` as a containerized, auto-scaling SSE service in Kubernetes clusters:
+To run `ollagraph-mcp` from a container instead of a local Python install, build a small image and let Cursor launch it with `docker run -i` so stdio stays attached:
 
-### Production Kubernetes Manifests (`mcp-gateway-k8s.yaml`)
+### Container Image (`Dockerfile`)
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ollagraph-mcp-gateway
-  namespace: ai-infrastructure
-  labels:
-    app: ollagraph-mcp
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: ollagraph-mcp
-  template:
-    metadata:
-      labels:
-        app: ollagraph-mcp
-    spec:
-      containers:
-      - name: mcp-server
-        image: ollagraph/mcp-gateway:2.4.1
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8080
-          name: sse-port
-        env:
-        - name: OLLAGRAPH_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: ollagraph-secrets
-              key: api-key
-        - name: PORT
-          value: "8080"
-        resources:
-          requests:
-            cpu: 250m
-            memory: 512Mi
-          limits:
-            cpu: 1000m
-            memory: 2Gi
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 15
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ollagraph-mcp-service
-  namespace: ai-infrastructure
-spec:
-  type: ClusterIP
-  ports:
-  - port: 80
-    targetPort: 8080
-    name: http-sse
-  selector:
-    app: ollagraph-mcp
+```dockerfile
+FROM python:3.12-slim
+RUN pip install --no-cache-dir ollagraph-mcp
+ENTRYPOINT ["ollagraph-mcp"]
+```
+
+Build it once with `docker build -t ollagraph-mcp-local .`
+
+### Cursor Configuration (`.cursor/mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "ollagraph": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "OLLAGRAPH_API_KEY", "ollagraph-mcp-local"],
+      "env": {
+        "OLLAGRAPH_API_KEY": "osk_..."
+      }
+    }
+  }
+}
 ```
 
 ---
@@ -656,34 +534,34 @@ spec:
 ## 19. Frequently Asked Questions
 
 ### Q1: How does Cursor IDE know when to use the Ollagraph MCP tool?
-Cursor's agent continuously evaluates prompt context. When your request references external documentation, recent software libraries, or explicit search commands (such as `/search`), the LLM selects the registered `ollagraph_search` tool dynamically based on its registered JSON Schema.
+Cursor's agent continuously evaluates prompt context. When your request references external documentation, recent software libraries, or explicit search commands (such as `/search`), the LLM selects the registered `search` tool dynamically based on its registered JSON Schema.
 
 ### Q2: What is the cost of connecting Cursor to Ollagraph MCP?
-Ollagraph operates on a flat credit billing model. Every tool invocation (search, scrape, document parse) costs 1 credit. Unused credits roll over monthly, and if an upstream website fails to render, your credit is automatically refunded.
+The MCP server itself is free and open source. Each tool call is billed in credits at the cost of the endpoint behind it, and costs vary by endpoint—check the pricing page, or call `POST /v1/me/cost-estimate` for a specific endpoint. If a call fails, its credits are refunded automatically.
 
 ### Q3: Does Ollagraph store my scraped code or documentation searches?
 No. Ollagraph adheres to a strict zero persistent data retention architecture. Scraped web pages and extracted text are processed in volatile memory and returned directly to Cursor over encrypted TLS 1.3 channels. No content is stored on disk or used for AI model training.
 
 ### Q4: Can I use Ollagraph MCP on Windows, macOS, and Linux?
-Yes. The `@ollagraph/mcp` client bridge runs anywhere Node.js or Python is supported, including macOS (Intel/Apple Silicon), Linux (Ubuntu, Debian, Fedora), and Windows (native PowerShell or WSL2).
+Yes. The `ollagraph-mcp` server is a Python package (Python 3.10+), so it runs anywhere Python and `pipx` do, including macOS (Intel/Apple Silicon), Linux (Ubuntu, Debian, Fedora), and Windows (native PowerShell or WSL2).
 
 ### Q5: What is the difference between stdio and SSE transport modes?
-`stdio` (Standard Input/Output) launches `@ollagraph/mcp` as a local subprocess directly managed by Cursor IDE. `SSE` (Server-Sent Events) connects Cursor over HTTP to a remote server, which is ideal for enterprise deployments or shared team gateways.
+`stdio` (Standard Input/Output) launches `ollagraph-mcp` as a local subprocess directly managed by Cursor IDE. `SSE` (Server-Sent Events) and the newer HTTP transports connect a client to a remote MCP server over HTTP. Ollagraph does not host a remote MCP endpoint, so stdio is how you connect.
 
 ### Q6: What happens if a web page requires client-side JavaScript rendering?
 Ollagraph automatically detects target page complexity. If a site requires client-side JavaScript execution, Ollagraph routes the request through stealth headless Chromium browser pools—executing JS and returning clean Markdown without additional configuration.
 
 ### Q7: Can Ollagraph parse PDF documentation files directly into Cursor?
-Yes. Passing a direct URL to a PDF file into Ollagraph's conversion tool automatically parses multi-column layouts, tables, and text into clean Markdown context inside Cursor.
+Yes, for PDFs that have a text layer. The `convert_pdf_to_markdown` tool takes the file as base64-encoded bytes (`pdf_base64`, plus an optional `max_pages`), not a URL, and returns Markdown with one section per page. There is no OCR: scanned, image-only PDFs come back flagged with `likely_scanned_pdf: true`.
 
-### Q8: How do I update the `@ollagraph/mcp` package to the latest version?
-When using `npx -y @ollagraph/mcp` in your config, npx automatically checks for and uses the latest package release. To force an update manually, run `npm cache clean --force` or update your global installation using `npm install -g @ollagraph/mcp@latest`.
+### Q8: How do I update the `ollagraph-mcp` package to the latest version?
+`pipx run ollagraph-mcp` uses a cached copy that pipx refreshes periodically. To force the latest release, run `pipx run --no-cache ollagraph-mcp` once. If you installed it with pip instead, run `pip install -U ollagraph-mcp`.
 
 ### Q9: Can I run Ollagraph MCP in isolated, air-gapped private cloud VPCs?
-Yes. Enterprise subscription tiers support private VPC deployment models where Ollagraph rendering gateways operate inside your dedicated AWS, GCP, or Azure Virtual Private Cloud, routing outbound traffic through static corporate egress proxies.
+No. Ollagraph is a hosted API at `api.ollagraph.com`; there is no private-VPC or self-hosted deployment. The MCP server runs locally, but every tool call goes to the hosted API, so the host needs outbound HTTPS access to `api.ollagraph.com`.
 
 ### Q10: How do enterprise engineering managers manage monthly credit quotas across developer teams?
-Account administrators issue scoped API keys per developer team or environment from the Ollagraph Dashboard. Usage, token overhead, and credit consumption can be capped and monitored in real time per key.
+Account administrators create a separate API key per developer, team, or environment (in the Ollagraph Dashboard or via `POST /v1/keys`). Each key can carry a label, a project tag, and an optional daily credit cap, and usage can be reviewed in the dashboard.
 
 ---
 
@@ -702,6 +580,6 @@ Account administrators issue scoped API keys per developer team or environment f
 Connecting Cursor IDE to Ollagraph's MCP server transforms your editor into a real-time development engine. By grounding Cursor's agent with live multi-engine search, clean Markdown parsing, and stealth browser rendering, you eliminate outdated code hallucinations and streamline your software engineering workflow.
 
 ### Recommended Next Steps for Developers
-1. **Get Your API Key:** Log into [Ollagraph.com](https://ollagraph.com) and copy your live key (`osk_live_...`).
-2. **Create Your Config:** Add `.cursor/mcp.json` to your primary project repository using the standard npx configuration.
+1. **Get Your API Key:** Log into [Ollagraph.com](https://ollagraph.com) and copy your key (`osk_...`).
+2. **Create Your Config:** Add `.cursor/mcp.json` to your primary project repository using the standard `pipx run ollagraph-mcp` configuration (see the [MCP setup page](https://ollagraph.com/mcp/)).
 3. **Test in Agent Mode:** Open Cursor Chat (`Cmd+L` / `Ctrl+L`) and run `/search [your technology stack]` to experience real-time, grounded AI coding!

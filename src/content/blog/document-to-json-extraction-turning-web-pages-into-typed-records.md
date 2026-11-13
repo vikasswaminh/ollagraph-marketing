@@ -215,7 +215,7 @@ export type TypedProductRecord = z.infer<typeof TypedProductRecordSchema>;
 
 ### 3. Language-Agnostic JSON Schema (Draft 2020-12)
 
-JSON Schema serves as the universal wire contract between different microservices and external APIs (such as the Ollagraph Extraction Endpoint).
+JSON Schema serves as the universal wire contract between different microservices and external APIs.
 
 ```json
 {
@@ -310,12 +310,15 @@ def get_job_listing(url: str):
 
 ```python
 # typed_document_pipeline.py
-import requests
-from typing import List, Optional
-from pydantic import BaseModel, Field, field_validator, ValidationError
-from enum import Enum
-import logging
+import os
 import json
+import logging
+from datetime import datetime, timezone
+from enum import Enum
+from typing import List
+
+import requests
+from pydantic import BaseModel, Field, field_validator, ValidationError
 
 # 1. Define Domain Type Schema Contract
 class EmploymentType(str, Enum):
@@ -346,46 +349,78 @@ class JobPostingRecord(BaseModel):
                 return float(digits)
         raise ValueError(f"Cannot coerce '{value}' into valid salary float")
 
-# 2. Document Extraction Client
-def extract_typed_job_posting(target_url: str) -> JobPostingRecord:
-    ollagraph_api_url = "https://api.ollagraph.com/v1/extract/structured"
-    api_key = "OG_SECRET_KEY"
-
-    payload = {
-        "url": target_url,
-        "schema_contract": JobPostingRecord.model_json_schema(),
-        "execution_mode": "auto",  # Automatically handles static vs. JS rendering
-        "enable_evidence_packet": True
-    }
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(ollagraph_api_url, json=payload, timeout=30)
-
+# 2. Fetch the page's embedded structured data with Ollagraph
+#    (/v1/extract/structured takes only url, stealth, timeout, proxy)
+def fetch_structured_data(target_url: str) -> dict:
+    response = requests.post(
+        "https://api.ollagraph.com/v1/extract/structured",
+        headers={"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"},
+        json={"url": target_url, "timeout": 30},
+        timeout=60,
+    )
     if response.status_code != 200:
         raise RuntimeError(f"Ollagraph API Error HTTP {response.status_code}: {response.text}")
+    return response.json()
 
-    result = response.json()
-    raw_extracted_data = result.get("data")
+def find_typed_objects(node, type_name: str):
+    """Walk the response and yield every schema.org object with the given @type."""
+    if isinstance(node, dict):
+        node_type = node.get("@type")
+        if node_type == type_name or (isinstance(node_type, list) and type_name in node_type):
+            yield node
+        for value in node.values():
+            yield from find_typed_objects(value, type_name)
+    elif isinstance(node, list):
+        for item in node:
+            yield from find_typed_objects(item, type_name)
 
-    # 3. Validation Gate Enforcer
+# 3. Map schema.org JobPosting properties onto your contract (your code, not the API)
+def map_job_posting(job: dict) -> dict:
+    salary = (job.get("baseSalary") or {}).get("value") or {}
+    if not isinstance(salary, dict):
+        salary = {"minValue": salary, "maxValue": salary}
+    org = job.get("hiringOrganization") or {}
+    identifier = job.get("identifier")
+    if isinstance(identifier, dict):
+        identifier = identifier.get("value")
+    employment = job.get("employmentType")
+    if isinstance(employment, list):
+        employment = employment[0] if employment else None
+    skills = job.get("skills") or []
+    if isinstance(skills, str):
+        skills = [s.strip() for s in skills.split(",") if s.strip()]
+    return {
+        "job_id": str(identifier) if identifier else None,
+        "title": job.get("title"),
+        "company_name": org.get("name") if isinstance(org, dict) else org,
+        "min_salary": salary.get("minValue"),
+        "max_salary": salary.get("maxValue"),
+        "employment_type": employment,
+        "skills_required": skills,
+    }
+
+def extract_typed_job_posting(target_url: str) -> JobPostingRecord:
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    result = fetch_structured_data(target_url)
+    candidates = list(find_typed_objects(result, "JobPosting"))
+    raw_extracted_data = map_job_posting(candidates[0]) if candidates else {}
+
+    # 4. Validation Gate Enforcer
     try:
         validated_record = JobPostingRecord.model_validate(raw_extracted_data)
         logging.info(f"Successfully extracted typed record for {validated_record.job_id}")
         return validated_record
 
     except ValidationError as val_err:
-        # 4. Evidence Packet Failure Diagnostic Logging
+        # 5. Evidence Packet: assembled by your pipeline from what it fetched
         evidence_packet = {
             "target_url": target_url,
+            "fetched_at": fetched_at,
+            "source_candidates": candidates,
             "raw_output": raw_extracted_data,
             "validation_errors": val_err.errors(),
-            "evidence_trace": result.get("evidence_packet")
         }
-        logging.error(f"DOCUMENT EXTRACTION VALIDATION FAILURE:\n{json.dumps(evidence_packet, indent=2)}")
+        logging.error(f"DOCUMENT EXTRACTION VALIDATION FAILURE:\n{json.dumps(evidence_packet, indent=2, default=str)}")
         raise val_err
 
 # Pipeline Execution Example
@@ -397,6 +432,8 @@ if __name__ == "__main__":
     except Exception as e:
         print("Extraction failed safely without database corruption:", e)
 ```
+
+The API's job here is the fetch: it loads the page (with proxy routing) and returns the structured data embedded in it, such as JSON-LD, Microdata and OpenGraph. Mapping those values onto `JobPostingRecord`, normalizing them, validating, and writing the evidence packet all happen in your code. If a page carries no `JobPosting` markup, call `/v1/scrape` (`format: "html"` or `"markdown"`) for the page content instead, run your own selectors or an LLM with structured outputs over it, and send the result through the same gate.
 
 ## 7. Empirical benchmarks: 4,000 heterogeneous web documents
 
@@ -410,11 +447,11 @@ To measure extraction accuracy, type validity, and operational maintenance requi
 
 -   **Regex + BeautifulSoup (Untyped Selector Scraper):** Traditional CSS/regex parsing logic with silent try-except fallbacks.
 -   **Raw Unconstrained LLM Extraction (GPT-4o / Claude 3.5 Sonnet):** Passing raw HTML text to an LLM with prompt instructions ("Return JSON").
--   **Ollagraph Typed Document-to-JSON Pipeline:** Pydantic contract + Ollagraph API + automated evidence logging + deterministic retries.
+-   **Typed Document-to-JSON Pipeline:** Pydantic contract + validation gate + automated evidence logging + deterministic retries.
 
 ### Key Benchmark Metrics
 
-| Evaluation Metric | Untyped Selector Scraper | Unconstrained LLM Extraction | Ollagraph Typed Document-to-JSON |
+| Evaluation Metric | Untyped Selector Scraper | Unconstrained LLM Extraction | Typed Document-to-JSON Pipeline |
 | :--- | :--- | :--- | :--- |
 | First-Pass Record Validity Rate | 71.2% | 83.4% | 95.2% |
 | Final Pass Rate (After Retries) | 73.8% | 88.1% | 99.6% |
@@ -429,14 +466,14 @@ To measure extraction accuracy, type validity, and operational maintenance requi
 ```
 Untyped Selectors:  ██████████████████ 18.6%
 Unconstrained LLM:  ██████ 6.4%
-Ollagraph Typed:    ▏ 0.0% (Zero Corrupt Database Writes)
+Typed Pipeline:     ▏ 0.0% (Zero Corrupt Database Writes)
 ```
 
 ### Insights from Benchmark Data
 
 -   **Zero Silent Type Corruption:** Untyped scrapers caused silent type errors in 18.6% of ingested records (saving strings like "N/A" into float fields or storing string dates as unparseable text). The typed validation gate eliminated corrupt writes entirely (0.0%).
 -   **LLM Hallucination Reduction:** Unconstrained LLMs occasionally hallucinate missing keys or alter property names (e.g., returning annual_revenue when the prompt asked for revenue). Schema contract enforcement halts schema drift at the ingestion boundary.
--   **Engineering Time Reduction:** Engineering teams running Ollagraph spent 1.2 hours per week maintaining extraction pipelines, compared to 22 hours per week for teams maintaining custom selector scripts.
+-   **Engineering Time Reduction:** Engineering teams running the typed pipeline spent 1.2 hours per week maintaining extraction pipelines, compared to 22 hours per week for teams maintaining custom selector scripts.
 
 ## 8. Case studies: fintech SEC filings & e-commerce competitive intelligence
 
@@ -456,7 +493,7 @@ Previously, FinPulse relied on a hybrid pipeline of regular expressions and DOM 
 
 ### The Solution with Typed Document-to-JSON Extraction
 
-FinPulse migrated its ingestion infrastructure to Ollagraph Document-to-JSON Extraction, enforcing a strict Pydantic financial model:
+FinPulse migrated its ingestion infrastructure to a typed document-to-JSON pipeline, enforcing a strict Pydantic financial model:
 
 ```python
 class BalanceSheetModel(BaseModel):
@@ -481,7 +518,7 @@ Deploying document-to-JSON extraction in enterprise environments requires robust
 ```mermaid
 graph LR
     Worker[Scraper Worker Node] --> SchemaRegistry[Central Schema Registry]
-    Worker --> Engine[Ollagraph Extraction Cluster]
+    Worker --> Engine[Fetch Layer: Ollagraph API]
     Engine --> PIIMasker[PII Redactor & Normalizer]
     PIIMasker --> Gate{Schema Validation Gate}
     Gate -- Valid Record --> DataWarehouse[Snowflake / PostgreSQL]
@@ -535,7 +572,7 @@ When an extraction job fails schema validation, modern pipelines avoid manual de
     "meta_og_price": null,
     "json_ld_offers": []
   },
-  "raw_dom_snapshot_ref": "s3://ollagraph-evidence-vault/2026-07-27/snap-889412.html.gz"
+  "raw_dom_snapshot_ref": "s3://your-evidence-vault/2026-07-27/snap-889412.html.gz"
 }
 ```
 
@@ -566,8 +603,8 @@ Migrate legacy untyped web scrapers to a typed document-to-JSON pipeline using a
     -   Pass legacy script outputs through schema gates to stop corrupt writes.
 3.  **Phase 3: Enable Evidence Logging & Retries (Days 15–30)**
     -   Capture Evidence Packets and configure automated browser escalation retries.
-4.  **Phase 4: Delegate to Ollagraph Extraction API (Month 2+)**
-    -   Send raw document URLs directly to the Ollagraph API; remove manual scraper code.
+4.  **Phase 4: Delegate Fetching to the Ollagraph API (Month 2+)**
+    -   Send target URLs to the Ollagraph API for fetching and embedded structured data; keep your schema gate in your own code.
 
 ### Phase 1: Define Domain Types (Week 1)
 
@@ -581,9 +618,9 @@ Keep existing parsing scripts, but validate output dictionaries using `Model.mod
 
 Configure failure handlers to capture raw document HTML snippets and validation trace error logs into an S3 debugging vault when validation checks fail.
 
-### Phase 4: Delegate Parsing to Ollagraph API (Month 2+)
+### Phase 4: Delegate Fetching to the Ollagraph API (Month 2+)
 
-Replace custom scraping scripts entirely by sending target URLs and JSON Schema contracts to the Ollagraph Document Extraction endpoint.
+Replace custom fetch and proxy code by sending target URLs to Ollagraph: `/v1/extract/structured` returns the page's embedded structured data (JSON-LD, Microdata, OpenGraph), and `/v1/scrape` returns the page as HTML or Markdown. Keep the Pydantic contract, normalizers, and validation gate in your own pipeline.
 
 ## 12. Troubleshooting checklist for data engineers
 
@@ -608,7 +645,7 @@ Avoid these 5 dangerous mistakes when building document-to-JSON extraction pipel
 
 ## 14. Comparison matrix: web parsing & document extraction approaches
 
-| Feature / Capability | Untyped CSS / Regex Scrapers | Unstructured Text Chunking | Raw Unconstrained LLMs | Ollagraph Typed Document-to-JSON |
+| Feature / Capability | Untyped CSS / Regex Scrapers | Unstructured Text Chunking | Raw Unconstrained LLMs | Typed Document-to-JSON Pipeline |
 | :--- | :--- | :--- | :--- | :--- |
 | Primary Output Contract | Unvalidated Dictionary | Raw Text Chunks | Loose Text / JSON | Strongly Typed JSON Record |
 | Type Safety Enforcement | None | None | Low (Hallucinations possible) | 100% Guaranteed Gate |
@@ -639,7 +676,7 @@ Value normalizers calculate the UTC timestamp by subtracting the relative time o
 If a layout change breaks candidate extraction, required fields will fail schema validation. The pipeline halts ingestion, logs an Evidence Packet with the raw DOM state, and triggers an automated retry tree (such as escalating from static HTTP mode to headless browser rendering).
 
 ### 7. Can I use Document-to-JSON extraction with LLMs like OpenAI GPT-4o or Claude 3.5 Sonnet?
-Yes. Modern LLM APIs support Structured Outputs backed by JSON Schema. However, using an external validation gate like Ollagraph encapsulates proxy management, static pre-parsing, schema validation, and fallback retries into a single, high-reliability endpoint.
+Yes. Modern LLM APIs support Structured Outputs backed by JSON Schema. The model still needs page content to read: Ollagraph can handle that fetch (proxy routing and the page's embedded structured data), while schema validation and retries stay in your own code.
 
 ### 8. How are multi-row tables and nested lists parsed into JSON arrays?
 Schema contracts define array properties with item schema specs and length constraints (`minItems: 1`). The extraction engine maps HTML `<table>` rows, `<dl>` lists, or visual grid blocks into structured lists of typed child objects.
@@ -663,7 +700,7 @@ Yes. Schema validation gates verify that every field returned by an extraction m
 Evidence packets should pass through automated PII redaction transformers to mask sensitive strings (such as credit card numbers or session tokens) before being persisted to encrypted storage buckets with automated 14-day lifecycle expiration rules.
 
 ### 15. How does Ollagraph streamline Document-to-JSON extraction?
-Ollagraph provides a unified API endpoint that accepts target URLs and JSON Schema contracts. It handles proxy rotation, DOM rendering, multi-source candidate extraction, type normalization, strict validation, and evidence logging automatically.
+Ollagraph handles the fetch side. Send a URL to `/v1/extract/structured` to get the page's embedded structured data (JSON-LD, Microdata, OpenGraph), or to `/v1/scrape` for the page as HTML or Markdown, with proxy routing handled for you. Your code maps those values onto your schema, normalizes types, validates, and logs evidence.
 
 ## 16. References & standards
 
@@ -672,7 +709,7 @@ Ollagraph provides a unified API endpoint that accepts target URLs and JSON Sche
 -   **Zod TypeScript Schema Validation:** https://zod.dev/
 -   **W3C Document Object Model (DOM) Technical Specification:** https://www.w3.org/TR/DOM-Level-3-Core/
 -   **OpenTelemetry Log & Trace Standards:** https://opentelemetry.io/docs/specs/otel/logs/
--   **Ollagraph Document Extraction API Reference:** https://ollagraph.com/docs/api/extract
+-   **Ollagraph API Documentation:** https://ollagraph.com/docs/
 
 ## 17. Conclusion
 
@@ -682,7 +719,7 @@ Document-to-JSON extraction converts volatile web documents into reliable, stron
 
 Stop ingesting unvalidated web text. Define your domain schema contracts, validate every payload at the boundary, and turn the web into a strongly typed database.
 
-Ready to turn unstructured web documents into typed JSON records? Learn how the Ollagraph Structured Extraction API automates document-to-JSON pipelines for production engineering teams.
+Ready to turn unstructured web documents into typed JSON records? Learn how the Ollagraph Structured Extraction API handles the fetch and embedded-data step of a document-to-JSON pipeline, so your team can focus on contracts and validation.
 
 ## Common questions
 

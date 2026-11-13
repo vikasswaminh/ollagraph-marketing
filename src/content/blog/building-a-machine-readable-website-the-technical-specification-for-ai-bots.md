@@ -275,31 +275,38 @@ Recommended pattern:
 ### Spec section E — Ollagraph verification workflow
 
 ```python
-from ollagraph import OllagraphClient
+import json
+import os
 
-client = OllagraphClient(api_key="your_api_key")
+import requests
+
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
+
+
+def post(path, body):
+    resp = requests.post(f"{API}{path}", json=body, headers=HEADERS, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+
 url = "https://example.com/docs/rate-limits"
-
-page_audit = client.aeo.page_audit(url=url)
-llms_audit = client.aeo.llms_txt_audit(url="https://example.com/llms.txt")
-fetch_sim = client.aeo.llm_fetch_simulator(url=url)
-schema = client.seo.schema_validate(url=url)
-crs = client.aeo.citation_readiness(url=url)
 
 report = {
     "url": url,
-    "bot_access_ok": page_audit.get("ai_bot_allowlist_ok"),
-    "llms_txt_ok": llms_audit.get("valid"),
-    "static_content_present": fetch_sim.get("static_text_length", 0) > 500,
-    "schema_ok": schema.get("valid"),
-    "citation_readiness": crs.get("score"),
-    "blocking_issues": page_audit.get("blocking_issues", []),
+    "page_audit": post("/v1/aeo/page-audit", {"url": url}),
+    "llms_txt": post("/v1/aeo/llms-txt-audit", {"domain": "example.com"}),
+    "fetch_sim": post("/v1/aeo/llm-fetch-simulator", {"url": url}),
+    "schema": post("/v1/seo/schema-validate", {"url": url}),
+    "citation_readiness": post("/v1/aeo/citation-readiness", {"url": url}),
 }
 
-assert report["bot_access_ok"], report
-assert report["static_content_present"], report
-assert report["citation_readiness"] >= 75, report
+# Keep the raw responses as release evidence.
+with open("machine-readability-report.json", "w") as f:
+    json.dump(report, f, indent=2)
 ```
+
+Then gate the release in your own code on what the responses report: the page audit's 0–100 score and top issues, the status and visible-text length each AI crawler received in the fetch simulation, the rich-result types the schema validator accepts, and the citation-readiness score. Pick thresholds that fit your Tier 0 pages.
 
 ## 7. Real-world examples
 

@@ -75,7 +75,7 @@ This decomposition fundamentally alters source selection:
 
 Answer engines do not rely on keywords or vector search alone. They query an index using Hybrid Retrieval, running two concurrent passes and merging the top candidates using Reciprocal Rank Fusion (RRF):
 
-- **Sparse Lexical Retrieval (BM25):** Matches exact keywords, error codes, function names, and version strings (e.g., `OllagraphClient`, `CVE-2026-1049`). It ensures precision but fails when vocabularies diverge.
+- **Sparse Lexical Retrieval (BM25):** Matches exact keywords, error codes, function names, and version strings (e.g., `ERR_CONNECTION_RESET`, `CVE-2026-1049`). It ensures precision but fails when vocabularies diverge.
 - **Dense Semantic Retrieval (Bi-Encoders):** Maps queries and text to shared vector embeddings to capture concepts and intent across synonyms. It finds contextual matches but is vulnerable to semantic drift and struggles with exact strings.
 - **Reciprocal Rank Fusion (RRF):** Balances both passes with the formula:
 
@@ -152,7 +152,7 @@ Pages that achieve consistent citations demonstrate high Entity Density and clea
 ### 1. Elimination of Pronominal Ambiguity
 Human writers often use pronouns to maintain narrative flow: *"It is an open-source framework that provides automated security. The software connects to your infrastructure and monitors them continuously."*
 
-To a human, *"It"* refers to the platform mentioned in the previous paragraph. To an automated chunking and extraction algorithm that evaluates 200-word windows in isolation, *"It"* is an ungrounded pronoun. The passage cannot be verified independently because the entity is missing from the chunk. Citable content repeatedly anchors statements with explicit entity names: *"Ollagraph provides automated API security monitoring. The Ollagraph agent connects to Kubernetes clusters and inspects external ingress routes continuously."*
+To a human, *"It"* refers to the platform mentioned in the previous paragraph. To an automated chunking and extraction algorithm that evaluates 200-word windows in isolation, *"It"* is an ungrounded pronoun. The passage cannot be verified independently because the entity is missing from the chunk. Citable content repeatedly anchors statements with explicit entity names: *"Acme Guard provides automated API security monitoring. The Acme Guard agent connects to Kubernetes clusters and inspects external ingress routes continuously."*
 
 ### 2. Schema Markup as a Grounding Accelerator
 JSON-LD structured data does not automatically cause an answer engine to cite a URL, but it dramatically reduces entity disambiguation compute costs (see our comprehensive breakdown on [structured data for AI Overviews and which schema signals matter most](/blog/structured-data-for-ai-overviews-which-schema-signals-matter-most/)). When a page includes valid `TechArticle`, `SoftwareApplication`, or `APIReference` schema linking entities via exact `sameAs` Wikidata or official documentation URIs, the answer engine's ingestion pipeline validates the page's authoritative entity relationships with zero ambiguity.
@@ -251,63 +251,52 @@ Answer engine optimization requires verifying how automated parsers ingest your 
 
 ### Core Audit Endpoints
 
-- `/v1/aeo/citation-readiness`: Evaluates answer fit, chunk boundaries, and factual density, returning a 0–100 Citation Readiness Score (CRS).
-- `/v1/aeo/llm-fetch-simulator`: Checks for WAF blocks, timeout issues, and static HTML rendering under AI bot user-agents (`OAI-SearchBot`, `PerplexityBot`).
-- `/v1/aeo/page-audit`: Inspects schema alignment, heading hierarchy, and entity-predicate mapping (see our comprehensive [SEO audit for AI crawlers](/blog/seo-audit-for-ai-crawlers-beyond-traditional-technical-seo/)).
-- `/v1/scrape/llm-ready`: Segments page content into clean, pre-tokenized chunks (200–400 tokens) ready for cross-encoder reranking.
-- `/v1/extract/clean`: Strips navigation chrome, advertisements, and layout boilerplate, returning normalized Markdown.
+- `/v1/aeo/citation-readiness`: Mechanically scores a page on numerical specifics, named entities, authoritative outbound links, author byline, last-updated date, and content length, returning a 0–100 Citation Readiness Score (CRS) plus recommendations.
+- `/v1/aeo/llm-fetch-simulator`: Fetches the URL as each of 11 named AI crawlers (including `OAI-SearchBot` and `PerplexityBot`) plus a browser baseline, and reports what each received: status, content length, and a visible-text preview, with block, JS-only, and cloaking detection.
+- `/v1/aeo/page-audit`: Runs nine component probes (including schema coverage, citation readiness, AI bot allowlist, and fetch simulation) and returns a 0–100 headline score, category breakdowns, top issues, and ranked recommendations (see our comprehensive [SEO audit for AI crawlers](/blog/seo-audit-for-ai-crawlers-beyond-traditional-technical-seo/)).
+- `/v1/scrape/llm-ready`: Extracts the article body and splits it into chunks sized by `max_tokens` with configurable overlap, each carrying byte offsets back into the source page.
+- `/v1/extract/clean`: Strips navigation chrome, advertisements, and layout boilerplate, returning the clean main content.
 
 ### Compact Python Audit Script
 
-This concise script fetches the URL, verifies AI crawler access, and outputs the Citation Readiness Score:
+This concise script verifies AI crawler access and outputs the Citation Readiness Score. The score is page-level; mapping it to a specific target query is your call.
 
 ```python
+import os
+
 import requests
 
-OLLAGRAPH_API_KEY = "your_api_key_here"
-HEADERS = {"Authorization": f"Bearer {OLLAGRAPH_API_KEY}", "Content-Type": "application/json"}
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
 URL = "https://example.com/blog/wireguard-vpc-peering-mtu"
-QUERY = "how to fix WireGuard handshake drops MTU across VPC"
 
 # 1. Check AI crawler fetchability
 fetch_res = requests.post(
     "https://api.ollagraph.com/v1/aeo/llm-fetch-simulator",
     headers=HEADERS,
-    json={"url": URL, "crawler_profile": "ai_search_standard"}
+    json={"url": URL},
+    timeout=120,
 ).json()
 
-if fetch_res.get("is_waf_blocked") or fetch_res.get("http_status") != 200:
-    raise SystemExit(f"[FAIL] Blocked or unreachable: HTTP {fetch_res.get('http_status')}")
+summary = fetch_res.get("summary") or {}
+if summary.get("blocked_count", 0) or summary.get("js_only_count", 0):
+    raise SystemExit(f"[FAIL] AI crawlers blocked or served a JS-only shell: {summary}")
 
-# 2. Score passage citation readiness
+# 2. Score citation readiness
 crs_res = requests.post(
     "https://api.ollagraph.com/v1/aeo/citation-readiness",
     headers=HEADERS,
-    json={"url": URL, "target_query": QUERY}
+    json={"url": URL},
+    timeout=120,
 ).json()
 
 print(f"Citation Readiness Score: {crs_res.get('score')}/100")
-print("Subscores:", crs_res.get("subscores"))
-print("Top Passage:", crs_res.get("top_passage_preview"))
+print("Signals:", crs_res.get("signals"))
+print("Recommendations:", crs_res.get("recommendations"))
 ```
 
 ### Key Diagnostic Telemetry
 
-The endpoint returns structured JSON isolating exactly where a page passes or fails:
-
-```json
-{
-  "url": "https://example.com/blog/wireguard-vpc-peering-mtu",
-  "score": 88.5,
-  "subscores": {
-    "direct_answer_fit": 94.0,
-    "chunk_boundary_integrity": 90.0,
-    "entity_disambiguation": 86.0,
-    "factual_density": 89.0
-  },
-  "top_passage_preview": "When WireGuard drops handshakes across cloud VPCs, the root cause is typically PMTUD failure dropping packets exceeding 1420 bytes. Set `MTU = 1360` in `/etc/wireguard/wg0.conf` on both peers."
-}
-```
+The citation-readiness response isolates where a page passes or fails: the 0–100 `score`, a letter grade, the per-signal findings (counts and examples of numerical specifics and named entities, authoritative outbound domains, whether an author byline and last-updated date were found, word count), and plain-language recommendations for each weak signal. To see which passage an engine would lift first, inspect the first chunk returned by `/v1/scrape/llm-ready`.
 
 **Rule of Thumb:** A composite score above 75 indicates high citation eligibility; a score below 60 indicates that the lead passage is diluted, ambiguous, or fragmented by layout containers.
 
@@ -344,10 +333,10 @@ Ensure that JSON-LD structured data mirrors on-page reality. If you implement `T
 
 ### Step 6: Re-Run Ollagraph Simulation and Validation
 Execute `/v1/aeo/llm-fetch-simulator` and `/v1/aeo/citation-readiness` against the modified staging URL. Verify that:
-- WAF status returns 200 OK with zero challenge interstitials.
-- Extraction yield exceeds 40%.
+- Every AI crawler in the simulator receives a 200 with the article text, and none is blocked or served a JS-only shell.
+- Extraction yield exceeds 40% (clean-extract length against raw page length, computed in your own script).
 - Citation readiness score exceeds 80 points.
-- The top-extracted passage matches your intended Answer Block verbatim.
+- The first chunk from `/v1/scrape/llm-ready` contains your intended Answer Block verbatim.
 
 Ship to production once these thresholds are met.
 
@@ -394,22 +383,22 @@ Add an automated validation step to your pull request workflow against staging o
     import os, sys, requests
     API_KEY = os.environ["OLLAGRAPH_API_KEY"]
     URL = "https://preview.example.com/blog/wireguard-vpc-peering-mtu"
-    QUERY = "how to fix WireGuard handshake drops MTU across VPC"
-    HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-    
+    HEADERS = {"Authorization": f"Bearer {API_KEY}"}
+
     # Check AI crawler access
-    fetch = requests.post("https://api.ollagraph.com/v1/aeo/llm-fetch-simulator", 
-                          headers=HEADERS, json={"url": URL}).json()
-    if fetch.get("is_waf_blocked") or fetch.get("http_status") != 200:
-        sys.exit("[CI FAIL] Staging URL is blocked or unreachable by AI crawlers.")
-        
+    fetch = requests.post("https://api.ollagraph.com/v1/aeo/llm-fetch-simulator",
+                          headers=HEADERS, json={"url": URL}, timeout=120).json()
+    summary = fetch.get("summary") or {}
+    if summary.get("blocked_count", 0) or summary.get("js_only_count", 0):
+        sys.exit(f"[CI FAIL] AI crawlers blocked or served a JS-only shell: {summary}")
+
     # Check Citation Readiness Score
-    crs = requests.post("https://api.ollagraph.com/v1/aeo/citation-readiness", 
-                        headers=HEADERS, json={"url": URL, "target_query": QUERY}).json()
+    crs = requests.post("https://api.ollagraph.com/v1/aeo/citation-readiness",
+                        headers=HEADERS, json={"url": URL}, timeout=120).json()
     score = crs.get("score", 0)
     print(f"[CI INFO] Citation Readiness Score: {score}/100")
-    if score < 75.0:
-        print("[CI FAIL] Score below 75 threshold. Findings:", crs.get("findings"))
+    if score < 75:
+        print("[CI FAIL] Score below 75 threshold. Recommendations:", crs.get("recommendations"))
         sys.exit(1)
     print("[CI PASS] Page is citation-ready.")
     EOF
@@ -417,7 +406,7 @@ Add an automated validation step to your pull request workflow against staging o
 
 ### Core CI Quality Rules
 
-- **Hard Failure on WAF Interception:** If `is_waf_blocked` returns true, the build fails immediately to prevent rolling out bot protection rules that block `OAI-SearchBot` or `PerplexityBot`.
+- **Hard Failure on WAF Interception:** If the fetch simulator reports any AI crawler blocked or served a JS-only shell, the build fails immediately to prevent rolling out bot protection rules that block `OAI-SearchBot` or `PerplexityBot`.
 - **Minimum Citation Threshold (CRS ≥ 75):** Ensures every published URL contains a clean, extractable answer block in the primary chunk.
 - **Template Regression Guard:** Catches layout shifts (e.g., promotional modals or altered header structures) that inadvertently fragment H2 content boundaries.
 

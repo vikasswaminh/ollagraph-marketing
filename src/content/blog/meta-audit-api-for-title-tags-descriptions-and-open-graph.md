@@ -25,7 +25,7 @@ A Meta Audit API solves this by programmatically fetching pages, extracting all 
 - A Meta Audit API can check 1,000 pages in under 90 seconds. A manual audit of the same volume takes 4–8 hours.
 - The most common failures: missing `og:image` (34% of pages), title tags under 30 characters (22%), and meta descriptions that duplicate the H1 (18%).
 - Integrating meta tag validation into CI/CD—alongside automated [broken link checks](/blog/broken-links-checker-api-detect-and-fix-404s-at-scale/)—catches issues before they reach production.
-- Ollagraph's Meta Audit API (part of our [full website SEO audit API](/blog/website-seo-audit-how-to-run-a-full-audit-in-one-api-call/)) checks 40+ validation rules per page across Google, Facebook, LinkedIn, X/Twitter, Slack, and Discord.
+- Ollagraph's `POST /v1/seo/meta-audit` endpoint (part of our [full website SEO audit API](/blog/website-seo-audit-how-to-run-a-full-audit-in-one-api-call/)) grades one URL per call — title, meta description, H1, canonical, core Open Graph tags, viewport, and robots — and returns a 0–100 score, an A–F grade, and a list of issues. Platform-specific checks (pixel width, image dimensions, duplicates) are a few lines of your own code on top.
 
 ---
 
@@ -161,18 +161,24 @@ The API returns a structured JSON response with per-page results, per-tag valida
 
 ### Core Components
 
-- **URL Queue Manager:** Accepts a batch of URLs (up to 10,000 per request), deduplicates them, and distributes them across worker threads.
-- **Fetcher Pool:** A pool of HTTP clients (configurable concurrency, default 25 parallel requests). Each fetcher respects `robots.txt` and follows redirects. For JavaScript-rendered pages, routes through a headless Chromium instance.
-- **HTML Parser:** A streaming parser that builds a lightweight DOM tree without executing scripts. Extraction takes under 50ms per page.
-- **Validation Engine:** A rule-based engine that runs each extracted tag through 40+ validation checks. Rules are versioned and updated as platforms change.
-- **Pixel Width Calculator:** A font-metrics engine that computes rendered pixel width using Google SERP font metrics.
-- **Report Aggregator:** Collects per-page results, computes aggregate statistics, and generates the prioritized fix list. Supports JSON, CSV, HTML, and PDF output.
+- **URL Queue:** A list of URLs to audit, deduplicated and fed to a pool of workers.
+- **Fetcher Pool:** A pool of HTTP clients with bounded concurrency. Each fetcher follows redirects; JavaScript-rendered pages may need a headless browser.
+- **HTML Parser:** A parser that builds a lightweight DOM tree without executing scripts.
+- **Validation Engine:** A rule set that checks each extracted tag. Rules need updating as platforms change.
+- **Pixel Width Calculator:** A font-metrics step that approximates rendered pixel width using Google SERP font metrics.
+- **Report Aggregator:** Collects per-page results, computes aggregate statistics, and generates a prioritized fix list.
+
+### How this maps to Ollagraph
+
+Ollagraph's `POST /v1/seo/meta-audit` covers the fetch, extract, and core-validation stages for **one URL per call**. It follows redirects, parses the server-rendered HTML, and grades the title (present, 30–60 characters), meta description (present, 120–160 characters), a single `<h1>`, `rel=canonical`, `og:image` / `og:title` / `og:description`, viewport, and robots `noindex`. It also flags likely soft-404s and pages that block the fetch. It returns a 0–100 score, an A–F grade, the extracted values, and a plain-English `issues` list.
+
+The queue, concurrency, aggregation, duplicate detection, pixel-width math, and image-dimension checks are your code. The examples below show each one.
 
 ### Workflow
 
-1. **Submit URLs.** Send a list of URLs to the API — directly, via a sitemap URL, or by uploading a CSV file. The API returns a job ID.
-2. **Poll for completion.** The API processes pages in parallel. For 1,000 pages, this takes 60–90 seconds.
-3. **Review the report.** The API returns a structured report with per-page results, aggregate statistics, and a prioritized fix list.
+1. **Collect URLs.** Read your sitemap, a CSV, or the list of pages a deploy touched.
+2. **Audit each URL.** Call `/v1/seo/meta-audit` once per URL, with modest client-side concurrency.
+3. **Review the results.** Sort by score, group issues by page template, and check duplicates across the returned titles and descriptions.
 4. **Fix and redeploy.** Address flagged issues in your CMS or codebase. The most common fixes are template-level changes.
 5. **Re-audit.** Run the audit again to confirm fixes. Many teams integrate this into their CI/CD pipeline.
 
@@ -182,80 +188,57 @@ The API returns a structured JSON response with per-page results, per-tag valida
 
 ### Prerequisites
 
-- An Ollagraph API key (free tier at ollagraph.com)
+- An Ollagraph API key (sign up at ollagraph.com)
 - A list of URLs to audit (sitemap URL, CSV file, or direct array)
-- Python 3.9+ or Node.js 18+ for the client examples
+- Python 3.9+ with `requests`, or Node.js 18+ (built-in `fetch`)
 
 ### Step-by-Step Setup
 
-1. **Get your API key.** Sign up at ollagraph.com and generate an API key. The free tier includes 500 page audits per month.
-2. **Install the client library.**
-
-```bash
-pip install ollagraph-client
-npm install ollagraph-client
-```
-
-3. **Configure your first audit.**
+1. **Get your API key.** Sign up at ollagraph.com, create an API key, and export it as `OLLAGRAPH_API_KEY`.
+2. **No client library needed.** The API is plain HTTPS: `POST https://api.ollagraph.com/v1/seo/meta-audit` with a JSON body and an `Authorization: Bearer` header. There is no SDK to install.
+3. **Run your first audit.**
 
 ```python
-from ollagraph import OllagraphClient
+import os
+import requests
 
-client = OllagraphClient(api_key="your_key_here")
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
 
-job = client.meta_audit.submit(
-    urls=[
-        "https://example.com",
-        "https://example.com/about",
-        "https://example.com/products",
-        "https://example.com/blog"
-    ],
-    options={
-        "check_google": True,
-        "check_facebook": True,
-        "check_linkedin": True,
-        "check_twitter": True,
-        "check_slack": True,
-        "js_render": False,
-        "custom_rules": {
-            "title_min_chars": 30,
-            "title_max_pixels": 580,
-            "description_min_chars": 50,
-            "description_max_pixels": 920,
-            "og_image_min_width": 200,
-            "og_image_min_height": 200
-        }
-    }
-)
+urls = [
+    "https://example.com",
+    "https://example.com/about",
+    "https://example.com/products",
+    "https://example.com/blog",
+]
 
-result = job.wait_for_completion()
-print(f"Pages audited: {result.total_pages}")
-print(f"Pass rate: {result.pass_rate:.1f}%")
-print(f"Critical issues: {result.critical_count}")
+results = {}
+for url in urls:
+    resp = requests.post(f"{API}/v1/seo/meta-audit", json={"url": url},
+                         headers=HEADERS, timeout=60)
+    results[url] = resp.json()
 ```
 
 4. **Read the report.**
 
 ```python
-for page in result.pages:
-    for issue in page.critical_issues:
-        print(f"[CRITICAL] {page.url}: {issue.tag} — {issue.message}")
-        print(f"  Fix: {issue.recommendation}")
+for url, data in results.items():
+    if data.get("status") != "success":
+        print(f"[FETCH ERROR] {url}: {data.get('error')}")
+        continue
+    print(f"{url}: {data['score']}/100 (grade {data['grade']})")
+    for issue in data["issues"]:
+        print(f"  - {issue}")
 ```
 
-### Common Configuration Options
+### Request Options
 
-- `js_render` — Default: `false`. Enable headless browser rendering for SPAs.
-- `concurrency` — Default: `25`. Parallel fetches (max 100 on paid plans).
-- `user_agent` — Default: `OllagraphBot/1.0`. Custom user-agent string.
-- `max_redirects` — Default: `5`. Maximum redirects to follow.
-- `timeout` — Default: `15000`. Page fetch timeout in milliseconds.
-- `check_google` — Default: `true`. Enable Google SERP validation rules.
-- `check_facebook` — Default: `true`. Enable Facebook OG validation.
-- `check_linkedin` — Default: `true`. Enable LinkedIn validation.
-- `check_twitter` — Default: `true`. Enable Twitter Card validation.
-- `check_slack` — Default: `true`. Enable Slack/Discord validation.
-- `custom_rules` — Default: `{}`. Override default validation thresholds.
+`/v1/seo/meta-audit` takes two fields:
+
+- `url` — Required. The page to audit. Redirects are followed and the final page is graded.
+- `use_residential_proxy` — Default: `false`. Route the fetch through a residential proxy for sites that block datacenter traffic. Costs extra credits per call.
+
+Everything else — which URLs, how many at once, what score fails a build, and any stricter thresholds — lives in your code. The response includes `title_length` and `meta_description_length`, so applying your own limits is a one-line comparison.
 
 ---
 
@@ -264,146 +247,144 @@ for page in result.pages:
 ### Example 1: Audit a Sitemap (Python)
 
 ```python
-from ollagraph import OllagraphClient
+import os
 import xml.etree.ElementTree as ET
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 
-client = OllagraphClient(api_key="your_key_here")
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
 
 sitemap_url = "https://example.com/sitemap.xml"
-response = requests.get(sitemap_url)
-root = ET.fromstring(response.content)
-
+root = ET.fromstring(requests.get(sitemap_url, timeout=30).content)
 namespace = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 urls = [loc.text for loc in root.findall("ns:url/ns:loc", namespace)]
-
 print(f"Found {len(urls)} URLs in sitemap")
 
-batch_size = 500
-all_results = []
+def audit(url):
+    resp = requests.post(f"{API}/v1/seo/meta-audit", json={"url": url},
+                         headers=HEADERS, timeout=60)
+    return url, resp.json()
 
-for i in range(0, len(urls), batch_size):
-    batch = urls[i:i + batch_size]
-    job = client.meta_audit.submit(
-        urls=batch,
-        options={"check_google": True, "check_facebook": True, "check_linkedin": True}
-    )
-    result = job.wait_for_completion()
-    all_results.append(result)
-    print(f"Batch {i//batch_size + 1}: {result.pass_rate:.1f}% pass rate")
+# One URL per call; keep client-side concurrency modest.
+with ThreadPoolExecutor(max_workers=5) as pool:
+    results = dict(pool.map(audit, urls))
 
-total_pages = sum(r.total_pages for r in all_results)
-total_critical = sum(r.critical_count for r in all_results)
-print(f"\nTotal: {total_pages} pages, {total_critical} critical issues")
+ok = {u: d for u, d in results.items() if d.get("status") == "success"}
+failing = {u: d for u, d in ok.items() if d["score"] < 75}
+print(f"Audited {len(ok)}/{len(urls)} pages; {len(failing)} scored below 75")
+
+# Duplicate detection runs locally, across everything you audited.
+by_desc = defaultdict(list)
+for u, d in ok.items():
+    if d.get("meta_description"):
+        by_desc[d["meta_description"].strip().lower()].append(u)
+dupes = {k: v for k, v in by_desc.items() if len(v) > 1}
+print(f"{len(dupes)} meta descriptions are shared by more than one page")
+
+# og:image must be an absolute HTTPS URL for most social crawlers.
+for u, d in ok.items():
+    img = d.get("og_image")
+    if img and not img.startswith("https://"):
+        print(f"[OG] {u}: og:image is not absolute HTTPS ({img})")
 ```
 
 ### Example 2: CI/CD Gate with GitHub Actions (Node.js)
 
 ```javascript
-const { OllagraphClient } = require('ollagraph-client');
+// Node.js 18+ (built-in fetch). No client library.
+const API = 'https://api.ollagraph.com';
+const MIN_SCORE = Number(process.env.MIN_META_SCORE || 75);
 
-async function main() {
-  const client = new OllagraphClient({
-    apiKey: process.env.OLLAGRAPH_API_KEY
+async function audit(url) {
+  const resp = await fetch(`${API}/v1/seo/meta-audit`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.OLLAGRAPH_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ url }),
   });
-
-  const changedUrls = process.env.CHANGED_URLS.split(',');
-
-  const job = await client.metaAudit.submit(changedUrls, {
-    checkGoogle: true,
-    checkFacebook: true,
-    checkLinkedin: true,
-    checkTwitter: true
-  });
-
-  const result = await job.waitForCompletion();
-
-  if (result.criticalCount > 0) {
-    console.error(`❌ ${result.criticalCount} critical meta issues found`);
-    for (const page of result.pages) {
-      for (const issue of page.criticalIssues) {
-        console.error(`  ${page.url}: ${issue.tag} — ${issue.message}`);
-      }
-    }
-    process.exit(1);
-  }
-
-  console.log(`✅ All ${result.totalPages} pages pass meta audit`);
+  return resp.json();
 }
 
-main().catch(console.error);
+async function main() {
+  const changedUrls = process.env.CHANGED_URLS.split(',');
+  let failures = 0;
+
+  for (const url of changedUrls) {
+    const data = await audit(url);
+    if (data.status !== 'success') {
+      failures++;
+      console.error(`  ${url}: fetch failed (${data.error})`);
+      continue;
+    }
+    if (data.score < MIN_SCORE || !data.is_indexable || data.is_likely_404) {
+      failures++;
+      console.error(`  ${url}: ${data.score}/100 (grade ${data.grade})`);
+      for (const issue of data.issues) console.error(`    - ${issue}`);
+    }
+  }
+
+  if (failures > 0) {
+    console.error(`❌ ${failures} page(s) failed the meta audit`);
+    process.exit(1);
+  }
+  console.log(`✅ All ${changedUrls.length} pages pass the meta audit`);
+}
+
+main().catch((err) => { console.error(err); process.exit(1); });
 ```
 
-### Expected Output (JSON)
+### Example Response (JSON, abridged)
+
+One call to `/v1/seo/meta-audit` returns one page's result:
 
 ```json
 {
-  "job_id": "meta-audit-abc123",
-  "status": "completed",
-  "total_pages": 4,
-  "pass_rate": 75.0,
-  "critical_count": 1,
-  "pages": [
-    {
-      "url": "https://example.com",
-      "tags": {
-        "title": {
-          "raw": "Example Domain — Premium Web Hosting Since 2010",
-          "pixel_width": 412,
-          "status": "pass"
-        },
-        "meta_description": {
-          "raw": "Example Domain provides premium web hosting with 99.9% uptime.",
-          "pixel_width": 487,
-          "status": "pass"
-        },
-        "og:image": {
-          "raw": "/images/og-default.jpg",
-          "resolved_url": "https://example.com/images/og-default.jpg",
-          "status": "fail",
-          "message": "OG image is 120×120px — Facebook requires minimum 200×200px",
-          "recommendation": "Replace with image ≥ 200×200px. Recommended: 1200×630px."
-        }
-      }
-    }
+  "status": "success",
+  "url": "https://example.com",
+  "final_url": "https://example.com/",
+  "is_likely_404": false,
+  "score": 85,
+  "grade": "B",
+  "title": "Example Domain — Premium Web Hosting Since 2010",
+  "title_length": 47,
+  "meta_description": "Example Domain provides premium web hosting with 99.9% uptime.",
+  "meta_description_length": 62,
+  "h1_count": 1,
+  "canonical": "https://example.com/",
+  "is_indexable": true,
+  "og_image": null,
+  "og_title": "Example Domain",
+  "og_description": "Premium web hosting with 99.9% uptime.",
+  "issues": [
+    "Meta description is 62 characters; aim for 120–160.",
+    "Missing og:image (used by social previews and many AI crawlers)."
   ]
 }
 ```
+
+If the page cannot be fetched, `status` is `"error"` with an `error` reason, and the call's credit is refunded.
 
 ---
 
 ## 8. Performance & Benchmarks
 
-We benchmarked the Ollagraph Meta Audit API against a manual audit workflow using Screaming Frog SEO Spider 20.1. The test used 1,000 pages from a mid-sized e-commerce site with a mix of static product pages and JavaScript-rendered category pages.
+We have not published a benchmark for this endpoint, so measure it on your own pages. Each call is one page fetch plus parsing, so wall-clock time is dominated by how fast the target site responds; total time for a site scales with page count divided by the concurrency you run client-side.
 
-### Methodology
+### How to measure it yourself
 
-- **Sample size:** 1,000 pages (800 static, 200 JS-rendered)
-- **Hardware (manual):** MacBook Pro M3, 32GB RAM, 500 Mbps fiber
-- **Hardware (API):** Ollagraph production cluster (us-east-1, c6i.4xlarge workers)
-- **Date range:** 2026-07-15 to 2026-07-20
-- **Metrics:** Wall-clock time, cost per page, false positive rate, false negative rate
+- **Sample:** a few hundred URLs from your sitemap, mixing templates (home, category, product, article).
+- **Time:** record per-call latency and total wall-clock time at your chosen concurrency.
+- **Accuracy:** hand-check a random sample of flagged and unflagged pages against the page source.
+- **Coverage:** note which checks the endpoint covers and which your own code adds (pixel width, image dimensions, duplicates, Twitter Card rules).
 
-### Results
+### Where the time goes in a manual workflow
 
-| Metric | Manual (Screaming Frog) | Ollagraph Meta Audit API | Difference |
-| :--- | :--- | :--- | :--- |
-| **Total time (1,000 pages)** | 4h 12m | 73 seconds | 207× faster |
-| **Setup time** | 15 min | 0 (API call) | — |
-| **Analyst review time** | 3h 45m | 12 min | 18.75× faster |
-| **Cost per page** | $0.42 | $0.008 | 52× cheaper |
-| **False positive rate** | 8.2% | 2.1% | 3.9× better |
-| **False negative rate** | 14.7% | 3.8% | 3.9× better |
-| **Issues detected per page** | 2.3 avg | 4.1 avg | 1.8× more |
-| **Platform-specific checks** | Google only | 6 platforms | — |
-
-### Key Findings
-
-The API detected 78% more critical issues than the manual workflow. Three areas drove the gap:
-
-- **Platform-specific validation.** The manual workflow checked Google SERP rules only. The API checked Facebook, LinkedIn, X/Twitter, Slack, and Discord — finding 142 issues the manual audit missed entirely.
-- **Image dimension checking.** The manual workflow could not verify OG image dimensions without downloading each image manually. The API resolved and checked every OG image automatically, finding 67 images too small for Facebook's requirements.
-- **Duplicate detection.** The manual workflow checked uniqueness within the sampled pages but could not compare against the full site index. The API cross-referenced the entire crawl and found 23 duplicate meta descriptions.
+The gap versus a desktop crawler is usually not raw fetch speed. It is the setup, the export, and the analyst time spent reading spreadsheets. A scripted audit that prints a ranked list of failing pages with plain-English issues removes most of that review time, and it runs unattended in CI.
 
 ---
 
@@ -414,30 +395,30 @@ The API detected 78% more critical issues than the manual workflow. Three areas 
 Treat your API key like a database password. Never hardcode it in source code, commit it to version control, or expose it in client-side JavaScript. Use environment variables or a secrets manager:
 
 ```python
-client = OllagraphClient(api_key=os.environ["OLLAGRAPH_API_KEY"])
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
 ```
 
 ### Rate Limiting and Abuse
 
-The API enforces rate limits per key (100 requests per minute on the free tier, 1,000 on pro). Exceeding the limit returns HTTP 429 with a `Retry-After` header. Implement exponential backoff in your client.
+API keys are rate-limited. If you get HTTP 429, back off and retry, honoring `Retry-After` when the response includes it. Keep client-side concurrency modest rather than firing every URL at once.
 
 ### Data Privacy
 
-When you submit URLs, the API fetches those pages and processes their meta tags. The API does not store page content beyond the meta tags and does not share audit results with any third party. Results are retained for 30 days for debugging, then automatically deleted.
+When you send a URL, Ollagraph fetches that page, extracts the meta fields, and returns them. It does not store the fetched page content. Your usage history records the call (endpoint, URL, status) so you can see what you ran.
 
 ### Crawl Permission
 
-The API respects `robots.txt` by default. If a page is disallowed for `OllagraphBot`, the API skips it and reports it as "blocked by robots.txt." You can override this with the `ignore_robots` option, but only for pages you own or have permission to crawl.
+The endpoint fetches exactly the URL you send; it does not consult `robots.txt` for you. Audit pages you own or have permission to fetch. If you want to check a site's robots policy first, `POST /v1/intel/robots` returns it.
 
 ### Mixed Content Warnings
 
-One of the most common security-related meta tag failures is OG images served over HTTP on an HTTPS page. Facebook, Slack, and Discord all block mixed content. The API flags this as a critical issue.
+One of the most common security-related meta tag failures is OG images served over HTTP on an HTTPS page. Facebook, Slack, and Discord all block mixed content. The meta audit returns the raw `og_image` value, so flag anything that is not an absolute `https://` URL in your own code, as the sitemap example does.
 
 ---
 
 ## 10. Troubleshooting
 
-- **Error: "OG image URL returned 403 Forbidden"** — The image server is blocking the crawler's user-agent. Add `OllagraphBot` to your CDN's allowlist, or serve OG images from a path that does not require authentication.
+- **Error: "OG image URL returned 403 Forbidden"** — The image server is blocking the social crawler's user-agent. Allowlist the platforms' crawlers (for example `facebookexternalhit`, `LinkedInBot`, `Twitterbot`) on your CDN, or serve OG images from a path that does not require authentication.
 
 ```nginx
 location /images/ {
@@ -446,7 +427,7 @@ location /images/ {
 }
 ```
 
-- **Error: "Title tag pixel width exceeds 580px"** — Your title is too long for Google's SERP display. The most common cause is stuffing too many keywords or including a long brand name. Move the brand to the end with a pipe separator and trim unnecessary modifiers.
+- **Issue: "Title is 74 characters; aim for 30–60."** — Your title is likely too long for Google's SERP display, which truncates by pixel width (roughly 580px). The most common cause is stuffing too many keywords or including a long brand name. Move the brand to the end with a pipe separator and trim unnecessary modifiers.
 - **Error: "Meta description duplicates H1"** — Your CMS is likely using the H1 as a fallback when no meta description is provided. Add explicit meta descriptions to every page. For thousands of pages, generate them programmatically from the page content.
 - **Error: "og:url does not match canonical URL"** — Facebook uses `og:url` to determine which URL to link to in the share. Ensure `og:url` matches the canonical URL exactly, including the protocol and trailing slash.
 - **Error: "LinkedIn shows wrong preview image"** — LinkedIn caches OG data aggressively. After fixing OG tags, use the LinkedIn Post Inspector to force a re-scrape.
@@ -461,13 +442,13 @@ location /images/ {
 Run a full-site meta audit before making any changes. Track the pass rate over time. A pass rate below 80% means you have systemic issues that need template-level fixes, not page-by-page edits.
 
 ### 2. Fix Templates First, Pages Second
-If 300 of your 5,000 product pages have the same broken OG image, the problem is the template that generates them. Fix the template, and all 300 pages are fixed in one deploy. The API's aggregate report makes template-level issues obvious because they cluster by page type.
+If 300 of your 5,000 product pages have the same broken OG image, the problem is the template that generates them. Fix the template, and all 300 pages are fixed in one deploy. Grouping your audit results by page type makes template-level issues obvious because they cluster.
 
 ### 3. Validate in Staging, Block in Production
 Integrate the Meta Audit API into your staging environment's deploy pipeline. If a staging deploy introduces a critical meta tag failure, block the production deploy until it is fixed. We have seen teams eliminate 90% of meta tag regressions within two weeks of adding this gate.
 
 ### 4. Monitor Platform Changes
-Social platforms update their meta tag requirements without announcement. Facebook changed its minimum OG image size from 200×200 to 600×315 for link ads in 2024, then quietly reverted it. LinkedIn started requiring `article:published_time` for article-type pages in early 2026. The Ollagraph API rule set is updated within 48 hours of confirmed platform changes.
+Social platforms update their meta tag requirements without announcement. Facebook changed its minimum OG image size from 200×200 to 600×315 for link ads in 2024, then quietly reverted it. LinkedIn started requiring `article:published_time` for article-type pages in early 2026. Re-check platform documentation periodically and update your own thresholds.
 
 ### 5. Use Pixel Width, Not Character Count
 Google truncates titles by pixel width, not character count. A title like "III" is 3 characters but about 18 pixels wide. "WWW" is 3 characters but about 36 pixels wide. The old 60-character rule is useless. Use an API that measures pixel width with proper font metrics.
@@ -483,25 +464,25 @@ Meta tag issues accumulate over time. New pages get published without descriptio
 ## 12. Common Mistakes
 
 ### 1. Checking Only Google
-Most teams audit for Google SERP display and assume everything is fine. This misses the entire social and messaging surface area. A page can have a perfect Google snippet and a completely broken LinkedIn card. The API checks six platforms because your content appears on six platforms.
+Most teams audit for Google SERP display and assume everything is fine. This misses the entire social and messaging surface area. A page can have a perfect Google snippet and a completely broken LinkedIn card. Check every platform your content appears on.
 
 ### 2. Using Character Count Instead of Pixel Width
 The 60-character title rule and 160-character description rule are artifacts from 2015. Google switched to pixel-based truncation in 2021. If your audit tool does not measure pixel width, it is giving you wrong results.
 
 ### 3. Ignoring Image Dimensions
-OG image dimensions matter more than OG image presence. A 100×100 pixel OG image is technically present but functionally useless — Facebook will not display it, LinkedIn will show a broken icon, and Slack will fall back to a plain URL. The API checks actual image dimensions by downloading and inspecting the image header.
+OG image dimensions matter more than OG image presence. A 100×100 pixel OG image is technically present but functionally useless — Facebook will not display it, LinkedIn will show a broken icon, and Slack will fall back to a plain URL. Download each `og:image` and read its dimensions (for example with Pillow) as a step after the meta audit.
 
 ### 4. Forgetting About Caching
 Social platforms cache OG data aggressively. Facebook caches for 24 hours. LinkedIn caches for 7 days. Slack caches indefinitely until the URL changes. After fixing OG tags, you must force a re-scrape on each platform.
 
 ### 5. Not Testing Relative URLs
-An OG image URL of `/images/og-default.jpg` works fine in a browser because the browser resolves it relative to the page URL. But LinkedIn's crawler sometimes fails on relative URLs if the page has a `<base>` tag that changes the base URL. The API resolves all relative URLs to absolute URLs and tests each one.
+An OG image URL of `/images/og-default.jpg` works fine in a browser because the browser resolves it relative to the page URL. But LinkedIn's crawler sometimes fails on relative URLs if the page has a `<base>` tag that changes the base URL. Resolve relative URLs against the page URL and request each one to confirm it returns 200.
 
 ### 6. Running One Audit and Calling It Done
 Meta tag quality degrades over time. New pages, template changes, CMS updates, and content editor mistakes all introduce regressions. A single audit gives you a point-in-time snapshot. Weekly audits give you a trend line.
 
 ### 7. Overlooking the `<base>` Tag
-A `<base href="https://example.com/subfolder/">` tag in the `<head>` changes how all relative URLs on the page are resolved. If your OG image URL is `/images/og.jpg` and the base tag points to `/subfolder/`, the resolved URL becomes `/subfolder/images/og.jpg` — which may not exist. The API checks for base tag interference.
+A `<base href="https://example.com/subfolder/">` tag in the `<head>` changes how all relative URLs on the page are resolved. If your OG image URL is `/images/og.jpg` and the base tag points to `/subfolder/`, the resolved URL becomes `/subfolder/images/og.jpg` — which may not exist. Check for a `<base>` tag when you resolve OG image URLs.
 
 ---
 
@@ -518,26 +499,26 @@ Shows how Facebook renders your OG tags for a single URL. Useful for debugging i
 
 ### Comparison Table
 
-| Feature | Ollagraph Meta Audit API | Screaming Frog | Ahrefs Site Audit | Facebook Debugger |
+| Feature | Ollagraph `/v1/seo/meta-audit` | Screaming Frog | Ahrefs Site Audit | Facebook Debugger |
 | :--- | :--- | :--- | :--- | :--- |
-| **Title tag validation** | Pixel width + content | Character count | Character count | No |
-| **Meta description validation** | Pixel width + content | Character count | Character count | No |
-| **OG tag validation** | 6 platforms | Basic extraction | Basic extraction | Facebook only |
-| **Image dimension check** | Yes (downloads + inspects) | No | No | Yes (single URL) |
-| **Twitter Card validation** | Full | No | No | No |
-| **LinkedIn validation** | Full | No | No | No |
-| **Slack/Discord validation** | Full | No | No | No |
-| **CI/CD integration** | Native (REST API) | No | Limited (API tier) | No |
-| **Batch processing** | Up to 10,000 URLs | Unlimited (local) | Unlimited (cloud) | 1 URL at a time |
-| **Pixel width measurement** | Yes (font metrics engine) | No | No | No |
-| **Duplicate detection** | Cross-page | Per-crawl | Per-crawl | No |
-| **Scheduled audits** | Yes (cron) | No | Yes | No |
-| **Cost per 1,000 pages** | $8.00 | $0 (owned) + labor | $0 (subscription) + labor | Free |
-| **API for automation** | REST + SDKs | No | Limited | No |
+| **Title tag validation** | Presence + character length (30–60) | Character count | Character count | No |
+| **Meta description validation** | Presence + character length (120–160) | Character count | Character count | No |
+| **OG tag validation** | Presence of `og:title`, `og:description`, `og:image` | Basic extraction | Basic extraction | Facebook only |
+| **Image dimension check** | No (add in your code) | No | No | Yes (single URL) |
+| **Twitter Card validation** | Not graded (tags available via `/v1/intel/social-tags`) | No | No | No |
+| **LinkedIn validation** | No platform-specific rules | No | No | No |
+| **Slack/Discord validation** | No platform-specific rules | No | No | No |
+| **CI/CD integration** | REST API (plain HTTPS) | No | Limited (API tier) | No |
+| **Batch processing** | One URL per call; loop in your code | Unlimited (local) | Unlimited (cloud) | 1 URL at a time |
+| **Pixel width measurement** | No (character count) | No | No | No |
+| **Duplicate detection** | In your code, across returned values | Per-crawl | Per-crawl | No |
+| **Scheduled audits** | Via your scheduler (cron, CI) | No | Yes | No |
+| **Cost** | Credit-metered per call | $0 (owned) + labor | $0 (subscription) + labor | Free |
+| **API for automation** | REST (no SDK) | No | Limited | No |
 
 ### When to Choose Each
 
-- **Ollagraph Meta Audit API:** If you need automated, platform-specific validation across multiple social platforms, CI/CD integration, or audits at scale (1,000+ pages).
+- **Ollagraph `/v1/seo/meta-audit`:** If you want a scriptable per-URL grade and issue list to drive CI/CD gates or scheduled audits, and you are happy to add platform-specific checks in your own code.
 - **Screaming Frog:** If you need a one-time deep crawl with full control and an analyst to interpret results.
 - **Ahrefs Site Audit:** If you already use Ahrefs for keyword research and want a unified dashboard.
 - **Facebook Sharing Debugger:** If you need to debug a single URL's Facebook rendering.
@@ -548,23 +529,24 @@ Shows how Facebook renders your OG tags for a single URL. Useful for debugging i
 
 ### Scaling to 100,000+ Pages
 
-The Ollagraph Meta Audit API scales horizontally across worker pools. For enterprise deployments:
+The endpoint audits one URL per call, so scale comes from your client:
 
-- **Batch in chunks of 5,000 URLs.** The API accepts up to 10,000 URLs per request, but smaller batches give better granularity for error handling.
-- **Use sitemap-based submission.** Point the API at your sitemap URL. The API automatically discovers all pages and handles sitemap index files.
+- **Run a bounded worker pool.** Process URLs with a fixed number of concurrent calls, and back off on HTTP 429.
+- **Read the sitemap yourself.** Parse your sitemap (and any sitemap index files) into a URL list, as in the sitemap example. `POST /v1/intel/sitemap` can also fetch and parse one for you.
 - **Schedule incremental audits.** Run a full audit monthly and incremental audits weekly for pages changed in the last 7 days.
+- **Store your own results.** Keep each run's scores in your database so you can trend them and diff runs.
 
 ### Multi-Tenant Usage
 
-For agencies managing multiple client sites, the API supports workspace-level organization. Each workspace has its own API key, audit history, and configuration. Run audits across all client sites from a single integration and get per-client reports.
+For agencies managing multiple client sites, create a separate API key per client (`POST /v1/keys` accepts a `label`, a `project_tag`, and an optional `daily_cap_credits`). Each client's calls then show up separately in your usage history, and a runaway job cannot spend past its cap.
 
 ### Observability
 
-The API exposes metrics via a `/v1/metrics` endpoint: total pages audited, average pass rate over time, top failure categories, and API latency percentiles. These can be ingested into Datadog, Grafana, or any Prometheus-compatible monitoring system.
+`GET /v1/me/usage` and `GET /v1/me/usage/summary` return your call history and totals. Trend lines such as average score over time come from the results you store.
 
 ### Billing
 
-The Meta Audit API is billed per page audited. The free tier includes 500 pages per month. Paid plans start at $49/month for 10,000 pages. Enterprise plans with dedicated workers, custom rules, and SLA guarantees are available at custom pricing.
+Each call is credit-metered, and calls that fail to fetch the page are refunded. See [pricing](/pricing) for current credit packs.
 
 ---
 
@@ -580,15 +562,15 @@ A regular web crawler extracts whatever is in the HTML. A Meta Audit API evaluat
 
 ### Q3. Can a Meta Audit API check JavaScript-rendered meta tags?
 
-Yes. When `js_render` is enabled, the API routes the page fetch through a headless Chromium browser that executes JavaScript before extracting meta tags. This is necessary for single-page applications (React, Next.js, Vue) that inject meta tags client-side. The tradeoff is speed — JS-rendered fetches take 2–5 seconds per page instead of 200–500ms for static fetches.
+Some can. Ollagraph's `/v1/seo/meta-audit` grades the server-rendered HTML and does not execute JavaScript, which matches what most social crawlers see. If your single-page application (React, Next.js, Vue) injects meta tags client-side, fetch the rendered page with `POST /v1/scrape` (`"format": "html"`) and inspect the `<head>` yourself. Expect rendered fetches to be slower than static ones.
 
 ### Q4. How many URLs can I audit in a single request?
 
-The Ollagraph Meta Audit API accepts up to 10,000 URLs per request. For larger sites, submit multiple requests in batches. The API processes pages in parallel with configurable concurrency, so a batch of 5,000 pages typically completes in 3–5 minutes.
+Ollagraph's `/v1/seo/meta-audit` takes one URL per request. For a site, loop over your URL list with a small client-side worker pool, as in the sitemap example. Total time depends on the target site's response times and your concurrency.
 
 ### Q5. Does the API check image dimensions for OG images?
 
-Yes. The API downloads each OG image, reads its dimensions from the image header (JPEG, PNG, GIF, WebP), and validates them against each platform's minimum requirements. Facebook requires 200×200px minimum (1200×630px recommended). LinkedIn requires 200×200px. Slack requires 400×400px for large cards. X/Twitter requires 300×157px for `summary_large_image`.
+Not in Ollagraph's meta audit — it checks that `og:image` is present and returns its value. To check dimensions, download the image in your own code and read its size (for example with Pillow), then compare against each platform's minimums. Facebook requires 200×200px minimum (1200×630px recommended). LinkedIn requires 200×200px. Slack requires 400×400px for large cards. X/Twitter requires 300×157px for `summary_large_image`.
 
 ### Q6. How often should I run a meta tag audit?
 
@@ -596,27 +578,27 @@ Weekly for most sites. Daily for high-traffic sites or sites with frequent conte
 
 ### Q7. What happens if my OG image URL returns a 403?
 
-The API flags it as a critical issue. If your CDN blocks `OllagraphBot`'s user-agent, add it to the allowlist. If the image is behind authentication, move it to a public path.
+Ollagraph's meta audit does not fetch the image itself, so request each `og:image` URL in your own check. If your CDN blocks the social platforms' crawler user-agents, allowlist them. If the image is behind authentication, move it to a public path. If the page itself returns 401/403/429, the audit says so in its `issues`.
 
 ### Q8. Does the API support custom validation rules?
 
-Yes. The API accepts a `custom_rules` object where you can override default thresholds — minimum and maximum title length in pixels, minimum description length, required tags, and custom regex patterns for tag content validation.
+Not as API options — the thresholds are fixed. The response returns the raw values (`title`, `title_length`, `meta_description`, `meta_description_length`, `canonical`, `og_*`), so apply stricter or custom rules in your own code.
 
 ### Q9. Can I integrate the API with my CI/CD pipeline?
 
-Yes. The API returns a non-zero exit code when critical issues are found, making it straightforward to use as a CI/CD gate. The GitHub Actions example in this article shows a complete workflow that blocks deploys with critical meta tag failures.
+Yes. The API returns JSON with a score and an issue list; your CI script decides what fails the build and exits non-zero. The Node.js example in this article shows a complete gate that blocks deploys when a changed page scores too low.
 
 ### Q10. How does the API handle redirects?
 
-The API follows up to 5 redirects by default (configurable via `max_redirects`). It records the final URL after the redirect chain and validates meta tags against the final page. If a redirect chain loops, the API reports it as a fetch error.
+Ollagraph's meta audit follows redirects, grades the final page, and returns it as `final_url`. To inspect each hop of a chain, use `POST /v1/seo/redirect-chain-map`.
 
 ### Q11. Does the API check for duplicate meta descriptions across pages?
 
-Yes. The API compares every page's meta description against all other pages in the same audit batch and flags exact and near-exact duplicates. For site-wide deduplication across multiple audit runs, the API supports a `domain_index` option that stores and compares against historical data.
+Not by itself — each call audits one page. Because every response includes the page's `title` and `meta_description`, duplicate detection is a few lines of your own code across the results, as in the sitemap example. Store results between runs to compare against history.
 
 ### Q12. What is the difference between OG tags and Twitter Cards?
 
-Open Graph tags (`og:`) are the standard protocol used by Facebook, LinkedIn, Slack, and Discord. Twitter Cards (`twitter:`) are X/Twitter's own protocol. Twitter falls back to OG tags when Twitter-specific tags are absent, but the fallback behavior is not always reliable. The API checks both protocols independently.
+Open Graph tags (`og:`) are the standard protocol used by Facebook, LinkedIn, Slack, and Discord. Twitter Cards (`twitter:`) are X/Twitter's own protocol. Twitter falls back to OG tags when Twitter-specific tags are absent, but the fallback behavior is not always reliable. Ollagraph's meta audit grades the `og:` tags; `POST /v1/intel/social-tags` returns both the Open Graph and Twitter Card tags for a page so you can check each.
 
 ---
 
@@ -628,7 +610,7 @@ A Meta Audit API solves this by automating the extraction and validation process
 
 The teams that get this right treat meta tag auditing as a continuous process, not a one-time project. They integrate validation into their CI/CD pipeline. They run weekly scheduled audits. They fix templates instead of individual pages. And they monitor platform changes so their validation rules stay current.
 
-The Ollagraph Meta Audit API handles all of this in a single endpoint — 40+ validation rules across 6 platforms, batch processing up to 10,000 URLs, CI/CD integration, and a structured report with a prioritized fix list. Start with a free audit of your sitemap at ollagraph.com.
+Ollagraph's `POST /v1/seo/meta-audit` gives you the core of this as one HTTPS call per URL — a score, a grade, the extracted tags, and a plain-English issue list — and the examples above show the loop, duplicate checks, and CI gate around it. Sign up at ollagraph.com and run it against your sitemap.
 
 ---
 
@@ -644,5 +626,5 @@ The Ollagraph Meta Audit API handles all of this in a single endpoint — 40+ va
 - [Discord Embed Documentation](https://discord.com/developers/docs/resources/message#embed-object)
 - [Screaming Frog SEO Spider](https://www.screamingfrog.co.uk/seo-spider/)
 - [Ahrefs Site Audit](https://ahrefs.com/site-audit)
-- [Ollagraph Meta Audit API Documentation](https://ollagraph.com/docs/meta-audit)
+- [Ollagraph API Documentation](https://ollagraph.com/docs)
 - [W3C HTML Meta Element Specification](https://html.spec.whatwg.org/multipage/semantics.html#the-meta-element)

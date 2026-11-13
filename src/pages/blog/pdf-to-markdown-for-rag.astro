@@ -7,7 +7,7 @@ const faqs = [
   { q: "How should Markdown be chunked for RAG?", a: "Chunk on semantic boundaries such as headings, paragraphs, and table sections. Avoid fixed character splits that cut through tables or separate a claim from its supporting context." },
   { q: "How do I handle tables in PDF-to-Markdown pipelines?", a: "Convert tables into Markdown tables when they are compact and readable. For wide or dense tables, split them into row groups or add a short summary before embedding." },
   { q: "What metadata should travel with each chunk?", a: "Include page number, section title, source filename, and document ID. That metadata improves filtering, citations, and traceability during retrieval." },
-  { q: "Can Ollagraph automate PDF-to-Markdown at scale?", a: "Yes. Ollagraph can extract PDFs, preserve structure, and output chunk-ready Markdown in one pipeline. That reduces parser tuning and keeps the ingestion flow consistent across document types." },
+  { q: "Can Ollagraph automate PDF-to-Markdown at scale?", a: "Partly. Ollagraph's PDF-to-Markdown endpoint turns the text layer of a digital PDF into page-sectioned Markdown in one HTTPS call, so you do not host a parser for that step. It does not run OCR or rebuild tables; scanned PDFs are flagged, and chunking stays in your own pipeline." },
 ];
 ---
 <Article
@@ -22,7 +22,7 @@ const faqs = [
 <h2>Executive Summary</h2>
 <p>Most RAG pipelines fail before the first retrieval because the source documents arrive as flat, broken text. PDFs are the worst offender. A research paper becomes a wall of paragraphs with multi-column reading orders scrambled. A financial report loses its headings and sections. A product manual sheds its captions and callouts. When that stripped text is chunked and embedded, the semantic relationships that help an LLM answer accurately disappear with the visual formatting.</p>
 <p>Layout-aware PDF parsing fixes this by reconstructing logical reading order, isolating multi-column flows, and preserving document hierarchy before converting text to Markdown. For table-specific preservation strategies and merged-cell handling, see our companion guide on <a href="/blog/pdf-to-markdown-for-rag-preserve-tables-layout-and-document-structure/">preserving tables and document structure in RAG</a>.</p>
-<p>In this guide, you will learn how layout-aware parsers use visual geometry and PDF operators to reconstruct reading order, how to eliminate header/footer noise, and how to automate the entire extraction pipeline using the Ollagraph API.</p>
+<p>In this guide, you will learn how layout-aware parsers use visual geometry and PDF operators to reconstruct reading order, how to eliminate header/footer noise, and where a hosted text-extraction call such as the Ollagraph API fits in the pipeline.</p>
 <p><strong>Key takeaway:</strong> PDF encodes visual geometry, not semantic reading order. Layout-aware parsers bridge this gap by recovering multi-column sequences and structural hierarchy before text reaches the embedding model.</p>
 
 <h2>Key Takeaways</h2>
@@ -33,7 +33,7 @@ const faqs = [
 <li>Chunking by Markdown structure—headings, paragraphs, and table rows—produces more coherent embeddings than fixed-length character chunking.</li>
 <li>Tables need special handling: convert them to Markdown tables, split wide tables into row groups, or summarize them before embedding.</li>
 <li>Metadata such as page numbers, section titles, and source filenames should travel with every chunk to improve retrieval and citation.</li>
-<li>The Ollagraph PDF-to-Markdown API automates extraction, structure preservation, and chunk-ready output so teams can skip parser tuning and focus on retrieval quality.</li>
+<li>The Ollagraph PDF-to-Markdown API converts the text layer of digital PDFs into page-sectioned Markdown over plain HTTPS; it flags scans instead of running OCR, and structure-aware chunking stays in your pipeline.</li>
 <li>Benchmark retrieval quality with answer correctness and citation precision, not just cosine similarity or chunk recall.</li>
 </ul>
 
@@ -176,7 +176,7 @@ Scanned books or papers	OCR + layout model	Needed because text is in images
 Mixed native and scanned	Hybrid pipeline with page classification	Avoids double extraction and OCR on clean pages
 PDFs with complex tables	Table-specialized parser or vision model	Tables are the hardest structure to recover
 PDFs with equations	LaTeX-aware model such as Nougat	Equations need specialized rendering
-High-volume ingestion	Managed API such as Ollagraph	Removes tuning and scaling burden</code></pre>
+Digital PDFs, no parser to host	Managed text-layer API such as Ollagraph	No parser infrastructure to run</code></pre>
 
 <h3>Operator-Based Extraction</h3>
 <p>Native PDFs contain content streams with drawing operators. A parser reads these operators to reconstruct text blocks, font information, and positions. Tools like PyMuPDF and pdfplumber do this. The challenge is turning raw positions into logical structure. That usually requires heuristics for reading order, headings, and tables.</p>
@@ -301,31 +301,42 @@ markdown = "\n".join(markdown_lines)</code></pre>
 <p>PyMuPDF gives you raw blocks and font information. You can build custom heuristics for headings and tables, but it takes more work than Marker.</p>
 
 <h3>Managed API with Ollagraph</h3>
-<p>For production pipelines, the Ollagraph PDF-to-Markdown API handles extraction, cleaning, and chunk-ready Markdown output.</p>
+<p>If you would rather not host a parser for digital PDFs, the Ollagraph PDF-to-Markdown endpoint reads the text layer and returns Markdown with one section per page. It does not run OCR: image-only scans come back flagged with <code>likely_scanned_pdf: true</code> instead of converted. The PDF travels base64-encoded in a JSON body capped at 1 MB (about 750 KB of raw PDF), and <code>max_pages</code> (1-500, default 200) bounds the work.</p>
 
-<p><strong>Upload and convert</strong></p>
-<pre><code>curl -X POST https://api.ollagraph.com/v1/pdf-to-markdown \
+<p><strong>Convert with curl</strong></p>
+<pre><code>printf '&#123;"pdf_base64": "%s", "max_pages": 50&#125;' \
+  "$(base64 &lt; annual_report.pdf | tr -d '\n')" &gt; body.json
+
+curl -X POST https://api.ollagraph.com/v1/convert/pdf-to-markdown \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
-  -F "file=@annual_report.pdf" \
-  -F "preserve_tables=true" \
-  -F "ocr_fallback=true" \
-  -F "output_format=markdown"</code></pre>
+  -H "Content-Type: application/json" \
+  -d @body.json</code></pre>
 
-<p><strong>Python SDK</strong></p>
-<pre><code>from ollagraph import OllagraphClient
+<p><strong>Python (plain <code>requests</code>, no SDK)</strong></p>
+<pre><code>import base64
+import os
+import requests
 
-client = OllagraphClient(api_key="YOUR_API_KEY")
-result = client.pdf_to_markdown(
-    file_path="annual_report.pdf",
-    preserve_tables=True,
-    ocr_fallback=True,
-    output_format="markdown"
+with open("annual_report.pdf", "rb") as f:
+    pdf_b64 = base64.b64encode(f.read()).decode("ascii")
+
+resp = requests.post(
+    "https://api.ollagraph.com/v1/convert/pdf-to-markdown",
+    headers=&#123;"Authorization": f"Bearer &#123;os.environ['OLLAGRAPH_API_KEY']&#125;"&#125;,
+    json=&#123;"pdf_base64": pdf_b64, "max_pages": 50&#125;,
+    timeout=120,
 )
+resp.raise_for_status()
+data = resp.json()
 
-print(result.markdown)
-print(result.page_count)
-print(result.tables_detected)</code></pre>
-<p>The API returns structured Markdown, page-level metadata, and table statistics. You can pipe the output directly into a chunker.</p>
+if data.get("status") == "error":
+    raise RuntimeError(data)
+if data.get("likely_scanned_pdf"):
+    raise RuntimeError("Scanned PDF: run OCR locally before chunking")
+
+markdown = data["markdown"]
+print(data["page_count"], data["word_count"])</code></pre>
+<p>The response carries the Markdown plus page and word counts, and each page arrives as its own section, so page numbers can travel into chunk metadata. The endpoint returns page text; it does not rebuild tables or heading levels. Where structure matters, apply the table and heading heuristics from the previous sections before you pipe the result into a Markdown-aware chunker.</p>
 
 <h3>Chunking Configuration</h3>
 <p>Use a Markdown-aware chunker. Here is an example with LangChain.</p>
@@ -429,9 +440,9 @@ The following table summarizes revenue and year-over-year growth for Q3 2025.</c
 <p>Because the table stays intact, a question like "Which region had the highest YoY growth?" retrieves a chunk that contains both the question and the answer.</p>
 
 <h2>Example 2: Technical Manual</h2>
-<p><strong>Input PDF:</strong> A 120-page API reference manual with code examples and endpoint tables.</p>
+<p><strong>Input PDF:</strong> A 120-page API reference manual for a fictional third-party service, Acme DocParse, with code examples and endpoint tables.</p>
 <p><strong>Extracted Markdown snippet</strong></p>
-<h3>POST /v1/extract</h3>
+<h3>POST /acme/v2/parse</h3>
 <p>Extracts structured Markdown from a PDF file.</p>
 <h3>Request</h3>
 <pre><code>&#123;
@@ -488,7 +499,7 @@ tables_detected	integer	Number of tables found</code></pre>
 |-------------------|--------------------|--------------------|-------------------------|----------------------|
 | Plain text (PyPDF2) | 47% | 38% | 22% | 380 |
 | Operator-based + heuristics | 61% | 55% | 48% | 410 |
-| Structure-aware Markdown (Ollagraph) | 78% | 71% | 69% | 425 |</code></pre>
+| Structure-aware Markdown | 78% | 71% | 69% | 425 |</code></pre>
 <p>The structure-aware Markdown approach improved answer correctness by 31 percentage points over plain text and table question accuracy by 47 percentage points. The token cost was only slightly higher because Markdown markup is compact.</p>
 <h3>Latency Observations</h3>
 <ul>
@@ -511,7 +522,7 @@ tables_detected	integer	Number of tables found</code></pre>
 <h3>Malicious PDFs</h3>
 <p>PDFs can contain JavaScript, embedded files, and malformed objects designed to exploit parsers. Run extraction in a sandboxed environment. Do not execute interactive PDF features. Use libraries that disable JavaScript execution by default.</p>
 <h3>Data Privacy</h3>
-<p>Financial, legal, and medical PDFs contain sensitive information. If you use a third-party API, verify that data is encrypted in transit and at rest, that the provider does not train models on your files, and that you can choose a region for data residency. Ollagraph offers zero-retention processing for enterprise plans.</p>
+<p>Financial, legal, and medical PDFs contain sensitive information. If you use a third-party API, verify that data is encrypted in transit and at rest, that the provider does not train models on your files, and that you can choose a region for data residency. Ollagraph processes PDFs in memory and does not store the file or the extracted Markdown.</p>
 <h3>OCR and Cloud Leakage</h3>
 <p>Cloud OCR services may store images temporarily. For highly sensitive documents, run OCR on-premise or in a VPC. Audit provider terms of service for data handling.</p>
 <h3>Access Control</h3>
@@ -592,7 +603,7 @@ tables_detected	integer	Number of tables found</code></pre>
 <h2>Alternatives and Comparison</h2>
 <p>Several tools can convert PDFs to Markdown for RAG. Here is how they compare.</p>
 <pre><code>Tool | Approach | Strengths | Weaknesses | Best For
-Ollagraph API | Text-layer extraction, scans flagged (no OCR) | Accurate, fast, chunk-ready output, managed scaling | Paid service | Production RAG pipelines
+Ollagraph API | Text-layer extraction, scans flagged (no OCR) | No parser or GPU to run, one HTTPS call | Paid service; page text only, no table or heading reconstruction; ~750 KB per request | Digital PDFs in hosted pipelines
 Marker | Vision-based | Excellent on academic papers and reports | Requires GPU for speed, setup complexity | Research papers, self-hosted teams
 Docling | Layout-aware operator + vision | IBM-backed, good table handling | Newer, evolving API | Enterprise document processing
 Nougat | Vision + LaTeX | Best for math and scientific papers | Slow, specialized | Academic papers with equations
@@ -601,7 +612,7 @@ pdfplumber | Operator-based | Good table extraction | Slower on large documents 
 Tesseract OCR | OCR only | Mature, many languages | No layout understanding | Scanned documents</code></pre>
 
 <h2>When to Choose Ollagraph</h2>
-<p>Choose Ollagraph when you need a production pipeline on digital PDFs without maintaining parsers or GPUs. The API handles document classification, structure preservation, cleaning, and chunk-ready Markdown output. It is the fastest path from PDF upload to accurate retrieval.</p>
+<p>Choose Ollagraph when your PDFs are digital (they have a text layer) and you would rather not host a parser for the extraction step. The API returns the text of each page as a Markdown section and flags scanned files; classification, table reconstruction, cleaning, and chunking stay in your pipeline.</p>
 
 <h2>When to Build In-House</h2>
 <p>Build in-house when you have unusual document types, strict data residency requirements, or a team with deep PDF parsing expertise. Be prepared to spend significant time on heuristics, table reconstruction, and evaluation.</p>
@@ -665,10 +676,10 @@ Tesseract OCR | OCR only | Mature, many languages | No layout understanding | Sc
 </ol>
 
 <h2>8. Is the Ollagraph API zero-retention?</h2>
-<p>Zero-retention is available on enterprise plans. Standard plans retain files for processing and may store logs. Check the current terms for details.</p>
+<p>Ollagraph processes the PDF in memory and does not store the file or the extracted Markdown. The usage log records the call and byte counts, not the document content.</p>
 
 <h2>9. Can I run the pipeline entirely on-premise?</h2>
-<p>Yes. Ollagraph offers private deployment options. You can also self-host open-source tools like Marker and Docling, though setup and maintenance are more involved.</p>
+<p>Not with Ollagraph. The Ollagraph API is hosted only; there is no private or on-premise deployment. It processes PDFs in memory and does not store their content. If documents cannot leave your network, self-host open-source tools like Marker and Docling, though setup and maintenance are more involved.</p>
 
 <h2>10. How do scanned PDFs affect accuracy?</h2>
 <p>Scanned PDFs are harder because text must be recognized from images. OCR quality depends on resolution, font, and noise. Modern OCR plus layout models can achieve high accuracy on clean scans.</p>
@@ -683,7 +694,7 @@ Tesseract OCR | OCR only | Mature, many languages | No layout understanding | Sc
 <p>PDFs are everywhere, but they are not built for machine reading. A RAG system that extracts text without preserving structure will struggle on the documents that matter most: reports with tables, manuals with procedures, papers with sections, and contracts with clauses.</p>
 <p>The fix is to convert PDFs to Markdown before chunking. Markdown turns visual layout into logical structure. Headings, tables, lists, and code blocks become explicit signals that chunkers and language models can use. Layout-aware parsers, whether self-hosted or managed, make this conversion accurate enough for production.</p>
 <p>The work does not stop at extraction. Clean the Markdown, chunk by semantic boundaries, attach metadata, and evaluate with real questions. The goal is not perfect Markdown. The goal is accurate, citable answers.</p>
-<p>If you are building a RAG pipeline and want to skip parser tuning, consider the Ollagraph PDF-to-Markdown API. It handles extraction, structure preservation, and chunk-ready output so your team can focus on retrieval and generation quality.</p>
+<p>If you are building a RAG pipeline and want to skip parser tuning, consider the Ollagraph PDF-to-Markdown API. It turns the text layer of digital PDFs into page-sectioned Markdown in one HTTPS call, so your team can spend its time on chunking, retrieval, and generation quality.</p>
 <p>For related reading, see our guides on HTML to Markdown for AI, DOCX to Markdown for RAG, and building a complete RAG data pipeline.</p>
 
 <h2>References</h2>

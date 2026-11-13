@@ -198,10 +198,12 @@ Each chunk should carry:
 - A vector database (pgvector, Qdrant, Weaviate, Pinecone, etc.)
 - Optional graph store (Neo4j, FalkorDB, or Postgres tables for v1)
 
-### Step 1: Install the client
+### Step 1: Install an HTTP client
+
+There is no SDK to install. The API is plain HTTPS with a Bearer key, so any HTTP client works.
 
 ```bash
-pip install ollagraph-client
+pip install requests
 ```
 
 ### Step 2: Simulate what AI fetchers see
@@ -214,35 +216,50 @@ export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"
 curl -X POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com/docs/indexing",
-    "agents": ["GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended"]
-  }'
+  -d '{"url": "https://example.com/docs/indexing"}'
 ```
+
+The simulator fetches the URL as each of 11 named AI crawlers (GPTBot, ClaudeBot, PerplexityBot and others) plus a browser baseline, and reports the status, content length and visible-text preview each one received, with cloaking and JS-only detection.
 
 If one agent receives a login wall or empty shell while another receives full HTML, your indexing outcomes will diverge by channel. Fix that before debating prompts or brand mentions.
 
 ### Step 3: Crawl and produce LLM-ready chunks
 
 ```python
-from ollagraph import OllagraphClient
+import os
 
-client = OllagraphClient(api_key="osk_xxxxxxxxxxxx")
+import requests
 
-crawl = client.crawl(
-    url="https://example.com/docs",
-    max_pages=100,
-    include_paths=["/docs"],
-)
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
 
-llm_ready = client.scrape_llm_ready(
-    url="https://example.com/docs/indexing",
-    include_metadata=True,
-)
 
-for chunk in llm_ready.get("chunks", []):
-    print(chunk["id"], chunk.get("h_path"), len(chunk.get("text", "")))
+def post(path, body):
+    resp = requests.post(f"{API}{path}", json=body, headers=HEADERS, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+
+# Crawls run asynchronously: this queues the job and returns its id.
+# Poll GET /v1/jobs/{job_id} (or pass webhook_url) for the crawled pages.
+# depth counts URL path levels below the start URL.
+crawl_job = post("/v1/crawl", {
+    "url": "https://example.com/docs",
+    "max_pages": 100,
+    "depth": 3,
+})
+print(crawl_job)
+
+# Fetch one page as clean article text, already chunked for embedding.
+llm_ready = post("/v1/scrape/llm-ready", {
+    "url": "https://example.com/docs/indexing",
+    "max_tokens": 500,
+    "overlap_tokens": 50,
+})
+print(llm_ready)
 ```
+
+Each chunk in the `/v1/scrape/llm-ready` response carries its text, a token count and byte offsets back into the source page. Section paths (`h_path`), content hashes and entity lists are yours to add when you map those chunks onto the record below.
 
 ### Step 4: Use a strict chunk contract
 
@@ -268,13 +285,16 @@ CHUNK_RECORD = {
 ### Step 5: Gate on citation readiness before upsert
 
 ```python
-audit = client.aeo_citation_readiness(
-    url="https://example.com/docs/indexing"
-)
+audit = post("/v1/aeo/citation-readiness", {
+    "url": "https://example.com/docs/indexing",
+})
 
-if audit.get("score", 0) < 0.6:
+# score is 0-100; the threshold is your own pipeline policy
+if audit.get("score", 0) < 60:
     raise SystemExit("Below citation-readiness threshold — quarantine")
 ```
+
+The score is mechanical: numerical specifics, named entities, authoritative outbound links, author byline, last-updated date and content length. Pages below your threshold go to a quarantine lane instead of being upserted.
 
 ## 8. Real-world examples
 

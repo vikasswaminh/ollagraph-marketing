@@ -155,7 +155,7 @@ Prefer one primary type plus the identity edges it needs. Example for a technica
 Place the `<script type="application/ld+json">` block in the server-rendered response. If your stack is a SPA, generate schema on the server or in the HTML shell. Do not wait for client hydration.
 
 ### Step 5: Validate syntax and Google eligibility rules
-Use a schema validator for syntax and required/recommended properties. Ollagraph’s `/v1/seo/schema-validate` is built for this at page or batch scale. Syntax failures are cheap to catch and expensive to discover after templates ship.
+Use a schema validator for syntax and required/recommended properties. Ollagraph’s `/v1/seo/schema-validate` checks one page per call (by URL or raw HTML) against Google’s required-field lists, so it slots into CI or a sweep script. Syntax failures are cheap to catch and expensive to discover after templates ship.
 
 ### Step 6: Measure coverage and citation readiness
 Syntax is not coverage. Coverage asks: which high-signal fields are present on this URL? Citation readiness asks: does the page look quotable — specifics, entities, author, freshness, structure? Ollagraph endpoints that matter here:
@@ -220,29 +220,43 @@ If you only harden Tier S, you will outperform most “schema complete” sites 
 - Ollagraph API key
 - A sample set of URLs by template (blog, docs, product, FAQ, pricing)
 
-### Step 1: Install the client
+### Step 1: Install an HTTP client
+
+There is no SDK to install. The API is plain HTTPS with a Bearer key, so any HTTP client works.
 
 ```bash
-pip install ollagraph-client
+pip install requests
+export OLLAGRAPH_API_KEY="osk_your_key_here"
 ```
 
 ### Step 2: Validate schema syntax on a URL
 
 ```python
-from ollagraph import OllagraphClient
+import os
 
-client = OllagraphClient(api_key="your_api_key")
+import requests
 
-validation = client.seo.schema_validate(url="https://example.com/blog/ai-overviews-schema")
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
+URL = "https://example.com/blog/ai-overviews-schema"
+
+
+def post(path, body):
+    resp = requests.post(f"{API}{path}", json=body, headers=HEADERS, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+
+validation = post("/v1/seo/schema-validate", {"url": URL})
 print(validation)
 ```
 
-Use this as a CI gate. A template that emits broken JSON-LD should fail the build.
+The response lists the rich-result types the page is eligible for. Use this as a CI gate: a template that emits broken JSON-LD should fail the build.
 
 ### Step 3: Measure schema coverage
 
 ```python
-coverage = client.aeo.schema_coverage(url="https://example.com/blog/ai-overviews-schema")
+coverage = post("/v1/aeo/schema-coverage", {"url": URL})
 print(coverage)
 ```
 
@@ -251,8 +265,8 @@ Coverage should be interpreted against your Tier S / Tier A checklist, not again
 ### Step 4: Score citation readiness and freshness
 
 ```python
-crs = client.aeo.citation_readiness(url="https://example.com/blog/ai-overviews-schema")
-fresh = client.aeo.freshness_signal(url="https://example.com/blog/ai-overviews-schema")
+crs = post("/v1/aeo/citation-readiness", {"url": URL})
+fresh = post("/v1/aeo/freshness-signal", {"url": URL})
 print(crs)
 print(fresh)
 ```
@@ -262,16 +276,16 @@ A page can have valid schema and still score poorly if it lacks specifics, autho
 ### Step 5: Confirm AI fetchers actually receive the JSON-LD
 
 ```python
-sim = client.aeo.llm_fetch_simulator(url="https://example.com/blog/ai-overviews-schema")
+sim = post("/v1/aeo/llm-fetch-simulator", {"url": URL})
 print(sim)
 ```
 
-If the simulator shows an HTML shell without your `<script type="application/ld+json">`, fix rendering before debating property nuances.
+The simulator reports what each AI crawler received (status, content length, visible-text preview) and flags JS-only pages. If the crawlers get an empty shell, your `<script type="application/ld+json">` is probably missing from their response too: fix rendering before debating property nuances.
 
 ### Step 6: Run an orchestrated page audit
 
 ```python
-audit = client.aeo.page_audit(url="https://example.com/blog/ai-overviews-schema")
+audit = post("/v1/aeo/page-audit", {"url": URL})
 print(audit)
 ```
 

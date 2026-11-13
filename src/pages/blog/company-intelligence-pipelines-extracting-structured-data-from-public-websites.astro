@@ -130,75 +130,81 @@ const faqs = [
   <li>A target list of company domains (CSV, JSON, or database table)</li>
 </ul>
 
-<h3>Step 1: Install the Ollagraph client</h3>
-<pre><code>pip install ollagraph-client</code></pre>
+<h3>Step 1: Install an HTTP client</h3>
+<p>There is no Ollagraph SDK to install. Every endpoint is a plain HTTPS POST to https://api.ollagraph.com with a JSON body and an Authorization: Bearer header, so any HTTP client works.</p>
+<pre><code>pip install requests</code></pre>
 
-<p>Or for Node.js:</p>
-
-<pre><code>npm install ollagraph-client</code></pre>
+<p>In Node.js 18+, the built-in fetch is enough.</p>
 
 <h3>Step 2: Configure extraction endpoints</h3>
-<p>The pipeline uses three primary endpoints: /v1/scrape/smart (fetches and renders pages), /v1/extract/clean (extracts clean content), and /v1/enrich/company (enriches a domain with firmographic and technographic data).</p>
+<p>The pipeline uses a handful of endpoints: /v1/enrich/company (a lite company profile from one page — name, description, logo, address, social profiles, emails, phones), /v1/extract/structured (the page's JSON-LD, microdata, and Open Graph), /v1/extract/clean (readable main content), /v1/intel/page (detected tech stack), and domain lookups such as /v1/intel/whois and /v1/intel/email-auth. Industry, headcount, and revenue are not returned by any of them; take those from the page's own structured data where present, or from your own sources.</p>
 
-<pre><code>from ollagraph import OllagraphClient
+<pre><code>import os
+import requests
 
-client = OllagraphClient(api_key="your_api_key")
+API = "https://api.ollagraph.com"
+HEADERS = &#123;"Authorization": f"Bearer &#123;os.environ['OLLAGRAPH_API_KEY']&#125;"&#125;
 
-# Fetch homepage with contact and metadata extraction
-homepage = client.scrape_smart(
-    url="https://acmecorp.com",
-    extract_contacts=True,
-    extract_metadata=True
-)
+def call(path, payload):
+    return requests.post(f"&#123;API&#125;&#123;path&#125;", json=payload,
+                         headers=HEADERS, timeout=90).json()
 
-# Extract clean content from about page
-extracted = client.extract_clean(
-    url="https://acmecorp.com/about",
-    include_metadata=True
-)
+# Lite company profile from the homepage: name, description, logo, address,
+# social profiles, emails, phones (from Organization JSON-LD, og:* tags, links)
+company = call("/v1/enrich/company", &#123;"url": "https://acmecorp.com"&#125;)
 
-# Enrich the domain with tech stack, social, and WHOIS data
-enriched = client.enrich_company(
-    domain="acmecorp.com",
-    include_tech_stack=True,
-    include_social=True,
-    include_whois=True
-)</code></pre>
+# Readable main content from the about page
+about = call("/v1/extract/clean", &#123;"url": "https://acmecorp.com/about"&#125;)
+
+# Raw structured data (JSON-LD, microdata, Open Graph), e.g. foundingDate
+structured = call("/v1/extract/structured", &#123;"url": "https://acmecorp.com"&#125;)
+
+# Domain signals: detected tech stack, WHOIS registration, SPF/DKIM/DMARC
+page_intel = call("/v1/intel/page", &#123;"url": "https://acmecorp.com"&#125;)
+whois = call("/v1/intel/whois", &#123;"domain": "acmecorp.com"&#125;)
+email_auth = call("/v1/intel/email-auth", &#123;"domain": "acmecorp.com"&#125;)</code></pre>
 
 <h3>Step 3: Build the pipeline orchestration</h3>
 <pre><code>import json
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 from typing import Optional, Dict, List
+
+import requests
+
+API = "https://api.ollagraph.com"
 
 class CompanyIntelligencePipeline:
     def __init__(self, api_key: str):
-        self.client = OllagraphClient(api_key=api_key)
+        self.headers = &#123;"Authorization": f"Bearer &#123;api_key&#125;"&#125;
         self.schema = COMPANY_SCHEMA
 
-    def process_domain(self, domain: str) -> Dict:
+    def _call(self, path: str, payload: Dict) -&gt; Dict:
+        resp = requests.post(f"&#123;API&#125;&#123;path&#125;", json=payload,
+                             headers=self.headers, timeout=90)
+        data = resp.json()
+        # A failed call counts as "no data", so one missing page
+        # doesn't sink the whole profile.
+        return data if data.get("status") == "success" else &#123;&#125;
+
+    def process_domain(self, domain: str) -&gt; Dict:
         domain = domain.lower().removeprefix("www.").removesuffix("/")
         pages = self._discover_pages(domain)
-        homepage_data = self._extract_homepage(pages.get("homepage"))
-        about_data = self._extract_page(pages.get("about"))
-        careers_data = self._extract_page(pages.get("careers"))
-        enrichment = self.client.enrich_company(
-            domain=domain,
-            include_tech_stack=True,
-            include_social=True,
-            include_whois=True,
-            include_dns=True
-        )
+        company = self._call("/v1/enrich/company", &#123;"url": pages["homepage"]&#125;)
+        org = self._organization_jsonld(pages["homepage"])
+        about = self._call("/v1/extract/clean", &#123;"url": pages["about"]&#125;)
+        page_intel = self._call("/v1/intel/page", &#123;"url": pages["homepage"]&#125;)
+        whois = self._call("/v1/intel/whois", &#123;"domain": domain&#125;)
         profile = self._fuse_profiles(
-            domain=domain, homepage=homepage_data,
-            about=about_data, careers=careers_data,
-            enrichment=enrichment
+            domain=domain, company=company, org=org,
+            about=about, page_intel=page_intel, whois=whois
         )
         errors = self._validate_profile(profile)
         profile["validation_errors"] = errors
         profile["valid"] = len(errors) == 0
         return profile
 
-    def _discover_pages(self, domain: str) -> Dict[str, Optional[str]]:
+    def _discover_pages(self, domain: str) -&gt; Dict[str, Optional[str]]:
         base = f"https://&#123;domain&#125;"
         return &#123;
             "homepage": base, "about": f"&#123;base&#125;/about",
@@ -206,63 +212,40 @@ class CompanyIntelligencePipeline:
             "blog": f"&#123;base&#125;/blog"
         &#125;
 
-    def _extract_homepage(self, url: Optional[str]) -> Dict:
-        if not url:
-            return &#123;&#125;
-        result = self.client.scrape_smart(url=url, extract_metadata=True)
-        return &#123;
-            "name": self._extract_company_name(result),
-            "tagline": result.get("metadata", &#123;&#125;).get("description", ""),
-            "social_links": self._extract_social_links(result),
-            "structured_data": result.get("metadata", &#123;&#125;).get("jsonld", [])
-        &#125;
+    def _organization_jsonld(self, url: str) -&gt; Dict:
+        structured = self._call("/v1/extract/structured", &#123;"url": url&#125;)
+        for item in structured.get("json_ld", []):
+            if isinstance(item, dict) and item.get("@type") in (
+                    "Organization", "Corporation", "LocalBusiness"):
+                return item
+        return &#123;&#125;
 
-    def _extract_page(self, url: Optional[str]) -> Dict:
-        if not url:
-            return &#123;&#125;
-        result = self.client.extract_clean(url=url, include_metadata=True)
-        return &#123;"content": result.get("content", ""), "title": result.get("metadata", &#123;&#125;).get("title", "")&#125;
+    def _classify_industry(self, company: Dict, about: Dict) -&gt; Optional[str]:
+        # Ollagraph does not return an industry. Map the description to your
+        # INDUSTRY_TAXONOMY here (keyword rules, an LLM, or your CRM's data).
+        return None
 
-    def _extract_company_name(self, page_data: Dict) -> Optional[str]:
-        jsonld = page_data.get("metadata", &#123;&#125;).get("jsonld", [])
-        for ld in jsonld:
-            if ld.get("name"):
-                return ld["name"]
-        return page_data.get("metadata", &#123;&#125;).get("og:site_name") or \
-               page_data.get("metadata", &#123;&#125;).get("title", "").split("|")[0].split("—")[0].strip()
-
-    def _extract_social_links(self, page_data: Dict) -> Dict:
-        links = &#123;&#125;
-        for link in page_data.get("links", []):
-            href = link.get("href", "")
-            if "linkedin.com/company/" in href:
-                links["linkedin"] = href
-            elif "crunchbase.com/" in href:
-                links["crunchbase"] = href
-            elif "twitter.com/" in href or "x.com/" in href:
-                links["twitter"] = href
-        return links
-
-    def _fuse_profiles(self, domain: str, homepage: Dict, about: Dict,
-                       careers: Dict, enrichment: Dict) -> Dict:
+    def _fuse_profiles(self, domain: str, company: Dict, org: Dict,
+                       about: Dict, page_intel: Dict, whois: Dict) -&gt; Dict:
+        employees = org.get("numberOfEmployees")
+        if isinstance(employees, dict):  # schema.org QuantitativeValue
+            employees = employees.get("value")
+        founded = str(org.get("foundingDate") or "")[:4]
         profile = &#123;
             "domain": domain,
-            "name": homepage.get("name") or enrichment.get("company_name"),
-            "tagline": homepage.get("tagline"),
-            "description": about.get("content", "")[:500],
-            "industry": enrichment.get("industry"),
-            "employee_count": enrichment.get("employee_count"),
-            "employee_range": enrichment.get("employee_range"),
-            "founded_year": enrichment.get("founded_year"),
-            "revenue_range": enrichment.get("revenue_range"),
-            "hq_city": enrichment.get("hq_city"),
-            "hq_country": enrichment.get("hq_country"),
-            "tech_stack": enrichment.get("tech_stack", []),
-            "social_links": homepage.get("social_links", &#123;&#125;),
-            "domain_registered": enrichment.get("whois", &#123;&#125;).get("creation_date"),
-            "email_provider": enrichment.get("dns", &#123;&#125;).get("mx_provider"),
+            "name": company.get("name") or org.get("name"),
+            "description": company.get("description")
+                           or about.get("content_text", "")[:500],
+            "industry": self._classify_industry(company, about),
+            "employee_count": int(employees) if str(employees or "").isdigit() else None,
+            "founded_year": int(founded) if founded.isdigit() else None,
+            "address": company.get("address"),
+            "tech_stack": page_intel.get("tech_stack", []),
+            "social_links": company.get("socials_by_platform", &#123;&#125;),
+            "emails": company.get("emails", []),
+            "domain_registered": whois.get("creation_date"),
             "source": "pipeline_v1",
-            "extracted_at": datetime.utcnow().isoformat()
+            "extracted_at": datetime.now(timezone.utc).isoformat()
         &#125;
         return &#123;k: v for k, v in profile.items() if v is not None&#125;</code></pre>
 
@@ -281,7 +264,7 @@ class CompanyIntelligencePipeline:
 
 <h3>Step 4: Run at scale</h3>
 <pre><code>domains = ["acmecorp.com", "startup.io", "enterprise.co"]
-pipeline = CompanyIntelligencePipeline(api_key="your_api_key")
+pipeline = CompanyIntelligencePipeline(api_key=os.environ["OLLAGRAPH_API_KEY"])
 
 results = []
 for domain in domains:
@@ -309,20 +292,18 @@ with open("company_profiles.json", "w") as f:
 
 <h2>8. Performance &amp; benchmarks</h2>
 
-<p>We tested the pipeline against 10,000 company domains across multiple industries.</p>
+<p>We have not published field-level benchmarks for this pipeline. What you get depends on what each company publishes, so measure it on your own target list:</p>
+<ul>
+  <li><strong>Sample:</strong> run 100–200 domains from the segment you actually sell to.</li>
+  <li><strong>Fill rate:</strong> for each field, record the share of profiles where it is non-null.</li>
+  <li><strong>Accuracy:</strong> spot-check a random sample of filled fields against the live site.</li>
+  <li><strong>Source mix:</strong> note which endpoint supplied each field (company profile, JSON-LD, about page, domain lookups) so you know where to add fallbacks.</li>
+  <li><strong>Latency:</strong> record wall-clock time per domain. The calls for one domain are independent, so they can run in parallel.</li>
+</ul>
 
-<pre><code>Metric                             Homepage Only   Multi-Page   Multi-Page + Enrichment
-Company name extraction rate       94%             96%          98%
-Industry detection rate            62%             71%          88%
-Employee count extraction          28%             35%          72%
-Tech stack detection               0%              0%           85%
-HQ location extraction             18%             31%          76%
-Average field completeness         41%             48%          79%
-Average processing time per domain 1.2s            3.8s         5.1s</code></pre>
+<p>Homepage-only extraction misses most firmographic signals. Employee count lives on careers pages, not homepages. Industry signals are strongest in about page content and structured data. Industry, headcount, and revenue rarely appear as structured data on a company's own site, so plan to source them elsewhere or leave them null. Tech stack detection reads HTTP headers and page markup, which no amount of reading the visible text reveals.</p>
 
-<p>Homepage-only extraction misses most firmographic signals. Employee count lives on careers pages, not homepages. Industry signals are strongest in about page content and structured data. Domain enrichment dramatically improves coverage for employee count, industry, and HQ location — fields often absent from website content but available in WHOIS and business registry data. Tech stack detection requires dedicated scanning; no amount of page scraping reveals a company's analytics provider or CDN. Processing time stays under 6 seconds per domain. Batch processing 10,000 domains completes in roughly 14 hours with moderate concurrency.</p>
-
-<p>Cost per 1,000 domains: Homepage scrape: $5–10. Multi-page (3 pages): $15–30. Domain enrichment: $10–20. Total: $30–60 per 1,000 domains.</p>
+<p>Cost: each endpoint call is credit-metered, so per-domain cost is the number of calls you make per domain. The pipeline above makes five. See <a href="/pricing">pricing</a> for current credit packs.</p>
 
 <h2>9. Security considerations</h2>
 
@@ -340,10 +321,10 @@ Average processing time per domain 1.2s            3.8s         5.1s</code></pre
 
 <pre><code>Problem                            Likely Cause                                   Fix
 Company name is empty              JSON-LD missing, title parsing failed          Fall back to og:site_name meta tag
-Employee count is null             Not on homepage or enrichment source           Add careers page extraction. Use range estimates from enrichment.
+Employee count is null             Not published on the site or in its JSON-LD   Add careers page extraction. Source ranges from a data vendor or leave null.
 Industry is "Unknown"              No signals in page content or enrichment       Enrich with Crunchbase or LinkedIn. Use NAICS lookup from description.
-Tech stack is empty                Enrichment not configured                      Enable include_tech_stack=True. Verify domain resolves.
-Social links missing               JS redirects or relative paths                 Enable JS rendering. Normalize relative URLs to absolute.
+Tech stack is empty                Homepage fetch failed or was blocked           Check that the /v1/intel/page call succeeded. Verify domain resolves.
+Social links missing               JS-rendered links or relative paths            Retry /v1/enrich/company with use_residential_proxy: true (renders the page). Normalize relative URLs.
 30%+ validation failures           Schema too strict or low enrichment coverage   Review required fields. Add fallback enrichment sources.
 Pipeline timeout on large domains  Too many pages discovered                      Set max 5–10 pages per domain. Increase timeout for JS-heavy sites.
 Stale data in CRM                  No re-extraction schedule                      Add freshness tracking. Re-extract every 30–90 days.</code></pre>
@@ -377,13 +358,13 @@ Stale data in CRM                  No re-extraction schedule                    
 <h2>13. Alternatives &amp; comparison</h2>
 
 <pre><code>Solution | Approach | Coverage | Freshness | Maintenance | Cost
-Ollagraph Pipeline | Scrape + enrich + validate | 79% field completeness | Real-time | Low (API) | $30–60/1K domains
+Ollagraph endpoints + your pipeline | Scrape + extract + domain lookups + your validation | Depends on what each site publishes | On demand | Medium (your pipeline code) | Credit-metered per call
 Clearbit | API enrichment | 60–70% | Weekly–monthly | None | $100–500/mo
 ZoomInfo | Curated database | 80–90% | Quarterly | None | $15K+/yr
 Crunchbase API | Crowdsourced + API | 50–60% | Daily | None | $500–2K/mo
 In-house scrapers | Custom code | Variable | Real-time | Very high | Engineering time</code></pre>
 
-<p><strong>When to choose Ollagraph:</strong> You need real-time company intelligence, want to control which fields are extracted and validated, and need 1,000–100,000 profiles per month with field-level quality control.</p>
+<p><strong>When to choose Ollagraph:</strong> You want current data pulled from companies' own websites and domains, want to control which fields are extracted and validated, and are prepared to source industry and headcount elsewhere when sites don't publish them.</p>
 
 <p><strong>When to choose Clearbit or ZoomInfo:</strong> You need broad coverage with minimal setup and can tolerate weekly or quarterly updates.</p>
 
@@ -444,19 +425,17 @@ In-house scrapers | Custom code | Variable | Real-time | Very high | Engineering
 <p>Validation runs through a three-tier schema gate. Type validation checks each field is the correct data type — company name must be a string, employee count must be an integer or null. Range validation checks numeric values fall within acceptable bounds — employee count between 1 and 500,000, founding year not in the future. Cross-field consistency checks verify related fields do not contradict — a company with 5 employees should not report $1B in revenue. Records that pass all three tiers are delivered. Records that fail are quarantined with a detailed failure report showing which field failed, what the constraint was, and which source produced the value. Validation happens before delivery, not after — cleaning bad data from a CRM is far harder than catching it at the pipeline boundary.</p>
 
 <h2>Q12. What is the cost of running a company intelligence pipeline at scale?</h2>
-<p>Cost breaks into three categories. API costs dominate: processing 10,000 companies per month runs $500–$2,000 depending on pages extracted per company and whether headless rendering is needed. Infrastructure costs — a small server or serverless functions, a database, monitoring tooling — add $50–$200 per month. Engineering time is the hidden cost: building the initial pipeline takes 2–4 weeks, and maintenance runs 5–10 hours per week. Total cost of ownership for a custom pipeline at 10,000 companies per month is roughly $1,000–$3,000 per month. A managed API like Ollagraph shifts most of that to usage costs and eliminates the engineering overhead entirely.</p>
+<p>Cost breaks into three categories. API costs scale with the number of calls you make per domain, your monthly volume, and whether headless rendering or residential proxies are needed. Infrastructure costs — a small server or serverless functions, a database, monitoring tooling — add $50–$200 per month. Engineering time is the hidden cost: building the initial pipeline takes 2–4 weeks, and maintenance runs 5–10 hours per week. Total cost of ownership for a custom pipeline at 10,000 companies per month is roughly $1,000–$3,000 per month. Using an API like Ollagraph for fetching and extraction shifts the scraping infrastructure to usage costs; the pipeline logic, validation, and monitoring remain your engineering work.</p>
 
 <h2>16. Conclusion</h2>
 <p>Company intelligence pipelines solve a specific problem: turning public websites into structured, validated company profiles that downstream systems can trust. No single source provides complete coverage. Homepage scraping gives you a name and tagline. Multi-page extraction adds description and location. Domain enrichment fills employee count, tech stack, and infrastructure signals. Schema validation ensures the assembled profile meets quality standards before it reaches your CRM.</p>
 <p>The teams that get this right share a pattern. They do not build a single scraper. They build a multi-layer pipeline with explicit failure handling at every stage. They track field-level extraction yield, not just HTTP status codes. They validate data before it enters the CRM, not after. And they treat company intelligence as an ongoing operation — with freshness budgets, re-extraction schedules, and continuous monitoring — rather than a one-time dump.</p>
 <p>Start with enrichment. Add scraping for the fields enrichment cannot reach. Validate everything. Monitor yield per field. Re-extract on a schedule that matches your use case. That is the difference between a pipeline that produces company data and one that produces company intelligence.</p>
-<p><strong>Next steps:</strong> Try the pipeline with your own domain list. The Ollagraph enrichment API is the fastest way to get started. Then add page extraction for the fields you need beyond enrichment. The Ollagraph documentation covers every endpoint and configuration option.</p>
+<p><strong>Next steps:</strong> Try the pipeline with your own domain list. Start with /v1/enrich/company on each homepage, then add page extraction and domain lookups for the fields you need beyond it. The Ollagraph documentation lists every endpoint and its request fields.</p>
 
 <h2>17. References</h2>
 <ul>
-  <li>Ollagraph Company Enrichment API Documentation. https://ollagraph.com/docs/enrich/company</li>
-  <li>Ollagraph Smart Scrape API Documentation. https://ollagraph.com/docs/scrape/smart</li>
-  <li>Ollagraph Extract &amp; Convert Documentation. https://ollagraph.com/docs/extract</li>
+  <li>Ollagraph API Documentation. https://ollagraph.com/docs</li>
   <li>Clearbit Company Enrichment API. https://clearbit.com/docs#company-api</li>
   <li>Crunchbase API Documentation. https://data.crunchbase.com/docs</li>
   <li>ZoomInfo Data Coverage. https://zoominfo.com/data-coverage</li>

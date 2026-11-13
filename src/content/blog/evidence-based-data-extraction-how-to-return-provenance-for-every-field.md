@@ -281,13 +281,13 @@ Record-level envelope (wraps all field envelopes with shared fetch context):
   "schema_name": "ProductRecord",
   "schema_version": "v2.1.0",
   "extraction_timestamp": "2026-07-28T14:32:05.123Z",
-  "pipeline_version": "ollagraph-extract-v1.4.2",
+  "pipeline_version": "product-extractor-v1.4.2",
   "shared_source": {
     "url": "https://example.com/products/widget-pro",
     "fetch_timestamp": "2026-07-28T14:32:05.123Z",
     "fetch_duration_ms": 2340,
     "render_mode": "headless_browser",
-    "dom_snapshot_ref": "s3://ollagraph-snapshots/2026/07/28/snap-00421.html.gz"
+    "dom_snapshot_ref": "s3://your-snapshot-bucket/2026/07/28/snap-00421.html.gz"
   },
   "fields": {
     "title": {},
@@ -309,12 +309,16 @@ Record-level envelope (wraps all field envelopes with shared fetch context):
 
 ## 7. Implementation: Python
 
+The Ollagraph API fetches the page and returns the structured data embedded in it (JSON-LD, Microdata, OpenGraph). It does not take a schema and does not return provenance, so the envelope below is assembled in your own code from what you requested and received: the URL, the fetch time, where each value sat in the response, and its raw source text. When a field fails, the retry fetches the page HTML with `/v1/scrape` and re-extracts just that field with your own selector.
+
 ```python
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional, Dict, Any
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
+import os
 import requests
+from bs4 import BeautifulSoup
 
 class Availability(str, Enum):
     IN_STOCK = "IN_STOCK"
@@ -334,38 +338,96 @@ class ProductRecord(BaseModel):
     specs: List[ProductSpec] = Field(..., min_items=1)
     last_updated: datetime
 
-OLLAGRAPH_API_URL = "https://api.ollagraph.com/v1/extract/structured"
-API_KEY = "og_your_api_key_here"
+OLLAGRAPH_API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
+AVAILABILITY_MAP = {"InStock": "IN_STOCK", "OutOfStock": "OUT_OF_STOCK",
+                    "PreOrder": "PREORDER", "Discontinued": "DISCONTINUED"}
 
-def extract_with_provenance(url: str, schema_model: BaseModel, depth: str = "full") -> Dict[str, Any]:
-    payload = {
-        "url": url,
-        "schema_contract": schema_model.model_json_schema(),
-        "execution_mode": "auto",
-        "provenance": {
-            "enabled": True,
-            "depth": depth,
-            "include_raw_html": True,
-            "include_dom_snapshot": True,
-            "include_normalization_trace": True
-        }
+def find_typed_objects(node, type_name: str, path: str = ""):
+    """Yield (path, object) for every schema.org object of the given @type."""
+    if isinstance(node, dict):
+        node_type = node.get("@type")
+        if node_type == type_name or (isinstance(node_type, list) and type_name in node_type):
+            yield path or "/", node
+        for key, value in node.items():
+            yield from find_typed_objects(value, type_name, f"{path}/{key}")
+    elif isinstance(node, list):
+        for i, item in enumerate(node):
+            yield from find_typed_objects(item, type_name, f"{path}/{i}")
+
+def field_envelope(name, source, location, strategy, raw, value, gate_passed, reason=None):
+    return {
+        "field_name": name,
+        "source": source,
+        "dom_location": {"selector": location},
+        "extraction": {"strategy": strategy, "raw_text": None if raw is None else str(raw)},
+        "confidence": {"overall": 1.0 if gate_passed else 0.0},  # swap in your own multi-signal scorer
+        "normalization": {"raw_value": raw, "normalized_value": value, "trace": []},
+        "quality": {"gate_passed": gate_passed, "gate_reason": reason},
     }
+
+def extract_with_provenance(url: str, schema_model=ProductRecord) -> Dict[str, Any]:
+    # The API fetches the page and returns the structured data embedded in it.
+    # It takes only url, stealth, timeout and proxy: the provenance is built here.
+    fetch_timestamp = datetime.now(timezone.utc).isoformat()
     resp = requests.post(
-        OLLAGRAPH_API_URL,
-        json=payload,
-        headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+        f"{OLLAGRAPH_API}/v1/extract/structured",
+        json={"url": url, "timeout": 30},
+        headers=HEADERS,
         timeout=60
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Extraction failed: HTTP {resp.status_code}")
-    return resp.json()
+    source = {"url": url, "fetch_timestamp": fetch_timestamp}
+
+    path, product = next(find_typed_objects(resp.json(), "Product"), ("", {}))
+    offer = product.get("offers") or {}
+    if isinstance(offer, list):
+        offer = offer[0] if offer else {}
+
+    # field -> (where the raw value sits in the response, raw source value)
+    raw = {
+        "sku": (f"{path}/sku", product.get("sku")),
+        "title": (f"{path}/name", product.get("name")),
+        "price": (f"{path}/offers/price", offer.get("price")),
+        "availability": (f"{path}/offers/availability", offer.get("availability")),
+        "specs": (f"{path}/additionalProperty", product.get("additionalProperty")),
+        "last_updated": (f"{path}/dateModified", product.get("dateModified")),
+    }
+    availability = raw["availability"][1]
+    specs = raw["specs"][1] or []
+    if isinstance(specs, dict):
+        specs = [specs]
+    candidate = {
+        "sku": raw["sku"][1],
+        "title": raw["title"][1],
+        "price": raw["price"][1],
+        "availability": AVAILABILITY_MAP.get(str(availability).rstrip("/").rsplit("/", 1)[-1]) if availability else None,
+        "specs": [{"name": p.get("name"), "value": str(p.get("value"))} for p in specs],
+        "last_updated": raw["last_updated"][1],
+    }
+
+    failed = {}
+    try:
+        data = schema_model.model_validate(candidate).model_dump(mode="json")
+    except ValidationError as err:
+        data = None
+        for e in err.errors():
+            failed.setdefault(str(e["loc"][0]), e["msg"])
+
+    fields = {
+        name: field_envelope(name, source, location, "json_ld_or_microdata", value,
+                             candidate[name], name not in failed, failed.get(name))
+        for name, (location, value) in raw.items()
+    }
+    return {"data": data, "provenance": {"source": source, "fields": fields}}
 
 def inspect_field_provenance(result: Dict[str, Any], field_name: str):
     prov = result.get("provenance", {}).get("fields", {}).get(field_name)
     if not prov:
         return print(f"No provenance for '{field_name}'")
     s, d, e, c, n, q = prov["source"], prov["dom_location"], prov["extraction"], prov["confidence"], prov["normalization"], prov["quality"]
-    print(f"URL: {s['url']} | Selector: {d['selector']} | Strategy: {e['strategy']} | Raw: '{e['raw_text']}' | Confidence: {c['overall']:.3f} | Gate: {'PASS' if q['gate_passed'] else 'FAIL'}")
+    print(f"URL: {s['url']} | Fetched: {s['fetch_timestamp']} | Location: {d['selector']} | Strategy: {e['strategy']} | Raw: '{e['raw_text']}' | Confidence: {c['overall']:.3f} | Gate: {'PASS' if q['gate_passed'] else 'FAIL'}")
     for step in n.get("trace", []):
         print(f"  Step {step['step']}: {step['operation']} '{step['input']}' -> '{step['output']}' {'✓' if step['success'] else '✗'}")
 
@@ -376,7 +438,7 @@ def find_low_confidence_fields(results: List[Dict[str, Any]], threshold: float =
             c = fp.get("confidence", {}).get("overall", 0.0)
             if c < threshold:
                 issues.append({
-                    "record_id": r.get("data", {}).get("sku", "unknown"),
+                    "record_id": (r.get("data") or {}).get("sku", "unknown"),
                     "field": fn,
                     "confidence": c,
                     "raw_text": fp.get("extraction", {}).get("raw_text"),
@@ -385,33 +447,26 @@ def find_low_confidence_fields(results: List[Dict[str, Any]], threshold: float =
                 })
     return issues
 
-def retry_with_escalated_provenance(url: str, schema_model: BaseModel, failed_fields: List[str]) -> Dict[str, Any]:
-    schema_json = schema_model.model_json_schema()
-    for fn in failed_fields:
-        if fn in schema_json.get("properties", {}):
-            schema_json["properties"][fn]["x-ollagraph-escalate"] = True
+def retry_failed_fields_from_html(url: str, selectors: Dict[str, str]) -> Dict[str, Any]:
+    """Escalation: fetch the page HTML with /v1/scrape and re-extract only the
+    failed fields with your own CSS selectors ({field_name: selector})."""
+    fetch_timestamp = datetime.now(timezone.utc).isoformat()
     resp = requests.post(
-        OLLAGRAPH_API_URL,
-        json={
-            "url": url,
-            "schema_contract": schema_json,
-            "execution_mode": "headless_browser",
-            "provenance": {
-                "enabled": True,
-                "depth": "full",
-                "include_raw_html": True,
-                "include_dom_snapshot": True,
-                "include_normalization_trace": True
-            },
-            "retry_of": url,
-            "retry_reason": f"low_confidence_fields: {failed_fields}"
-        },
-        headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-        timeout=60
+        f"{OLLAGRAPH_API}/v1/scrape",
+        json={"url": url, "format": "html", "wait_until": "networkidle0"},
+        headers=HEADERS,
+        timeout=90
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Retry failed: HTTP {resp.status_code}")
-    return resp.json()
+    soup = BeautifulSoup(resp.json()["content"], "html.parser")
+    source = {"url": url, "fetch_timestamp": fetch_timestamp}
+    fields = {}
+    for name, selector in selectors.items():
+        el = soup.select_one(selector)
+        text = el.get_text(strip=True) if el else None
+        fields[name] = field_envelope(name, source, selector, "css_selector", text, None, text is not None)
+    return {"provenance": {"source": source, "fields": fields}}
 ```
 
 ## 8. Implementation: Node.js
@@ -432,26 +487,78 @@ const ProductRecordSchema = z.object({
 });
 type ProductRecord = z.infer<typeof ProductRecordSchema>;
 
-async function extractWithProvenance<T>(url: string, schema: z.ZodSchema<T>): Promise<{ data: T; provenance: any }> {
+const AVAILABILITY_MAP: Record<string, string> = {
+  InStock: "IN_STOCK", OutOfStock: "OUT_OF_STOCK", PreOrder: "PREORDER", Discontinued: "DISCONTINUED",
+};
+
+// Yield [path, object] for every schema.org object of the given @type.
+function* findTyped(node: any, type: string, path = ""): Generator<[string, any]> {
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i++) yield* findTyped(node[i], type, `${path}/${i}`);
+  } else if (node && typeof node === "object") {
+    const t = node["@type"];
+    if (t === type || (Array.isArray(t) && t.includes(type))) yield [path || "/", node];
+    for (const [k, v] of Object.entries(node)) yield* findTyped(v, type, `${path}/${k}`);
+  }
+}
+
+async function extractWithProvenance(url: string): Promise<{ data: ProductRecord | null; provenance: any }> {
+  // The API fetches the page and returns its embedded structured data
+  // (it takes only url, stealth, timeout, proxy). Provenance is built here.
+  const fetchTimestamp = new Date().toISOString();
   const resp = await fetch("https://api.ollagraph.com/v1/extract/structured", {
     method: "POST",
-    headers: { Authorization: "Bearer og_your_api_key_here", "Content-Type": "application/json" },
-    body: JSON.stringify({
-      url,
-      schema_contract: schema.description,
-      execution_mode: "auto",
-      provenance: {
-        enabled: true,
-        depth: "full",
-        includeRawHtml: true,
-        includeDomSnapshot: false,
-        includeNormalizationTrace: true
-      }
-    }),
+    headers: { Authorization: `Bearer ${process.env.OLLAGRAPH_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ url, timeout: 30 }),
   });
   if (!resp.ok) throw new Error(`Extraction failed: HTTP ${resp.status}`);
-  const result = await resp.json();
-  return { data: schema.parse(result.data), provenance: result.provenance };
+  const body = await resp.json();
+  const source = { url, fetch_timestamp: fetchTimestamp };
+
+  const [path, product] = [...findTyped(body, "Product")][0] ?? ["", {}];
+  const offer = (Array.isArray(product.offers) ? product.offers[0] : product.offers) ?? {};
+  const specs = product.additionalProperty ?? [];
+
+  // field -> [where the raw value sits in the response, raw source value]
+  const raw: Record<string, [string, unknown]> = {
+    sku: [`${path}/sku`, product.sku],
+    title: [`${path}/name`, product.name],
+    price: [`${path}/offers/price`, offer.price],
+    availability: [`${path}/offers/availability`, offer.availability],
+    specs: [`${path}/additionalProperty`, product.additionalProperty],
+    last_updated: [`${path}/dateModified`, product.dateModified],
+  };
+  const candidate: Record<string, unknown> = {
+    sku: product.sku,
+    title: product.name,
+    price: offer.price === undefined ? undefined : Number(offer.price),
+    availability: AVAILABILITY_MAP[String(offer.availability ?? "").split("/").pop() ?? ""],
+    specs: (Array.isArray(specs) ? specs : [specs]).map((p: any) => ({ name: p.name, value: String(p.value) })),
+    last_updated: product.dateModified,
+  };
+
+  const parsed = ProductRecordSchema.safeParse(candidate);
+  const failed = new Map<string, string>();
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) failed.set(String(issue.path[0]), issue.message);
+  }
+
+  const fields: Record<string, any> = {};
+  for (const [name, [location, rawValue]] of Object.entries(raw)) {
+    fields[name] = {
+      field_name: name,
+      source,
+      dom_location: { selector: location },
+      extraction: {
+        strategy: "json_ld_or_microdata",
+        raw_text: rawValue == null ? null : typeof rawValue === "string" ? rawValue : JSON.stringify(rawValue),
+      },
+      confidence: { overall: failed.has(name) ? 0.0 : 1.0 }, // swap in your own multi-signal scorer
+      normalization: { raw_value: rawValue, normalized_value: candidate[name] },
+      quality: { gate_passed: !failed.has(name), gate_reason: failed.get(name) },
+    };
+  }
+  return { data: parsed.success ? parsed.data : null, provenance: { source, fields } };
 }
 
 function findLowConfidenceFields(results: { data: any; provenance: any }[], threshold = 0.7) {
@@ -522,7 +629,7 @@ provSchema.index({ "extractionTimestamp": 1 }, { expireAfterSeconds: 90 * 24 * 6
 ```python
 import pandas as pd, pyarrow as pa, pyarrow.parquet as pq
 
-def store_provenance_parquet(records: list, path: str = "s3://ollagraph-provenance/"):
+def store_provenance_parquet(records: list, path: str = "s3://your-provenance-bucket/"):
     df = pd.DataFrame(records)
     df["extraction_date"] = pd.to_datetime(df["extraction_timestamp"]).dt.date
     pq.write_to_dataset(
@@ -696,12 +803,10 @@ Encrypt provenance data at rest using AES-256 (S3 server-side encryption with KM
 **Issue 1: Missing Selector Path**
 - **Symptom:** `dom_location.selector` is empty or generic (`html > body > div`).
 - **Cause:** AI extraction couldn't map result to a DOM element.
-- **Fix:** Add a fallback CSS selector strategy.
+- **Fix:** Add a fallback CSS selector strategy to your extractor's configuration.
 
 ```json
 {
-  "url": "https://example.com/product",
-  "schema_contract": {},
   "extraction_strategies": {
     "primary": "ai_extraction",
     "fallback": "css_selector"
@@ -716,18 +821,13 @@ Encrypt provenance data at rest using AES-256 (S3 server-side encryption with KM
 **Issue 2: Confidence Score Is Always 1.0**
 - **Symptom:** Every field reports 1.0 even when values are wrong.
 - **Cause:** No signals configured — scorer defaults to 1.0.
-- **Fix:** Enable signal-based scoring.
+- **Fix:** Enable signal-based scoring in your own scorer's configuration.
 
 ```json
 {
-  "url": "https://example.com/product",
-  "schema_contract": {},
-  "provenance": {
-    "enabled": true,
-    "confidence_scoring": {
-      "mode": "signal_based",
-      "signals": ["selector_match_quality", "element_visibility", "text_plausibility", "strategy_reliability"]
-    }
+  "confidence_scoring": {
+    "mode": "signal_based",
+    "signals": ["selector_match_quality", "element_visibility", "text_plausibility", "strategy_reliability"]
   }
 }
 ```
@@ -837,17 +937,17 @@ PROVENANCE_TIERS = {
 
 ### Ollagraph vs. Building Your Own
 
-| Factor | Ollagraph Provenance API | DIY Provenance Pipeline |
+| Factor | Ollagraph for fetching + your provenance code | Fully DIY pipeline |
 |---|---|---|
-| **Setup time** | 30 minutes (API integration) | 2–4 weeks (build and test) |
-| **Provenance depth** | Full envelope out of the box | Depends on implementation |
-| **DOM snapshot storage** | Built-in (S3-backed) | Must build yourself |
-| **Confidence scoring** | Multi-signal, configurable | Must implement from scratch |
-| **Normalization tracing** | Automatic | Must instrument manually |
-| **Quality gates** | Built-in, configurable | Must build yourself |
-| **Query interface** | REST API + web dashboard | Must build yourself |
-| **Maintenance** | None (managed service) | Ongoing (selector breakage, storage) |
-| **Cost** | Per-API-call pricing | Compute + storage + engineering time |
+| **Fetching & proxy routing** | Handled by the API (`/v1/extract/structured`, `/v1/scrape`) | Must build and maintain yourself |
+| **Provenance envelope** | Built in your code from what you fetched | Built in your code |
+| **DOM snapshot storage** | Your storage (Ollagraph does not store page content) | Your storage |
+| **Confidence scoring** | Must implement yourself | Must implement yourself |
+| **Normalization tracing** | Must instrument yourself | Must instrument yourself |
+| **Quality gates** | Must build yourself | Must build yourself |
+| **Query interface** | Must build yourself | Must build yourself |
+| **Maintenance** | Fetch layer managed; selectors, scoring and gates are yours | All of it, including proxies |
+| **Cost** | Per-call API credits + your storage | Compute + proxies + storage + engineering time |
 
 ## 17. Enterprise / Cloud Deployment
 
@@ -860,7 +960,7 @@ class ProvenanceStorageManager:
     def __init__(self):
         self.hot = PostgresStore(connection_string)
         self.warm = MongoStore(mongo_uri)
-        self.cold = S3ParquetStore(bucket="ollagraph-provenance")
+        self.cold = S3ParquetStore(bucket="your-provenance-bucket")
 
     def store(self, envelope: dict):
         self.hot.insert(envelope)
@@ -947,12 +1047,11 @@ The numbers speak for themselves. Full provenance tracking added 5.5% latency an
 
 The regulatory landscape is moving in the same direction. The EU AI Act, GDPR Article 22, and ISO/IEC 42001 all require documented evidence of data origin and processing. Field-level provenance is the technical mechanism that satisfies these requirements.
 
-Start small. Pick one extraction pipeline, add provenance tracking for the most critical fields, and measure the impact on debugging time. If you are using the Ollagraph extraction API, provenance envelopes are available out of the box — just set `"provenance": {"enabled": true, "depth": "full"}` in your extraction request.
+Start small. Pick one extraction pipeline, add provenance tracking for the most critical fields, and measure the impact on debugging time. If you use the Ollagraph API for fetching, keep the provenance layer in your own code: record the URL you requested, the fetch time, and each field's raw source text as you build the record. The API returns page content and embedded structured data; it does not return provenance envelopes.
 
 ## 20. References
 
-- [Ollagraph Documentation — Provenance Envelope Specification v1](https://ollagraph.com/docs/provenance-envelope)
-- [Ollagraph Extraction API Reference](https://ollagraph.com/docs/api-reference)
+- [Ollagraph API Documentation](https://ollagraph.com/docs/)
 - [Great Expectations Documentation — Data Validation and Provenance](https://docs.greatexpectations.io/)
 - [OpenTelemetry Semantic Conventions for Data Processing](https://opentelemetry.io/docs/specs/semconv/database/)
 - [W3C PROV-O: The PROV Ontology](https://www.w3.org/TR/prov-o/)
