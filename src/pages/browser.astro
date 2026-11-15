@@ -3,85 +3,97 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { navHtml, footerHtml } from '../chrome';
 import stats from '../data/api-stats.json';
 
-const openExample = `# Open a persistent stealth browser session. Free — you pay on render/script.
-curl -X POST https://api.ollagraph.com/v1/session \\
+const openExample = `# Render a URL in a fresh headless browser. JavaScript runs; you get the hydrated HTML.
+curl -X POST https://api.ollagraph.com/v1/render \\
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"stealth": true}'
-# => { "session_id": "sess_8f3a...", "engine": "...", "expires_at": "..." }`;
+  -d '{"url": "https://example.com/app"}'
+# => { "status": "success", "url": "...", "final_url": "...",
+#      "html": "<!doctype html>...", "tier_used": "...", "status_code": 200 }`;
 
-const renderExample = `# Render a URL inside that session — JavaScript executes, cookies & storage persist.
-curl -X POST https://api.ollagraph.com/v1/session/sess_8f3a.../render \\
+const renderExample = `# Wait for the network to settle, return markdown, and evaluate a JS expression.
+curl -X POST https://api.ollagraph.com/v1/scrape \\
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "url": "https://example.com/dashboard",
-    "wait_until": "networkidle",
-    "format": "html"
+    "wait_until": "networkidle0",
+    "format": "markdown",
+    "js_eval": "document.querySelectorAll(\\"article\\").length"
   }'
-# Returns rendered HTML/text plus tier_used and final_url. State carries to the next call.`;
+# => { "status": "success", "url": "...", "format": "markdown", "content": "...",
+#      "eval_result": "24", "time_ms": 2310, "fallback": false }`;
 
-const scriptExample = `# Run a JSON action script in the same session — click, type, wait, screenshot.
-curl -X POST https://api.ollagraph.com/v1/session/sess_8f3a.../script \\
+const scriptExample = `# Run page actions on the loaded page before it is captured — click, type, scroll.
+curl -X POST https://api.ollagraph.com/v1/scrape \\
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
+    "url": "https://example.com/reports",
+    "format": "html",
     "actions": [
-      {"type": "click", "selector": "#load-report"},
-      {"type": "wait", "ms": 1500},
-      {"type": "screenshot", "full_page": true}
+      {"action": "type", "selector": "input[name=filter]", "text": "2026"},
+      {"action": "click", "selector": "#load-report"},
+      {"action": "scroll_to_bottom"}
     ]
-  }'`;
+  }'
+# Actions run once, in order, then the page is captured. They don't wait for a
+# navigation, so use them for in-page interactions, not multi-page flows.`;
 
-const inspectExample = `# Check a session's state, then close it to free the browser context.
-curl https://api.ollagraph.com/v1/session/sess_8f3a... \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"
-# => { "engine": "...", "age": 42, "idle_seconds": 9, "last_url": "https://..." }
-
-curl -X DELETE https://api.ollagraph.com/v1/session/sess_8f3a... \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"`;
+const inspectExample = `# Capture a full-page screenshot. Raw PNG bytes by default.
+curl -X POST https://api.ollagraph.com/v1/screenshot \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://example.com/dashboard",
+    "full_page": true,
+    "wait_until": "networkidle0",
+    "device_scale_factor": 2
+  }' -o dashboard.png
+# Pass "output": "json" instead to get
+# { "status", "url", "final_url", "content_type", "bytes", "image_base64" }`;
 
 const pillars = [
   {
-    title: "Sessions that keep state",
-    body: "Open a session once and every render and script call after it reuses the same cookies, localStorage, and authenticated context. Log in on the first call, keep working across the rest — no re-authenticating per request, no juggling cookie jars yourself.",
-    tag: "STATEFUL",
+    title: "Every call is a fresh browser",
+    body: "Each request starts a clean headless browser, does its work, and throws the browser away. Cookies, localStorage, and cache are not kept between calls, so there is nothing to open, keep alive, or clean up — and no state leaking from one request into the next.",
+    tag: "STATELESS",
     color: "sky"
   },
   {
-    title: "Managed stealth engine",
-    body: "Every session runs on our managed stealth browser engine — fingerprint-randomized, headless flags stripped, hardened against the JavaScript checks that flag ordinary headless Chrome. The same protections that power our scraping stack apply to your live sessions.",
-    tag: "STEALTH BYPASS",
+    title: "Stealth and fallback built in",
+    body: "Scrape calls run in stealth mode by default, and you can opt into captcha solving with solve_captcha. Renders that get blocked escalate through fallback tiers automatically, and the response tells you which tier served it in tier_used.",
+    tag: "STEALTH",
     color: "emerald"
   },
   {
     title: "Render JavaScript, get clean HTML",
-    body: "Point a session at a URL and it executes the page's JavaScript, waits for network idle or DOM stability, and returns rendered HTML or text. The response is canonical across tiers — same fields whether the page was simple or fought back.",
+    body: "Point the API at a URL and it executes the page's JavaScript, waits for load or network idle, and returns rendered HTML, markdown, text, or links. Evaluate your own JavaScript expression in the page with js_eval and get the value back in eval_result.",
     tag: "FIDELITY",
     color: "purple"
   },
   {
     title: "No browser farm to run",
-    body: "No idle Chromium pool, no autoscaling to tune, no out-of-memory crashes at 3 a.m. Open a session, do the work, close it. Opening is free; you are billed per render and per script call like the rest of the API.",
+    body: "No idle Chromium pool, no autoscaling to tune, no out-of-memory crashes at 3 a.m. Send a request, get the page back. Render and scrape cost 1 credit each (JavaScript rendering adds nothing), screenshots cost 3, and failed calls are refunded.",
     tag: "ZERO OPS",
     color: "rose"
   },
 ];
 
 const faqs = [
-  { q: "How is the session surface different from the scraping API?", a: "The scraping API is one-shot: send a URL, get cleaned data back in a single call. The session surface is stateful — you open a browser, then make many render and script calls that share cookies, storage, and the authenticated context. Reach for the scraping API when one request is enough; reach for a session when you need a page to remember what happened on the call before." },
-  { q: "How is the session surface different from browser automation?", a: "Browser automation describes a goal in natural language or a high-level macro and lets an agent decide the steps. The session surface is the lower-level primitive: you open the browser, drive it with explicit render and script calls, and control the lifecycle yourself. Automation is built on top of this rendering and session foundation." },
-  { q: "What endpoints make up the session lifecycle?", a: "Four. POST /v1/session opens a persistent browser session and is free. POST /v1/session/{session_id}/render loads a URL inside it, executing JavaScript and keeping cookies and storage. POST /v1/session/{session_id}/script runs a JSON action script — click, type, wait, scroll, screenshot. DELETE /v1/session/{session_id} closes it and frees the browser context. A GET on the same path inspects engine, age, idle time, and the last URL." },
-  { q: "How is a session billed?", a: "Opening a session is free. Billing happens on the work: each render and each script call is metered like any other endpoint. Failed calls are auto-refunded, so a render that times out never costs you a credit. Pricing follows the standard credit model — see the pricing page for current packs." },
-  { q: "How do sessions stay isolated?", a: "Each session gets its own fresh browser context with no shared state from any other customer or session. Cookies, storage, and cache live only inside that session and are destroyed when you close it or it idles out. Nothing scraped is persisted on our side beyond the response we hand back." },
-  { q: "What can I do in a script call?", a: "Drive the page with a JSON array of actions — click a selector, type into a field, wait a fixed time or for an element, scroll, submit a form, and capture a screenshot. The same action vocabulary works on every site, so there is no per-target Playwright or Puppeteer code to maintain. Generic libraries like Playwright and Puppeteer remain familiar reference points, but you describe the steps as data, not code." },
-  { q: "What about pages behind a login?", a: "This is the headline case for sessions. Use a script call to drive the login form on the first request, then every subsequent render and script call in that session reuses the authenticated cookies and storage. See the scrape-pages-behind-login recipe for an end-to-end walkthrough." },
-  { q: "Do I still need a session for a single JavaScript-heavy page?", a: "Not necessarily. If you only need one rendered page, the scraping API can render JavaScript in a single shot — pass stealth and let it run the page's scripts and action macros. Open a session when you need state to survive across multiple calls: an authenticated flow, a multi-step interaction, or repeated renders against the same site without logging in again." },
+  { q: "How is the browser surface different from the scraping API?", a: "They run on the same stateless headless browser. POST /v1/render returns the raw post-hydration HTML and the final URL. POST /v1/scrape adds output formats (markdown, html, text, links), wait_until, js_eval, page actions, and captcha solving. POST /v1/screenshot returns an image of the rendered page. Pick whichever output you need — each one is a single call." },
+  { q: "How is this different from browser automation?", a: "The automation page covers the same browser driven with page actions — click, type, and scroll steps sent as JSON — and how to run them across many URLs with batch and async jobs. There is no natural-language agent: you describe the steps explicitly, and every call is still a fresh browser." },
+  { q: "Which endpoints make up the browser surface?", a: "Three. POST /v1/render loads a URL, executes its JavaScript, and returns the hydrated HTML. POST /v1/scrape renders a URL and returns content in the format you choose, with wait_until, js_eval, actions (click, type, scroll_to_bottom), stealth, timeout, proxy, user_agent, and solve_captcha. POST /v1/screenshot captures the page as PNG or JPEG, full-page or element-scoped. For many URLs, use /v1/scrape/batch, /v1/scrape/async, or /v1/crawl." },
+  { q: "How is it billed?", a: "Render and scrape cost 1 credit per call, and JavaScript rendering adds nothing. Screenshots cost 3 credits. Opting into a residential proxy adds 3 credits. Failed calls are refunded, so a render that times out costs you nothing. You get 1,000 free credits on signup — see the pricing page for current packs." },
+  { q: "Is any state kept between calls?", a: "No. Every call starts a fresh browser with no cookies, storage, or cache from any earlier call, yours or anyone else's, and that browser is discarded when the call ends. Nothing scraped is persisted on our side beyond the response we hand back. If your flow needs state across page loads, run that part in your own browser tooling." },
+  { q: "What page actions are supported?", a: "Three, sent as a JSON array on POST /v1/scrape: {\"action\": \"click\", \"selector\": ...}, {\"action\": \"type\", \"selector\": ..., \"text\": ...}, and {\"action\": \"scroll_to_bottom\"}. The key is action. Up to 50 actions run once, in order, on the loaded page before it is captured. There is no wait action — use wait_until to control when the page counts as loaded." },
+  { q: "What about pages behind a login?", a: "Not supported. Actions run on a single loaded page and do not wait for a navigation, so they cannot complete a login form, and no cookies or session carry from one call to the next. You also cannot send your own cookies or custom request headers (only a user_agent override). Use the API for publicly reachable pages." },
+  { q: "Can I run a multi-step interaction across several calls?", a: "Not as one continuous browser — each call is independent. Put in-page steps (open a panel, type into a filter, load more, scroll) in the actions array of a single scrape call. For flows that need state across page loads, drive your own browser with an open-source tool like Playwright and use Ollagraph for the stateless fetches around it." },
 ];
 
 const url = "https://ollagraph.com/browser/";
 const jsonLd = [
-  { "@context": "https://schema.org", "@type": "WebPage", name: "Headless browser API — Ollagraph", url, description: "Open a persistent stealth browser session, render JavaScript, run action scripts, and keep cookies and storage across calls. Managed engine, billed per call." },
+  { "@context": "https://schema.org", "@type": "WebPage", name: "Headless browser API — Ollagraph", url, description: "Render JavaScript-heavy pages in a fresh headless browser per call: hydrated HTML, markdown, JS evaluation, click/type/scroll page actions, and screenshots. Stateless, managed, billed per call." },
   { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
     { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
     { "@type": "ListItem", position: 2, name: "Headless browser API", item: url },
@@ -90,8 +102,8 @@ const jsonLd = [
 ];
 ---
 <BaseLayout
-  title="Headless browser API — persistent stealth sessions, JS rendering — Ollagraph"
-  description="Open a persistent stealth browser session, render JavaScript, run JSON action scripts, and keep cookies and storage across calls. Managed engine, no browser farm, billed per call."
+  title="Headless browser API — JS rendering, page actions, screenshots — Ollagraph"
+  description="Render JavaScript-heavy pages in a fresh headless browser on every call: hydrated HTML, markdown, JS evaluation, click/type/scroll page actions, and screenshots. Stateless, no browser farm, billed per call."
   jsonLd={jsonLd}
 >
     <Fragment slot="head">
@@ -131,17 +143,17 @@ const jsonLd = [
           <span class="w-2 h-2 rounded-full bg-brand animate-pulse"></span>
           <span class="text-ink-900 font-semibold">HEADLESS BROWSER</span>
           <span class="text-ink-300 select-none">•</span>
-          <span class="text-ink-600 font-medium">Persistent Stealth Contexts</span>
+          <span class="text-ink-600 font-medium">Stateless JS Rendering</span>
         </div>
 
         <!-- Headline -->
         <h1 class="text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.1] font-bold tracking-tight text-ink-950 mb-6 max-w-4xl mx-auto">
-          Open a browser. <span class="text-brand underline decoration-brand/30 decoration-4 underline-offset-4">Keep the session.</span>
+          Render any page. <span class="text-brand underline decoration-brand/30 decoration-4 underline-offset-4">One call, fresh browser.</span>
         </h1>
 
         <!-- Subtitle -->
         <p class="text-base sm:text-lg lg:text-xl text-ink-600 max-w-3xl mx-auto leading-relaxed mb-8 font-normal">
-          Spin up a persistent stealth browser, render JavaScript, drive it with a JSON action script, and carry cookies and storage across every call. The rendering and session primitive — not a server farm you have to run.
+          Send a URL, get the page as a real browser sees it — hydrated HTML, markdown, the result of your own JavaScript, or a screenshot. Click, type, and scroll before capture. Every call is a fresh browser and nothing is kept between calls — not a server farm you have to run.
         </p>
 
         <!-- CTA Row -->
@@ -156,7 +168,7 @@ const jsonLd = [
         </div>
 
         <p class="text-xs sm:text-sm text-ink-500 mt-6 max-w-xl mx-auto">
-          Need an agent that decides its own steps? See <a href="/automation" class="text-brand hover:underline font-medium">browser automation</a>. Just need one page fetched? Use <a href="/scrape" class="text-brand hover:underline font-medium">the scraping API</a>.
+          Need click, type, and scroll steps across many URLs? See <a href="/automation" class="text-brand hover:underline font-medium">browser automation</a>. Just need one page fetched? Use <a href="/scrape" class="text-brand hover:underline font-medium">the scraping API</a>.
         </p>
       </div>
     </section>
@@ -209,23 +221,23 @@ const jsonLd = [
       </div>
     </section>
 
-    <!-- Code Section: The session lifecycle, end to end -->
+    <!-- Code Section: Render, evaluate, act, capture -->
     <section class="py-16 sm:py-20 border-b border-ink-200 bg-white">
       <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-10">
           <div class="text-xs font-mono text-brand font-semibold uppercase tracking-wider mb-2">
-            SESSION LIFECYCLE
+            BROWSER SURFACE
           </div>
           <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
-            The session lifecycle, end to end.
+            Render, evaluate, act, capture.
           </h2>
           <p class="text-sm sm:text-base text-ink-600">
-            Open, render, script, close — four calls, one bearer token, state preserved throughout.
+            Four independent calls, one bearer token. Each starts a fresh browser; nothing carries over to the next.
           </p>
         </div>
 
         <div class="space-y-6">
-          <!-- Terminal 1: Open a session -->
+          <!-- Terminal 1: Render a page -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -234,8 +246,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Open a session</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/session</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Render a page</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/render</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={openExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -247,7 +259,7 @@ const jsonLd = [
             </div>
           </div>
 
-          <!-- Terminal 2: Render JavaScript -->
+          <!-- Terminal 2: Wait & evaluate JS -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -256,8 +268,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Render JavaScript</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/session/{'{session_id}'}/render</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Wait &amp; evaluate JS</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={renderExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -269,7 +281,7 @@ const jsonLd = [
             </div>
           </div>
 
-          <!-- Terminal 3: Run an action script -->
+          <!-- Terminal 3: Run page actions -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -278,8 +290,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Run an action script</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/session/{'{session_id}'}/script</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Run page actions</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={scriptExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -291,7 +303,7 @@ const jsonLd = [
             </div>
           </div>
 
-          <!-- Terminal 4: Inspect & close -->
+          <!-- Terminal 4: Capture a screenshot -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -300,8 +312,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Inspect &amp; close</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• GET / DELETE /v1/session/{'{session_id}'}</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Capture a screenshot</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/screenshot</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={inspectExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -315,7 +327,7 @@ const jsonLd = [
         </div>
 
         <p class="text-xs sm:text-sm text-ink-500 text-center mt-8">
-          Part of the full <a href="/capabilities" class="text-brand hover:underline font-medium">{stats.endpointCount}-endpoint surface</a>. For one-shot fetches see <a href="/scrape" class="text-brand hover:underline font-medium">scraping</a>, for whole-site sweeps see <a href="/crawl" class="text-brand hover:underline font-medium">crawling</a>, and for agent-driven flows see <a href="/automation" class="text-brand hover:underline font-medium">automation</a>.
+          Part of the full <a href="/capabilities" class="text-brand hover:underline font-medium">{stats.endpointCount}-endpoint surface</a>. For one-shot fetches see <a href="/scrape" class="text-brand hover:underline font-medium">scraping</a>, for whole-site sweeps see <a href="/crawl" class="text-brand hover:underline font-medium">crawling</a>, and for page actions at scale see <a href="/automation" class="text-brand hover:underline font-medium">automation</a>.
         </p>
       </div>
     </section>
@@ -370,17 +382,17 @@ const jsonLd = [
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span class="text-white font-semibold">1,000 free credits</span>
             <span class="text-ink-500 select-none">•</span>
-            <span class="text-ink-300 font-normal">Opening a session is free</span>
+            <span class="text-ink-300 font-normal">Failed calls refunded</span>
           </div>
 
           <!-- Title -->
           <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-4 relative z-10">
-            Open your first session in <span class="text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-brand to-rose-300">five minutes</span>.
+            Render your first page in <span class="text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-brand to-rose-300">five minutes</span>.
           </h2>
 
           <!-- Subtitle -->
           <p class="text-sm sm:text-base text-ink-300 max-w-xl mx-auto leading-relaxed mb-8 relative z-10">
-            1,000 free credits, one bearer token, opening a session is free, failed calls auto-refund.
+            1,000 free credits, one bearer token, no browser to run, failed calls auto-refund.
           </p>
 
           <!-- CTA Buttons -->
@@ -403,7 +415,7 @@ const jsonLd = [
             <span class="text-ink-700 hidden sm:inline">•</span>
             <span class="flex items-center gap-1.5">
               <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
-              Managed stealth engine
+              Managed headless browser
             </span>
             <span class="text-ink-700 hidden sm:inline">•</span>
             <span class="flex items-center gap-1.5">

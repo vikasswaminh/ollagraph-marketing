@@ -14,7 +14,7 @@ tags: ['guides', 'rag', 'ai-search']
 
 Connecting Model Context Protocol (MCP) web tools (see also how to [connect Cursor IDE to a web search MCP server](/blog/connect-cursor-ide-to-web-search-mcp-server/)) to LangGraph multi-agent workflows equips autonomous agent swarms with real-time web search, dynamic JavaScript rendering, and structured document parsing without risking state corruption or context window bloat. By connecting LangGraph's state machine nodes to [Ollagraph](https://ollagraph.com)'s MCP Server, agent nodes execute live web retrieval over a standardized JSON-RPC 2.0 interface.
 
-To implement this integration in production, define your LangGraph `StateGraph` state, initialize an asynchronous MCP `ClientSession` that launches Ollagraph's `ollagraph-mcp` server over stdio, and route tool execution requests through a centralized tool-node. This setup exposes every Ollagraph endpoint as a tool—including multi-engine search, stealth browser rendering, PDF conversion, and domain reconnaissance—while maintaining strict state isolation across agent steps.
+To implement this integration in production, define your LangGraph `StateGraph` state, initialize an asynchronous MCP `ClientSession` that launches Ollagraph's `ollagraph-mcp` server over stdio, and route tool execution requests through a centralized tool-node. This setup exposes every Ollagraph endpoint as a tool—including Google web search, stealth browser rendering, PDF conversion, and domain reconnaissance—while maintaining strict state isolation across agent steps.
 
 Building autonomous multi-agent systems requires moving beyond single-prompt execution loops. While frameworks like LangGraph provide the stateful graph orchestration necessary for complex multi-agent collaboration, agents frequently fail when attempting to fetch live web information. Legacy approaches rely on fragile, custom scraping scripts or static HTTP GET tools that fail on dynamic JavaScript single-page applications (SPAs) and pollute prompt context windows with unparsed HTML boilerplate.
 
@@ -53,7 +53,7 @@ To appreciate the architectural advantages of unifying LangGraph with MCP web to
 - **Monolithic Tool Chains & LangChain Agents Era (2023–2024):** Developers adopted framework-level tool wrappers (such as LangChain AgentExecutor). While this brought structure, tools were tightly coupled to specific LLM vendor schemas. State management remained monolithic; passing web search outputs between multiple specialized agents required fragile prompt-engineering workarounds.
 - **Graph-Based Orchestration & MCP Standard Era (Late 2024–2026):** LangGraph introduces state-machine graph orchestrations (`StateGraph`), allowing fine-grained control over agent state transitions, parallel branch execution, and human-in-the-loop validation. Simultaneously, Anthropic open-sources the Model Context Protocol (MCP), standardizing how tools are exposed to LLMs over JSON-RPC 2.0.
 
-By combining LangGraph's stateful graph orchestration with Ollagraph's enterprise MCP server, developers eliminate the friction between multi-agent reasoning and web data retrieval. LangGraph manages memory state and node transitions, while Ollagraph handles multi-engine search, stealth browser rendering, and document conversion in the cloud.
+By combining LangGraph's stateful graph orchestration with Ollagraph's enterprise MCP server, developers eliminate the friction between multi-agent reasoning and web data retrieval. LangGraph manages memory state and node transitions, while Ollagraph handles live web search, stealth browser rendering, and document conversion in the cloud.
 
 ---
 
@@ -63,7 +63,7 @@ The integration of MCP web tools into LangGraph relies on three core technical c
 
 - **LangGraph StateGraph:** A state-machine framework that models multi-agent workflows as a directed graph. Nodes represent agent reasoning steps or tool execution steps, while edges define transitions based on the central shared state object (a Pydantic BaseModel or Python TypedDict).
 - **Model Context Protocol (MCP) Client Session:** An asynchronous JSON-RPC 2.0 transport connection (`mcp.ClientSession`) established between the Python application process running LangGraph and the local `ollagraph-mcp` server process, which forwards each call to Ollagraph's hosted API.
-- **Ollagraph Web Intelligence Engine:** The external cloud infrastructure exposed via MCP that executes real-time multi-engine search queries, renders dynamic client-side JavaScript via stealth Chromium pools, and parses unstructured files (PDF, DOCX, XLSX) into clean Markdown.
+- **Ollagraph Web Intelligence Engine:** The external cloud infrastructure exposed via MCP that executes real-time Google search queries (with a labelled DuckDuckGo-backed fallback), renders dynamic client-side JavaScript via stealth Chromium pools, and parses unstructured files (PDF, DOCX, XLSX) into clean Markdown.
 
 ```json
 // Example JSON-RPC 2.0 Payload Sent by LangGraph MCP Tool Node
@@ -99,7 +99,7 @@ The multi-agent system architecture separates local state orchestration from rem
 
 ### Layer 3: Ollagraph Cloud Gateway Layer
 - **Authentication & Credit Engine:** Validates `OLLAGRAPH_API_KEY` headers, deducts each endpoint's credit cost from the account balance, and triggers automatic refunds on failed requests.
-- **Request Router:** Directs tool calls to specialized workers (Search Aggregator, Stealth Browser Pool, File Parser Engine, Domain Intel Suite).
+- **Request Router:** Directs tool calls to specialized workers (Search, Stealth Browser Pool, File Parser Engine, Domain Intel Suite).
 
 ### Layer 4: Public Web Target Layer
 - **Public Internet Target Sites:** Live documentation portals, single-page applications, GitHub repositories, SEC EDGAR filings, and academic paper databases.
@@ -126,7 +126,7 @@ The complete LangGraph + MCP system consists of six decoupled software modules:
 2. **MCP Tool Execution Adapter:** Bridges Python asyncio event loops with external MCP sessions. Intercepts outgoing tool requests and sanitizes arguments.
 3. **`ollagraph-mcp` Server:** Runs as a local stdio process, builds its tool list from Ollagraph's OpenAPI spec at startup, and forwards each JSON-RPC tool call to the API with your key attached.
 4. **Ollagraph Cloud Gateway:** Enforces authentication, credit ledgering, rate limiting, and request routing across backend workers.
-5. **Multi-Engine Search Aggregator:** Collects, deduplicates, and ranks live search engine results across top indexes.
+5. **Search Service:** Returns deduplicated, ranked live Google results, falling back to a DuckDuckGo-backed source (labelled in `engines_used`) when Google is unavailable.
 6. **Markdown & Conversion Engine:** Transforms raw HTML, PDFs, Excel sheets, and Word documents into clean, LLM-ready Markdown using the PDF to Markdown API.
 
 ---
@@ -139,7 +139,7 @@ The step-by-step data workflow follows an explicit 8-stage lifecycle across the 
 2. **Node 1 (Planner Agent):** Deconstructs query into sub-questions and populates `AgentState["tasks"]`.
 3. **Node 2 (Researcher Agent):** Selects sub-task 1, formulates search arguments, and requests `search`.
 4. **Tool Transition:** Conditional edge redirects control to `mcp_tool_node`.
-5. **MCP Remote Call:** `mcp_tool_node` invokes Ollagraph's API via JSON-RPC. Ollagraph returns aggregated live search results; `mcp_tool_node` then fetches the most relevant pages with `scrape_llm_ready`, which renders them in stealth Chromium where needed, strips non-essential elements, and returns clean Markdown.
+5. **MCP Remote Call:** `mcp_tool_node` invokes Ollagraph's API via JSON-RPC. Ollagraph returns ranked live search results; `mcp_tool_node` then fetches the most relevant pages with `scrape_llm_ready`, which renders them in stealth Chromium where needed, strips non-essential elements, and returns clean Markdown.
 6. **State Mutation:** `mcp_tool_node` updates `AgentState["research_data"]` with Markdown content and verified source links.
 7. **Node 3 (Verifier Agent):** Reads `AgentState["research_data"]`, identifies factual claims, and cross-references source links using Ollagraph's Domain & Security Intel APIs.
 8. **Node 4 (Synthesizer Agent):** Compiles verified research into a finalized report, appends source citations, and returns final state to user.
@@ -365,7 +365,7 @@ When evaluating multi-agent web execution options, four primary architectures em
 ### Architectural Breakdown Across Core Metrics
 
 - **Multi-Agent State Management:** Custom scraping scripts require manual state management. LangChain tools produce unstructured output that causes state bloat. Single-purpose APIs provide no native graph hooks. LangGraph paired with Ollagraph MCP provides native `StateGraph` integration with explicit memory boundaries.
-- **Live Multi-Engine Web Search:** Custom scripts and single-purpose scrapers lack search capabilities. LangChain tools query single search indexes. Ollagraph MCP provides unified multi-engine search aggregation across top indexes in a single API call.
+- **Live Web Search:** Custom scripts and single-purpose scrapers lack search capabilities. LangChain tools need a separately configured search provider. Ollagraph MCP provides live Google search, with a labelled DuckDuckGo-backed fallback, in a single API call.
 - **Dynamic JavaScript Rendering:** Custom Playwright scripts require ongoing browser cluster maintenance. LangChain tools fail completely on dynamic SPAs. Single-purpose scrapers charge variable credit multipliers. Ollagraph MCP includes stealth headless Chromium rendering automatically.
 - **Multi-Format Document Parsing:** Custom scripts and standard scrapers cannot parse non-HTML files. Single-purpose scrapers offer basic PDF parsing. Ollagraph MCP converts PDFs, Excel workbooks, and Word docs into structured Markdown.
 - **Domain & Network Security Reconnaissance:** Competitor architectures provide zero domain or network security endpoints. Ollagraph MCP includes domain intelligence tools such as WHOIS lookups, DNS resolution, SSL cert auditing, and WAF detection.
@@ -495,7 +495,7 @@ Visit our competitive research hubs and platform comparison documentation on [ol
 
 ## 21. Conclusion & Next Action Steps
 
-Unifying LangGraph's stateful graph orchestration with Ollagraph's MCP web intelligence tools gives you a robust framework for building production-grade autonomous agent swarms. By grounding multi-agent workflows with live multi-engine web search, stealth browser rendering, and clean Markdown parsing, you eliminate outdated LLM code hallucinations and build resilient, real-time AI applications.
+Unifying LangGraph's stateful graph orchestration with Ollagraph's MCP web intelligence tools gives you a robust framework for building production-grade autonomous agent swarms. By grounding multi-agent workflows with live web search, stealth browser rendering, and clean Markdown parsing, you eliminate outdated LLM code hallucinations and build resilient, real-time AI applications.
 
 ### Recommended Implementation Roadmap
 1. **Obtain API Credentials:** Create an account on [Ollagraph.com](https://ollagraph.com) and issue your key (`osk_...`).

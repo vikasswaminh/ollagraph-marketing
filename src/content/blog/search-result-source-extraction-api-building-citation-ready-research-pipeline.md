@@ -34,7 +34,7 @@ This guide provides an exhaustive engineering manual for building an enterprise-
 - **Chunking must respect document Abstract Syntax Trees:** Fixed-token chunking destroys structural semantics. Extraction pipelines must segment documents according to natural document boundaries: H1–H6 heading levels, complete paragraphs, and atomic Markdown tables. Read our guide on [HTML to Markdown for AI](/blog/html-to-markdown-for-ai-preserving-structure-links-and-source-attribution/) for AST preservation details.
 - **Dynamic rendering must be selective and automated:** Launching full headless Chromium sessions for every URL incurs unsustainable latency and infrastructure costs. A production extraction API must automatically escalate from high-speed HTTP/2 wire fetching to stealth residential browser pools only when client-side hydration or bot walls demand it.
 - **Indirect prompt injection defense belongs at the ingestion layer:** Unsanitized web content poses severe security risks. Extraction APIs must neutralize embedded `<script>`, `<iframe>`, hidden CSS elements, and adversarial system prompt overrides before passing tokens to the model.
-- **Ollagraph unifies the research stack:** Rather than orchestrating separate vendors for search APIs, residential proxy networks, headless browsers, Markdown parsers, and chunkers, Ollagraph provides a single API key, flat billing (1 credit per standard call with 0x headless multipliers), and native citation attribution primitives.
+- **Ollagraph unifies the research stack:** Rather than orchestrating separate vendors for search APIs, residential proxy networks, headless browsers, Markdown parsers, and chunkers, Ollagraph provides a single API key, credit-metered billing (most calls cost 1 credit, with no surcharge for JavaScript rendering), and citation primitives such as byte offsets on every extracted chunk.
 
 ---
 
@@ -158,7 +158,7 @@ Let us examine the complete lifecycle of a research query as it traverses an ent
 
 #### Step 1: The Initial Search Call
 
-The agent begins by submitting the search request. Rather than returning raw SERP markup, the API returns structured metadata including canonical URLs, page titles, indexed dates, and high-salience keyword entities.
+The agent begins by submitting the search request. Rather than returning raw SERP markup, the API returns structured results: each with a title, URL, snippet, domain and rank.
 
 #### Step 2: Parallel Ingestion and Semantic Extraction
 
@@ -166,24 +166,25 @@ The pipeline identifies the top $K$ authoritative domains (filtering out low-rep
 
 During this single API call:
 
-- The engine probes the target server. If the server responds with a 403, 429, or JavaScript challenge screen, the request automatically escalates to a residential browser pool.
-- The HTML parser locates the primary content container (using heuristic density scoring algorithms that identify the highest concentration of text-to-tag ratios).
-- All interactive chrome, SVG icons, base64 images, and cookie banners are purged.
-- The content is parsed into semantic Markdown.
-- The document is chunked according to heading depth (`#`, `##`, `###`), preserving hierarchical context for every section.
+- The engine fetches the target page. If the direct fetch is blocked, it retries through other network routes.
+- Mozilla's Readability algorithm locates the primary content container and drops navigation, sidebars and other page chrome.
+- If the extracted text is too thin — the typical sign of an empty JavaScript shell — the page is re-fetched with a real browser that renders JavaScript, and the response says so in `rendered_with_js`.
+- The main text is split into token-sized chunks (on paragraph, line and sentence boundaries, with configurable overlap).
+- Every chunk carries its `token_count` and its `byte_start` / `byte_end` position in the extracted text.
 
 #### Step 3: Attribution Context Injection
 
-The resulting chunks are returned to the orchestration layer. Each chunk is accompanied by a metadata block:
+The resulting chunks are returned to the orchestration layer. Ollagraph returns each chunk's `text`, `byte_start`, `byte_end` and `token_count`; the orchestration layer adds the source URL, a content hash and a chunk ID of its own, giving a record like this:
 
 ```json
 {
   "chunk_id": "chk_8f1a2c90",
   "url": "https://example.com/vector-benchmarks-2026",
-  "headings": ["Vector Database Benchmarks", "1M Vectors Scale", "HNSW vs IVF Latency"],
-  "byte_range": [4120, 5280],
-  "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "markdown": "Under a 1,000,000 vector load (768 dimensions), HNSW achieved a 99th percentile query latency of 4.2ms with an index build time of 42 minutes..."
+  "byte_start": 4120,
+  "byte_end": 5280,
+  "token_count": 231,
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "text": "Under a 1,000,000 vector load (768 dimensions), HNSW achieved a 99th percentile query latency of 4.2ms with an index build time of 42 minutes..."
 }
 ```
 
@@ -205,40 +206,44 @@ Before the generated answer is displayed to an end user or saved into a research
 
 ## 6. Configuration and Implementation with the Ollagraph API
 
-Ollagraph ([api.ollagraph.com](https://api.ollagraph.com)) operates on flat credit metering (1 credit per standard call, zero multipliers for headless rendering or residential proxies, and automatic failure refunds).
+Ollagraph ([api.ollagraph.com](https://api.ollagraph.com)) meters each call in credits: `/v1/scrape/llm-ready` and `/v1/aeo/citation-readiness` cost 1 credit each (JavaScript rendering adds nothing), `/v1/search` costs 3, and failed calls are refunded automatically.
 
 The research pipeline uses three core endpoints from the [Ollagraph API Reference](https://ollagraph.com/docs):
 
-### 1. Multi-Engine Web Search (`POST /v1/search`)
+### 1. Web Search (`POST /v1/search`)
 
-Retrieves deduplicated organic results with canonical URLs and metadata:
+Retrieves deduplicated Google organic results. If Google is unavailable, the call falls back to a DuckDuckGo-backed source and says so in `engines_used` and `engines_failed`:
 
 ```bash
 curl -X POST "https://api.ollagraph.com/v1/search" \
   -H "Authorization: Bearer osk_live_production_key" \
   -H "Content-Type: application/json" \
-  -d '{"query": "aurora serverless v2 cross-region rto rpo metrics", "num_results": 5}'
+  -d '{"query": "aurora serverless v2 cross-region rto rpo metrics", "limit": 5}'
 ```
 
 ```json
 {
   "status": "success",
+  "query": "aurora serverless v2 cross-region rto rpo metrics",
+  "count": 5,
   "results": [
     {
-      "position": 1,
       "title": "Replication with Amazon Aurora User Guide",
       "url": "https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.Replication.html",
+      "snippet": "Aurora replicas share the same underlying storage as the primary instance...",
       "domain": "docs.aws.amazon.com",
-      "published_date": "2026-03-12"
+      "rank": 1,
+      "engines": ["google"]
     }
   ],
-  "credits_charged": 1
+  "engines_used": ["google"],
+  "engines_failed": []
 }
 ```
 
 ### 2. Citation-Ready Extraction (`POST /v1/scrape/llm-ready`)
 
-Bypasses bot walls, strips boilerplate, converts content to clean Markdown, and segments text along semantic heading boundaries with byte coordinates:
+Fetches the page (re-rendering it with JavaScript when the static HTML is too thin), strips boilerplate with Readability, and splits the main text into token-sized chunks with byte coordinates:
 
 ```bash
 curl -X POST "https://api.ollagraph.com/v1/scrape/llm-ready" \
@@ -246,55 +251,62 @@ curl -X POST "https://api.ollagraph.com/v1/scrape/llm-ready" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://aws.amazon.com/blogs/database/disaster-recovery-aurora-global-database/",
-    "chunk_strategy": "heading_semantic",
-    "include_byte_offsets": true,
-    "include_content_hash": true
+    "max_tokens": 400,
+    "overlap_tokens": 40
   }'
 ```
 
 ```json
 {
   "status": "success",
+  "url": "https://aws.amazon.com/blogs/database/disaster-recovery-aurora-global-database/",
+  "final_url": "https://aws.amazon.com/blogs/database/disaster-recovery-aurora-global-database/",
+  "title": "Disaster recovery with Amazon Aurora Global Database",
+  "rendered_with_js": false,
   "chunks": [
     {
-      "chunk_id": "chk_c09a812f",
-      "headings": ["Disaster Recovery Architecture", "RTO and RPO Benchmarks"],
+      "text": "RTO and RPO Benchmarks\nRecovery Point Objective (RPO): under 1s via storage replication. Recovery Time Objective (RTO): under 1 min for planned switchovers; 2 to 5 min for unplanned failovers.",
       "byte_start": 3810,
       "byte_end": 4450,
-      "token_count": 148,
-      "sha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
-      "content": "### RTO and RPO Benchmarks\n- **Recovery Point Objective (RPO):** Under 1s via storage replication.\n- **Recovery Time Objective (RTO):** Under 1 min for planned switchovers; 2 to 5 min for unplanned failovers."
+      "token_count": 148
     }
   ],
-  "credits_charged": 1
+  "chunk_count": 14,
+  "total_tokens": 4920,
+  "max_tokens": 400,
+  "overlap_tokens": 40
 }
 ```
 
-**Key benefit:** By preserving the parent heading and byte coordinates, the chunk prevents downstream LLMs from conflating RPO (< 1s) with unplanned RTO (2–5 min).
+**Key benefit:** Chunks split on paragraph boundaries keep the RPO and RTO figures in the same passage, and the byte coordinates let you point back to exactly where that passage sits in the extracted text — which keeps downstream LLMs from conflating RPO (< 1s) with unplanned RTO (2–5 min). If you also want heading breadcrumbs per chunk, fetch the page as Markdown with `/v1/scrape` (`"format": "markdown"`) and split on headings in your own code.
 
-### 3. Passage Citation Scoring (`POST /v1/aeo/citation-readiness`)
+### 3. Source Citation Scoring (`POST /v1/aeo/citation-readiness`)
 
-Scores candidate chunks (0–100) across entity clarity, factual density, and verifiability before passing them to the model context window:
+Scores a source page (0–100) on the signals that make it worth citing — numerical specifics, named entities, authoritative outbound links, an author byline, a last-updated date and content length — so you can rank candidate sources before their chunks go into the model context window. Passage-level filtering stays in your own code.
 
 ```bash
 curl -X POST "https://api.ollagraph.com/v1/aeo/citation-readiness" \
   -H "Authorization: Bearer osk_live_production_key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "text_passage": "RPO is under 1s via storage replication. RTO is 2 to 5 minutes for unplanned failovers.",
-    "target_entity": "Amazon Aurora Serverless v2"
-  }'
+  -d '{"url": "https://aws.amazon.com/blogs/database/disaster-recovery-aurora-global-database/"}'
 ```
 
 ```json
 {
   "status": "success",
-  "citation_readiness_score": 94,
-  "evaluation_metrics": {
-    "factual_density": 0.92,
-    "entity_disambiguation": 0.98
+  "url": "https://aws.amazon.com/blogs/database/disaster-recovery-aurora-global-database/",
+  "score": 82,
+  "grade": "B",
+  "score_breakdown": {
+    "numerical_specifics_max20": 20,
+    "named_entities_max20": 16,
+    "authoritative_outbound_links_max25": 15,
+    "author_byline_max15": 15,
+    "last_updated_max10": 6,
+    "content_length_max10": 10
   },
-  "verdict": "CITATION_OPTIMAL"
+  "signals": { "has_author_byline": true, "word_count": 2140 },
+  "recommendations": ["..."]
 }
 ```
 
@@ -304,11 +316,11 @@ For extracting typed entities from these passages, refer to [structured data ext
 
 ## 7. Exact Offset Mapping: Linking LLM Generation to Verifiable Source Evidence
 
-To guarantee auditor-grade verification, Ollagraph’s extraction engine tracks bidirectional coordinates between every extracted chunk and the original normalized document buffer:
+For auditor-grade verification, every chunk needs coordinates and an integrity check. Ollagraph's `/v1/scrape/llm-ready` supplies the coordinates; your pipeline adds the rest at ingest time:
 
-- `byte_start` / `byte_end`: Exact zero-indexed physical byte boundaries in UTF-8.
-- `char_start` / `char_end`: Unicode codepoint indices ensuring accurate mapping across multi-byte encodings.
-- `sha256`: Cryptographic content hash of the chunk text.
+- `byte_start` / `byte_end` (from Ollagraph): zero-indexed UTF-8 byte boundaries of the chunk within the extracted text.
+- `char_start` / `char_end` (your pipeline, optional): Unicode codepoint indices, if your UI highlights text by character.
+- `sha256` (your pipeline): a content hash of the chunk text, computed when you store it.
 
 ### Automated Citation Verification Function
 
@@ -318,20 +330,21 @@ When an LLM cites a claim, this deterministic verifier checks that the source ch
 import hashlib
 from typing import Dict, Any
 
-def verify_citation(claim_text: str, source_chunk: Dict[str, Any], full_buffer: bytes) -> bool:
-    # 1. Slice raw bytes directly from the preserved document buffer
-    extracted = full_buffer[source_chunk["byte_start"]:source_chunk["byte_end"]].decode("utf-8")
-    
-    # 2. Cryptographic integrity check (guarantees chunk has not mutated)
+def verify_citation(claim_text: str, source_chunk: Dict[str, Any]) -> bool:
+    # source_chunk is the record stored at ingest: Ollagraph's text/byte_start/byte_end
+    # plus the sha256 your pipeline computed when it stored the chunk
+    extracted = source_chunk["text"]
+
+    # 1. Integrity check (the stored chunk has not been altered since ingest)
     if hashlib.sha256(extracted.encode("utf-8")).hexdigest() != source_chunk["sha256"]:
         return False
-        
-    # 3. Grounding check (ensures at least 70% token overlap with the cited claim)
+
+    # 2. Grounding check (ensures at least 70% token overlap with the cited claim)
     claim_tokens, source_tokens = set(claim_text.lower().split()), set(extracted.lower().split())
     return (len(claim_tokens & source_tokens) / len(claim_tokens)) >= 0.70
 ```
 
-By storing coordinate offsets and hashes alongside raw document buffers, automated compliance audits can instantaneously pinpoint and highlight the exact sentence on the original page that authorized the AI's conclusion.
+By storing coordinate offsets and hashes alongside the chunk text, automated compliance audits can pinpoint the exact passage that authorized the AI's conclusion.
 
 ---
 
@@ -339,7 +352,7 @@ By storing coordinate offsets and hashes alongside raw document buffers, automat
 
 The core engineering challenge in DOM sanitization is purging noise without accidentally discarding vital technical data. Naive scrapers often strip `<table>` tags (destroying benchmarks), `<aside>` elements (deleting critical operational warnings), or `<pre><code>` blocks (erasing API contracts).
 
-Ollagraph applies a Semantic Preservation Filter that differentiates layout chrome from high-value content:
+A good cleaning pass differentiates layout chrome from high-value content. The ruleset below is a reasonable target for your own pipeline:
 
 ### DOM Filtering Ruleset
 
@@ -364,7 +377,7 @@ Instance vCPU Memory Price/Hr db.r6g.large 2 16 GiB $0.26 db.r6g.xlarge 4 32 GiB
 
 This forces the LLM to guess which price maps to which instance tier.
 
-Ollagraph resolves cell coordinates (`colspan`/`rowspan`) and emits aligned GitHub-Flavored Markdown:
+Readability-style text extraction flattens tables too, so handle them separately. Ollagraph's `/v1/extract/tables` takes a page's HTML and returns every table as structured JSON (headers and rows, with `colspan`/`rowspan` expanded), and `/v1/convert/html-to-markdown` turns table HTML into aligned Markdown like this:
 
 ```markdown
 | Instance Class | vCPU | Memory (GiB) | On-Demand Price / Hr |
@@ -407,15 +420,15 @@ Furthermore, high-value technical sites deploy sophisticated edge firewalls (Clo
 - **JavaScript Execution Challenges:** Verifying that the client can execute complex mathematical proofs, access the HTML5 Canvas API, and return valid WebGL hardware attributes.
 - **Behavioral Heuristics:** Detecting headless browser flags (e.g., `navigator.webdriver = true`, missing Chrome plugins, anomalous mouse velocity profiles).
 
-### Ollagraph’s Adaptive Fetching Architecture
+### How Ollagraph Handles It
 
-Ollagraph resolves these challenges through an internal Auto-Escalation Engine:
+`/v1/scrape/llm-ready` handles both problems inside the one call:
 
-- When a URL is submitted, the engine executes a fast-wire HTTP/2 probe with mimicked browser TLS parameters. If the page returns clean, complete HTML, it is normalized immediately (~220ms response time).
-- If the response returns a 403 Forbidden, 429 Rate Limit, Cloudflare Challenge, or empty client-side SPA shell, the request immediately auto-escalates to an isolated, residential headless Chromium worker.
-- The Chromium instance executes stealth patches (overriding `navigator.webdriver`, injecting realistic audio context and WebGL hardware profiles), waits for DOM mutation observers to signal network idle, and extracts the hydrated document tree.
+- The page is fetched directly first. If that fetch is blocked, it is retried through other network routes.
+- If the extracted text is too thin — an empty client-side SPA shell — the page is re-fetched with a real browser that renders JavaScript, and the extraction runs on the hydrated HTML.
+- The response's `rendered_with_js` and `rendered_via` fields tell you when the re-render happened.
 
-Ollagraph bills this at the exact same flat 1-credit rate, absorbing the compute infrastructure costs.
+The JavaScript re-render adds no credits: the call still costs 1 credit.
 
 ---
 
@@ -431,15 +444,15 @@ To deliver conversational, real-time research experiences, the extraction pipeli
 2. **Domain-Specific Speculative Caching:** Technical documentation and standard API specifications change infrequently. By caching the cleaned Markdown representations of frequently visited technical domains with a 24-hour TTL (Time-To-Live), repeat research queries targeting common engineering subjects return in under 50 milliseconds.
 3. **Early Token Streaming:** Rather than waiting for all five URLs to complete before initiating LLM generation, an optimized pipeline streams extracted chunks directly into the LLM context window as each page finishes normalization.
 
-The table below illustrates the latency profile of an Ollagraph-powered extraction pipeline compared to a traditional self-hosted scraping stack:
+The table below compares where the work — and the latency — sits in a self-hosted scraping stack versus an Ollagraph-powered pipeline. We haven't published benchmark figures; measure both on your own URL set.
 
-| Pipeline Stage | Self-Hosted DIY Stack (Puppeteer + Custom Scraping) | Ollagraph Unified API (/v1/search + /v1/scrape/llm-ready) | Latency Reduction |
-| :--- | :--- | :--- | :--- |
-| **Search Retrieval (Top 5 URLs)** | 850 ms (SerpApi / Third-Party) | 310 ms (`POST /v1/search`) | -63.5% |
-| **Ingestion (5 Parallel URLs)** | 4,200 ms (Spinning 5 headless browser containers) | 880 ms (Automated fast wire / stealth routing) | -79.0% |
-| **Boilerplate Cleanup & Markdown AST** | 620 ms (Local CPU-bound DOM parsing) | Included in ingestion stream (Edge-computed) | -100% (Zero local CPU) |
-| **Chunking & Offset Generation** | 210 ms (Local regex tokenizing) | Included in ingestion stream (Pre-calculated) | -100% (Pre-computed) |
-| **Total Pipeline Latency (Input to LLM)** | 5,880 ms (~5.9 seconds) | 1,190 ms (~1.2 seconds) | -79.7% Faster |
+| Pipeline Stage | Self-Hosted DIY Stack (Puppeteer + Custom Scraping) | Ollagraph Unified API (/v1/search + /v1/scrape/llm-ready) |
+| :--- | :--- | :--- |
+| **Search Retrieval (Top 5 URLs)** | Third-party SERP API or your own SERP scraper | One `POST /v1/search` call |
+| **Ingestion (5 Parallel URLs)** | Spin up and scale your own headless browser containers | Five parallel `POST /v1/scrape/llm-ready` calls; JavaScript re-rendering happens server-side |
+| **Boilerplate Cleanup** | Local CPU-bound DOM parsing | Included in the llm-ready call |
+| **Chunking & Offset Generation** | Your own tokenizer and splitter | Included (`token_count`, `byte_start`, `byte_end` per chunk) |
+| **Total Pipeline Latency (Input to LLM)** | Often dominated by browser cold starts | Dominated by the slowest target page |
 
 ---
 
@@ -448,40 +461,47 @@ The table below illustrates the latency profile of an Ollagraph-powered extracti
 This compact implementation demonstrates the core research loop: querying `/v1/search`, concurrently extracting citation chunks via `/v1/scrape/llm-ready`, and assembling an immutable grounding prompt with `[^chk_id]` citations.
 
 ```python
-import asyncio, os, httpx
+import asyncio, hashlib, os, httpx
 from typing import List
 from pydantic import BaseModel
 
-OLLAGRAPH_API_KEY = os.environ.get("OLLAGRAPH_API_KEY", "osk_live_production_key")
+OLLAGRAPH_API_KEY = os.environ["OLLAGRAPH_API_KEY"]
 
 class CitationChunk(BaseModel):
     chunk_id: str
     url: str
-    headings: List[str]
     byte_start: int
     byte_end: int
-    content: str
+    token_count: int
+    sha256: str
+    text: str
 
 async def build_research_context(query: str, limit: int = 3) -> List[CitationChunk]:
     headers = {"Authorization": f"Bearer {OLLAGRAPH_API_KEY}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(base_url="https://api.ollagraph.com", headers=headers, timeout=15.0) as client:
-        # 1. Search across multi-engine indexes
-        search_res = await client.post("/v1/search", json={"query": query, "num_results": limit})
+    async with httpx.AsyncClient(base_url="https://api.ollagraph.com", headers=headers, timeout=90.0) as client:
+        # 1. Search (Google results; a DuckDuckGo-backed fallback is labelled in engines_used)
+        search_res = await client.post("/v1/search", json={"query": query, "limit": limit})
         urls = [item["url"] for item in search_res.json().get("results", [])]
-        
-        # 2. Extract cleaned, heading-aware chunks in parallel
+
+        # 2. Extract cleaned, token-sized chunks with byte offsets, in parallel
         async def fetch_chunks(url: str):
-            payload = {"url": url, "chunk_strategy": "heading_semantic", "include_byte_offsets": True}
+            payload = {"url": url, "max_tokens": 400, "overlap_tokens": 40}
             resp = await client.post("/v1/scrape/llm-ready", json=payload)
-            return [CitationChunk(**c, url=url) for c in resp.json().get("chunks", [])] if resp.status_code == 200 else []
-            
+            if resp.status_code != 200:
+                return []
+            chunks = []
+            for c in resp.json().get("chunks", []):
+                digest = hashlib.sha256(c["text"].encode("utf-8")).hexdigest()
+                chunks.append(CitationChunk(chunk_id=f"chk_{digest[:8]}", url=url, sha256=digest, **c))
+            return chunks
+
         results = await asyncio.gather(*[fetch_chunks(u) for u in urls])
         return [chunk for sublist in results for chunk in sublist]
 
 def format_llm_prompt(chunks: List[CitationChunk], question: str) -> str:
     # 3. Assemble prompt enforcing deterministic [^chk_id] citations
     evidence = "\n\n".join(
-        f"[ID: {c.chunk_id}] (Source: {c.url} | Context: {' > '.join(c.headings)})\n{c.content}"
+        f"[ID: {c.chunk_id}] (Source: {c.url} | bytes {c.byte_start}-{c.byte_end})\n{c.text}"
         for c in chunks
     )
     return (
@@ -500,8 +520,8 @@ if __name__ == "__main__":
 
 ### What Makes This Production-Ready:
 
-- **Asynchronous Parallelism (`asyncio.gather`):** Dispatches extraction requests simultaneously, reducing multi-source latency from ~10s to under 1.5s.
-- **Structural Grounding:** Every chunk retains its parent headings breadcrumb and `byte_start`/`byte_end` coordinates.
+- **Asynchronous Parallelism (`asyncio.gather`):** Dispatches extraction requests simultaneously, so total latency tracks the slowest source rather than the sum of all of them.
+- **Structural Grounding:** Every chunk carries its source URL, its `byte_start`/`byte_end` coordinates and a content hash.
 - **Constrained Attribution:** The prompt contract prevents the downstream LLM from making ungrounded claims, ensuring every assertion maps to a verifiable `chunk_id`.
 
 ---
@@ -529,9 +549,9 @@ If a naive scraper extracts hidden text or comments and dumps them into the cont
 
 ### Multi-Layer Defense Specifications
 
-- **CSS Visibility Analysis:** Ollagraph's DOM cleaning engine parses computed styles. If text is hidden from human eyes using CSS tricks (white text on a white background, absolute positioning off the screen at `left: -9999px`, or `font-size: 0px`), it is completely stripped from the extraction output.
-- **Adversarial Token Escaping:** If a scraped webpage contains strings like `<|system|>`, `[INSTRUCTION]`, or triple backticks followed by system, the extraction engine escapes these tokens into harmless plain-text representations, preventing them from breaking the LLM's system prompt jail.
-- **SSRF (Server-Side Request Forgery) Protection:** When resolving redirects during extraction, Ollagraph blocks requests targeting private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.1`, and cloud metadata endpoints such as `169.254.169.254`).
+- **CSS Visibility Analysis:** Strip text hidden from human eyes using CSS tricks (white text on a white background, absolute positioning off the screen at `left: -9999px`, or `font-size: 0px`). Readability-based extraction removes much of a page's chrome, but it does not evaluate computed styles, so add a visibility filter in your own ingestion code when hidden-text injection is a concern.
+- **Adversarial Token Escaping:** If a scraped webpage contains strings like `<|system|>`, `[INSTRUCTION]`, or triple backticks followed by system, escape them into harmless plain-text representations in your own ingestion code, and keep extracted text inside a clearly delimited data section of the prompt.
+- **SSRF (Server-Side Request Forgery) Protection:** Ollagraph rejects target URLs that point at private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.1`) and cloud metadata endpoints such as `169.254.169.254`.
 
 ---
 
@@ -544,10 +564,10 @@ A production research pipeline running 24/7 must anticipate upstream web instabi
 | Upstream Failure Mode | HTTP Status / Exception | Automatic Recovery Action | Credit Policy (Ollagraph) |
 | :--- | :--- | :--- | :--- |
 | **Connection Timeout** | `ETIMEDOUT`, `504 Gateway Timeout` | Retry once via alternate network route (3s timeout cap); if still failing, mark source dead and pull next SERP candidate. | **Zero charge** (Automatic refund) |
-| **Bot Wall / CAPTCHA Trap** | `403 Forbidden`, `429 Too Many Requests` | Escalate request to stealth residential Chromium pool with active CAPTCHA solver. | **Flat 1 credit** (No penalty multiplier) |
+| **Bot Wall / CAPTCHA Trap** | `403 Forbidden`, `429 Too Many Requests` | Back off and retry later; for a reCAPTCHA v3 page you are authorized to access, `/v1/scrape` with `solve_captcha: true` returns a token. If the call still fails, pull the next SERP candidate. | **Zero charge** on a failed call (automatic refund); 1 credit on success |
 | **Missing Resource** | `404 Not Found`, `410 Gone` | Do not retry. Immediately fall back to the next ranked URL returned in the search payload. | **Zero charge** (Automatic refund) |
-| **Malformed DOM / Tree Crash** | Parser syntax error | Fall back to clean innerText tokenization; emit partial content with `warning: "partial_parse"`. | Charged standard 1 credit |
-| **Hard Paywall** | `401 Unauthorized` | Extract OpenGraph meta tags and structured JSON-LD schema only; flag chunk as paywalled. | Charged standard 1 credit |
+| **Malformed DOM / Tree Crash** | Readability finds no article body | `/v1/scrape/llm-ready` falls back to a plain-text strip of the page automatically; flag low-quality chunks in your pipeline. | Charged standard 1 credit |
+| **Hard Paywall** | `401 Unauthorized` | Call `/v1/extract/structured` for the OpenGraph and JSON-LD metadata only; flag the source as paywalled. | Charged standard 1 credit |
 
 ### Idempotency and Webhook Delivery for Long-Running Batch Extraction
 
@@ -565,13 +585,12 @@ curl -X POST "https://api.ollagraph.com/v1/scrape/batch/async" \
       "https://cloud.google.com/spanner/docs/architecture",
       "https://learn.microsoft.com/en-us/azure/cosmos-db/introduction"
     ],
-    "webhook_url": "https://agent-api.yourcompany.com/v1/webhooks/research-ready",
-    "chunk_strategy": "heading_semantic",
-    "idempotency_key": "job_batch_financial_q3_001"
+    "format": "markdown",
+    "webhook_url": "https://agent-api.yourcompany.com/hooks/research-ready"
   }'
 ```
 
-When the background worker pool completes extraction, Ollagraph signs the webhook payload with an HMAC SHA-256 signature (using your secret key from `POST /v1/me/webhook-secret/rotate`) and delivers the structured citation chunks directly to your ingestion receiver, decoupling extraction latency from your user-facing applications.
+Add an `Idempotency-Key` header (for example `-H "Idempotency-Key: job_batch_financial_q3_001"`) so a retried submission doesn't queue the batch twice. When the background workers finish, Ollagraph signs the webhook payload (the `X-Ollagraph-Signature` header, keyed with the secret from `POST /v1/me/webhook-secret/rotate`) and delivers the scraped pages — Markdown by default — to your ingestion receiver, decoupling extraction latency from your user-facing applications. Chunk them there with your own splitter or `POST /v1/text/chunk`.
 
 ---
 
@@ -633,14 +652,14 @@ If this chunk is retrieved in isolation, which database achieved 12,000 rps? Pos
 
 Building and maintaining custom search and extraction infrastructure requires significant operational overhead. The table below provides a realistic technical and financial comparison between building an in-house extraction stack and deploying on Ollagraph's unified platform.
 
-| Capability / Operational Requirement | Self-Hosted In-House Stack (DIY) | Fragmented Multi-Vendor Stack (Tavily + Bright Data + Firecrawl) | Ollagraph Unified Platform ([api.ollagraph.com](https://api.ollagraph.com)) |
+| Capability / Operational Requirement | Self-Hosted In-House Stack (DIY) | Fragmented Multi-Vendor Stack (Tavily + Oxylabs + Firecrawl) | Ollagraph Unified Platform ([api.ollagraph.com](https://api.ollagraph.com)) |
 | :--- | :--- | :--- | :--- |
-| **Search Engine Access** | Requires custom scrapers or SerpApi subscription ($100–$500/mo) | Separate search provider subscription (Tavily: $50–$400/mo) | **Native Multi-Engine Search** (`/v1/search`) included in core credits. |
-| **Anti-Bot & Proxy Infrastructure** | Manage residential proxy pools, rotate IPs, handle CAPTCHAs ($300–$1,200/mo) | Bright Data / Oxylabs residential proxies (charged per GB: $8–$15/GB) | **Built-in Auto-Escalation** (Flat 1 credit/call, zero GB transfer markup). |
+| **Search Engine Access** | Requires custom scrapers or SerpApi subscription ($100–$500/mo) | Separate search provider subscription (Tavily: $50–$400/mo) | **Native Web Search** (`/v1/search`): Google results with a labelled DuckDuckGo-backed fallback, 3 credits per call. |
+| **Anti-Bot & Proxy Infrastructure** | Manage residential proxy pools, rotate IPs, handle CAPTCHAs ($300–$1,200/mo) | Oxylabs or similar residential proxies (charged per GB: $8–$15/GB) | **Built-in fallback routing and JavaScript rendering** (per-call credits, no per-GB billing). |
 | **Browser Execution Engine** | Maintain cluster of headless Chromium containers (Memory: ~1GB RAM per worker) | Headless browser vendor (Browserless: $100–$500/mo) | **Native Cloud Headless Execution** (Zero infrastructure to manage). |
-| **Citation Attribution Primitives** | Must develop custom AST parser, character offset mappers, and hash checkers | Raw Markdown only; offset mapping and chunk hashes must be written manually | **Native Citation Provenance** (`byte_start`, `byte_end`, `sha256`, `headings`). |
-| **AEO Citation Readiness Scoring** | Must develop proprietary NLP heuristic evaluation models | Not available from any vendor | **Native AEO Scoring Suite** (`/v1/aeo/citation-readiness`, 0–100 scoring). |
-| **Billing Model** | High fixed infrastructure costs + engineering maintenance overhead | 3 to 4 separate monthly invoices, complex usage tiers, minimum commitments | **One unified account**, pay-as-you-go from $5, flat 1 credit per call, 1,000 free starter credits. |
+| **Citation Attribution Primitives** | Must develop custom AST parser, character offset mappers, and hash checkers | Raw Markdown only; offset mapping and chunk hashes must be written manually | **Byte offsets and token counts on every chunk** (`byte_start`, `byte_end`, `token_count`); hashes added in a few lines of your own code. |
+| **AEO Citation Readiness Scoring** | Must develop proprietary NLP heuristic evaluation models | Not available from any vendor | **Native AEO Scoring Suite** (`/v1/aeo/citation-readiness`, 0–100 page scoring). |
+| **Billing Model** | High fixed infrastructure costs + engineering maintenance overhead | 3 to 4 separate monthly invoices, complex usage tiers, minimum commitments | **One unified account**, pay-as-you-go from $5, most calls 1 credit, 1,000 free starter credits. |
 | **Total Engineering Maintenance** | 15–25 hours/month debugging broken scrapers, proxy blocks, and memory leaks | 5–10 hours/month debugging inter-vendor API contract drift | **Zero infrastructure maintenance**; standardized OpenAPI specification. |
 
 ---
@@ -658,15 +677,15 @@ A citation-ready extraction API does not merely return text; it returns text wit
 
 ### Q2. How does Ollagraph handle dynamic client-side rendering without slowing down simple pages?
 
-Ollagraph uses a two-tier adaptive fetching model. When a request hits `/v1/scrape/llm-ready`, the engine first attempts a high-speed TLS-fingerprinted HTTP/2 connection. If the page is a static HTML document or server-rendered blog, it completes in 200–300 milliseconds. If the engine detects a single-page application shell (e.g., an empty root div), a client-side JavaScript challenge, or a 403 Forbidden code, it escalates the request to a residential headless Chromium pool that evaluates JavaScript, executes dynamic mutations, and waits for network idle before returning the clean DOM.
+When a request hits `/v1/scrape/llm-ready`, Ollagraph first fetches the page without a browser; if that fetch is blocked, it retries through other network routes. Static HTML documents and server-rendered blogs are extracted straight from that fetch. If the extracted text is too thin — the sign of a single-page application shell such as an empty root div — the page is re-fetched with a real browser that renders JavaScript, and the response reports it in `rendered_with_js`.
 
 ### Q3. What is the billing cost for headless rendering vs. static scraping on Ollagraph?
 
-Ollagraph operates on a flat metering policy: 1 credit per standard call. Unlike legacy scraping providers that apply aggressive 5x or 10x multiplier penalties for enabling JavaScript rendering or residential proxies, an Ollagraph call costs 1 credit regardless of whether it was served over fast-wire HTTP or rendered inside a headless Chromium instance. Furthermore, if an upstream page errors, times out, or fails to return content, credits are automatically refunded before the API response completes.
+Most Ollagraph calls cost 1 credit, including `/v1/scrape/llm-ready`. Unlike providers that apply 5x or 10x multipliers for enabling JavaScript rendering, an llm-ready call costs 1 credit whether it was served from a plain fetch or re-rendered in a browser. A few heavier endpoints cost more (search and screenshots are 3 credits), and an opt-in residential proxy adds 3 credits where it is offered. If an upstream page errors, times out, or fails to return content, the credit is refunded automatically.
 
 ### Q4. Can an extraction API protect my agents from indirect prompt injection attacks?
 
-Yes. Indirect prompt injection attacks typically rely on hidden text, styled off-screen elements, or embedded system tokens (`<|system|>`, `[INSTRUCTION]`). Ollagraph's DOM cleaning engine evaluates CSS visibility rules (purging hidden text) and sanitizes adversarial delimiter tokens before serializing content into Markdown, ensuring that untrusted web data enters your LLM as pure passive context rather than executable instructions.
+Partly. Indirect prompt injection attacks typically rely on hidden text, styled off-screen elements, or embedded system tokens (`<|system|>`, `[INSTRUCTION]`). Main-content extraction removes a lot of the surface (scripts, navigation, sidebars), but Ollagraph does not evaluate CSS visibility or escape delimiter tokens. Treat extracted text as untrusted: filter hidden elements and escape delimiter tokens in your own ingestion code, and pass web content to your LLM inside a clearly delimited data section rather than as instructions.
 
 ### Q5. Why not simply rely on search engine snippets instead of full-page extraction?
 
@@ -678,7 +697,7 @@ Search engine snippets are short, lossy fragments (rarely exceeding 160 characte
 
 The era of naive "search and scrape" LLM architectures is over. As enterprises deploy autonomous agents for mission-critical engineering, regulatory compliance, and investment analysis, the tolerance for unverified citations and hallucinated claims has dropped to zero.
 
-A Search Result Source Extraction API bridges the divide between live web data and verified synthetic intelligence. By transforming unstructured, protected, and boilerplate-contaminated webpages into clean, heading-aware Markdown chunks with byte-level provenance coordinates, you empower your language models to reason over the live web with absolute factual authority.
+A Search Result Source Extraction API bridges the divide between live web data and verified synthetic intelligence. By transforming unstructured, protected, and boilerplate-contaminated webpages into clean, token-sized chunks with byte-level provenance coordinates, you empower your language models to reason over the live web with absolute factual authority.
 
 ### Implementation Checklist for Engineering Teams
 
@@ -692,7 +711,7 @@ A Search Result Source Extraction API bridges the divide between live web data a
 Build your citation-ready research pipeline today with Ollagraph’s unified developer platform:
 
 - **Sign Up:** Create a developer account at [ollagraph.com](https://ollagraph.com) to claim 1,000 free production credits (no credit card required).
-- **Read the API Documentation:** Explore all 147 active endpoints in the [Ollagraph API Reference](https://ollagraph.com/docs).
+- **Read the API Documentation:** Explore every live endpoint in the [Ollagraph API Reference](https://ollagraph.com/docs).
 - **Connect via MCP:** Integrate Ollagraph directly into Cursor, Claude Desktop, or custom agent frameworks using our native Model Context Protocol server.
 
 ---

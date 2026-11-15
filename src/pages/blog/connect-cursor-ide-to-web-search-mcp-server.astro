@@ -47,7 +47,7 @@ const faqs = [
 
 <Article
   title="How to Connect Cursor IDE to a Web Search MCP Server Using Ollagraph"
-  description="Configure Cursor IDE with Ollagraph's Model Context Protocol (MCP) server for live multi-engine web search, real-time scraping, and RAG context injection."
+  description="Configure Cursor IDE with Ollagraph's Model Context Protocol (MCP) server for live Google web search, real-time scraping, and RAG context injection."
   date="2026-08-20"
   readingTime={15}
   tags={["Cursor IDE", "MCP", "Web Search", "Ollagraph"]}
@@ -57,7 +57,7 @@ const faqs = [
   <h2>Executive Summary</h2>
 
   <p>
-    Connecting Cursor IDE to a web search Model Context Protocol (MCP) server using Ollagraph gives your AI coding agent real-time, multi-engine search capabilities and web-scraping powers directly inside your editor. This setup eliminates model knowledge cutoffs, hallucinated API syntax, and stale library documentation.
+    Connecting Cursor IDE to a web search Model Context Protocol (MCP) server using Ollagraph gives your AI coding agent real-time Google search capabilities and web-scraping powers directly inside your editor. This setup eliminates model knowledge cutoffs, hallucinated API syntax, and stale library documentation.
   </p>
 
   <p>
@@ -73,7 +73,7 @@ const faqs = [
   </p>
 
   <p>
-    The underlying process runs locally via an unprivileged stdio subprocess (<code>ollagraph-mcp</code>), which intercepts JSON-RPC requests from Cursor and routes them securely over TLS 1.3 to Ollagraph's API gateway. The cloud engine performs multi-engine aggregation, renders dynamic JavaScript single-page applications via headless Chromium when required, strips HTML boilerplate, and returns token-efficient Markdown context directly to Cursor's reasoning loop.
+    The underlying process runs locally via an unprivileged stdio subprocess (<code>ollagraph-mcp</code>), which intercepts JSON-RPC requests from Cursor and routes them securely over TLS 1.3 to Ollagraph's API gateway. The cloud engine runs the search (Google results, with a labelled DuckDuckGo-backed fallback), renders dynamic JavaScript single-page applications via headless Chromium when required, strips HTML boilerplate, and returns token-efficient Markdown context directly to Cursor's reasoning loop.
   </p>
 
   <h2>Key Takeaways</h2>
@@ -175,7 +175,7 @@ const faqs = [
   <h3>3. Execution Infrastructure Layer</h3>
 
   <ul>
-    <li><strong>Live Search Aggregator:</strong> Queries real-time multi-engine search indexes and ranks results using relevance metrics.</li>
+    <li><strong>Live Search:</strong> Returns real-time Google results (falling back to a DuckDuckGo-backed source when Google is unavailable, as reported in <code>engines_used</code>) and ranks results using relevance metrics.</li>
     <li><strong>Stealth Chromium Browser Pool:</strong> Provisions headless Chromium instances to render JavaScript SPAs, bypass anti-bot challenges such as Cloudflare, Turnstile, and Akamai, and execute client-side scripts.</li>
     <li><strong>Markdown Parser:</strong> Strips HTML noise, retains semantic headers and links, and formats context for optimal LLM prompt ingestion.</li>
   </ul>
@@ -221,7 +221,7 @@ Cursor IPC &lt;----- &#123;"result": &#123;"content": [&#123;"type": "text", "te
     <li><strong>Cursor Client Core:</strong> Monitors prompt inputs for keywords or missing technical context. It triggers agent tool calls when parametric memory confidence is low.</li>
     <li><strong>Transport Adapter (ollagraph-mcp):</strong> Manages local process lifecycle, handles standard input/output serialization, and passes requests securely to the cloud.</li>
     <li><strong>API Gateway &amp; Router:</strong> Validates authentication tokens (<code>osk_...</code>), tracks account credit consumption, and routes requests to specialized backend workers.</li>
-    <li><strong>Search Aggregator &amp; Stealth Browser Pool:</strong> Queries live search engines and provisions headless Chromium instances to render complex JavaScript applications.</li>
+    <li><strong>Live Search &amp; Stealth Browser Pool:</strong> Runs the live search (Google results, with a labelled DuckDuckGo-backed fallback) and provisions headless Chromium instances to render complex JavaScript applications.</li>
     <li><strong>Markdown &amp; Extraction Engine:</strong> Transforms raw DOM subtrees into semantic Markdown, maintaining table structures, code blocks, and source URLs.</li>
   </ul>
 
@@ -234,7 +234,7 @@ Cursor IPC &lt;----- &#123;"result": &#123;"content": [&#123;"type": "text", "te
     <li><strong>Agent Reasoner:</strong> Cursor's LLM determines it requires external knowledge. It selects the registered <code>search</code> MCP tool.</li>
     <li><strong>Local JSON-RPC Issue:</strong> Cursor writes a <code>tools/call</code> JSON-RPC message over standard input (stdin) to the local <code>ollagraph-mcp</code> process.</li>
     <li><strong>API Gateway Dispatch:</strong> <code>ollagraph-mcp</code> attaches your API key and issues an authenticated HTTPS POST request to <code>api.ollagraph.com</code>.</li>
-    <li><strong>Search &amp; Page Fetch:</strong> Ollagraph runs a multi-engine search and returns ranked result URLs; the agent then calls a fetch tool such as <code>scrape_llm_ready</code> or <code>extract_clean</code> on the most relevant documentation URL.</li>
+    <li><strong>Search &amp; Page Fetch:</strong> Ollagraph runs a Google search (falling back to a DuckDuckGo-backed source if Google is unavailable) and returns ranked result URLs; the agent then calls a fetch tool such as <code>scrape_llm_ready</code> or <code>extract_clean</code> on the most relevant documentation URL.</li>
     <li><strong>Dynamic JS Rendering &amp; Parsing:</strong> If target pages require JavaScript, stealth headless Chromium renders the DOM. The engine strips HTML noise and converts output to structured Markdown.</li>
     <li><strong>JSON-RPC Response Return:</strong> Ollagraph returns the payload to <code>ollagraph-mcp</code>, which streams it to Cursor's standard output (stdout).</li>
     <li><strong>Prompt Context Ingestion:</strong> Cursor injects the retrieved Markdown into the LLM context window. The agent synthesizes the code solution, complete with grounded source citations.</li>
@@ -397,7 +397,7 @@ async function initializeOllagraphBridge() &#123;
   const &#123; tools &#125; = await client.listTools();
   console.log(`Discovered $&#123;tools.length&#125; available web intelligence tools.`);
 
-  // 4. Execute Multi-Engine Live Search
+  // 4. Execute Live Search
   const searchResult = await client.callTool(&#123;
     name: "search",
     arguments: &#123;
@@ -620,7 +620,7 @@ When asked about external libraries, API syntax, or error codes:
       </tr>
       <tr>
         <td>Live Search</td>
-        <td>Unified multi-engine real-time web search</td>
+        <td>Real-time Google web search</td>
         <td>Manual</td>
         <td>Limited</td>
         <td>Not focused on unified search</td>
@@ -802,7 +802,7 @@ ENTRYPOINT ["ollagraph-mcp"]</code></pre>
   <h2>21. Conclusion &amp; Next Action Steps</h2>
 
   <p>
-    Connecting Cursor IDE to Ollagraph's MCP server transforms your editor into a real-time development engine. By grounding Cursor's agent with live multi-engine search, clean Markdown parsing, and stealth browser rendering, you eliminate outdated code hallucinations and streamline your software engineering workflow.
+    Connecting Cursor IDE to Ollagraph's MCP server transforms your editor into a real-time development engine. By grounding Cursor's agent with live web search, clean Markdown parsing, and stealth browser rendering, you eliminate outdated code hallucinations and streamline your software engineering workflow.
   </p>
 
   <h3>Recommended Next Steps for Developers</h3>

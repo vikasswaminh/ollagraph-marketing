@@ -12,7 +12,7 @@ const faqs = [
 ---
 <Article
   title="Browser Automation APIs: The Complete Developer Guide"
-  description="Use managed browsers to render JavaScript, handle sessions, and extract data without running browser infrastructure yourself."
+  description="Use managed browsers to render JavaScript, run page actions, and extract data without running browser infrastructure yourself."
   date="2026-07-31"
   readingTime={24}
   tags={["browser-automation", "headless-browser", "web-scraping", "sessions", "stealth"]}
@@ -32,7 +32,7 @@ const faqs = [
   <li>Web Scraping API: Scrape Any Website</li>
 </ul>
 <p><strong>Last updated:</strong> 2026-07-29</p>
-<p><strong>Versions tested:</strong> Ollagraph API v2026.07, Playwright 1.48, Puppeteer 22, Selenium 4.25, Stagehand 1.0</p>
+<p><strong>Versions tested:</strong> Playwright 1.48, Puppeteer 22, Selenium 4.25, Stagehand 1.0</p>
 
 <h2>Executive Summary</h2>
 <p>A Browser Automation API is a managed HTTP endpoint that spins up a headless Chromium browser instance, navigates to a URL, executes JavaScript, handles interactions, and returns the rendered result — without you installing a single browser binary. Instead of running npx playwright install and maintaining a fleet of browser processes, you send a POST request with a URL and get back rendered HTML, a screenshot, or structured data.</p>
@@ -60,7 +60,7 @@ const faqs = [
 <p>Browser automation started with Selenium in 2004. Jason Huggins built it to automate testing of internal web applications at ThoughtWorks. Selenium WebDriver became the W3C standard. It worked, but it was slow — each command traveled from your test script to a Selenium server to the browser and back.</p>
 <p>In 2017, Google released Puppeteer. It spoke directly to Chrome over the Chrome DevTools Protocol (CDP), bypassing the WebDriver layer. Microsoft followed in 2020 with Playwright, adding cross-browser support (Chromium, Firefox, WebKit), auto-waiting, and a unified API across Python, Node.js, Java, and .NET.</p>
 <p>Both libraries solved the browser control problem. Neither solved the infrastructure problem. Running Playwright or Puppeteer at scale means provisioning servers with enough RAM to hold dozens of browser processes, patching Chrome to evade bot detection, managing a proxy pool, integrating CAPTCHA solving, and building a queuing system. Managed services such as Ollagraph emerged to offer this as a service.</p>
-<p>The 2025-2026 shift has been toward LLM-driven browser control. Stagehand, an open-source project, introduced natural-language browser actions. Ollagraph integrated Stagehand into its API as /v1/stagehand, letting developers control browsers with plain English instructions.</p>
+<p>The 2025-2026 shift has been toward LLM-driven browser control. Stagehand, an open-source project, introduced natural-language browser actions that you run on top of your own Playwright browser. Ollagraph does not offer natural-language control; its browser endpoints take explicit selectors and JavaScript.</p>
 <p>The second major shift is stealth. Cloudflare reported blocking over 100 million bot requests per second in 2024. Anti-bot systems now fingerprint WebDriver flags, navigator properties, GPU rendering quirks, and even the way a browser window is resized. Modern Browser Automation APIs apply dozens of stealth patches to make headless Chrome look like a real user's browser.</p>
 <p>The third shift is session persistence. Early browser automation APIs treated every request as a fresh browser. Modern APIs support persistent sessions where the browser context stays alive across API calls.</p>
 
@@ -72,9 +72,9 @@ const faqs = [
 <p>The key distinction from a traditional web scraping API is interactivity. A scraping API fetches a page and returns its content. A Browser Automation API lets you drive the browser — click, type, scroll, wait, extract — across multiple steps, often within a persistent session.</p>
 <p>There are three tiers:</p>
 <ul>
-  <li><strong>Tier 1 — Render APIs.</strong> Send a URL, get back rendered HTML or a screenshot. No interaction, no session. Example: Ollagraph /v1/render.</li>
-  <li><strong>Tier 2 — Session APIs.</strong> Open a persistent browser session, then issue multiple commands against it. Navigate, click, extract, screenshot — all within the same browser context. Example: Ollagraph /v1/session family.</li>
-  <li><strong>Tier 3 — LLM-Driven APIs.</strong> Describe what you want in natural language. The API uses an LLM to interpret the instruction, find the right element, and execute the action. Example: Ollagraph /v1/stagehand family.</li>
+  <li><strong>Tier 1 — Render APIs.</strong> Send a URL, get back rendered HTML or a screenshot. No session. Example: Ollagraph /v1/render and /v1/screenshot, plus /v1/scrape, which can also run a few page actions (click/type/scroll) and a JavaScript expression on the loaded page before capture.</li>
+  <li><strong>Tier 2 — Session APIs.</strong> Open a persistent browser session, then issue multiple commands against it. Navigate, click, extract, screenshot — all within the same browser context. Example: hosted session providers, or a Playwright context you run yourself. Ollagraph does not offer this tier.</li>
+  <li><strong>Tier 3 — LLM-Driven APIs.</strong> Describe what you want in natural language. The API uses an LLM to interpret the instruction, find the right element, and execute the action. Example: the open-source Stagehand library on top of Playwright. Ollagraph does not offer this tier.</li>
 </ul>
 <p>Each tier adds capability at the cost of latency and complexity. Tier 1 is a single HTTP request-response. Tier 2 requires session management. Tier 3 requires an LLM call per action, adding 1-3 seconds per step.</p>
 
@@ -91,21 +91,21 @@ Your Code ← API Gateway ← Response Parser ← CDP Commands ← Rendered Page
   <li><strong>Step 2 — Orchestration.</strong> The orchestrator selects an available browser instance from the pool. If you requested a new session, it provisions a fresh Chromium process. If you specified an existing session ID, it routes the command to the running browser.</li>
   <li><strong>Step 3 — Browser Execution.</strong> The orchestrator sends CDP commands to the browser. For a render request, this means navigating to the URL, waiting for the networkidle event, and serializing the DOM. For a script request, it executes your custom JavaScript inside the page context.</li>
   <li><strong>Step 4 — Stealth Injection.</strong> Before navigation, the orchestrator injects stealth scripts that override detectable headless properties. These patches run before any website JavaScript executes, making the browser appear as a normal Chrome installation.</li>
-  <li><strong>Step 5 — Proxy Routing.</strong> The request goes through a proxy. Ollagraph selects an IP based on your proxy configuration — datacenter, residential, or sticky. The proxy layer handles rotation, retries, and geotargeting.</li>
+  <li><strong>Step 5 — Proxy Routing.</strong> The request goes through a proxy. The provider selects an IP based on your proxy configuration — datacenter, residential, or sticky. The proxy layer handles rotation, retries, and geotargeting.</li>
   <li><strong>Step 6 — Response Assembly.</strong> The rendered DOM, screenshot bytes, or extracted data is serialized and returned as JSON. The browser instance is either recycled for one-shot renders or kept alive for session-based requests.</li>
 </ol>
 
 <h3>Session Lifecycle</h3>
-<p>Session-based APIs maintain a browser context across multiple API calls:</p>
+<p>Session-based APIs (and your own Playwright contexts) maintain a browser context across multiple calls:</p>
 <ul>
-  <li><strong>Create Session —</strong> POST /v1/session returns a session_id.</li>
-  <li><strong>Navigate —</strong> POST /v1/session/&#123;id&#125;/render with a URL loads the page.</li>
-  <li><strong>Interact —</strong> POST /v1/session/&#123;id&#125;/script runs custom JS in the page context.</li>
+  <li><strong>Create Session —</strong> a create call returns a session ID (in Playwright, browser.new_context()).</li>
+  <li><strong>Navigate —</strong> load a URL inside that context.</li>
+  <li><strong>Interact —</strong> run custom JS in the page context.</li>
   <li><strong>Extract —</strong> Read rendered HTML or take a screenshot.</li>
   <li><strong>Keep Alive —</strong> Send periodic keepalive requests to prevent idle timeout.</li>
-  <li><strong>Close —</strong> DELETE /v1/session/&#123;id&#125; releases the browser and frees resources.</li>
+  <li><strong>Close —</strong> a close call (or context.close()) releases the browser and frees resources.</li>
 </ul>
-<p>The session stays alive as long as you send commands within the idle timeout window, typically 30-300 seconds. If the timeout expires, Ollagraph recycles the browser automatically.</p>
+<p>The session stays alive as long as you send commands within the idle timeout window, typically 30-300 seconds. If the timeout expires, the provider recycles the browser automatically. Ollagraph has no session tier: every call is a fresh browser and nothing persists between calls.</p>
 
 <h3>Stagehand Architecture</h3>
 <p>Stagehand adds an LLM layer on top of the browser. The flow: create a Stagehand session with your LLM provider, navigate to a URL, send natural-language instructions such as “click the search bar and type ‘laptops’”, and extract data with a JSON schema. The Stagehand layer uses the LLM to generate Playwright commands from your instruction, executes them, and returns the result. This is slower than direct CDP commands but eliminates the need to write selectors.</p>
@@ -137,67 +137,54 @@ Your Code ← API Gateway ← Response Parser ← CDP Commands ← Rendered Page
 <h3>Getting Started with Ollagraph Browser Automation API</h3>
 <p><strong>Step 1 — Get an API key.</strong> Sign up at ollagraph.com and generate an API key from the dashboard. Keys start with osk_.</p>
 
+<p>Every Ollagraph call is stateless: a fresh browser per request, nothing kept between calls.</p>
+
 <p><strong>Step 2 — Make your first render request.</strong></p>
 <pre><code>curl -X POST https://api.ollagraph.com/v1/render \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;"url": "https://example.com"&#125;'</code></pre>
+<p>The response includes html (post-hydration), url, final_url, status_code, and tier_used.</p>
+
+<p><strong>Step 3 — Interact and run custom JavaScript in one call.</strong></p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://example.com",
-    "wait_until": "networkidle",
-    "timeout": 30000
+    "url": "https://target-site.com/products",
+    "wait_until": "networkidle0",
+    "actions": [
+      &#123;"action": "click", "selector": "button.load-more"&#125;,
+      &#123;"action": "scroll_to_bottom"&#125;
+    ],
+    "js_eval": "JSON.stringify(Array.from(document.querySelectorAll(\".product-price\")).map(el =&gt; el.textContent))"
   &#125;'</code></pre>
-<p>The response includes rendered_html, url, the final URL after redirects, screenshot as a base64-encoded PNG, and metadata.</p>
+<p>Actions run once on the loaded page before capture. The value of js_eval comes back in eval_result. Actions do not wait for a navigation, so they cannot log in — run login flows in your own Playwright code.</p>
 
-<p><strong>Step 3 — Create a persistent session.</strong></p>
-<pre><code>curl -X POST https://api.ollagraph.com/v1/session \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+<p><strong>Step 4 — Take a screenshot.</strong></p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/screenshot \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '&#123;
-    "stealth": true,
-    "proxy": "residential",
-    "proxy_region": "us",
-    "idle_ttl_seconds": 120
-  &#125;'</code></pre>
-<p>Save the session_id from the response.</p>
+  -d '&#123;"url": "https://target-site.com/products", "full_page": true&#125;' \
+  --output products.png</code></pre>
 
-<p><strong>Step 4 — Navigate and run custom JavaScript.</strong></p>
-
-<pre><code>curl -X POST "https://api.ollagraph.com/v1/session/&#123;session_id&#125;/render" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '&#123;
-    "url": "https://target-site.com/dashboard",
-    "wait_until": "networkidle"
-  &#125;'</code></pre>
-
-<pre><code>curl -X POST "https://api.ollagraph.com/v1/session/&#123;session_id&#125;/script" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '&#123;
-    "script": "document.querySelectorAll('\''.product-price'\'').map(el =&gt; el.textContent)"
-  &#125;'</code></pre>
-
-<p><strong>Step 5 — Close the session.</strong></p>
-
-<pre><code>curl -X DELETE "https://api.ollagraph.com/v1/session/&#123;session_id&#125;" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY"</code></pre>
-
-<h3>Configuration Options</h3>
+<h3>Configuration Options (/v1/scrape)</h3>
 <ul>
-  <li><strong>stealth</strong> — Values: true, false. Description: Apply anti-detection patches. Always true for production.</li>
-  <li><strong>proxy</strong> — Values: datacenter, residential, none. Description: Proxy type for request routing.</li>
-  <li><strong>proxy_region</strong> — Values: us, eu, asia, auto. Description: Geographic region for the proxy IP.</li>
-  <li><strong>wait_until</strong> — Values: load, domcontentloaded, networkidle. Description: Condition for considering page loaded.</li>
-  <li><strong>timeout</strong> — Values: milliseconds (default 30000). Description: Maximum time to wait for page load.</li>
-  <li><strong>idle_ttl_seconds</strong> — Values: seconds (default 60). Description: How long a session stays alive without commands.</li>
+  <li><strong>stealth</strong> — Values: true, false (default true). Description: Apply anti-detection patches.</li>
+  <li><strong>proxy</strong> — Values: proxy URL (optional). Description: Route the request through your own proxy.</li>
+  <li><strong>wait_until</strong> — Values: load (default), domcontentloaded, networkidle0. Description: Condition for considering page loaded.</li>
+  <li><strong>timeout</strong> — Values: seconds, 1-60 (default 30). Description: Maximum time to wait for page load.</li>
+  <li><strong>actions</strong> — Values: list of up to 50 (click, type, scroll_to_bottom). Description: Page actions run once before capture.</li>
+  <li><strong>js_eval</strong> — Values: JavaScript expression. Description: Evaluated in the page; value returned in eval_result.</li>
 </ul>
 
 <h2>7. Code Examples</h2>
 
 <h3>Python — One-Shot Render</h3>
-<pre><code>import requests
+<pre><code>import os
+import requests
 
-API_KEY = "osk_YOUR_API_KEY"
+API_KEY = os.environ["OLLAGRAPH_API_KEY"]
 BASE_URL = "https://api.ollagraph.com"
 
 response = requests.post(
@@ -206,180 +193,87 @@ response = requests.post(
         "Authorization": f"Bearer &#123;API_KEY&#125;",
         "Content-Type": "application/json"
     &#125;,
-    json=&#123;
-        "url": "https://example.com",
-        "stealth": True,
-        "proxy": "residential",
-        "wait_until": "networkidle",
-        "timeout": 30000
-    &#125;
+    json=&#123;"url": "https://example.com"&#125;
 )
 
 data = response.json()
-print(f"Rendered &#123;len(data['rendered_html'])&#125; bytes of HTML")
-print(f"Final URL: &#123;data['url']&#125;")</code></pre>
+print(f"Rendered &#123;len(data['html'])&#125; bytes of HTML")
+print(f"Final URL: &#123;data['final_url']&#125;")</code></pre>
 
-<h3>Python — Persistent Session with Login</h3>
-<pre><code>import requests
-import time
+<h3>Python — Login Flow in Your Own Playwright Code</h3>
+<p>Ollagraph's endpoints are stateless and cannot log in or keep cookies between calls, so an authenticated dashboard is your own Playwright code (sync API shown):</p>
+<pre><code># Your own Playwright code — not an Ollagraph API
+import json
+from playwright.sync_api import sync_playwright
 
-API_KEY = "osk_YOUR_API_KEY"
-BASE_URL = "https://api.ollagraph.com"
+with sync_playwright() as pw:
+    browser = pw.chromium.launch()
+    context = browser.new_context()
+    page = context.new_page()
 
-# Step 1: Create session
-session_resp = requests.post(
-    f"&#123;BASE_URL&#125;/v1/session",
-    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
-    json=&#123;
-        "stealth": True,
-        "proxy": "residential",
-        "proxy_region": "us",
-        "idle_ttl_seconds": 120
-    &#125;
-)
-session_id = session_resp.json()["session_id"]
+    # Steps 1-2: log in
+    page.goto("https://target-site.com/login", wait_until="networkidle")
+    page.fill("#username", "myuser")
+    page.fill("#password", "mypassword")
+    page.click('button[type="submit"]')
+    page.wait_for_url("**/dashboard")
 
-# Step 2: Navigate to login page
-requests.post(
-    f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/render",
-    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
-    json=&#123;"url": "https://target-site.com/login", "wait_until": "networkidle"&#125;
-)
+    # Step 3: extract data from the authenticated page
+    data = page.evaluate("""() =&gt; (&#123;
+        total_revenue: document.querySelector('.revenue-value')?.textContent?.trim(),
+        active_users: document.querySelector('.user-count')?.textContent?.trim(),
+        recent_orders: Array.from(document.querySelectorAll('.order-row')).map(row =&gt; (&#123;
+            id: row.querySelector('.order-id')?.textContent?.trim(),
+            amount: row.querySelector('.order-amount')?.textContent?.trim(),
+            status: row.querySelector('.order-status')?.textContent?.trim()
+        &#125;))
+    &#125;)""")
+    print(json.dumps(data, indent=2))
 
-# Step 3: Fill login form via custom script
-login_script = """
-document.querySelector('#username').value = 'myuser';
-document.querySelector('#password').value = 'mypassword';
-document.querySelector('button[type="submit"]').click();
-"""
-requests.post(
-    f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/script",
-    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
-    json=&#123;"script": login_script&#125;
-)
+    # Step 4: close
+    context.close()
+    browser.close()</code></pre>
 
-time.sleep(3)
-
-# Step 4: Navigate to target page
-requests.post(
-    f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/render",
-    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
-    json=&#123;"url": "https://target-site.com/dashboard", "wait_until": "networkidle"&#125;
-)
-
-# Step 5: Extract data
-extract_script = """
-JSON.stringify(&#123;
-    total_revenue: document.querySelector('.revenue-value')?.textContent?.trim(),
-    active_users: document.querySelector('.user-count')?.textContent?.trim(),
-    recent_orders: Array.from(document.querySelectorAll('.order-row')).map(row =&gt; (&#123;
-        id: row.querySelector('.order-id')?.textContent?.trim(),
-        amount: row.querySelector('.order-amount')?.textContent?.trim(),
-        status: row.querySelector('.order-status')?.textContent?.trim()
-    &#125;))
-&#125;);
-"""
-extract_resp = requests.post(
-    f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;/script",
-    headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;,
-    json=&#123;"script": extract_script&#125;
-)
-print(extract_resp.json()["result"])
-
-# Step 6: Close session
-requests.delete(f"&#123;BASE_URL&#125;/v1/session/&#123;session_id&#125;")</code></pre>
-
-<h3>Node.js — Stagehand Natural Language Control</h3>
-<pre><code>const API_KEY = "osk_YOUR_API_KEY";
+<h3>Node.js — Page Actions and JS Extraction with /v1/scrape</h3>
+<p>For public pages, one /v1/scrape call can click, scroll, and evaluate JavaScript before the page is captured. (For natural-language actions, the open-source Stagehand library runs on top of your own Playwright browser; Ollagraph does not offer it.)</p>
+<pre><code>const API_KEY = process.env.OLLAGRAPH_API_KEY;
 const BASE_URL = "https://api.ollagraph.com";
 
-async function stagehandDemo() &#123;
-  const createResp = await fetch(`$&#123;BASE_URL&#125;/v1/stagehand`, &#123;
+async function scrapeProducts() &#123;
+  const resp = await fetch(`$&#123;BASE_URL&#125;/v1/scrape`, &#123;
     method: "POST",
-    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;` &#125;,
+    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;`, "Content-Type": "application/json" &#125;,
     body: JSON.stringify(&#123;
-      engine: "playwright",
-      llm_provider: "openai",
-      model_name: "gpt-4o",
-      idle_ttl_seconds: 60
-    &#125;)
-  &#125;);
-  const &#123; session_id &#125; = await createResp.json();
-
-  await fetch(`$&#123;BASE_URL&#125;/v1/stagehand/$&#123;session_id&#125;/goto`, &#123;
-    method: "POST",
-    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;` &#125;,
-    body: JSON.stringify(&#123; url: "https://example.com/products" &#125;)
-  &#125;);
-
-  await fetch(`$&#123;BASE_URL&#125;/v1/stagehand/$&#123;session_id&#125;/act`, &#123;
-    method: "POST",
-    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;` &#125;,
-    body: JSON.stringify(&#123; instruction: "click the 'Sort by price' dropdown and select 'Low to High'" &#125;)
-  &#125;);
-
-  const extractResp = await fetch(`$&#123;BASE_URL&#125;/v1/stagehand/$&#123;session_id&#125;/extract`, &#123;
-    method: "POST",
-    headers: &#123; Authorization: `Bearer $&#123;API_KEY&#125;` &#125;,
-    body: JSON.stringify(&#123;
-      instruction: "extract all product names and prices from the current page",
-      schema: &#123;
-        type: "object",
-        properties: &#123;
-          products: &#123;
-            type: "array",
-            items: &#123;
-              type: "object",
-              properties: &#123;
-                name: &#123; type: "string" &#125;,
-                price: &#123; type: "string" &#125;
-              &#125;
-            &#125;
-          &#125;
-        &#125;
-      &#125;
+      url: "https://example.com/products",
+      wait_until: "networkidle0",
+      actions: [
+        &#123; action: "click", selector: "button.load-more" &#125;,
+        &#123; action: "scroll_to_bottom" &#125;
+      ],
+      js_eval: "JSON.stringify(Array.from(document.querySelectorAll('.product')).map(p =&gt; (&#123;name: p.querySelector('.name')?.textContent?.trim(), price: p.querySelector('.price')?.textContent?.trim()&#125;)))"
     &#125;)
   &#125;);
 
-  const data = await extractResp.json();
-  console.log(JSON.stringify(data, null, 2));
-
-  await fetch(`$&#123;BASE_URL&#125;/v1/stagehand/$&#123;session_id&#125;`, &#123; method: "DELETE" &#125;);
+  const data = await resp.json();
+  const products = JSON.parse(data.eval_result);
+  console.log(JSON.stringify(&#123; products &#125;, null, 2));
 &#125;
 
-stagehandDemo();</code></pre>
+scrapeProducts();</code></pre>
 
 <h2>8. Performance &amp; Benchmarks</h2>
 
-<p>We tested Ollagraph's Browser Automation API against a self-hosted Playwright setup to compare latency, success rate, and cost. The test ran 1,000 requests against 50 different JavaScript-heavy websites (SPAs, e-commerce stores, SaaS dashboards) from a single AWS c6i.xlarge instance in us-east-1.</p>
-
-<h3>Test Methodology</h3>
-<p>Date: July 2026. Sample size: 1,000 requests per configuration.</p>
-<p>Targets: 50 JavaScript-heavy websites (React, Next.js, Vue, Angular).</p>
-<p>Self-hosted baseline: Playwright 1.48 on AWS c6i.xlarge (4 vCPU, 8 GB RAM), single browser context.</p>
-<p>API baseline: Ollagraph /v1/render with stealth + residential proxy.</p>
-
-<h3>Results</h3>
-<ul>
-  <li><strong>Median render time</strong> — Self-Hosted Playwright: 3.2s. Ollagraph Render API: 4.1s. Ollagraph Session API: 2.8s (warm session).</li>
-  <li><strong>P95 latency</strong> — Self-Hosted Playwright: 8.7s. Ollagraph Render API: 6.3s. Ollagraph Session API: 4.9s (warm session).</li>
-  <li><strong>Success rate</strong> — Self-Hosted Playwright: 72%. Ollagraph Render API: 94%. Ollagraph Session API: 96%.</li>
-  <li><strong>Memory per browser</strong> — Self-Hosted Playwright: 320 MB. Ollagraph Render API: N/A (managed). Ollagraph Session API: N/A (managed).</li>
-  <li><strong>CAPTCHA bypass rate</strong> — Self-Hosted Playwright: 18%. Ollagraph Render API: 89%. Ollagraph Session API: 91%.</li>
-  <li><strong>Stealth detection rate</strong> — Self-Hosted Playwright: 64% blocked. Ollagraph Render API: 7% blocked. Ollagraph Session API: 5% blocked.</li>
-</ul>
-
-<p>The self-hosted setup failed on 28% of requests. Primary failure modes: Cloudflare challenge pages (14%), CAPTCHA walls (8%), timeout on slow SPAs (4%), and memory exhaustion (2%). The API handled all of these transparently. The API added roughly 0.9 seconds of overhead on cold renders (orchestration + proxy routing + stealth injection). On warm sessions, the API was faster than self-hosted because the browser was already running and the proxy connection was established.</p>
+<p>We have not published a controlled benchmark of /v1/render, and numbers measured on someone else's targets rarely transfer to yours. Run the comparison yourself before you commit: pick 30-50 of the JavaScript-heavy pages you actually need, send each one through your self-hosted setup and through /v1/render, and record median and P95 latency, the share of calls that return usable content (not a challenge page or an empty shell), and the cost per successful page. Each /v1/render response includes status_code and tier_used, which help explain the failures you see.</p>
 
 <h3>Cost Comparison</h3>
 <ul>
-  <li><strong>1,000 renders</strong> — Self-Hosted (monthly): $150 (server + proxy). Ollagraph API (monthly): $5.</li>
-  <li><strong>10,000 renders</strong> — Self-Hosted (monthly): $350 (server + proxy). Ollagraph API (monthly): $50.</li>
-  <li><strong>100,000 renders</strong> — Self-Hosted (monthly): $1,200 (2 servers + proxy pool). Ollagraph API (monthly): $500.</li>
-  <li><strong>1,000,000 renders</strong> — Self-Hosted (monthly): $8,000 (cluster + proxy infra). Ollagraph API (monthly): $5,000.</li>
+  <li><strong>1,000 renders</strong> — Self-Hosted (monthly): $150 (server + proxy). Ollagraph API (monthly): 1,000 credits.</li>
+  <li><strong>10,000 renders</strong> — Self-Hosted (monthly): $350 (server + proxy). Ollagraph API (monthly): 10,000 credits.</li>
+  <li><strong>100,000 renders</strong> — Self-Hosted (monthly): $1,200 (2 servers + proxy pool). Ollagraph API (monthly): 100,000 credits.</li>
+  <li><strong>1,000,000 renders</strong> — Self-Hosted (monthly): $8,000 (cluster + proxy infra). Ollagraph API (monthly): 1,000,000 credits.</li>
 </ul>
 
-<p>Self-hosted costs assume a dedicated server at $150/month, residential proxy pool at $200/month per 50 IPs, and engineering time for maintenance estimated at 10 hours/month at $100/hour. The API costs assume $0.005 per render at volume pricing. The break-even point is around 50,000 renders per month.</p>
+<p>Self-hosted costs assume a dedicated server at $150/month, residential proxy pool at $200/month per 50 IPs, and engineering time for maintenance estimated at 10 hours/month at $100/hour. Ollagraph bills /v1/render at 1 credit per call, refunds failed calls, and gives 1,000 free credits on signup; see the pricing page for current credit-pack prices. The break-even point is around 50,000 renders per month.</p>
 
 <h2>9. Security Considerations</h2>
 
@@ -391,7 +285,7 @@ stagehandDemo();</code></pre>
 
 <p><strong>Bot Detection Risks.</strong> Using a Browser Automation API to access websites that prohibit automated access may violate terms of service. Some jurisdictions have laws regulating web scraping (GDPR, hiQ Labs vs. LinkedIn). Consult your legal team before extracting data at scale.</p>
 
-<p><strong>Provider Security.</strong> Evaluate your provider's security posture. Do they isolate browser sessions in sandboxed containers? Do they log the URLs you visit? Ollagraph runs each browser in a separate container with no persistent storage between sessions and does not log page content — only metadata.</p>
+<p><strong>Provider Security.</strong> Evaluate your provider's security posture. Do they isolate browser sessions in sandboxed containers? Do they log the URLs you visit? Ollagraph runs a fresh browser for every call, keeps nothing between calls, and does not store page content — only request metadata.</p>
 
 <h2>10. Troubleshooting</h2>
 
@@ -401,7 +295,7 @@ stagehandDemo();</code></pre>
 <ul>
   <li><strong>Slow SPA.</strong> Increase timeout to 60 seconds. Change wait_until to networkidle.</li>
   <li><strong>Lazy-loaded content.</strong> Use the actions parameter to scroll before extraction.</li>
-  <li><strong>Login required.</strong> Use a session-based approach. Authenticate first, then navigate to the target page.</li>
+  <li><strong>Login required.</strong> Use a session-based approach (for example your own Playwright context). Authenticate first, then navigate to the target page. A stateless API such as Ollagraph cannot carry a login between calls.</li>
   <li><strong>Anti-bot detection.</strong> Enable stealth: true. If it still fails, try a residential proxy.</li>
 </ul>
 
@@ -415,7 +309,7 @@ stagehandDemo();</code></pre>
 <p><strong>Problem:</strong> The target site returns a block page. <strong>Causes and fixes:</strong> Switch to a residential proxy. Ensure <code>stealth: true</code> is set. Add delays between requests.</p>
 
 <h3>High Latency</h3>
-<p><strong>Problem:</strong> Render requests take 10+ seconds. <strong>Causes and fixes:</strong> Use a session-based API to keep the browser warm. Set a lower timeout and retry. Switch to a datacenter proxy for faster requests. Block images and fonts using the <code>block_resources</code> option.</p>
+<p><strong>Problem:</strong> Render requests take 10+ seconds. <strong>Causes and fixes:</strong> Use a session-based API to keep the browser warm. Set a lower timeout and retry. Switch to a datacenter proxy for faster requests. Block images and fonts where your tool supports it (for example <code>page.route()</code> in Playwright).</p>
 
 <h2>11. Best Practices</h2>
 <ul>
@@ -464,10 +358,10 @@ stagehandDemo();</code></pre>
 <p><strong>Best for:</strong> Cross-browser testing, not production data extraction.</p>
 
 <h3>Ollagraph Browser Automation API</h3>
-<p>Ollagraph offers the full spectrum: one-shot render, persistent sessions, custom script execution, and LLM-driven Stagehand control. Includes stealth mode, residential proxies, and integrated CAPTCHA solving.</p>
-<p><strong>Pros:</strong> Full session support, Stagehand natural-language control, stealth + proxies + CAPTCHA in one API, credit-based pricing with no monthly minimum.</p>
-<p><strong>Cons:</strong> Per-request cost, internet dependency, provider lock-in.</p>
-<p><strong>Best for:</strong> Production data extraction pipelines, AI agent browser control, and teams that want to avoid browser infrastructure entirely.</p>
+<p>Ollagraph covers the stateless tier: one-shot render (/v1/render), JS rendering + page actions (click/type/scroll) + JS eval (/v1/scrape), screenshots (/v1/screenshot), and batch/async scraping. Includes stealth mode, residential proxy opt-in, and CAPTCHA solving on /v1/scrape. Every call is a fresh browser.</p>
+<p><strong>Pros:</strong> Stealth + proxies + CAPTCHA in one API, JavaScript rendering at no extra credit cost, failed calls refunded, credit-based pricing with no monthly minimum.</p>
+<p><strong>Cons:</strong> Per-request cost, internet dependency, provider lock-in, no persistent sessions, logins, or natural-language control.</p>
+<p><strong>Best for:</strong> Production extraction of public, JavaScript-heavy pages and teams that want to avoid browser infrastructure for those steps. Logins and multi-step sessions stay in your own Playwright code.</p>
 
 <h3>Comparison Table</h3>
 <pre><code>Feature	Self-Hosted Playwright	Browserless	BrowserStack	Ollagraph API
@@ -475,23 +369,23 @@ Setup time	Days to weeks	Minutes	Minutes	Minutes
 Stealth mode	Manual patches	Basic	None	Built-in
 Residential proxies	Self-managed	Limited	No	Yes
 CAPTCHA solving	External integration	No	No	Built-in
-Persistent sessions	Yes (self-managed)	Limited	Yes (testing)	Yes
-LLM-driven control	No	No	No	Stagehand
-Cost at 10K/month	~$350	~$100	~$400	~$50
-Success rate (JS sites)	~72%	~80%	~75%	~94%</code></pre>
+Persistent sessions	Yes (self-managed)	Limited	Yes (testing)	No (stateless; fresh browser per call)
+LLM-driven control	No	No	No	No (page actions (click/type/scroll) + JS eval)
+Cost at 10K/month	~$350	~$100	~$400	10,000 credits (1 per render)
+Success rate (JS sites)	~72%	~80%	~75%	Not published</code></pre>
 
 <h2>14. Enterprise / Cloud Deployment</h2>
 
 <h3>Scaling Considerations</h3>
 <p>Browser automation APIs scale horizontally by design. The provider manages the browser pool, so your scaling concern shifts from infrastructure to request throughput and rate limiting.</p>
 <ul>
-  <li><strong>Concurrency limits.</strong> Most providers cap concurrent sessions. Ollagraph's default is 10 concurrent sessions for the starter plan and 100 for enterprise. Your code should implement a semaphore or queue to stay within the limit.</li>
+  <li><strong>Concurrency limits.</strong> Most providers cap concurrent sessions; Ollagraph has no sessions and rate-limits requests instead. Your code should implement a semaphore or queue to stay within the limit, or use /v1/scrape/batch with its concurrency setting.</li>
   <li><strong>Geographic distribution.</strong> If your targets are spread across regions, use proxy regions that match. A US residential proxy for US sites, EU proxies for EU sites. Mismatched geolocation triggers suspicion and blocks.</li>
-  <li><strong>Webhook-based async processing.</strong> For high-volume extraction, use async endpoints. Send the request, get a job ID, and receive the result via webhook. This avoids HTTP timeout issues and lets you process results as they arrive.</li>
+  <li><strong>Webhook-based async processing.</strong> For high-volume extraction, use async endpoints (/v1/scrape/async, /v1/scrape/batch/async with a webhook_url). Send the request, get a job ID, and receive the result via webhook. This avoids HTTP timeout issues and lets you process results as they arrive.</li>
 </ul>
 
 <h3>Observability</h3>
-<p>Every Browser Automation API call should be logged with request URL, response status, latency, credit cost, session ID, and error type. Set up dashboards for success rate per target domain, average and P95 latency, credit consumption per workflow, and session creation rates. Ollagraph returns credit cost in the x-credits-cost response header. Log this to a metrics system and set alerts for anomalous spikes.</p>
+<p>Every Browser Automation API call should be logged with request URL, response status, latency, credit cost, session ID, and error type. Set up dashboards for success rate per target domain, average and P95 latency, credit consumption per workflow, and session creation rates. Log this to a metrics system and set alerts for anomalous spikes.</p>
 
 <h3>Multi-Tenant Usage</h3>
 <p>If multiple teams use the same API, use separate API keys per team. This lets you attribute costs, set independent rate limits, and revoke access without affecting other teams. Ollagraph supports project tags on API keys for cost attribution.</p>
@@ -502,7 +396,7 @@ Success rate (JS sites)	~72%	~80%	~75%	~94%</code></pre>
 <p>A Browser Automation API controls a real browser — navigating pages, clicking buttons, typing text, and extracting data after JavaScript executes. A web scraping API typically fetches raw HTML and returns it. The scraping API is faster and cheaper but cannot handle JavaScript-rendered content or interactive workflows.</p>
 
 <h3>Q2. Can I use a Browser Automation API to log into websites?</h3>
-<p>Yes. Session-based APIs are designed for exactly this. You create a session, navigate to the login page, fill in credentials using a custom script, wait for the post-login redirect, and then navigate to authenticated pages. The session maintains cookies and authentication state across all subsequent requests.</p>
+<p>Yes. Session-based APIs are designed for exactly this. You create a session, navigate to the login page, fill in credentials using a custom script, wait for the post-login redirect, and then navigate to authenticated pages. The session maintains cookies and authentication state across all subsequent requests. Ollagraph's endpoints are stateless and cannot log in; run logins in your own Playwright code.</p>
 
 <h3>Q3. How do Browser Automation APIs avoid bot detection?</h3>
 <p>They apply stealth patches before any website JavaScript runs. These patches override navigator.webdriver, populate navigator.plugins with realistic values, match WebGL renderer strings to real GPU hardware, and set screen dimensions to realistic values. Combined with residential proxies, modern stealth engines make headless Chrome nearly indistinguishable from a real browser.</p>
@@ -511,13 +405,13 @@ Success rate (JS sites)	~72%	~80%	~75%	~94%</code></pre>
 <p>A render API is a single request-response. You send a URL, you get back rendered HTML. No state is preserved between requests. A session API creates a persistent browser context. You get a session ID, then issue multiple commands — navigate, click, extract, screenshot — all within the same browser. Sessions preserve cookies, localStorage, and authentication.</p>
 
 <h3>Q5. How much does a Browser Automation API cost?</h3>
-<p>Pricing varies by provider and volume. Ollagraph charges per request with volume discounts. A single render costs roughly $0.005 at scale. At 10,000 renders per month, expect to pay around $50. At 100,000, around $500. Most providers offer a free tier with limited credits for evaluation.</p>
+<p>Pricing varies by provider and volume. Ollagraph bills in credits: most calls, including /v1/render and /v1/scrape, cost 1 credit; /v1/screenshot costs 3. Failed calls are refunded, and new accounts get 1,000 free credits. Most providers offer a free tier with limited credits for evaluation.</p>
 
 <h3>Q6. What happens when a session times out?</h3>
 <p>The provider closes the browser and frees the resources. Any subsequent request using that session ID returns an error. The session's cookies, localStorage, and authentication state are lost. Send keepalive requests at regular intervals — typically at half the idle timeout value — to prevent this.</p>
 
 <h3>Q7. Can I run custom JavaScript in the browser?</h3>
-<p>Yes. Session-based APIs expose a script endpoint that lets you execute arbitrary JavaScript in the page context. You can read DOM properties, call functions, intercept network responses, or modify the page. The script runs in the browser's JavaScript engine and can return serializable values.</p>
+<p>Yes. Session-based APIs expose a script endpoint that lets you execute arbitrary JavaScript in the page context. You can read DOM properties, call functions, intercept network responses, or modify the page. The script runs in the browser's JavaScript engine and can return serializable values. With Ollagraph, pass a JavaScript expression in js_eval on /v1/scrape; its value comes back in eval_result.</p>
 
 <h3>Q8. Is a Browser Automation API suitable for real-time applications?</h3>
 <p>Cold renders take 3-5 seconds. Warm session renders take 1-3 seconds. If your application needs sub-second responses, a Browser Automation API is not the right tool. Consider using a structured data API or caching layer instead.</p>
@@ -526,17 +420,17 @@ Success rate (JS sites)	~72%	~80%	~75%	~94%</code></pre>
 <p>Use a provider that integrates CAPTCHA solving into the browser flow. When the browser encounters a CAPTCHA, the solver intercepts the challenge, sends it to a solving service, and injects the solution — all within the same session. This preserves cookies and session state.</p>
 
 <h3>Q10. What is Stagehand and how does it relate to browser automation?</h3>
-<p>Stagehand is an open-source framework that adds an LLM layer on top of Playwright. Instead of writing CSS selectors, you describe what you want in natural language: "click the search bar and type 'laptops'". Stagehand uses an LLM to interpret the instruction, find the right element, and execute the action. Ollagraph offers Stagehand as a managed API endpoint.</p>
+<p>Stagehand is an open-source framework that adds an LLM layer on top of Playwright. Instead of writing CSS selectors, you describe what you want in natural language: "click the search bar and type 'laptops'". Stagehand uses an LLM to interpret the instruction, find the right element, and execute the action. Ollagraph does not offer Stagehand; you run it yourself on top of Playwright.</p>
 
 <h2>16. Conclusion</h2>
 <p>Browser Automation APIs have matured from a niche convenience into a core piece of web infrastructure. If you are extracting data from JavaScript-heavy websites, automating login workflows, or building AI agents that browse the web, a managed browser API saves you from maintaining the most painful part of the stack: stealth patches, proxy management, CAPTCHA solving, and browser scaling.</p>
 <p>The decision between self-hosted and API comes down to volume and engineering bandwidth. Below 50,000 renders per month, the API is almost always cheaper and faster to implement. Above that threshold, self-hosted can be more cost-effective if you have the team to maintain it. But the hidden cost of self-hosted is not the server — it is the constant cat-and-mouse game with anti-bot systems that change their detection methods weekly.</p>
 <p>Start with a render API for simple JavaScript rendering. Graduate to session-based APIs when you need multi-step workflows. Add Stagehand when you want AI agents to control the browser in natural language. Each tier adds capability at a predictable cost.</p>
-<p>The Ollagraph Browser Automation API covers all three tiers behind a single API key. Sign up at ollagraph.com and use the free trial credits. No browser binaries to install, no stealth patches to maintain, no CAPTCHA services to integrate. Just an HTTP call and the data you need.</p>
+<p>Ollagraph covers the first tier — rendering, page actions (click/type/scroll), JS eval, screenshots, and batch/async scraping — behind a single API key; run session and Stagehand-style steps in your own Playwright code. Sign up at ollagraph.com and use the 1,000 free credits. No browser binaries to install, no stealth patches to maintain, no CAPTCHA services to integrate. Just an HTTP call and the data you need.</p>
 
 <h2>17. References</h2>
 <ul>
-  <li>Ollagraph API Documentation — Browser Automation &amp; Sessions. https://ollagraph.com/docs/</li>
+  <li>Ollagraph API Documentation. https://ollagraph.com/docs/</li>
   <li>Stagehand — LLM-Driven Browser Automation. https://github.com/browserbase/stagehand</li>
   <li>Playwright Documentation. https://playwright.dev/docs/intro</li>
   <li>Puppeteer Documentation. https://pptr.dev/</li>

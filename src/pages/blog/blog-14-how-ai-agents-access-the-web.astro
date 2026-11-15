@@ -149,9 +149,9 @@ const faqs = [
     "stealth": false
   &#125;'</code></pre>
 
-<p>The response includes clean markdown, metadata, and a status flag. The agent can read it directly or chunk it for a RAG pipeline.</p>
+<p>The response includes the clean markdown in content, plus status and timing fields. The agent can read it directly or chunk it for a RAG pipeline.</p>
 
-<p>For pages that need JavaScript rendering, the same endpoint accepts a render: true flag and switches to a stealth browser pool behind the scenes. The agent does not need to know the difference.</p>
+<p>For pages that need JavaScript rendering, the same endpoint loads the page in a real browser at no extra credit cost; set wait_until to networkidle0 for pages that hydrate slowly. The agent does not need to know the difference.</p>
 
 <h2>Pattern 2: Browser Automation and Headless Browsers</h2>
 
@@ -184,24 +184,25 @@ const faqs = [
 
 <p>This is why most teams should not run their own browser farms. The maintenance burden is high, and the defenses change constantly. A managed browser automation service handles the orchestration and lets the agent send high-level instructions.</p>
 
-<h3>Example: Driving a Browser Session</h3>
+<h3>Example: Running Page Actions in a Managed Browser</h3>
 
-<p>Ollagraph's Stagehand-style endpoint lets an agent control a browser with natural-language actions:</p>
+<p>Ollagraph's /v1/scrape endpoint can run a short list of page actions (click, type, scroll to bottom) in a managed browser before it captures the page, and can evaluate a JavaScript expression in that page:</p>
 
-<pre><code>curl -X POST https://api.ollagraph.com/v1/stagehand \
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://example.com/login",
+    "url": "https://example.com/pricing",
+    "format": "markdown",
+    "wait_until": "networkidle0",
     "actions": [
-      &#123;"type": "fill", "selector": "#email", "value": "agent@example.com"&#125;,
-      &#123;"type": "fill", "selector": "#password", "value": "$PASSWORD"&#125;,
-      &#123;"type": "click", "selector": "#submit"&#125;,
-      &#123;"type": "extract", "schema": &#123;"account_balance": "string"&#125;&#125;
-    ]
+      &#123;"action": "click", "selector": "button.annual-billing"&#125;,
+      &#123;"action": "scroll_to_bottom"&#125;
+    ],
+    "js_eval": "document.querySelectorAll(\".plan-card\").length"
   &#125;'</code></pre>
 
-<p>The agent gets structured JSON back without managing the browser lifecycle.</p>
+<p>The agent gets the rendered page as markdown in content and the expression's value in eval_result, without managing the browser lifecycle. Each call runs in a fresh browser and nothing persists between calls, so logins and multi-page flows are out of scope for the API; run those in your own Playwright code.</p>
 
 <h2>Pattern 3: MCP Servers and Tool Discovery</h2>
 
@@ -234,12 +235,14 @@ const faqs = [
 <p>The Ollagraph MCP server exposes the platform's web infrastructure as tools. An agent using Claude Desktop or Cursor can call any endpoint through natural language:</p>
 
 <pre><code>&#123;
-  "name": "ollagraph_scrape_url",
-  "description": "Fetch a URL and return clean markdown or structured data.",
+  "name": "scrape",
+  "description": "Fetch a URL in a managed browser and return markdown, HTML, text or links.",
   "input_schema": &#123;
     "url": "string",
-    "format": "markdown | json",
-    "render": "boolean"
+    "format": "markdown | html | text | links",
+    "wait_until": "string",
+    "actions": "array",
+    "js_eval": "string"
   &#125;
 &#125;</code></pre>
 
@@ -294,8 +297,8 @@ const faqs = [
 <pre><code>&#123;
   "mcpServers": &#123;
     "ollagraph": &#123;
-      "command": "npx",
-      "args": ["-y", "ollagraph-mcp"],
+      "command": "pipx",
+      "args": ["run", "ollagraph-mcp"],
       "env": &#123;
         "OLLAGRAPH_API_KEY": "your-api-key"
       &#125;
@@ -318,21 +321,21 @@ const faqs = [
 
 <p><strong>Without a unified layer:</strong> They write a Playwright script, rent proxies, parse HTML with BeautifulSoup, store results in a spreadsheet, and manually feed summaries to the LLM.</p>
 
-<p><strong>With Ollagraph:</strong> The agent calls ollagraph_extract_structured with a schema for product name, price, and billing period. The tool handles rendering, extraction, and retries. The agent receives JSON and writes the comparison.</p>
+<p><strong>With Ollagraph:</strong> The agent calls /v1/extract/structured on each pricing page, which returns the page's JSON-LD, microdata, Open Graph tags and flattened product data; for pages with no structured markup the agent falls back to /v1/scrape markdown. It picks out product name, price, and billing period and writes the comparison.</p>
 
 <h3>Example 2: Research Agent with Citations</h3>
 <p>A research assistant needs to answer questions using live web sources and cite them.</p>
 
 <p><strong>Without MCP:</strong> The team wires a search API, a scraping API, and a citation formatter separately. The agent prompt grows to hundreds of lines.</p>
 
-<p><strong>With MCP:</strong> The agent uses ollagraph_search, ollagraph_scrape_url, and ollagraph_citation_readiness tools. Each tool has a clear schema. The agent decides the sequence.</p>
+<p><strong>With MCP:</strong> The agent uses Ollagraph's search, scrape, and citation-readiness tools (/v1/search, /v1/scrape, /v1/aeo/citation-readiness). Each tool has a clear schema. The agent decides the sequence.</p>
 
 <h3>Example 3: Automated Security Audit</h3>
 <p>A security team wants to check SSL certificates, DNS records, and AI-bot allowlisting for a list of domains.</p>
 
 <p><strong>Without a platform:</strong> They use three separate tools and reconcile CSV outputs.</p>
 
-<p><strong>With Ollagraph:</strong> The agent calls ollagraph_intel_ssl, ollagraph_dns_lookup, and ollagraph_aeo_ai_bot_allowlist. All three return structured JSON under the same authentication and billing model.</p>
+<p><strong>With Ollagraph:</strong> The agent calls /v1/intel/ssl, /v1/dns/lookup, and /v1/aeo/ai-bot-allowlist. All three return structured JSON under the same authentication and billing model.</p>
 
 <h2>Performance and Benchmarks</h2>
 
@@ -367,7 +370,7 @@ MCP tool call overhead            | +50-200 ms      | Negligible    | Dynamic to
 <p>Agents can issue many requests quickly. Respect robots.txt, implement rate limits, and use cached results when freshness is not critical. Ollagraph handles rate limiting and retry logic across its access layer, but the calling agent should still avoid redundant calls.</p>
 
 <h3>Observability</h3>
-<p>Every web call should be traceable. At minimum, log the URL, tool used, timestamp, cost, and outcome. For regulated industries, retain audit logs. Ollagraph exposes x-credits-cost, x-credits-charged, and x-credits-balance headers on every call, plus trace IDs for replay.</p>
+<p>Every web call should be traceable. At minimum, log the URL, tool used, timestamp, cost, and outcome. For regulated industries, retain audit logs. Ollagraph exposes x-credits-cost, x-credits-charged, and x-credits-balance headers on every call, plus an x-request-id you can look up later with GET /v1/me/requests/&#123;request_id&#125;.</p>
 
 <h2>Troubleshooting</h2>
 
@@ -449,7 +452,7 @@ MCP server + managed tools | Composable, agent-native | Requires MCP-compatible 
 <p>Agencies and platforms often run web access for multiple clients. They need isolated billing, separate rate limits, and the ability to route traffic through different proxy pools.</p>
 
 <h3>Observability</h3>
-<p>Beyond cost headers, enterprises need dashboards for latency, error rates, and tool usage. Ollagraph's observability plane traces every call and exposes usage through /v1/me/usage and streaming logs.</p>
+<p>Beyond cost headers, enterprises need dashboards for latency, error rates, and tool usage. Ollagraph logs every call and exposes per-request usage through /v1/me/usage and daily rollups through /v1/me/usage/summary.</p>
 
 <h3>Compliance</h3>
 <p>For regulated industries, data residency and retention matter. The access layer should support regional endpoints, configurable retention, and audit exports.</p>
@@ -504,8 +507,8 @@ When feeding web content to a language model, you should request either Markdown
 <ul>
 <li>Anthropic. "Model Context Protocol Specification." https://modelcontextprotocol.io</li>
 <li>Ollagraph. "Web Infrastructure for AI Agents." https://ollagraph.com</li>
-<li>Ollagraph Docs. "Quickstart." https://ollagraph.com/docs/quickstart.md</li>
-<li>Ollagraph Docs. "MCP Server Setup." https://ollagraph.com/docs/mcp.md</li>
+<li>Ollagraph Docs. "Quickstart." https://ollagraph.com/docs</li>
+<li>Ollagraph. "MCP Server Setup." https://ollagraph.com/mcp</li>
 <li>Ollagraph. "Best MCP Servers for Cursor in 2026."</li>
 <li>Ollagraph. "Web Scraping API Guide."</li>
 <li>Ollagraph. "How to Appear in ChatGPT Results."</li>

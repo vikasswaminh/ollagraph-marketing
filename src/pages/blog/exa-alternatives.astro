@@ -28,7 +28,7 @@ const faqs = [
   },
   {
     q: "Are these tools compatible with LangChain and MCP?",
-    a: "Most modern AI search and content APIs offer LangChain integrations or simple HTTP clients, and a growing number ship Model Context Protocol servers so agents can call them as tools. Ollagraph provides an MCP server that exposes its full surface — scrape, extract, intelligence, and actors — to any MCP-aware agent.",
+    a: "Most modern AI search and content APIs offer LangChain integrations or simple HTTP clients, and a growing number ship Model Context Protocol servers so agents can call them as tools. Ollagraph provides an MCP server (pipx run ollagraph-mcp) that exposes its full surface — scrape, extract, search, and intelligence — to any MCP-aware agent.",
   },
   {
     q: "What is the difference between a search API and a scraping API?",
@@ -128,9 +128,9 @@ const faqs = [
   <h2>The content side — and where Ollagraph fits</h2>
   <p>Here is the honest part. Ollagraph is not a neural search engine, and we will not dress it up as one. It does not rank the open web by meaning, and if pure semantic discovery is what you need from Exa, one of the search APIs above is the right tool.</p>
 
-  <p>What Ollagraph does is the other half of the Exa workflow — the part that turns a URL into something a model can actually use. Once a search API hands you the relevant links, Ollagraph fetches them and returns clean, LLM-ready markdown, structured JSON-LD and OpenGraph data, and full content from JavaScript-heavy pages, escalating from a fast fetch to a stealth browser automatically. It crawls whole sites to a webhook, extracts contacts and tables, and attaches domain intelligence — DNS, WHOIS, SSL, GeoIP, tech-stack — to every page, all behind one key with pay-as-you-go from $5 and refunds on failed calls.</p>
+  <p>What Ollagraph does is the other half of the Exa workflow — the part that turns a URL into something a model can actually use. Once a search API hands you the relevant links, Ollagraph fetches them and returns clean, LLM-ready markdown, structured JSON-LD and OpenGraph data, and full content from JavaScript-heavy pages, escalating from a fast fetch to a stealth browser automatically. It crawls whole sites to a webhook, extracts contacts and tables, and offers domain intelligence endpoints — DNS, WHOIS, SSL, GeoIP, tech-stack — all behind one key with pay-as-you-go from $5 and refunds on failed calls.</p>
 
-  <p>That makes the cleanest pattern a pair: use Exa, Tavily, Brave, or Serper to discover, and Ollagraph to retrieve and structure what they find. You get neural ranking from a specialist and deep, reliable content from a specialist, instead of accepting snippet-depth content as the price of bundling. For teams whose agents also need to read pages behind logins, pull marketplace data, or enrich domains, that second specialist earns its place quickly.</p>
+  <p>That makes the cleanest pattern a pair: use Exa, Tavily, Brave, or Serper to discover, and Ollagraph to retrieve and structure what they find. You get neural ranking from a specialist and deep, reliable content from a specialist, instead of accepting snippet-depth content as the price of bundling. For teams whose agents also need to render JavaScript-heavy pages, run simple page actions, or enrich domains, that second specialist earns its place quickly.</p>
 
   <p>In practice the handoff is one extra call. Your search API returns a ranked list of URLs; you pass each one to a content endpoint and get back clean markdown your model can read in full.</p>
 
@@ -143,7 +143,7 @@ curl -X POST https://api.ollagraph.com/v1/scrape \
   -H "Content-Type: application/json" \
   -d '&#123; "url": "https://example.com/the-result", "format": "markdown" &#125;'</code></pre>
 
-  <p>The same key reaches the rest of the pipeline when an agent needs it: <code>/v1/crawl</code> to walk a whole site to a webhook, <code>/v1/extract/structured</code> for JSON-LD and microdata, and the intelligence endpoints for the DNS, SSL, and tech-stack metadata behind a domain. One token, one bill, the content half of the workflow handled end to end. The discovery half stays with whichever search specialist you chose.</p>
+  <p>The same key reaches the rest of the pipeline when an agent needs it: <code>/v1/crawl</code> to walk a whole site to a webhook, <code>/v1/extract/structured</code> for JSON-LD and microdata, the intelligence endpoints for the DNS, SSL, and tech-stack metadata behind a domain, and <code>/v1/search</code> for plain keyword lookups — Google results, with a labelled DuckDuckGo-backed fallback when Google is unavailable. One token, one bill, the content half of the workflow handled end to end. The discovery half stays with whichever search specialist you chose.</p>
 
   <h2>Freshness, citations, and the trust question</h2>
   <p>One axis deserves its own attention because it is where AI search products differ most and marketing pages say least: how fresh the results are, and how well you can prove where an answer came from. An agent that cites a stale page is worse than one that says it does not know.</p>
@@ -162,7 +162,7 @@ curl -X POST https://api.ollagraph.com/v1/scrape \
 
   <p><strong>The monitoring tool.</strong> A search API surfaces new pages mentioning a topic; a content layer fetches each one, renders the JavaScript, and extracts the structured fields that matter, on a schedule, delivered by webhook. Coverage comes from search; depth and reliability come from retrieval.</p>
 
-  <p><strong>The sales-intelligence platform.</strong> Search finds the companies; the content layer reads their sites and enriches each domain with DNS, SSL, tech-stack, and verified-email data in the same call. Our <a href="/blog/sales-intelligence-api-buyers-guide">sales intelligence buyer's guide</a> covers that enrichment layer in depth, and the <a href="/blog/aeo-vs-seo-2026">AEO vs SEO guide</a> covers making your own pages quotable by these engines.</p>
+  <p><strong>The sales-intelligence platform.</strong> Search finds the companies; the content layer reads their sites and enriches each domain with DNS, SSL, tech-stack, and verified-email data using the same key. Our <a href="/blog/sales-intelligence-api-buyers-guide">sales intelligence buyer's guide</a> covers that enrichment layer in depth, and the <a href="/blog/aeo-vs-seo-2026">AEO vs SEO guide</a> covers making your own pages quotable by these engines.</p>
 
   <p><strong>The competitive-intelligence dashboard.</strong> A market-watch product runs the same set of queries on a cadence, watches for new entrants and changed positioning, then reads each surfaced page in full to extract pricing, claims, and feature lists. Search keeps the watch list current; the content layer turns each result into structured fields the dashboard can diff over time. Neither job is optional, and stretching a single bundled API across both is where these tools tend to disappoint at scale.</p>
 

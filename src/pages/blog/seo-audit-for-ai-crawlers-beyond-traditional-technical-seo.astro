@@ -37,7 +37,7 @@ const faqs = [
   <li>In our benchmark of 200 pages, 68% passed traditional SEO checks but failed at least one AI-specific check — the most common being JavaScript-rendered content that AI crawlers couldn't extract.</li>
   <li>robots.txt is necessary but insufficient. Many AI crawler failures happen after the crawler is allowed — at the WAF, the CDN, the renderer, or the extraction layer.</li>
   <li>A good AI crawler audit produces a prioritized remediation list sorted by impact on citation probability, not just a score. Fix extraction failures before you optimize schema.</li>
-  <li>Ollagraph's composite page-audit endpoint runs all six layers in a single API call and returns a prioritized fix list. You can integrate it into your CI/CD pipeline or run it as a weekly scheduled sweep.</li>
+  <li>Ollagraph's composite page-audit endpoint (<code>/v1/aeo/page-audit</code>) runs nine checks across the first five layers in a single API call and returns a 0–100 score with a ranked fix list. You can integrate it into your CI/CD pipeline or run it as a weekly scheduled sweep.</li>
 </ul>
 
 <h2>1. The Problem: Your SEO Audit Is Missing Half the Picture</h2>
@@ -280,27 +280,14 @@ Average AI crawler audit score                                47/100</code></pre
 <p>Add a lightweight AI crawler check to your deployment pipeline. Before you deploy a new page or a template change, run a fetch simulation with the three major AI crawler user agents. If any of them return a non-200 status or an empty body, block the deployment.</p>
 
 <h3>Using Ollagraph for Automation</h3>
-<p>Ollagraph's composite page-audit endpoint runs all six layers in a single API call. Here's how to integrate it into a weekly sweep:</p>
+<p>Ollagraph's composite <code>/v1/aeo/page-audit</code> endpoint runs nine probes in parallel in a single API call (3 credits): meta tags, readability, snippet candidates, schema coverage, citation readiness, AI-bot robots.txt rules, a per-crawler fetch simulation (with JS-only and cloaking detection), redirects, and llms.txt. Together they cover the first five layers; running it on a schedule covers the sixth. Here's how to integrate it into a weekly sweep:</p>
 
-<pre><code>curl -X POST "https://api.ollagraph.com/v1/audit/page" \
+<pre><code>curl -X POST "https://api.ollagraph.com/v1/aeo/page-audit" \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '&#123;
-    "url": "https://example.com",
-    "checks": [
-      "robots-txt",
-      "llms-txt",
-      "http-status",
-      "per-agent-fetch",
-      "js-rendered-content",
-      "dom-extraction",
-      "passage-quality",
-      "citation-readiness",
-      "freshness-signal",
-      "schema-alignment"
-    ]
-  &#125;'</code></pre>
-<p>The response includes a composite score, per-check scores, and a prioritized remediation list sorted by impact on citation probability.</p>
+  -d '&#123;"url": "https://example.com"&#125;'</code></pre>
+
+<p>The response includes an overall 0–100 score and grade, five category scores (discoverability, content quality, structured data, answerability, citability), the top issues, a ranked list of recommendations, and each probe's full result. For freshness signals, add a call to <code>/v1/aeo/freshness-signal</code>.</p>
 
 <h2>12. Security Considerations When Auditing for AI Crawlers</h2>
 <p>Auditing for AI crawlers means you're deliberately testing your site's defenses. Here are the security implications.</p>
@@ -366,7 +353,7 @@ Average AI crawler audit score                                47/100</code></pre
 <p>These tools excel at traditional SEO checks—backlinks, keywords, meta tags, redirects, and sitemaps. They don't simulate AI crawler behavior, test per-user-agent responses, measure passage extraction quality, or score citation readiness. They're complementary but insufficient for AI crawler audits.</p>
 
 <h3>AI-Specific Audit Tools (Ollagraph, Other)</h3>
-<p>Ollagraph's page-audit endpoint runs all six layers in a single API call. It simulates GPTBot, ClaudeBot, and PerplexityBot fetches, measures extraction quality, scores citation readiness, and returns a prioritized remediation list. It's designed for automation—integrate it into a CI/CD pipeline, a weekly sweep, or a deployment gate.</p>
+<p>Ollagraph's page-audit endpoint runs nine checks across the first five layers in a single API call. It simulates fetches by GPTBot, ClaudeBot, PerplexityBot and other AI crawlers, checks snippet and passage structure, scores citation readiness, and returns a ranked remediation list. It's designed for automation—integrate it into a CI/CD pipeline, a weekly sweep, or a deployment gate.</p>
 
 <pre><code>Feature                          Manual            Traditional SEO Tools   Ollagraph
 
@@ -377,7 +364,7 @@ Passage extraction quality       Manual review     No                      Autom
 Citation readiness scoring       Manual            No                      Automated
 Prioritized remediation list     Manual            No                      Automated
 CI/CD integration                No                Limited                 API-native
-Cost per audit (50 pages)        4-8 hours labor  Subscription            Per-request</code></pre>
+Cost per audit (50 pages)        4-8 hours labor  Subscription            150 credits (3 per page)</code></pre>
 
 <h2>17. Enterprise Deployment Notes</h2>
 
@@ -391,7 +378,7 @@ Cost per audit (50 pages)        4-8 hours labor  Subscription            Per-re
 <p>Track your AI crawler audit score over time. Alert on drops of more than 10 points. Alert when a deployment fails the AI crawler check.</p>
 
 <h3>Cost Management</h3>
-<p>Batch requests and run during off-peak hours. Cache results for unchanged pages. Ollagraph's API includes caching headers to help manage costs.</p>
+<p>Batch requests and run during off-peak hours. Cache results for unchanged pages. Ollagraph's API reports each call's credit cost in response headers (x-credits-cost, x-credits-charged, x-credits-balance) to help manage costs.</p>
 
 <h2>18. Frequently Asked Questions</h2>
 
@@ -445,8 +432,8 @@ Cost per audit (50 pages)        4-8 hours labor  Subscription            Per-re
 <h2>20. References</h2>
 <ul>
   <li>Ollagraph AEO Framework: https://ollagraph.com/aeo</li>
-  <li>Ollagraph Page Audit API: https://ollagraph.com/docs/audit/page-audit</li>
-  <li>Ollagraph LLM Fetch Simulator: https://ollagraph.com/docs/aeo/llm-fetch-simulator</li>
+  <li>Ollagraph Page Audit API (/v1/aeo/page-audit): https://ollagraph.com/docs</li>
+  <li>Ollagraph LLM Fetch Simulator (/v1/aeo/llm-fetch-simulator): https://ollagraph.com/docs</li>
   <li>OpenAI GPTBot Documentation: https://platform.openai.com/docs/gptbot</li>
   <li>Anthropic ClaudeBot Documentation: https://docs.anthropic.com/en/docs/claudebot</li>
   <li>PerplexityBot Documentation: https://docs.perplexity.ai/docs/perplexitybot</li>

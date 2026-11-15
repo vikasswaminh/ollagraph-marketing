@@ -234,10 +234,10 @@ One of the greatest blind spots in legacy SEO auditing is the Hydration Gap: the
 
 ### Automated Detection via Ollagraph
 
-To catch hydration drift, the analysis API coordinates dual-probe auditing using Ollagraph endpoints:
+To catch hydration drift, the analysis API coordinates dual-probe auditing, using Ollagraph for the rendered side:
 
-- It captures the static origin payload via `/v1/scrape` with `format: "html"` and JavaScript execution disabled.
-- It captures the fully rendered DOM via `/v1/scrape` with `js_eval`, `wait_until: "networkidle0"`, and full browser rendering enabled.
+- It captures the static origin payload with a plain HTTP GET from your own code (curl or `requests`), so no JavaScript runs.
+- It captures the fully rendered DOM via `/v1/render`, or via `/v1/scrape` with `format: "html"` and `wait_until: "networkidle0"` (add `js_eval`, such as `document.querySelector('link[rel=canonical]')?.href`, to read a value straight from the hydrated page).
 - It runs an automated DOM diffing algorithm comparing the document head attributes:
 
 | Target Element | Static Server Payload | Hydrated Client DOM | Diagnostic Verdict | Calculated Severity ($S$) |
@@ -258,10 +258,10 @@ An advanced SEO Analysis API must evaluate Answer Engine Optimization (AEO) sign
 | AEO Evaluation Probe | Ollagraph Endpoint | Validation Logic | Risk Addressed |
 | :--- | :--- | :--- | :--- |
 | **AI Bot Exclusion Check** | `POST /v1/aeo/ai-bot-allowlist` | Validates `robots.txt` rules against 14 recognized AI crawlers ( `OAI-SearchBot` , `PerplexityBot` , `ClaudeBot` , `Applebot-Extended` ). | Content inadvertently blocked from appearing in synthesized AI responses. |
-| **Passage Readiness Score** | `POST /v1/aeo/citation-readiness` | Evaluates text chunks for claim density, entity clarity, and standalone factual context. | Content too narrative or vague to be quoted as an attributable factual citation. |
+| **Passage Readiness Score** | `POST /v1/aeo/citation-readiness` | Scores numerical specifics, named entities, authoritative outbound links, author byline, last-updated date and content length (0–100). | Content too narrative or vague to be quoted as an attributable factual citation. |
 | **Headings & Structure** | `POST /v1/aeo/heading-hierarchy-score` | Verifies single `<h1>` , logical `<h2>` / `<h3>` nesting, and question-aligned heading syntax. | Chunk fragmentation during vector indexing and LLM retrieval. |
 | **llms.txt Compliance** | `POST /v1/aeo/llms-txt-audit` | Checks for the presence, markdown formatting, and link validity of `/llms.txt` . | Missing explicit semantic documentation manifest for autonomous agents. |
-| **Schema Entity Coverage** | `POST /v1/aeo/schema-coverage` | Measures depth of Schema.org entity relationships ( `about` , `mentions` , `author` , `publisher` ). | Weak entity grounding in generative knowledge bases. |
+| **Schema Entity Coverage** | `POST /v1/aeo/schema-coverage` | Scores JSON-LD, Microdata and OpenGraph coverage against 12 AEO-critical Schema.org types and lists the missing ones. | Weak entity grounding in generative knowledge bases. |
 
 By including AEO metrics in the priority scoring engine alongside our guide on [structured data for AI Overviews](/blog/structured-data-for-ai-overviews-which-schema-signals-matter-most/) and [citation readiness scoring](/blog/citation-readiness-score-how-to-build-reliable-scoring-model/), organizations ensure their technical infrastructure serves both traditional search engine crawlers and modern LLM retrieval pipelines.
 
@@ -279,19 +279,19 @@ curl -X POST https://api.ollagraph.com/v1/crawl \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example.com",
-    "max_pages": 25000,
+    "max_pages": 5000,
     "depth": 5,
-    "concurrency": 25,
+    "concurrency": 20,
     "respect_robots": true,
     "webhook_url": "https://telemetry.yourdomain.com/webhooks/ollagraph-crawl"
   }'
 ```
 
-The response returns a `job_id`. Ollagraph manages the distributed worker instances, respects rate limits, and streams discovered URL payloads to your configured webhook receiver.
+The response returns a `job_id`. Ollagraph runs the crawl in the background (up to 5,000 pages per job), respects robots.txt, and POSTs the finished crawl result to your webhook, signed with your webhook secret. You can also poll `GET /v1/jobs/{job_id}`.
 
 ### Step 2: Ingest and Validate URL Batches
 
-As the webhook receiver collects crawled URLs, it evaluates baseline HTTP telemetry. URLs returning unexpected status codes or headers are automatically routed to specialized diagnostic endpoints.
+When the webhook receiver gets the crawl result, it evaluates baseline HTTP telemetry for each URL. URLs returning unexpected status codes or headers are automatically routed to specialized diagnostic endpoints.
 
 ### Step 3: Deep Redirect Chain Mapping
 
@@ -361,9 +361,11 @@ def audit_url(url: str, template: str, catalog_size=50000):
     meta = requests.post(f"{BASE}/v1/seo/meta-audit", headers=AUTH, json={"url": url}).json()
     
     # 2. Flag Severity: Noindex = 9.8 (Critical), Canonical Conflict = 8.4
-    if meta.get("robots", {}).get("is_noindex"):
+    canonical = (meta.get("canonical") or "").rstrip("/")
+    final_url = (meta.get("final_url") or url).rstrip("/")
+    if meta.get("is_indexable") is False:
         issue, sev = "ERR_NOINDEX", 9.8
-    elif meta.get("canonical", {}).get("status") == "conflict":
+    elif canonical.startswith("http") and canonical != final_url:
         issue, sev = "ERR_CANONICAL_CONFLICT", 8.4
     else:
         return None
@@ -388,8 +390,10 @@ const api = axios.create({
 export async function auditUrl(url: string, template: string) {
   const { data: meta } = await api.post('/v1/seo/meta-audit', { url });
   
-  const isNoindex = meta.robots?.is_noindex;
-  const isConflict = meta.canonical?.status === 'conflict';
+  const isNoindex = meta.is_indexable === false;
+  const canonical = (meta.canonical ?? '').replace(/\/$/, '');
+  const finalUrl = (meta.final_url ?? url).replace(/\/$/, '');
+  const isConflict = canonical.startsWith('http') && canonical !== finalUrl;
   if (!isNoindex && !isConflict) return null;
 
   const severity = isNoindex ? 9.8 : 8.4;
@@ -480,7 +484,7 @@ jobs:
             { headers: { Authorization: 'Bearer ' + process.env.KEY } }
           ).then(r => {
             const d = r.data;
-            if (d.robots?.is_noindex || d.canonical?.status === 'conflict' || d.overall_score < 80) {
+            if (d.is_indexable === false || d.score < 80) {
               console.error('Build Failed: Critical SEO regression detected.');
               process.exit(1);
             }
@@ -520,7 +524,7 @@ Architecting an enterprise analysis pipeline requires optimizing network through
 
 ### Processing Throughput Benchmarks
 
-The following benchmarks reflect throughput when querying the Ollagraph API suite across concurrent worker threads on an AWS c6i.2xlarge instance (8 vCPU, 16 GB RAM):
+The following figures are an illustrative planning model for a worker pool on an AWS c6i.2xlarge instance (8 vCPU, 16 GB RAM). Measure your own: probe latency depends mostly on the target site, and throughput is capped by your API key's rate limit.
 
 | Concurrency Level | URLs Audited per Minute | Average Probe Latency | Network Egress Rate | Worker Memory Footprint |
 | :--- | :--- | :--- | :--- | :--- |
@@ -538,7 +542,7 @@ Auditing every single URL on a massive site with heavy, multi-probe tools wastes
 - **Schema Tier (~5% of URLs):** Triggers `/v1/seo/schema-validate` only on pages where JSON-LD structured data is actually detected in the HTML.
 - **Strategic AEO Tier (~0.5% of URLs):** Reserves the heavy 9-probe audit (`POST /v1/aeo/page-audit`) exclusively for high-revenue, top-traffic conversion pages and core pillar guides.
 
-**Bottom line:** This reduces total API credit consumption by 84% while still catching over 99% of site-wide technical defects.
+**Bottom line:** Most credits go to the cheap discovery tier, and the heavier audits (3 credits for `/v1/aeo/page-audit`) only run where they add information, which cuts total credit consumption sharply while still catching template-level defects.
 
 ## 14. Security, Network Hygiene, and Bot Governance
 
@@ -585,8 +589,8 @@ Do not masquerade as generic desktop browsers without organizational identificat
 
 | Feature / Capability | Custom SEO Analysis API (Ollagraph) | Legacy SaaS (Botify, Lumar) | Desktop Software (Screaming Frog) |
 | :--- | :--- | :--- | :--- |
-| **Primary Interface** | REST API, Webhooks, JSON Streams | Web Dashboard, Closed UI | Desktop GUI (Java) |
-| **Scalability** | Distributed Cloud Workers (Millions of URLs) | High-Scale Cloud Instances | Limited by Local Hardware RAM/Disk |
+| **Primary Interface** | REST API, Webhooks, JSON | Web Dashboard, Closed UI | Desktop GUI (Java) |
+| **Scalability** | Cloud Workers (up to 5,000 pages per crawl job; run more jobs for larger sites) | High-Scale Cloud Instances | Limited by Local Hardware RAM/Disk |
 | **CI/CD Integration** | Native (cURL, Node.js, Python GitHub Actions) | Complex / Limited Webhook Support | Non-Native CLI Scripts |
 | **Prioritization Model** | Deterministic, Custom Mathematical Formula | Proprietary Black-Box Health Score | Unranked Tabular Columns |
 | **JavaScript Rendering** | Cloud-Managed Headless Browser Instances | Managed Cloud Rendering | Local Headless Browser (Heavy CPU Load) |
@@ -601,7 +605,7 @@ Do not masquerade as generic desktop browsers without organizational identificat
 A web crawler focuses on network transport and content retrieval: requesting URLs, executing JavaScript, and capturing raw HTML responses. An SEO Analysis API processes those raw responses, validates them against technical standards, clusters errors by shared template, and calculates mathematically prioritized engineering tickets.
 
 ### Q2. How does Ollagraph detect client-side hydration drift?
-Ollagraph captures both the static origin HTML and the post-hydration rendered DOM. The analysis pipeline compares document head attributes across both payloads to identify canonical mutations, dynamic noindex injections, or stripped structured data.
+Your pipeline captures the static origin HTML with a plain HTTP GET and the post-hydration rendered DOM with Ollagraph's `/v1/render`. It then compares document head attributes across both payloads to identify canonical mutations, dynamic noindex injections, or stripped structured data.
 
 ### Q3. How should a development team calibrate priority scoring weights?
 Teams should calibrate weights based on their business model. For content and media sites, Technical Severity ($w_S = 0.40$) and Centrality ($w_A = 0.20$) should take precedence. For large-scale e-commerce, Traffic and Revenue Weight ($w_T = 0.35$) and Blast Radius ($w_B = 0.30$) should be elevated to prioritize revenue-critical product templates.
@@ -610,7 +614,7 @@ Teams should calibrate weights based on their business model. For content and me
 Yes. Modern search audits must evaluate visibility across LLM platforms like ChatGPT, Perplexity, and Claude. Ollagraph includes native endpoints (`/v1/aeo/ai-bot-allowlist`, `/v1/aeo/citation-readiness`, `/v1/aeo/page-audit`) to verify AI bot permissions, passage extractability, and Schema.org entity coverage.
 
 ### Q5. How can we prevent automated crawl audits from degrading production server performance?
-Configure concurrency limits (e.g., 10 to 25 requests per second) when initiating crawls via `/v1/crawl`. Implement an adaptive throttling consumer that monitors Time to First Byte (TTFB) and automatically scales down worker concurrency if latency exceeds acceptable thresholds.
+Set a modest `concurrency` when initiating crawls via `/v1/crawl` (it caps parallel requests at 1–20; the default is 10). Implement an adaptive throttling consumer that monitors Time to First Byte (TTFB) and automatically scales down worker concurrency if latency exceeds acceptable thresholds.
 
 ### Q6. How does an SEO Analysis API handle faceted navigation and infinite crawl traps without exhausting API credits?
 An analysis API handles crawl traps at the ingestion layer rather than the parsing layer. During traversal, it evaluates URI token depth, tracking query parameter combinations (such as multi-select filters: `?color=blue&size=m&sort=asc`) and repeating directory segments (such as `/catalog/shoes/shoes/`).

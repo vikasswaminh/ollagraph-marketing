@@ -4,8 +4,8 @@ import Article from '../../layouts/Article.astro';
 const faqs = [
   { q: "What is structured data extraction?", a: "Structured data extraction converts unstructured web pages into typed JSON using a schema that defines the fields you need. Instead of pulling raw HTML and parsing it yourself, you request specific attributes like price, title, or authors. The extraction engine resolves those fields across different page layouts and returns validated data." },
   { q: "Why is schema-first better than selector-based scraping?", a: "Selectors target specific DOM nodes and often break when class names or layouts change. A schema describes intent, such as \"price\" or \"publication date,\" allowing the engine to adapt to variations in markup. This reduces maintenance and improves resilience as sites evolve." },
-  { q: "How does the Ollagraph extraction API work?", a: "You send a URL, a JSON schema, and optional rendering hints to the Ollagraph /v1/extract/structured endpoint. The service renders the page when needed, handles anti-bot measures, retries on failure, and normalizes formats. It returns validated JSON that can be inserted directly into databases or downstream systems." },
-  { q: "Can it handle JavaScript-rendered and dynamic pages?", a: "Yes. Many modern sites load data after JavaScript executes, so the API uses headless rendering to capture the final DOM and network responses. It can follow interactions like pagination or \"load more\" patterns based on your configuration, ensuring complete datasets." },
+  { q: "How does the Ollagraph extraction API work?", a: "You send a URL to the Ollagraph /v1/extract/structured endpoint, with optional stealth, proxy and timeout settings. It fetches the page and returns the structured data the page already publishes: JSON-LD, Microdata, RDFa, OpenGraph, Twitter Card and meta tags, plus a flattened products list. Your code maps those fields onto your own JSON schema, and /v1/json/validate checks each record against that schema before it goes into a database or downstream system." },
+  { q: "Can it handle JavaScript-rendered and dynamic pages?", a: "Yes. Many modern sites load data after JavaScript executes. Ollagraph's /v1/render and /v1/scrape endpoints return the page after its JavaScript has run, at no extra credit cost. /v1/scrape can also click, type or scroll to the bottom once before capture, or evaluate a JavaScript expression in the page and return its value. For paginated lists, request each page URL or use /v1/crawl." },
   { q: "How should I design a schema that survives site changes?", a: "Model real entities and relationships rather than mirroring page structure, and use clear field names and types. Include optional fields for variability, define allowed values where possible, and add validation rules. This keeps extractions stable even when layouts shift." },
   { q: "What production practices improve reliability?", a: "Use batch or async jobs with webhooks for scale, and enforce validation so bad records fail fast. Implement idempotent ingestion, monitor success rates, and track field-level quality metrics. Rely on the API’s retries and normalization to reduce custom error handling." },
 ];
@@ -34,7 +34,7 @@ const faqs = [
 <li>Validation belongs in the pipeline. Enforce types, required fields, and allowed values so bad extractions fail loudly instead of polluting downstream systems.</li>
 <li>Anti-bot handling should be automatic. The best APIs rotate proxies, manage fingerprints, and retry without the caller writing a line of networking code.</li>
 <li>Batch and async endpoints matter at scale. Synchronous calls are fine for prototypes; production pipelines need fan-out, webhooks, and durable retries.</li>
-<li>Ollagraph's /v1/extract/structured endpoint accepts a URL, a JSON schema, and optional rendering hints, then returns validated JSON you can insert directly into a database or feed to an LLM.</li>
+<li>Ollagraph's /v1/extract/structured endpoint takes a URL and returns the page's embedded structured data (JSON-LD, Microdata, OpenGraph and more) as JSON. Pair it with /v1/json/validate to check each record against your own JSON schema before it reaches a database or an LLM.</li>
 </ul>
 
 <h2>1.Problem Statement</h2>
@@ -226,32 +226,34 @@ Webhook dispatcher	          Delivers async results	                           E
 <li>An API key from your provider.</li>
 <li>A target URL to test against.</li>
 <li>A JSON schema describing the data you want.</li>
-<li>A tool to make HTTP requests: curl, Python requests, or an SDK.</li>
+<li>A tool to make HTTP requests: curl, Python requests, or JavaScript fetch. There is no SDK to install.</li>
 </ul>
 
 <h3>Getting an API key</h3>
 <p>Sign up at the provider's dashboard, create a project, and copy the API key. Store it in an environment variable, never in source code.</p>
-<pre><code>export OLLAGRAPH_API_KEY="ollagraph_live_..."</code></pre>
+<pre><code>export OLLAGRAPH_API_KEY="osk_..."</code></pre>
 
 <h3>Choosing an endpoint</h3>
-<p>Most providers offer several extraction endpoints:</p>
+<p>Ollagraph splits this work across a few endpoints:</p>
 <pre><code>Endpoint	                                               Use case</code></pre>
 
-<p><strong>POST /v1/extract/structured</strong> Single URL, synchronous, schema-driven JSON</p>
-<p><strong>POST /v1/extract/structured/batch</strong> Many URLs in one request</p>
-<p><strong>POST /v1/extract/structured/async</strong> Large jobs with webhook delivery</p>
+<p><strong>POST /v1/extract/structured</strong> Single URL, synchronous; returns the page's JSON-LD, Microdata, RDFa, OpenGraph, Twitter Card, meta tags and a flattened products list</p>
+<p><strong>POST /v1/json/validate</strong> Checks a record against your JSON schema and returns every error</p>
+<p><strong>POST /v1/scrape/batch</strong> Many URLs in one request (up to 100), with optional js_eval and actions</p>
+<p><strong>POST /v1/scrape/batch/async</strong> Large jobs with webhook delivery</p>
 <p><strong>POST /v1/scrape/llm-ready</strong> When you want chunked Markdown for RAG instead of JSON</p>
 
 <p>Start with the synchronous endpoint. Move to batch or async when you are processing more than a few dozen URLs per minute.</p>
 
 <p><strong>Common options</strong></p>
 <ul>
-<li><strong>render</strong>: true to force headless browser rendering.</li>
-<li><strong>stealth</strong>: enable anti-bot evasion.</li>
-<li><strong>proxy_country</strong>: restrict proxy exit nodes to a country.</li>
+<li><strong>stealth</strong>: enable anti-bot evasion (on by default).</li>
+<li><strong>proxy</strong>: route the fetch through a proxy URL you supply.</li>
 <li><strong>timeout</strong>: maximum wait time in seconds.</li>
-<li><strong>actions</strong>: browser actions to perform before extraction, such as clicking a cookie banner or scrolling a list.</li>
-<li><strong>schema</strong>: the JSON schema describing desired output.</li>
+<li><strong>wait_until</strong> (/v1/scrape): when to capture the page, for example load or networkidle0.</li>
+<li><strong>actions</strong> (/v1/scrape): click, type or scroll_to_bottom, run once on the loaded page before it is captured.</li>
+<li><strong>js_eval</strong> (/v1/scrape): a JavaScript expression evaluated in the page; its value comes back in eval_result.</li>
+<li><strong>schema</strong> (/v1/json/validate): the JSON schema describing desired output. It lives in your code and is checked after extraction.</li>
 </ul>
 
 <h2>9. Examples: From URL to Typed JSON</h2>
@@ -260,8 +262,47 @@ Webhook dispatcher	          Delivers async results	                           E
 <pre><code>curl -X POST https://api.ollagraph.com/v1/extract/structured \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
+  -d '&#123; "url": "https://example.com/products/wireless-headphones" &#125;'</code></pre>
+
+<p>Example response (trimmed):</p>
+<pre><code>&#123;
+  "status": "success",
+  "url": "https://example.com/products/wireless-headphones",
+  "json_ld": [ &#123; "@type": "Product", "name": "Studio Pro Wireless Headphones", ... &#125; ],
+  "microdata": [],
+  "rdfa": [],
+  "open_graph": &#123; "title": "Studio Pro Wireless Headphones", "type": "product" &#125;,
+  "twitter_card": &#123;&#125;,
+  "meta": &#123; "title": "Studio Pro Wireless Headphones | AudioTech", "description": "..." &#125;,
+  "products": [
+    &#123;
+      "name": "Studio Pro Wireless Headphones",
+      "brand": "AudioTech",
+      "price": "249.99",
+      "currency": "USD",
+      "availability": "InStock",
+      "rating": "4.7",
+      "review_count": "1284",
+      "description": "Over-ear wireless headphones with active noise cancellation and 30-hour battery life."
+    &#125;
+  ],
+  "fetch_time_ms": 812
+&#125;</code></pre>
+
+<p>Values come back as the page publishes them, so prices and ratings are often strings. Map them onto your schema in your own code (cast price to a number, turn availability into in_stock), then check the record with /v1/json/validate:</p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/json/validate \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://example.com/products/wireless-headphones",
+    "data": &#123;
+      "name": "Studio Pro Wireless Headphones",
+      "brand": "AudioTech",
+      "price": 249.99,
+      "currency": "USD",
+      "rating": 4.7,
+      "review_count": 1284,
+      "in_stock": true
+    &#125;,
     "schema": &#123;
       "type": "object",
       "properties": &#123;
@@ -275,25 +316,10 @@ Webhook dispatcher	          Delivers async results	                           E
         "description": &#123; "type": "string" &#125;
       &#125;,
       "required": ["name", "price", "currency"]
-    &#125;,
-    "render": true
-  &#125;'</code></pre>
+    &#125;
+  &#125;'
 
-<p>Expected response:</p>
-<pre><code>&#123;
-  "status": "success",
-  "url": "https://example.com/products/wireless-headphones",
-  "data": &#123;
-    "name": "Studio Pro Wireless Headphones",
-    "brand": "AudioTech",
-    "price": 249.99,
-    "currency": "USD",
-    "rating": 4.7,
-    "review_count": 1284,
-    "in_stock": true,
-    "description": "Over-ear wireless headphones with active noise cancellation and 30-hour battery life."
-  &#125;
-&#125;</code></pre>
+# &#123;"status": "success", "valid": true, "errors": []&#125;</code></pre>
 
 <h3>Example 2: Extract job postings</h3>
 <pre><code>import requests
@@ -317,16 +343,43 @@ schema = &#123;
     "required": ["title", "company"]
 &#125;
 
-response = requests.post(
+headers = &#123;"Authorization": f"Bearer &#123;api_key&#125;"&#125;
+page = requests.post(
     "https://api.ollagraph.com/v1/extract/structured",
-    headers=&#123;"Authorization": f"Bearer &#123;api_key&#125;"&#125;,
-    json=&#123;"url": "https://example.com/jobs/software-engineer", "schema": schema, "render": True&#125;
-)
-print(response.json())</code></pre>
+    headers=headers,
+    json=&#123;"url": "https://example.com/jobs/software-engineer"&#125;,
+).json()
+
+# Your code: find the JobPosting block and map it onto the schema
+job = next(b for b in page["json_ld"] if b.get("@type") == "JobPosting")
+salary = (job.get("baseSalary") or &#123;&#125;).get("value") or &#123;&#125;
+record = &#123;
+    "title": job.get("title"),
+    "company": (job.get("hiringOrganization") or &#123;&#125;).get("name"),
+    "location": ((job.get("jobLocation") or &#123;&#125;).get("address") or &#123;&#125;).get("addressLocality"),
+    "employment_type": job.get("employmentType"),
+    "salary_min": salary.get("minValue"),
+    "salary_max": salary.get("maxValue"),
+    "currency": (job.get("baseSalary") or &#123;&#125;).get("currency"),
+    "posted_at": job.get("datePosted"),
+&#125;
+record = &#123;k: v for k, v in record.items() if v is not None&#125;
+
+check = requests.post(
+    "https://api.ollagraph.com/v1/json/validate",
+    headers=headers,
+    json=&#123;"data": record, "schema": schema&#125;,
+).json()
+print(check["valid"], check["errors"])</code></pre>
 
 <h3>Example 3: Extract research paper metadata</h3>
+<p>Paper pages often publish ScholarlyArticle JSON-LD or citation meta tags. Fetch them with /v1/extract/structured, map them in your code, and send the record plus your schema to /v1/json/validate:</p>
 <pre><code>&#123;
-  "url": "https://example.com/papers/attention-is-all-you-need",
+  "data": &#123;
+    "title": "Attention Is All You Need",
+    "authors": ["Ashish Vaswani", "Noam Shazeer"],
+    "published_at": "2017-06-12"
+  &#125;,
   "schema": &#123;
     "type": "object",
     "properties": &#123;
@@ -347,7 +400,7 @@ print(response.json())</code></pre>
   &#125;
 &#125;</code></pre>
 
-<p>These examples share a pattern: you describe the shape, the API fills it, and you get typed JSON back.</p>
+<p>These examples share a pattern: the API returns what the page publishes, your code maps it onto the shape you described, and /v1/json/validate tells you whether each record meets the contract.</p>
 
 <h2>10. Handling JavaScript-Rendered and Dynamic Pages</h2>
 
@@ -363,15 +416,15 @@ print(response.json())</code></pre>
 </ul>
 
 <p><strong>How to render</strong></p>
-<p>Set render: true in your request. The API launches a headless browser, loads the page, waits for the DOM to reach a stable state, and then runs extraction.</p>
+<p>Call /v1/scrape (or /v1/render for the raw post-hydration HTML). Both load the page in a fresh headless browser and return it after its JavaScript has run; rendering costs no extra credits. Every call is stateless: nothing carries over from one call to the next.</p>
 
-<p><strong>Waiting for specific elements</strong></p>
-<p>Some pages load content asynchronously. You can tell the API to wait for a specific selector or a minimum time before extracting.</p>
+<p><strong>Waiting for late content</strong></p>
+<p>Some pages load content asynchronously. Set wait_until to networkidle0 so the page is captured after network activity settles, and raise timeout (up to 60 seconds) for slow pages.</p>
 
 <pre><code>&#123;
   "url": "https://example.com/products",
-  "render": true,
-  "wait_for": ".product-list",
+  "format": "html",
+  "wait_until": "networkidle0",
   "timeout": 30
 &#125;</code></pre>
 
@@ -379,19 +432,18 @@ print(response.json())</code></pre>
 <li><strong>Browser actions</strong></li>
 </ul>
 
-<p>Sometimes you need to interact with the page before the data appears. Common actions include clicking a cookie accept button, expanding an accordion, selecting a dropdown option, or scrolling to trigger infinite load.</p>
+<p>Sometimes you need to interact with the page before the data appears, such as clicking a cookie accept button, expanding an accordion, or scrolling to trigger infinite load. /v1/scrape supports three actions: click, type and scroll_to_bottom. They run once on the loaded page before it is captured. They do not wait for a navigation, so they cannot drive a login or a multi-page flow.</p>
 
 <pre><code>&#123;
   "url": "https://example.com/products",
-  "render": true,
+  "format": "html",
   "actions": [
-    &#123;"type": "click", "selector": "#accept-cookies"&#125;,
-    &#123;"type": "scroll", "selector": ".product-list", "times": 3&#125;,
-    &#123;"type": "wait", "milliseconds": 2000&#125;
+    &#123;"action": "click", "selector": "#accept-cookies"&#125;,
+    &#123;"action": "scroll_to_bottom"&#125;
   ]
 &#125;</code></pre>
 
-<p>Actions make the API behave like a user. Use them sparingly; each action adds latency and cost.</p>
+<p>Use actions sparingly; each one adds latency.</p>
 
 <h2>11. Pagination, Lists, and Nested Entities</h2>
 
@@ -425,27 +477,29 @@ print(response.json())</code></pre>
 <li><strong>Crawling paginated results</strong></li>
 </ul>
 
-<p>For paginated lists, submit each page URL separately or use a crawl endpoint that follows pagination links. Some APIs accept a start URL and a pattern for next-page links.</p>
+<p>For paginated lists, submit the page URLs together in one /v1/scrape/batch request (up to 100 URLs), or use /v1/crawl, which follows links from a start URL.</p>
 
 <pre><code>&#123;
-  "url": "https://example.com/jobs?page=1",
-  "crawl": &#123;
-    "max_pages": 10,
-    "next_page_selector": "a.next-page"
-  &#125;
+  "urls": [
+    "https://example.com/jobs?page=1",
+    "https://example.com/jobs?page=2",
+    "https://example.com/jobs?page=3"
+  ],
+  "format": "html"
 &#125;</code></pre>
 
 <ul>
 <li><strong>Handling infinite scroll</strong></li>
 </ul>
 
-<p>Infinite scroll loads more items as the user scrolls. The API can simulate repeated scroll actions until no new items appear or a maximum is reached.</p>
+<p>Infinite scroll loads more items as the user scrolls. On /v1/scrape, a scroll_to_bottom action scrolls the page once before capture, which loads the next batch on many lists. For deeper lists, look for a paginated URL or the JSON endpoint behind the scroll.</p>
 
 <pre><code>&#123;
   "url": "https://example.com/search",
-  "render": true,
+  "format": "html",
+  "wait_until": "networkidle0",
   "actions": [
-    &#123;"type": "scroll", "selector": "body", "times": 10, "pause": 1000&#125;
+    &#123;"action": "scroll_to_bottom"&#125;
   ]
 &#125;</code></pre>
 
@@ -549,7 +603,7 @@ Complex nested schema              2 s – 8 s           More fields and nesting
 
 <h3>The response is empty or partial</h3>
 <ul>
-<li>Check whether the page requires JavaScript. Try render: true.</li>
+<li>Check whether the page requires JavaScript. Try /v1/scrape or /v1/render, which run the page's JavaScript.</li>
 <li>Verify the URL is publicly accessible and not behind a login wall.</li>
 <li>Inspect whether the content loads after a user action. Add browser actions.</li>
 </ul>
@@ -600,7 +654,7 @@ Complex nested schema              2 s – 8 s           More fields and nesting
 <ol>
 <li>Writing page-specific selectors inside a schema-first API. If you are still hand-crafting XPath, you are not getting the full benefit. Let the engine resolve fields from intent.</li>
 <li>Over-specifying the schema. Requiring twenty fields on a page that only reliably exposes ten leads to constant validation failures. Start with the fields that matter most.</li>
-<li>Ignoring rendering. Many failures are simply because the page is a JavaScript app. Always test with render: true before debugging the schema.</li>
+<li>Ignoring rendering. Many failures are simply because the page is a JavaScript app. Always test with a rendered fetch before debugging the schema.</li>
 <li>Flattening nested data. A product with variants should not become five separate records with duplicated names. Model relationships properly.</li>
 <li>Skipping validation. Untyped JSON is a liability. Enforce types and constraints at the extraction layer.</li>
 <li>Running everything synchronously. Sync calls are fine for demos. At scale they create backpressure and timeouts. Use async.</li>
@@ -619,7 +673,7 @@ Browser automation tools           Complex interactions                      Hea
 </code></pre>
 
 <h3>When to choose Ollagraph</h3>
-<p>Choose Ollagraph when you want one API that handles fetching, rendering, anti-bot evasion, extraction, and validation. It is especially strong for teams building AI agents, RAG pipelines, or data products that need to extract from many different domains without maintaining a parser farm.</p>
+<p>Choose Ollagraph when you want one API key that covers fetching, rendering, anti-bot evasion, embedded structured-data extraction, and JSON Schema validation. It is especially strong for teams building AI agents, RAG pipelines, or data products that need to extract from many different domains without maintaining a parser farm.</p>
 
 <h3>When to build in-house</h3>
 <p>Build in-house if scraping is your core product, you target a small number of domains you fully control, or you need highly specialized behavior that no API exposes. Be honest about the operational cost: proxies, browsers, retries, and monitoring are not free.</p>
@@ -702,12 +756,12 @@ Ollagraph combines structured extraction, web scraping, document conversion, AEO
 <p>Extracting structured data from websites does not have to mean maintaining a graveyard of brittle parsers. A schema-first extraction API lets you define the data you want, submit a URL, and receive typed JSON that is ready for databases, dashboards, or LLMs. The provider owns the rendering, anti-bot, retry, and normalization complexity. You own the schema and the business logic.</p>
 <p>Start with a small, stable schema and a few test URLs. Use static extraction first, enable rendering only when needed, and move to batch or async endpoints as volume grows. Validate aggressively, monitor success rates, and respect the sites you extract from.</p>
 <p>If you are building AI agents, RAG pipelines, or data products that depend on web content, structured data extraction is one of the highest-leverage tools you can adopt. It turns the messy web into clean, usable data — one API call at a time.</p>
-<p>Next step: Try the Ollagraph /v1/extract/structured endpoint with a URL and schema from your own project. Then read the Web Scraping API guide to learn how to fetch and render pages at scale.</p>
+<p>Next step: Try the Ollagraph /v1/extract/structured endpoint with a URL from your own project, then check the mapped record against your schema with /v1/json/validate. Then read the Web Scraping API guide to learn how to fetch and render pages at scale.</p>
 
 <h2>22. References</h2>
 <ul>
 <li>Ollagraph API documentation: https://ollagraph.com/docs</li>
-<li>Ollagraph /v1/extract/structured reference: https://ollagraph.com/docs/extract/structured</li>
+<li>Ollagraph OpenAPI spec (includes /v1/extract/structured and /v1/json/validate): https://api.ollagraph.com/openapi.json</li>
 <li>JSON Schema specification: https://json-schema.org/</li>
 <li>robots.txt specification: https://www.robotstxt.org/orig.html</li>
 <li>Playwright documentation: https://playwright.dev/</li>

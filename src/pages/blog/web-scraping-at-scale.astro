@@ -306,8 +306,7 @@ const faqs = [
     ],
     "concurrency": 4,
     "format": "markdown",
-    "stealth": true,
-    "proxy": "residential"
+    "stealth": true
   &#125;'</code></pre>
 <p>Batch endpoints are ideal when you have a known list of URLs and want controlled parallelism.</p>
 
@@ -346,22 +345,20 @@ const faqs = [
   &#125;'</code></pre>
 <p>Smart endpoints reduce overpaying for browser time by detecting when rendering is actually needed.</p>
 
-<h3>Example 5: Persistent session for login or multi-step flows</h3>
-<pre><code># Create a session
-curl -X POST https://api.ollagraph.com/v1/session \
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '&#123; "stealth": true, "proxy": "residential" &#125;'</code></pre>
-<pre><code># Use the session_id in subsequent calls
-curl -X POST https://api.ollagraph.com/v1/scrape \
+<h3>Example 5: Page actions and JavaScript evaluation in one call</h3>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://example.com/dashboard",
-    "session_id": "sess_abc123",
-    "wait_until": "networkidle"
+    "url": "https://example.com/catalog",
+    "wait_until": "networkidle0",
+    "actions": [
+      &#123;"action": "click", "selector": "button.load-more"&#125;,
+      &#123;"action": "scroll_to_bottom"&#125;
+    ],
+    "js_eval": "document.querySelectorAll(\".product-card\").length"
   &#125;'</code></pre>
-<p>Persistent sessions keep cookies/local storage and preserve session continuity.</p>
+<p>Actions (click, type, scroll to bottom) run once on the loaded page before it is captured, and the js_eval value comes back in eval_result. Every call is a fresh browser: cookies and local storage are not kept between calls, so login and multi-step flows across pages belong in your own browser code.</p>
 
 <h2>Performance and benchmarks you can reproduce</h2>
 <p>At scale, you optimize what you measure. The metrics that matter are:</p>
@@ -378,7 +375,7 @@ curl -X POST https://api.ollagraph.com/v1/scrape \
 <h3>A reproducible harness</h3>
 <pre><code>import os, time, statistics, requests
 
-API = "https://api.ollagraph.com/v1/scrape"
+API = "https://api.ollagraph.com/v1/scrape/smart"
 KEY = os.environ["OLLAGRAPH_API_KEY"]
 URLS = [ ... ]  # your real target mix
 
@@ -397,7 +394,7 @@ for url in URLS:
     ok = body.get("status") == "success" and len(body.get("content", "")) > 200
     successes += 1 if ok else 0
 
-    rendered += 1 if body.get("rendered_via") == "ollagraph" else 0
+    rendered += 1 if body.get("render_mode", "http_only") != "http_only" else 0
     cost += float(r.headers.get("x-credits-charged", 0))
 
 n = len(URLS)
@@ -412,9 +409,9 @@ print(f"cost / ok    : &#123;cost/max(successes,1):.2f&#125; credits")</code></p
 <pre><code>Target type	Typical path	p50 latency	Relative cost
 Static docs/blog	direct fetch	100–300 ms	1×
 Mild bot defense	direct + stealth	300–800 ms	1×
-SPA needing render	Ollagraph	2–6 s	5–15×
-Hardened anti-bot	Ollagraph + residential	4–10 s	15–50×
-CAPTCHA-gated	Ollagraph + residential + solver	8–20 s	50–200×</code></pre>
+SPA needing render	headless render	2–6 s	5–15×
+Hardened anti-bot	render + residential	4–10 s	15–50×
+CAPTCHA-gated	render + residential + solver	8–20 s	50–200×</code></pre>
 <p>The lesson: cost and latency are dominated by how far up the escalation ladder your targets force you.</p>
 
 <h2>Security, legality, and ethics at scale</h2>
@@ -633,7 +630,7 @@ Are challenges IP-based?
   <li>MDN Web Docs — HTTP headers and client hints concepts</li>
   <li>Playwright and Puppeteer documentation — headless browser automation</li>
   <li>GDPR (Regulation (EU) 2016/679) and CCPA — personal data handling</li>
-  <li>Ollagraph API documentation — scrape, batch, async, smart, crawl, session, and CAPTCHA-related endpoints (as applicable)</li>
+  <li>Ollagraph API documentation — scrape, batch, async, smart, crawl, and CAPTCHA-related endpoints (as applicable)</li>
 </ul>
 
 <h2>Conclusion</h2>

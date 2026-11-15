@@ -250,26 +250,27 @@ const faqs = [
 
 <h2>7. Examples</h2>
 
-<h3>Example 1: Async conversion job (conceptual)</h3>
-<pre><code>curl -X POST https://api.ollagraph.com/v1/convert/document-to-markdown/async \
+<h3>Example 1: Conversion job (conceptual)</h3>
+<p>The conversion call itself is synchronous: Ollagraph's <code>/v1/convert/pdf-to-markdown</code> takes the PDF as base64 and returns Markdown in the same response. Request bodies are capped at about 1 MB (roughly a 750 KB PDF), so split larger files. Run the call inside your own queue worker to get async behavior and backpressure:</p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/convert/pdf-to-markdown \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '&#123;
-    "document_id": "doc_123",
-    "source_type": "pdf",
-    "source_uri": "s3://your-bucket/path/report.pdf",
-    "requested_output": "markdown+json",
-    "normalization_version": "2026-07-23-v3",
-    "routing": &#123;
-      "ocr": "auto",
-      "table_mode": "split_by_rows"
-    &#125;,
-    "callback_url": "https://your-app.com/webhooks/ollagraph"
-  &#125;'</code></pre>
+  -d "&#123;\"pdf_base64\": \"$(base64 -w0 report.pdf)\", \"max_pages\": 200&#125;"</code></pre>
+<p>Response (trimmed):</p>
+<pre><code>&#123;
+  "status": "success",
+  "markdown": "## Page 1\n\n...",
+  "page_count": 42,
+  "pages_processed": 42,
+  "byte_count": 81234,
+  "word_count": 11873,
+  "likely_scanned_pdf": false
+&#125;</code></pre>
 <p>Expected behavior:</p>
 <ul>
-  <li>You receive a job ID.</li>
-  <li>When conversion completes, your webhook stores raw output and triggers normalization + validation.</li>
+  <li>Your worker pulls the job (document_id, source URI, normalization_version) from the queue and calls the endpoint.</li>
+  <li>It stores the raw output and triggers normalization + validation.</li>
+  <li>If likely_scanned_pdf is true, the PDF has no usable text layer. Ollagraph reads the text layer only and does not run OCR, so route those files to your own OCR job.</li>
 </ul>
 
 <h3>Example 2: Validation gate pseudocode</h3>

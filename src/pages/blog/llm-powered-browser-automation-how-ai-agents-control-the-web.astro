@@ -224,7 +224,7 @@ response = anthropic.Anthropic().beta.messages.create(
 <p>The team added a confidence-scoring step: if the agent finds data contradicting known patterns (e.g., a SaaS company with no pricing page), it flags the report for full human review. This reduced undetected errors by roughly 60%.</p>
 
 <h2>10. Performance &amp; Benchmarks</h2>
-<p>We designed a benchmark of 50 real-world web tasks across five categories: data extraction (15), form filling (10), multi-page navigation (10), authentication-gated access (8), and dynamic content interaction (7). Each task was run 10 times per framework — 2,000 total runs — on dedicated AWS c6i.4xlarge instances with Ollagraph residential proxies.</p>
+<p>We designed a benchmark of 50 real-world web tasks across five categories: data extraction (15), form filling (10), multi-page navigation (10), authentication-gated access (8), and dynamic content interaction (7). Each task was run 10 times per framework — 2,000 total runs — on dedicated AWS c6i.4xlarge instances with residential proxies.</p>
 <pre><code>Framework                         Overall Success Rate   Median Time per Task   Median Tokens per Task   Consistency (Std Dev)
 Stagehand                         82%                    18.4s                  12,400                   ±8.2%
 Browser-Use                       85%                    22.1s                  15,800                   ±6.7%
@@ -250,7 +250,7 @@ OpenAI Operator             $50–$120 (task-based pricing)</code></pre>
 </ul>
 
 <h3>Testing Methodology</h3>
-<p>We ran this benchmark on 16 dedicated AWS c6i.4xlarge instances (8 vCPU, 32 GB RAM each) spread across two regions (us-east-1 and eu-west-1) to minimize geographic bias. Each instance ran a Dockerized Playwright 1.48 environment with Chromium headless. Network egress used Ollagraph residential proxy pools — one pool per region — to avoid IP-based blocking and rate limiting.</p>
+<p>We ran this benchmark on 16 dedicated AWS c6i.4xlarge instances (8 vCPU, 32 GB RAM each) spread across two regions (us-east-1 and eu-west-1) to minimize geographic bias. Each instance ran a Dockerized Playwright 1.48 environment with Chromium headless. Network egress used residential proxy pools — one pool per region — to avoid IP-based blocking and rate limiting.</p>
 <p>Every task was executed 10 times per framework. Between runs, we cleared browser cache, rotated the proxy IP, and waited 5 seconds to avoid session contamination. A task was marked successful only if the extracted data matched a pre-validated ground-truth record within a 5% numeric tolerance (for prices) or exact string match (for text fields). Partial successes — e.g., extracting 3 of 5 products — were counted as failures.</p>
 <p>We logged every observe-reason-act-verify cycle to structured JSON. The full dataset (2,000 run records, ~18 MB) is available on request.</p>
 
@@ -461,7 +461,7 @@ Visual/Computer Use                    71%                           71% (stable
   <li>"Tool Calling with Large Language Models." Anthropic Research, 2024.</li>
   <li>"WebArena: A Realistic Web Environment for Building Autonomous Agents." Zhou et al., NeurIPS 2023.</li>
   <li>"AgentBench: Evaluating LLMs as Agents." Liu et al., ICLR 2024.</li>
-  <li>Ollagraph Browser Automation API Documentation. https://ollagraph.com/docs/browser-automation</li>
-  <li>Ollagraph MCP Server Documentation. https://ollagraph.com/docs/mcp-server</li>
+  <li>Ollagraph API Documentation. https://ollagraph.com/docs</li>
+  <li>Ollagraph MCP Server. https://ollagraph.com/mcp</li>
 </ul>
 </Article>

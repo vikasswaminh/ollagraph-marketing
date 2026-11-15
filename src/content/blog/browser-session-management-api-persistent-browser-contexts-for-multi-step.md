@@ -1,7 +1,7 @@
 ---
-title: 'Browser Session Management API for Persistent Automation'
+title: 'Browser Session Management for Persistent Automation'
 description: 'Persistent browser contexts keep logins and storage alive across steps. They cut cold starts, lower cost, and make multi-step automation reliable.'
-metaTitle: 'Browser Session Management API for Automation'
+metaTitle: 'Browser Session Management for Automation'
 metaDescription: 'Persistent browser contexts keep logins and storage alive across steps. They cut cold starts, lower cost, and make multi-step automation reliable.'
 primaryKeyword: 'browser session management'
 secondaryKeywords: 'browser automation, persistent contexts, session state, web scraping, state isolation'
@@ -19,6 +19,8 @@ This matters because the web was not designed for stateless extraction. A produc
 Session management changes the cost structure too. A persistent browser context eliminates the 2–4 second cold-start penalty per request. At 10,000 multi-step workflows per day, that saving cuts compute costs by 30–50%.
 
 > **The short version:** If your automation needs more than one page load, you need a session. If it needs more than three, a session-based API is cheaper, faster, and more reliable than stitching together stateless renders.
+
+> **A note on Ollagraph:** Ollagraph's browser endpoints are stateless — every call is a fresh browser and nothing persists between calls. Ollagraph does not offer persistent sessions, logins, or cookies across calls. In this guide, the stateful steps are shown in your own Playwright code, and Ollagraph appears only for the single-page steps it actually handles: `/v1/render`, `/v1/scrape` (with `actions`, `js_eval`, `wait_until`), `/v1/screenshot`, and batch/async scraping.
 
 ## Key Takeaways
 
@@ -50,7 +52,7 @@ Browser automation started with single-shot interactions. Selenium opened a brow
 
 The shift toward persistent sessions as a first-class API concept happened around 2022–2023, driven by two forces. AI agents needed to interact with web applications over multiple turns. And the economics of browser automation at scale made it obvious that paying the cold-start penalty per request was wasteful.
 
-Early commercial platforms were among the first to offer session-based APIs, and testing platforms followed. Ollagraph built session management into the core API design from day one, with `/v1/session` for low-level browser control and `/v1/stagehand` for LLM-driven sessions.
+Early commercial platforms were among the first to offer session-based APIs, and testing platforms followed. Ollagraph took the other path: its browser endpoints (`/v1/render`, `/v1/scrape`, `/v1/screenshot`) are deliberately stateless, one fresh browser per call, and stateful flows such as logins stay in your own Playwright code.
 
 The 2025–2026 evolution has been about context isolation. Early session APIs ran all sessions in the same browser process — one session's cookies could leak into another's. Modern APIs use Playwright's `browser.newContext()` to create fully isolated environments per session.
 
@@ -66,9 +68,9 @@ The key distinction from a stateless render API is **state persistence**. A stat
 
 ### Three Tiers of Session Management
 
-- **Tier 1 — Basic Session.** Navigate, run JavaScript, extract. You write the selectors. Example: Ollagraph `/v1/session`.
-- **Tier 2 — Session with Scripting.** Upload a multi-step script with conditionals, loops, and error handling. Example: Ollagraph `/v1/script`.
-- **Tier 3 — LLM-Driven Session (Stagehand).** Send natural-language instructions, let the model figure out selectors and actions. Example: Ollagraph `/v1/stagehand`.
+- **Tier 1 — Basic Session.** Navigate, run JavaScript, extract. You write the selectors. Example: a Playwright `BrowserContext` you drive yourself, or a hosted session API.
+- **Tier 2 — Session with Scripting.** Upload a multi-step script with conditionals, loops, and error handling. Example: a Playwright script running in your own worker.
+- **Tier 3 — LLM-Driven Session (Stagehand).** Send natural-language instructions, let the model figure out selectors and actions. Example: the open-source Stagehand library driving a Playwright page.
 
 ## 4. Architecture: How Persistent Browser Contexts Work
 
@@ -93,7 +95,7 @@ Your Code ──▶ API Gateway ──▶ Session Router ──▶ Browser Pool 
 Your Code ◀── API Gateway ◀── Response Parser ◀── CDP Response ◀── Rendered Page ◀────────────────┘
 ```
 
-- **Step 1 — Session Creation.** `POST /v1/session` hits the API gateway. The orchestrator selects an available Chromium instance, calls `browser.newContext()`, and returns a `session_id`.
+- **Step 1 — Session Creation.** The create-session call hits the API gateway. The orchestrator selects an available Chromium instance, calls `browser.newContext()`, and returns a `session_id`.
 - **Step 2 — Command Routing.** Every subsequent request includes the `session_id`. The router looks up which Chromium instance owns that context and forwards the command via CDP WebSocket. This takes under 5ms.
 - **Step 3 — CDP Execution.** The command is translated into CDP calls. Render becomes `Page.navigate` + `Runtime.evaluate`. Script becomes `Runtime.evaluate`. Screenshot becomes `Page.captureScreenshot`.
 - **Step 4 — State Persistence.** Between commands, the context stays alive. Cookies, localStorage, and the page's JavaScript execution context persist unless the page navigates away.
@@ -119,26 +121,15 @@ How many steps does your workflow need?
 
 ### Inspecting an Active Session
 
-```bash
-curl -s https://api.ollagraph.com/v1/session/sess_8f7a2b1c3d4e \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" | jq .
-```
+In your own Playwright code (Python, async API), you can inspect a live context at any point:
 
-```json
-{
-  "session_id": "sess_8f7a2b1c3d4e5f6a7b8c9d0e",
-  "status": "active",
-  "created_at": "2026-07-29T10:00:00Z",
-  "last_command_at": "2026-07-29T10:05:23Z",
-  "idle_ttl_seconds": 120,
-  "commands_executed": 7,
-  "current_url": "https://target-store.com/search?q=wireless+headphones",
-  "page_title": "Search Results - Target Store",
-  "memory_usage_mb": 187,
-  "proxy": { "type": "residential", "region": "us", "ip": "198.51.100.42" },
-  "cookies_count": 12,
-  "localstorage_entries": 3
-}
+```python
+# Your own Playwright code — not an Ollagraph API
+state = await context.storage_state()
+print(page.url, await page.title())
+print(len(state["cookies"]), "cookies")
+for origin in state["origins"]:
+    print(origin["origin"], len(origin["localStorage"]), "localStorage entries")
 ```
 
 ## 5. Session Lifecycle: Create, Use, Keep Alive, Destroy
@@ -148,14 +139,22 @@ Every session follows the same lifecycle:
 ### Phase 1 — Creation
 A session is created with configuration parameters that define its behavior for its entire lifetime. These cannot be changed after creation: stealth mode, proxy configuration, proxy region, viewport, user agent, idle TTL, block resources, and optional initial cookies.
 
+```python
+# Your own Playwright code — creating an isolated context
+context = await browser.new_context(
+    viewport={"width": 1280, "height": 720},
+    proxy={"server": "http://your-proxy:8000"},
+)
+```
+
 ### Phase 2 — Active Use
 While the session is active, you send commands against it. Each command resets the idle timer. Supported commands include `render` (navigate to a URL and return rendered HTML), `script` (execute custom JavaScript), `screenshot` (capture the current page), `cookies` (get or set cookies), and `storage` (read or write localStorage/sessionStorage).
 
 ### Phase 3 — Keep Alive
-If your workflow has pauses longer than the idle TTL, send keepalive requests. A keepalive resets the idle timer without performing any action. For Ollagraph, any command against the session resets the timer.
+If your workflow has pauses longer than the idle TTL, send keepalive requests. A keepalive resets the idle timer without performing any action. With most hosted providers, any command against the session resets the timer; with your own Playwright pool, the idle timer is your own code.
 
 ### Phase 4 — Destruction
-A session ends in one of three ways: explicit close (`DELETE /v1/session/{session_id}`), idle timeout (no command arrives within the TTL), or error (browser crash, infrastructure failure). After destruction, any request with that session ID returns a 404 or 410 error.
+A session ends in one of three ways: explicit close (a close/DELETE call, or `context.close()` in Playwright), idle timeout (no command arrives within the TTL), or error (browser crash, infrastructure failure). After destruction, any request with that session ID returns a 404 or 410 error.
 
 ## 6. State Management: Cookies, Storage, and Authentication
 
@@ -171,46 +170,48 @@ A session ends in one of three ways: explicit close (`DELETE /v1/session/{sessio
 
 ### Authentication Patterns
 
+Logins need a persistent context, so these patterns are your own Playwright code (Python, async API). Ollagraph's endpoints are stateless and cannot log in or carry cookies between calls.
+
 #### Pattern 1 — Credential Injection
 Navigate to the login page, fill credentials, click submit. The resulting auth cookie persists for all subsequent navigations.
 
 ```python
-session.render("https://app.target.com/login")
-session.script("""
-    document.querySelector('#email').value = 'user@example.com';
-    document.querySelector('#password').value = 'mypassword';
-    document.querySelector('button[type="submit"]').click();
-""")
-result = session.render("https://app.target.com/dashboard")
+# Your own Playwright code
+page = await context.new_page()
+await page.goto("https://app.target.com/login")
+await page.fill("#email", "user@example.com")
+await page.fill("#password", "mypassword")
+await page.click('button[type="submit"]')
+await page.wait_for_url("**/dashboard")
+html = await page.content()
 ```
 
 #### Pattern 2 — Cookie Injection
-Inject valid authentication cookies at session creation time, avoiding the login step entirely:
+Inject valid authentication cookies when you create the context, avoiding the login step entirely:
 
-```bash
-curl -X POST https://api.ollagraph.com/v1/session \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "cookies": [
-      {"name": "sessionid", "value": "abc123", "domain": ".target.com"},
-      {"name": "csrftoken", "value": "xyz789", "domain": ".target.com"}
-    ],
-    "stealth": true
-  }'
+```python
+# Your own Playwright code
+context = await browser.new_context()
+await context.add_cookies([
+    {"name": "sessionid", "value": "abc123", "domain": ".target.com", "path": "/"},
+    {"name": "csrftoken", "value": "xyz789", "domain": ".target.com", "path": "/"},
+])
 ```
 
 #### Pattern 3 — Token-Based Auth
 For SPAs that use Bearer tokens in localStorage, inject the token via script after navigation:
 
 ```python
-session.render("https://app.target.com")
-session.script("""
+# Your own Playwright code
+await page.goto("https://app.target.com")
+await page.evaluate("""() => {
     localStorage.setItem('auth_token', 'eyJhbGciOiJIUzI1NiIs...');
     localStorage.setItem('user', JSON.stringify({id: 123, role: 'admin'}));
-""")
-session.render("https://app.target.com/admin")
+}""")
+await page.goto("https://app.target.com/admin")
 ```
+
+To checkpoint this state, `await context.storage_state(path="state.json")` writes cookies and localStorage to a file, and `await browser.new_context(storage_state="state.json")` restores it in a fresh context.
 
 ## 7. Browser Context Isolation for Concurrent Workloads
 
@@ -222,167 +223,174 @@ If you are running multiple sessions concurrently — and you should be, because
 
 ## 8. Configuration & Setup
 
-### Getting Started with Ollagraph Session API
+### Running a Persistent Context Yourself (Playwright)
 
-#### Step 1 — Create a session
+The session lifecycle below is your own Playwright code (Python, async API). Ollagraph does not host persistent sessions.
 
-```bash
-curl -X POST https://api.ollagraph.com/v1/session \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "stealth": true,
-    "proxy": "residential",
-    "proxy_region": "us",
-    "viewport": {"width": 1280, "height": 720},
-    "idle_ttl_seconds": 120,
-    "block_resources": ["image", "font"]
-  }'
+#### Step 1 — Create a context
+
+```python
+# Your own Playwright code
+from playwright.async_api import async_playwright
+
+pw = await async_playwright().start()
+browser = await pw.chromium.launch()
+context = await browser.new_context(viewport={"width": 1280, "height": 720})
+page = await context.new_page()
+# Block images and fonts for extraction-only workflows
+await page.route("**/*", lambda route: route.abort()
+                 if route.request.resource_type in ("image", "font") else route.continue_())
 ```
 
 #### Step 2 — Navigate to a URL
 
-```bash
-curl -X POST "https://api.ollagraph.com/v1/session/sess_8f7a2b1c/render" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "wait_until": "networkidle", "timeout": 30000}'
+```python
+await page.goto("https://example.com", wait_until="networkidle", timeout=30000)
 ```
 
 #### Step 3 — Run custom JavaScript
 
-```bash
-curl -X POST "https://api.ollagraph.com/v1/session/sess_8f7a2b1c/script" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"script": "document.title + \" | \" + document.querySelector(\"h1\").textContent", "timeout": 10000}'
+```python
+title = await page.evaluate("document.title + ' | ' + document.querySelector('h1').textContent")
 ```
 
 #### Step 4 — Take a screenshot
 
-```bash
-curl -X POST "https://api.ollagraph.com/v1/session/sess_8f7a2b1c/screenshot" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"full_page": true}'
+```python
+await page.screenshot(path="page.png", full_page=True)
 ```
 
 #### Step 5 — Close the session
 
-```bash
-curl -X DELETE "https://api.ollagraph.com/v1/session/sess_8f7a2b1c" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY"
+```python
+await context.close()
+await browser.close()
+await pw.stop()
 ```
+
+### Where Ollagraph Fits: the Stateless Steps
+
+Every Ollagraph call is a fresh browser, so use it for steps that don't need a login or earlier state: public pages, JavaScript-heavy pages, single-page interactions, screenshots, and bulk jobs.
+
+```bash
+# Post-hydration HTML of a public page (1 credit)
+curl -X POST https://api.ollagraph.com/v1/render \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+
+# Click / type / scroll on the loaded page, then evaluate JavaScript (1 credit)
+curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com",
+    "wait_until": "networkidle0",
+    "actions": [{"action": "click", "selector": "button.load-more"}, {"action": "scroll_to_bottom"}],
+    "js_eval": "document.title + \" | \" + document.querySelector(\"h1\").textContent"
+  }'
+
+# Full-page screenshot, returned as image bytes (3 credits)
+curl -X POST https://api.ollagraph.com/v1/screenshot \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "full_page": true}' \
+  --output page.png
+```
+
+Actions run once on the loaded page before capture and do not wait for a navigation, so they cannot log in. For many URLs, use `/v1/scrape/batch`, or `/v1/scrape/batch/async` with a `webhook_url`.
 
 ### Key Configuration Parameters
 
-| Parameter | Description | Recommended Value |
+| Setting | Description | Recommended Value |
 |---|---|---|
-| `stealth` | Enable anti-detection patches | `true` for production |
-| `proxy` | Proxy type | `residential` for protected sites, `datacenter` for public sites |
-| `proxy_region` | Geographic region for proxy IP | Match your target site's region |
+| Stealth patches | Anti-detection patches (not built into Playwright) | On for production |
+| `proxy` | Proxy server for the context | Residential for protected sites, datacenter for public sites |
+| Proxy region | Geographic region for proxy IP | Match your target site's region |
 | `viewport` | Browser window dimensions | `1280x720` or match real user profiles |
-| `idle_ttl_seconds` | Seconds before idle session is killed | `60-120` for most workflows, `300+` for slow workflows |
-| `block_resources` | Resource types to block | `["image", "font", "stylesheet"]` for extraction-only |
-| `cookies` | Initial cookies to inject | Only if you have pre-existing auth cookies |
-| `user_agent` | Custom user agent string | Omit to use provider's default (latest Chrome) |
+| Idle TTL | Seconds before an idle context is closed (your own timer) | `60-120` for most workflows, `300+` for slow workflows |
+| Resource blocking | Resource types aborted via `page.route()` | `image`, `font`, `stylesheet` for extraction-only |
+| `storage_state` | Initial cookies and localStorage | Only if you have pre-existing auth state |
+| `user_agent` | Custom user agent string | Omit to use the default |
 
 ## 9. Code Examples: Python and Node.js
 
 ### Python: Multi-Step E-Commerce Extraction
 
+The logged-in steps run in your own Playwright context. The public search page is a single stateless step, so Ollagraph can extract and screenshot it.
+
 ```python
-import requests
+import json, os, requests
+from playwright.async_api import async_playwright
 
-API_KEY = "osk_YOUR_API_KEY"
-BASE_URL = "https://api.ollagraph.com"
-HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+# --- Steps 1-3: your own Playwright code (login needs a persistent context) ---
+async def login_and_read_dashboard():
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch()
+        context = await browser.new_context()
+        page = await context.new_page()
+        await page.goto("https://target-store.com/login", wait_until="networkidle")
+        await page.fill("#email", "user@example.com")
+        await page.fill("#password", "password123")
+        await page.click('button[type="submit"]')
+        await page.wait_for_url("**/dashboard")
+        html = await page.content()
+        await context.close()
+        await browser.close()
+        return html
 
-# Create session
-resp = requests.post(f"{BASE_URL}/v1/session", headers=HEADERS, json={
-    "stealth": True, "proxy": "residential", "proxy_region": "us",
-    "idle_ttl_seconds": 120, "block_resources": ["font", "stylesheet"]
+# --- Steps 4-5: public search results via Ollagraph (stateless, fresh browser per call) ---
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
+SEARCH_URL = "https://target-store.com/search?q=wireless+headphones"
+
+resp = requests.post("https://api.ollagraph.com/v1/scrape", headers=HEADERS, json={
+    "url": SEARCH_URL,
+    "wait_until": "networkidle0",
+    "js_eval": "JSON.stringify(Array.from(document.querySelectorAll('.product-card')).slice(0, 5).map(p => ({name: p.querySelector('.product-name')?.textContent?.trim(), price: p.querySelector('.product-price')?.textContent?.trim(), rating: p.querySelector('.product-rating')?.textContent?.trim(), url: p.querySelector('a')?.href})))",
 })
-session_id = resp.json()["session_id"]
+products = json.loads(resp.json()["eval_result"])
 
-# Navigate to login, fill form, wait for dashboard
-requests.post(f"{BASE_URL}/v1/session/{session_id}/render", headers=HEADERS, json={"url": "https://target-store.com/login", "wait_until": "networkidle"})
-requests.post(f"{BASE_URL}/v1/session/{session_id}/script", headers=HEADERS, json={"script": """document.querySelector('#email').value = 'user@example.com'; document.querySelector('#password').value = 'password123'; document.querySelector('button[type="submit"]').click();"""})
-requests.post(f"{BASE_URL}/v1/session/{session_id}/render", headers=HEADERS, json={"url": "https://target-store.com/dashboard", "wait_until": "networkidle"})
-
-# Search and extract
-requests.post(f"{BASE_URL}/v1/session/{session_id}/script", headers=HEADERS, json={"script": """document.querySelector('#search-input').value = 'wireless headphones'; document.querySelector('button.search-submit').click();"""})
-resp = requests.post(f"{BASE_URL}/v1/session/{session_id}/render", headers=HEADERS, json={"url": "https://target-store.com/search?q=wireless+headphones", "wait_until": "networkidle"})
-resp = requests.post(f"{BASE_URL}/v1/session/{session_id}/script", headers=HEADERS, json={"script": """const products = document.querySelectorAll('.product-card'); return Array.from(products).slice(0, 5).map(p => ({name: p.querySelector('.product-name')?.textContent?.trim(), price: p.querySelector('.product-price')?.textContent?.trim(), rating: p.querySelector('.product-rating')?.textContent?.trim(), url: p.querySelector('a')?.href}));"""})
-products = resp.json()["result"]
-
-# Screenshot and cleanup
-resp = requests.post(f"{BASE_URL}/v1/session/{session_id}/screenshot", headers=HEADERS, json={"full_page": True})
+# Screenshot (raw image bytes by default)
+resp = requests.post("https://api.ollagraph.com/v1/screenshot", headers=HEADERS,
+                     json={"url": SEARCH_URL, "full_page": True})
 with open("search_results.png", "wb") as f:
     f.write(resp.content)
-requests.delete(f"{BASE_URL}/v1/session/{session_id}", headers=HEADERS)
 ```
 
-### Node.js: AI Agent with Stagehand Session
+### Node.js: Multi-Step Flow in Your Own Playwright Context
+
+Multi-step, stateful flows like a flight search are your own Playwright code. An LLM-driven layer such as the open-source Stagehand library can sit on top of the same page object if you want natural-language actions instead of selectors.
 
 ```javascript
-const API_KEY = "osk_YOUR_API_KEY";
-const BASE = "https://api.ollagraph.com";
-const headers = {"Authorization": `Bearer ${API_KEY}`, "Content-Type": "application/json"};
+// Your own Playwright code — not an Ollagraph API
+import { chromium } from "playwright";
 
-const createResp = await fetch(`${BASE}/v1/stagehand`, {
-  method: "POST",
-  headers,
-  body: JSON.stringify({
-    llm_provider: "openai",
-    model_name: "gpt-4o",
-    llm_api_key: "sk-YOUR_OPENAI_KEY",
-    idle_ttl_seconds: 180
-  })
-});
-const { session_id } = await createResp.json();
+const browser = await chromium.launch();
+const context = await browser.newContext();
+const page = await context.newPage();
 
-await fetch(`${BASE}/v1/stagehand/${session_id}/goto`, {
-  method: "POST",
-  headers,
-  body: JSON.stringify({ url: "https://example-flights.com" })
-});
+await page.goto("https://example-flights.com");
+await page.click("text=Flights");
+await page.fill("#departure", "New York");
+await page.fill("#destination", "London");
+await page.click("button[type=submit]");
+await page.waitForSelector(".flight-result");
 
-await fetch(`${BASE}/v1/stagehand/${session_id}/act`, {
-  method: "POST",
-  headers,
-  body: JSON.stringify({
-    instruction: "Click on 'Flights' tab, then enter 'New York' in the departure field and 'London' in the destination field. Select dates: departure next Monday, return next Friday."
-  })
-});
+const flights = await page.$$eval(".flight-result", rows => rows.slice(0, 5).map(r => ({
+  airline: r.querySelector(".airline")?.textContent?.trim(),
+  departure_time: r.querySelector(".departure")?.textContent?.trim(),
+  arrival_time: r.querySelector(".arrival")?.textContent?.trim(),
+  price: r.querySelector(".price")?.textContent?.trim(),
+  stops: Number(r.querySelector(".stops")?.textContent ?? 0)
+})));
 
-const extractResp = await fetch(`${BASE}/v1/stagehand/${session_id}/extract`, {
-  method: "POST",
-  headers,
-  body: JSON.stringify({
-    instruction: "Extract the top 5 flight options",
-    schema: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          airline: { type: "string" },
-          departure_time: { type: "string" },
-          arrival_time: { type: "string" },
-          price: { type: "string" },
-          stops: { type: "number" }
-        }
-      }
-    }
-  })
-});
-const flights = await extractResp.json();
-await fetch(`${BASE}/v1/stagehand/${session_id}`, { method: "DELETE", headers });
+await context.close();
+await browser.close();
 ```
 
 ## 10. Performance & Benchmarks
 
-We ran a benchmark comparing stateless render calls against session-based renders for a 6-step e-commerce extraction workflow (login, navigate dashboard, search, extract listing, open detail page, screenshot). Sample size: 100 runs per approach using Ollagraph API v2026.07 against a mid-sized e-commerce React SPA with Cloudflare protection.
+We ran a benchmark comparing stateless render calls against session-based renders for a 6-step e-commerce extraction workflow (login, navigate dashboard, search, extract listing, open detail page, screenshot). Sample size: 100 runs per approach using self-hosted Playwright (a fresh browser per step vs one persistent context) against a mid-sized e-commerce React SPA with Cloudflare protection.
 
 | Metric | Stateless (6 renders) | Session-Based (1 session, 6 commands) | Improvement |
 |---|---|---|---|
@@ -414,7 +422,7 @@ The stateless approach paid the cold-start penalty six times — 12.6 seconds of
 
 - **Always close sessions explicitly.** Idle timeouts are a safety net, not a primary cleanup mechanism. Use `try/finally` blocks or context managers.
 - **Set the idle TTL to match your workflow.** For most workflows, 60–120 seconds is sufficient.
-- **Block resources you do not need.** Setting `block_resources: ["image", "font", "stylesheet"]` cuts page load time by 60–80%.
+- **Block resources you do not need.** Aborting image, font, and stylesheet requests (for example with `page.route()` in Playwright) cuts page load time by 60–80%.
 - **Use cookie injection instead of form login** when possible. Cookie injection is deterministic and avoids CAPTCHAs.
 - **Implement checkpoint-and-retry for long workflows.** Save state after login and after each extraction. If the session dies, restore the checkpoint.
 - **Monitor session health proactively.** Track session creation rate, active session count, average session duration, and failure rate.
@@ -425,7 +433,7 @@ The stateless approach paid the cold-start penalty six times — 12.6 seconds of
 - [x] Session cleanup is in a finally block or context manager
 - [x] Retry logic exists for session creation (exponential backoff with jitter)
 - [x] Checkpoint state is saved after login
-- [x] `block_resources` is configured
+- [x] Resource blocking is configured
 - [x] Proxy type matches the target site
 - [x] Screenshot capability is restricted per API key
 - [x] Active session count is monitored with an alert
@@ -454,7 +462,7 @@ The stateless approach paid the cold-start penalty six times — 12.6 seconds of
 | **Cost per 10K sessions** | $200–$400 | $150–$300 | $100–$250 (infra only) |
 | **Engineering overhead** | None | Minimal | High |
 
-- **Stateless Render APIs (`/v1/render`):** Best for single-page extractions without login.
+- **Stateless Render APIs (`/v1/render`):** Best for single-page extractions without login. Ollagraph sits in this column: `/v1/render`, `/v1/scrape` (JS rendering + page actions (click/type/scroll) + JS eval) and `/v1/screenshot` each run a fresh browser per call, with `/v1/scrape/batch`, `/v1/scrape/async` and `/v1/crawl` for volume.
 - **Managed Session APIs:** Best for multi-step workflows, authenticated pages, and AI agents.
 - **Self-Hosted Playwright:** Best when you have a dedicated infrastructure engineering team and volume exceeds 50,000 sessions/month.
 
@@ -470,7 +478,7 @@ The stateless approach paid the cold-start penalty six times — 12.6 seconds of
 A browser session is the API-level concept: a persistent connection between your code and a remote browser. A browser context is the Chromium-level concept: an isolated incognito-like environment with its own cookies, storage, and cache. One API session maps to one browser context.
 
 ### Q2. How long can a browser session stay alive?
-Ollagraph sessions stay alive as long as commands arrive within the idle timeout window. In practice, most sessions last 5–30 minutes. Providers typically recycle sessions after 1–2 hours regardless of activity.
+Hosted sessions typically stay alive as long as commands arrive within the idle timeout window. In practice, most sessions last 5–30 minutes. Providers typically recycle sessions after 1–2 hours regardless of activity.
 
 ### Q3. Can I reuse a session across different target websites?
 Technically yes, but not recommended. Cookies and storage from Site A remain in the context when you navigate to Site B. Use one session per target site.
@@ -494,10 +502,10 @@ For single-page extractions, stateless is cheaper. For multi-step workflows (3+ 
 Use the screenshot endpoint to capture the current page state. Use the script endpoint to inspect cookies (`document.cookie`) and localStorage (`Object.keys(localStorage)`).
 
 ### Q10. Can I inject cookies into an existing session?
-Yes, if the provider exposes a cookie endpoint. For Ollagraph, set cookies by running a script that assigns to `document.cookie` or by using the session's cookie management endpoint.
+Yes, if the provider exposes a cookie endpoint. In your own Playwright code, call `context.add_cookies()`. Ollagraph's endpoints are stateless and do not accept cookies.
 
 ### Q11. What is the difference between idle timeout and session max lifetime?
-Idle timeout is the maximum time without commands before the session is killed. Session max lifetime is the absolute maximum the session can exist regardless of activity. Ollagraph sessions have a configurable idle TTL and a provider-level max lifetime of 2 hours.
+Idle timeout is the maximum time without commands before the session is killed. Session max lifetime is the absolute maximum the session can exist regardless of activity. Hosted providers typically pair a configurable idle TTL with a fixed max lifetime of an hour or two.
 
 ### Q12. Can I use a session API for real-time browser monitoring?
 Session APIs are request-response, not real-time streaming. For real-time monitoring, run a local Playwright script that keeps the page open and streams updates.
@@ -518,4 +526,4 @@ The economics are clear. A session-based approach cuts cold-start overhead by 83
 - [Chrome DevTools Protocol (CDP)](https://chromedevtools.github.io/devtools-protocol/)
 - [Playwright Browser Contexts](https://playwright.dev/docs/api/class-browsercontext)
 - [Puppeteer Browser Contexts](https://pptr.dev/api/puppeteer.browsercontext)
-- [Ollagraph Session API Documentation](https://docs.ollagraph.com)
+- [Ollagraph API Documentation](https://ollagraph.com/docs/)

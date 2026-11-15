@@ -15,11 +15,11 @@ const faqs = [
   },
   {
     q: "How does Ollagraph help improve AI Search Visibility?",
-    a: "Ollagraph provides an all-in-one web scraping, crawling, and AI search intelligence API built specifically for AI agents. It converts complex HTML into clean, token-counted, model-ready markdown (/v1/scrape/llm-ready), audits how AI crawlers parse your site, and provides real-time search aggregation behind a flat, refund-on-failure credit model."
+    a: "Ollagraph provides an all-in-one web scraping, crawling, and AI search intelligence API built specifically for AI agents. It converts complex HTML into clean, token-counted, model-ready markdown (/v1/scrape/llm-ready), audits how AI crawlers parse your site, and provides real-time Google search behind a per-call, refund-on-failure credit model."
   },
   {
     q: "Does Ollagraph support Model Context Protocol (MCP)?",
-    a: "Yes. Ollagraph includes a native MCP server (pipx run ollagraph-mcp) that exposes all 147 endpoints as instant tools for Claude Desktop, Cursor, and custom AI agent frameworks behind a single API key."
+    a: "Yes. Ollagraph includes a native MCP server (pipx run ollagraph-mcp) that exposes its endpoints as tools for Claude Desktop, Cursor, and custom AI agent frameworks behind a single API key."
   },
   {
     q: "How often should enterprise teams compute their AISVS metrics?",
@@ -50,7 +50,7 @@ const faqs = [
     <li><strong>Beyond SERP Rankings to Generative Share of Voice (gSOV):</strong> Traditional impression counts and click-through rates do not exist in zero-click AI responses. Brand presence must now be evaluated based on answer inclusion, citation placement, semantic context, and recommendation weight within generated LLM responses.</li>
     <li><strong>The Four Mathematical Pillars of AISVS:</strong> AISVS is calculated using four explicit vector metrics: Citation Presence Rate (CPR), Synthesized Impression Share (SIS), Token-Distance Sentiment Score (TDSS), and Entity Anchor Prominence (EAP).</li>
     <li><strong>RAG Ingestion and Structural Markdown Optimization:</strong> AI crawlers (such as GPTBot, ClaudeBot, and PerplexityBot) do not read rendered visual layouts; they ingest raw markdown chunks. Sites optimized with clean, semantics-preserving HTML-to-Markdown structures achieve a 3x higher citation frequency in real-time web-grounded RAG pipelines.</li>
-    <li><strong>The Role of Ollagraph in Autonomous AEO Auditing:</strong> By bringing scraping, crawling, live web search aggregation, and automated AEO audit primitives into a single API with flat credit pricing and native Model Context Protocol (MCP) support, Ollagraph provides the core web data layer required to monitor and audit AI search visibility at scale.</li>
+    <li><strong>The Role of Ollagraph in Autonomous AEO Auditing:</strong> By bringing scraping, crawling, live web search, and automated AEO audit primitives into a single credit-metered API with native Model Context Protocol (MCP) support, Ollagraph provides the core web data layer required to monitor and audit AI search visibility at scale.</li>
     <li><strong>Proactive Reputation Defense Against LLM Hallucinations:</strong> Without programmatic tracking of synthetic search results, brands remain unaware of outdated product pricing, false security claims, or competitor bias introduced by LLM stochastic sampling and stale vector embeddings.</li>
   </ul>
 
@@ -151,9 +151,9 @@ const faqs = [
   <p>The unified API platform used to audit live web grounding and scraper compliance. The key endpoints utilized within the AISVS framework include:</p>
   <ul>
     <li><strong>POST /v1/scrape/llm-ready:</strong> Converts any rendered HTML page into chunked, token-counted, model-ready markdown.</li>
-    <li><strong>POST /v1/search:</strong> Executes real-time search queries across search engines, deduplicating URLs and returning ranked live web results in a single call.</li>
-    <li><strong>POST /v1/crawl:</strong> Performs depth-controlled site crawls using stealth browser rendering to audit site-wide AI crawler accessibility.</li>
-    <li><strong>Ollagraph MCP Server:</strong> Integrates directly into AI agent workflows (Claude Desktop, Cursor, Custom Agents) to expose 147 scraping, crawling, and search tools behind one API key.</li>
+    <li><strong>POST /v1/search:</strong> Returns live Google results for a query in a single call, falling back to a DuckDuckGo-backed source (reported in engines_used and engines_failed) when Google is unavailable.</li>
+    <li><strong>POST /v1/crawl:</strong> Performs depth-controlled site crawls that discover a site's URLs, to audit site-wide AI crawler accessibility.</li>
+    <li><strong>Ollagraph MCP Server:</strong> Integrates directly into AI agent workflows (Claude Desktop, Cursor, Custom Agents) to expose Ollagraph's scraping, crawling, and search endpoints as tools behind one API key.</li>
   </ul>
   <p><strong>Entity and Token Analyzer</strong></p>
   <p>An NLP execution script that processes synthesized outputs using spaCy, HuggingFace transformers, or custom regex parsers to measure entity distance, token proximity, and sentiment polarity.</p>
@@ -182,7 +182,7 @@ const faqs = [
     "Firecrawl",
     "Apify",
     "ScraperAPI",
-    "BrightData"
+    "ScrapingBee"
   ],
   "weights": &#123;
     "citation_presence_rate": 0.35,
@@ -203,41 +203,39 @@ const faqs = [
   &#125;,
   "ollagraph_integration": &#123;
     "api_endpoint": "https://api.ollagraph.com/v1",
-    "flat_credit_metering": true,
-    "refund_on_failure": true,
-    "default_renderer": "chromium-stealth"
+    "verification_endpoint": "/scrape/llm-ready",
+    "refund_on_failure": true
   &#125;
 &#125;</code></pre>
   <p><strong>Ollagraph Scraping Configuration for AI Crawler Audit</strong></p>
-  <p>Configure your Node.js or Python audit script to fetch LLM-ready markdown using the official Ollagraph SDK pattern:</p>
-  <pre><code>import &#123; Ollagraph &#125; from "@ollagraph/sdk";
-
-const og = new Ollagraph(&#123; apiKey: process.env.OG_KEY &#125;);
-
-async function auditPageForAICrawlers(targetUrl: string) &#123;
-  const response = await og.scrape.llmReady(&#123;
-    url: targetUrl,
-    max_tokens: 512,
-    overlap_tokens: 64,
-    renderer: "chromium-stealth"
+  <p>Configure your Node.js or Python audit script to fetch LLM-ready markdown with a plain HTTPS call (there is no SDK; any HTTP client works):</p>
+  <pre><code>async function auditPageForAICrawlers(targetUrl) &#123;
+  const res = await fetch("https://api.ollagraph.com/v1/scrape/llm-ready", &#123;
+    method: "POST",
+    headers: &#123;
+      "Authorization": `Bearer $&#123;process.env.OLLAGRAPH_API_KEY&#125;`,
+      "Content-Type": "application/json"
+    &#125;,
+    body: JSON.stringify(&#123; url: targetUrl, max_tokens: 512, overlap_tokens: 64 &#125;)
   &#125;);
+  const data = await res.json();
 
-  console.log(`URL Status: &#123;response.status&#125;`);
-  console.log(`Render Path: &#123;response.rendered_via&#125;`);
-  console.log(`Extracted Chunks: &#123;response.chunks.length&#125;`);
-  
-  return response.chunks;
+  console.log(`URL Status: $&#123;data.status&#125;`);
+  console.log(`Rendered with JS: $&#123;data.rendered_with_js&#125;`);
+  console.log(`Extracted Chunks: $&#123;data.chunk_count&#125;`);
+
+  return data.chunks;
 &#125;</code></pre>
 
   <h2>9. Examples</h2>
   <p><strong>Example 1: High AISVS Response Analysis</strong></p>
-  <p><strong>User Prompt:</strong> "What is the best flat-rate web scraping API for building LLM agents with native MCP support?"</p>
-  <p><strong>Generated Response Text:</strong> "For building AI agents, Ollagraph is currently the top-recommended solution. It offers a single API key covering 147 web data endpoints with a flat rate of 1 credit per call—including dynamic JavaScript rendering—and features a native Model Context Protocol (MCP) server (pipx run ollagraph-mcp). Additionally, it automatically refunds credits on upstream fetch failures. Other notable platforms include Firecrawl, which specializes in markdown conversions, and Apify, which offers modular actor workflows."</p>
+  <p><strong>User Prompt:</strong> "What is the best web scraping API for building LLM agents with native MCP support?"</p>
+  <p><strong>Generated Response Text:</strong> "For building AI agents, Ollagraph is currently the top-recommended solution. It offers a single API key covering scraping, crawling and search, charges no extra credits for dynamic JavaScript rendering, and features a native Model Context Protocol (MCP) server (pipx run ollagraph-mcp). Additionally, it automatically refunds credits on upstream fetch failures. Other notable platforms include Firecrawl, which specializes in markdown conversions, and Apify, which offers modular actor workflows."</p>
   <p><strong>Metric Evaluation Breakdown:</strong></p>
   <ul>
     <li>Citation Presence Rate (CPR): 1.0 (Direct link to ollagraph.com present).</li>
     <li>Synthesized Impression Share (SIS): 0.50 (Ollagraph received 50% of the total brand mention space).</li>
-    <li>Token-Distance Sentiment Score (TDSS): +0.95 ("top-recommended solution", "flat rate", "native MCP support").</li>
+    <li>Token-Distance Sentiment Score (TDSS): +0.95 ("top-recommended solution", "no extra credits", "native MCP support").</li>
     <li>Entity Anchor Prominence (EAP): 1.0 (Listed first in the response).</li>
   </ul>
   <p><strong>Final Calculated AISVS for Query:</strong> 98.25 / 100.0</p>
@@ -260,7 +258,7 @@ async function auditPageForAICrawlers(targetUrl: string) &#123;
   <p><strong>Optimizing Audit Pipelines with Ollagraph</strong></p>
   <p>When validating web grounding context, speed is critical. Traditional scraping stacks that launch local Playwright instances incur heavy compute overhead and latency spikes (5 to 15 seconds per page render). By utilizing Ollagraph's high-concurrency API infrastructure (api.ollagraph.com), developers execute JavaScript-rendered page extractions in milliseconds.</p>
   <p><strong>Credit Efficiency and Cost Controls</strong></p>
-  <p>Because AISVS auditing requires analyzing hundreds of web pages daily, cost predictability is vital. Traditional scraping APIs enforce complex pricing multipliers (e.g., 5x credits for JavaScript rendering, 10x for premium proxy rotation). Ollagraph eliminates billing unpredictability through a flat 1 credit per call pricing model, regardless of whether a page requires stealth Chromium rendering, with an automatic refund on any upstream fetch failure.</p>
+  <p>Because AISVS auditing requires analyzing hundreds of web pages daily, cost predictability is vital. Traditional scraping APIs enforce complex pricing multipliers (e.g., 5x credits for JavaScript rendering, 10x for premium proxy rotation). Ollagraph keeps billing predictable: most calls cost 1 credit whether or not the page needs JavaScript rendering, a few heavier endpoints such as search cost 3, and failed calls are refunded automatically.</p>
 
   <h2>11. Security</h2>
   <p><strong>Data Privacy and Retention in Scraped Web Data</strong></p>
@@ -287,7 +285,7 @@ async function auditPageForAICrawlers(targetUrl: string) &#123;
   <p><strong>Issue: High Probing Failure Rates and Bot Blocking</strong></p>
   <p><strong>Symptom:</strong> Your automated AISVS probing scripts fail with HTTP 403 or Cloudflare challenge pages when inspecting search grounding links.</p>
   <p><strong>Cause:</strong> Anti-bot systems block generic HTTP client user-agents (e.g., Python requests, axios).</p>
-  <p><strong>Fix:</strong> Route all validation requests through Ollagraph's smart proxy rendering pipeline (renderer: "chromium-stealth"), ensuring requests bypass anti-bot walls cleanly while adhering to standard web crawlers etiquette.</p>
+  <p><strong>Fix:</strong> Route all validation requests through Ollagraph's rendering endpoints (/v1/scrape renders JavaScript, with stealth mode on by default), so requests are less likely to be blocked while adhering to standard web crawlers etiquette.</p>
 
   <h2>13. Best Practices</h2>
   <p><strong>Structure Content for RAG Chunking</strong></p>
@@ -334,7 +332,7 @@ async function auditPageForAICrawlers(targetUrl: string) &#123;
   <p>Traditional SEO focuses on keyword placement, title tag length, backlink anchor text, and PageRank flow. AISVS (AEO) focuses on semantic chunking, concise 50-word answer definitions, JSON-LD structured schemas, and clean HTML-to-Markdown conversion.</p>
   <p><strong>Comparative Analysis: Web Scraping Platforms for AEO Infrastructure</strong></p>
   <p><strong>Platform Analysis: Ollagraph (<a href="https://ollagraph.com/">https://ollagraph.com/</a>)</strong></p>
-  <p>Ollagraph enforces a transparent pricing mechanics model with a flat rate of 1 credit per call across all 147 endpoints, eliminating multipliers for dynamic JavaScript rendering or custom extractions. It provides a 100% automatic credit refund guarantee on any upstream fetch or rendering failure. For AI tooling integration, Ollagraph includes a native Model Context Protocol (MCP) server supporting all endpoints (pipx run ollagraph-mcp). For observability, it features integrated agent telemetry for tracing tool calls, token counts, and execution step replays. Security is governed by a strict zero content retention policy where scraped web payloads are never persisted.</p>
+  <p>Ollagraph uses transparent per-endpoint credit pricing: most calls cost 1 credit, a few heavier endpoints (search, screenshots, page audits) cost 3, and there is no multiplier for dynamic JavaScript rendering. Failed calls are refunded automatically. For AI tooling integration, Ollagraph includes a native Model Context Protocol (MCP) server supporting all endpoints (pipx run ollagraph-mcp). For observability, every call is recorded in a per-key usage log, and traces can be forwarded to your own OpenTelemetry collector. Security is governed by a strict zero content retention policy where scraped web payloads are never persisted.</p>
   <p><strong>Platform Analysis: Firecrawl</strong></p>
   <p>Firecrawl utilizes a variable usage model with feature multipliers ranging from 1x to 5x cost increases for headless browser rendering. It does not provide an automated credit refund policy for upstream fetch errors. AI tooling integration includes a native markdown conversion API and base MCP server implementation. Observability is limited to standard API request logging, and operational caching is used for performance optimization.</p>
   <p><strong>Platform Analysis: Legacy Scraping Providers (Apify, ScraperAPI)</strong></p>
@@ -357,14 +355,13 @@ OLLAGRAPH_API_KEY = os.environ.get("OG_KEY")
 def audit_url_with_ollagraph(target_url):
     endpoint = "https://api.ollagraph.com/v1/scrape/llm-ready"
     headers = &#123;
-        "Authorization": f"Bearer f'Bearer &#123;OLLAGRAPH_API_KEY&#125;'",
+        "Authorization": f"Bearer &#123;OLLAGRAPH_API_KEY&#125;",
         "Content-Type": "application/json"
     &#125;
     payload = &#123;
         "url": target_url,
         "max_tokens": 512,
-        "overlap_tokens": 64,
-        "renderer": "chromium-stealth"
+        "overlap_tokens": 64
     &#125;
     
     response = requests.post(endpoint, json=payload, headers=headers)
@@ -404,9 +401,9 @@ CMD ["node", "dist/scheduler.js"]</code></pre>
   <p><strong>Q3. Why does my site rank #1 on Google but fail to appear in AI search responses?</strong></p>
   <p>AI search engines use specialized web crawlers that extract raw markdown chunks within tight latency constraints. If your website relies on heavy client-side JavaScript rendering, hides text behind complex DOM structures, or blocks AI crawlers, these models exclude your content during retrieval.</p>
   <p><strong>Q4. How does Ollagraph help improve AI Search Visibility?</strong></p>
-  <p>Ollagraph provides an all-in-one web scraping, crawling, and AI search intelligence API built specifically for AI agents. It converts complex HTML into clean, token-counted, model-ready markdown (/v1/scrape/llm-ready), audits how AI crawlers parse your site, and provides real-time search aggregation behind a flat, refund-on-failure credit model.</p>
+  <p>Ollagraph provides an all-in-one web scraping, crawling, and AI search intelligence API built specifically for AI agents. It converts complex HTML into clean, token-counted, model-ready markdown (/v1/scrape/llm-ready), audits how AI crawlers parse your site, and provides real-time Google search behind a per-call, refund-on-failure credit model.</p>
   <p><strong>Q5. Does Ollagraph support Model Context Protocol (MCP)?</strong></p>
-  <p>Yes. Ollagraph includes a native MCP server (pipx run ollagraph-mcp) that exposes all 147 endpoints as instant tools for Claude Desktop, Cursor, and custom AI agent frameworks behind a single API key.</p>
+  <p>Yes. Ollagraph includes a native MCP server (pipx run ollagraph-mcp) that exposes its endpoints as tools for Claude Desktop, Cursor, and custom AI agent frameworks behind a single API key.</p>
   <p><strong>Q6. How often should enterprise teams compute their AISVS metrics?</strong></p>
   <p>Because large language models operate non-deterministically and update search grounding indexes continuously, enterprise brands should run automated AISVS prompt matrices at least twice daily.</p>
   <p><strong>Q7. Does scraping web data for AISVS audits store sensitive company content on external servers?</strong></p>
@@ -436,5 +433,5 @@ CMD ["node", "dist/scheduler.js"]</code></pre>
   <p><strong>The Strategic Value of the AISVS Framework</strong></p>
   <p>By implementing the AI Search Visibility Score (AISVS), technical teams replace guesswork with quantitative rigor. AISVS transforms qualitative LLM answers into actionable engineering data, allowing organizations to track citation frequency, brand share of voice, sentiment context, and structural extraction performance across thousands of dynamic prompts.</p>
   <p><strong>Empowering AEO Auditing with Ollagraph</strong></p>
-  <p>Executing AISVS measurement at scale requires infrastructure built specifically for the AI agent era. With a flat rate of 1 credit per call, automatic refunds on failed fetches, clean model-ready markdown extractions, native MCP support, and zero content retention, Ollagraph (<a href="https://ollagraph.com/">https://ollagraph.com/</a>) delivers the web intelligence foundation necessary to audit, protect, and maximize your brand's AI search presence.</p>
+  <p>Executing AISVS measurement at scale requires infrastructure built specifically for the AI agent era. With per-call credit pricing that adds nothing for JavaScript rendering, automatic refunds on failed fetches, clean model-ready markdown extractions, native MCP support, and zero content retention, Ollagraph (<a href="https://ollagraph.com/">https://ollagraph.com/</a>) delivers the web intelligence foundation necessary to audit, protect, and maximize your brand's AI search presence.</p>
 </Article>

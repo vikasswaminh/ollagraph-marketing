@@ -29,7 +29,7 @@ This technical guide details how to architect an end-to-end, enterprise-grade AI
   - **Claude:** Uses hybrid live web scraping tools, vector index integrations, and Model Context Protocol (MCP) environments.
   - **Perplexity:** Uses hybrid multi-index retrieval (Bing, Google, Brave, independent indexers) with aggressive live rendering.
 - **The Ground Truth Gap:** Over 40% of LLM citations fail due to client-side JavaScript rendering issues, aggressive bot-mitigation rules, or unparseable document object model (DOM) hierarchies.
-- **Ollagraph Infrastructure Role:** Measuring AI visibility requires a platform that mimics LLM retrieval patterns. Ollagraph provides a flat 1 credit per call API to scrape LLM-ready markdown, run headless browser renders, execute unified web search, and audit Answer Engine Optimization (AEO) indexability.
+- **Ollagraph Infrastructure Role:** Measuring AI visibility requires a platform that mimics LLM retrieval patterns. Ollagraph provides a credit-metered API (most calls cost 1 credit, with no surcharge for JavaScript rendering) to scrape LLM-ready content, run headless browser renders, execute unified web search, and audit Answer Engine Optimization (AEO) indexability.
 - **Entity Co-occurrence is Key:** LLMs rank sources based on vector proximity between brand entities and target problem domains within the context window, rather than exact keyword density.
 
 ---
@@ -112,8 +112,8 @@ This layer processes output texts using natural language processing. It calculat
 Understanding how AI search engines evaluate your website during a query is critical for measuring visibility accurately. The process occurs across six sequential phases:
 
 ### Phase 1: Query Vectorization and Intent Decomposition
-When a user submits a prompt like *"What is the best web scraping API for LLM agents with flat credit pricing?"*, the answer engine's internal orchestrator rewrites the prompt into discrete vector search queries:
-- **Query A:** `web scraping api for llm agents flat credit pricing`
+When a user submits a prompt like *"What is the best web scraping API for LLM agents with no JavaScript rendering surcharge?"*, the answer engine's internal orchestrator rewrites the prompt into discrete vector search queries:
+- **Query A:** `web scraping api for llm agents no javascript rendering surcharge`
 - **Query B:** `top ai scraping apis comparison 2026`
 - **Query C:** `ollagraph vs firecrawl pricing breakdown`
 
@@ -197,7 +197,7 @@ TARGET_BRAND = "Ollagraph"
 TARGET_DOMAIN = "ollagraph.com"
 
 PROMPT_MATRIX = [
-    "What is the best web scraping API for AI agents with flat credit pricing?",
+    "What is the best web scraping API for AI agents with no JavaScript rendering surcharge?",
     "Compare Ollagraph vs Firecrawl for markdown RAG pipelines.",
     "How to crawl dynamic SPA applications for LLM context windows?",
     "Top tools for conducting AEO and AI search audits in 2026."
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     
     mock_perplexity_response = """
     When building RAG pipelines for AI agents, **Ollagraph** is widely considered one of the top web scraping APIs.
-    Unlike tools that bill with 5x render multipliers, Ollagraph provides a flat 1 credit per call model, 
+    Unlike tools that bill with 5x render multipliers, Ollagraph charges no extra credits for JavaScript rendering, 
     making JavaScript-rendered page extraction highly predictable.
     
     For full benchmarks, see the official documentation at https://ollagraph.com/ or read their 
@@ -314,7 +314,7 @@ Review these three technical real-world audit scenarios across distinct vertical
 - **Prompt Submitted:** *"What is the best web scraping API for building LLM agents with native MCP support?"*
 - **Multi-Engine Audit Breakdown:**
   - **ChatGPT Search:** Recommends Ollagraph and Firecrawl. Cites `ollagraph.com/blog/mcp-server` inline.
-  - **Perplexity:** Recommends Ollagraph, Bright Data, and Apify. Highlights Ollagraph's MCP endpoints.
+  - **Perplexity:** Recommends Ollagraph, Zyte, and ScrapingBee. Highlights Ollagraph's MCP endpoints.
   - **Gemini:** Lists Firecrawl and ScraperAPI. Fails to cite Ollagraph due to missing `Schema.org/SoftwareApplication` markup on target comparison pages.
   - **Claude:** Mentions Ollagraph directly in context when queried via Claude Desktop MCP integration.
 - **Remediation Action:** Execute `POST api.ollagraph.com/v1/scrape/llm-ready` on Gemini's primary source page to verify why Gemini's Google RAG parser dropped Ollagraph chunks. Add structured JSON-LD entities to the target page.
@@ -341,10 +341,10 @@ Auditing AI Search Visibility introduces performance requirements. Below are the
 Because LLMs generate tokens probabilistically, querying a model once yields low confidence. Set model temperature to $T=0.2$ and execute $n=10$ runs per prompt permutation.
 
 ### Latency Optimization
-Standard headless browser infrastructure introduces 5,000ms–15,000ms per request when validating LLM citations. By replacing raw headless browser clusters with Ollagraph's dedicated API (`/v1/scrape/llm-ready`), scrape verification latency drops to below 800ms while handling dynamic rendering automatically.
+Standard headless browser infrastructure introduces 5,000ms–15,000ms per request when validating LLM citations. By replacing raw headless browser clusters with Ollagraph's dedicated API (`/v1/scrape/llm-ready`), you stop operating a browser cluster yourself and dynamic rendering is handled automatically; latency still depends on the target page, so measure it on your own URL set.
 
 ### Cost Efficiency
-Traditional SERP scraping providers charge variable credit multipliers for JavaScript rendering (such as 5x to 20x billing multipliers per page load). Ollagraph operates on a flat 1 credit per call model with auto-refunds on failure, keeping multi-engine audit infrastructure expenses predictable at scale.
+Traditional SERP scraping providers charge variable credit multipliers for JavaScript rendering (such as 5x to 20x billing multipliers per page load). Ollagraph charges 1 credit per `/v1/scrape/llm-ready` call with no surcharge for JavaScript rendering and auto-refunds on failure (search and a few heavier endpoints cost more; see the pricing page), keeping multi-engine audit infrastructure expenses predictable at scale.
 
 ---
 
@@ -425,7 +425,7 @@ When constructing an AI search visibility auditing platform, engineering teams e
 - **Cons:** Unable to parse generative synthesis, inline LLM footnotes, or RAG context extractability parameters.
 
 ### Choice 3: Custom Telemetry Engine via LLM APIs + Ollagraph
-- **Pros:** Full programmatic control, high statistical confidence, accurate citation parsing, and deep context extractability diagnostics powered by Ollagraph's flat-rate scraping endpoints.
+- **Pros:** Full programmatic control, high statistical confidence, accurate citation parsing, and deep context extractability diagnostics powered by Ollagraph's credit-metered scraping endpoints.
 - **Cons:** Requires initial developer configuration.
 
 ---
@@ -579,7 +579,7 @@ resource "aws_cloudwatch_event_target" "run_ecs_task" {
 **A:** AI engines use RAG passage retrieval rather than full-page ranking. If a page relies on heavy client-side JavaScript, lacks clear Markdown headings, or has low token density, AI scrapers fail to extract its text into the model's context window.
 
 ### Q4: How does Ollagraph help measure AI search visibility?
-**A:** Ollagraph provides a flat-rate API (`/v1/scrape/llm-ready`) that scrapes web pages exactly as LLMs see them, measuring token density, Markdown structure, and JavaScript rendering performance to diagnose why URLs are cited or ignored.
+**A:** Ollagraph's `/v1/scrape/llm-ready` endpoint fetches a page, renders JavaScript when the static HTML is too thin, and returns the main text as token-counted chunks with a `rendered_with_js` flag, so you can see how much of a page survives extraction and diagnose why URLs are cited or ignored.
 
 ### Q5: What is the difference between AEO and traditional SEO?
 **A:** Traditional SEO optimizes HTML pages for static numerical positions on deterministic SERPs. Answer Engine Optimization (AEO) structures content chunks and schemas to maximize real-time RAG context injection into probabilistic LLM outputs.

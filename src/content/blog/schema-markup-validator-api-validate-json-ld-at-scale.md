@@ -16,7 +16,7 @@ Every SEO team knows the pain: you deploy a site-wide template update, and three
 
 A Schema Markup Validator API (integrated into a [full website SEO audit API](/blog/website-seo-audit-how-to-run-a-full-audit-in-one-api-call/)) solves this by treating JSON-LD validation as a programmable step in your deployment pipeline. You point it at a URL or feed it raw JSON-LD, and it returns validation results: syntax errors, missing required fields, type mismatches, schema.org conformance flags, and AI-crawler compatibility signals. Run it across your entire sitemap in minutes instead of days.
 
-This article covers the architecture of API-based schema validation, how to integrate it into CI/CD and monitoring workflows, real-world benchmarks from validating 50,000+ pages, and a comparison of available tools. You will walk away with a production-ready validation pipeline you can implement this week.
+This article covers the architecture of API-based schema validation, how to integrate it into CI/CD and monitoring workflows, how to benchmark validation at sitemap scale, and a comparison of available tools. You will walk away with a production-ready validation pipeline you can implement this week.
 
 > **Key takeaway:** Schema validation should be automated, continuous, and integrated — not a manual QA step you skip when deadlines hit.
 
@@ -25,8 +25,8 @@ This article covers the architecture of API-based schema validation, how to inte
 ## Key Takeaways
 
 - Manual schema validation — copy-pasting URLs into browser tools — does not scale beyond a handful of pages. We have watched teams burn entire sprints on this. A Schema Markup Validator API can validate 10,000+ pages in under 5 minutes with per-page error reporting, catching regressions that manual sampling misses every time.
-- The most common JSON-LD failures — missing `@context`, wrong `@type` casing, dangling `sameAs` URLs, and date format mismatches — are trivially detectable with automated validation. Schema validation in CI/CD catches roughly 94% of structured data regressions before they reach production, based on our testing across 12 enterprise deployments.
-- AI crawlers (GPTBot, ClaudeBot, PerplexityBot, and Google AI Overviews) treat invalid or incomplete schema differently than Google's indexer (learn which [structured data signals matter most for AI Overviews](/blog/structured-data-for-ai-overviews-which-schema-signals-matter-most/)). Automated validation should cover both search-engine and AI-crawler requirements. The Ollagraph Schema Validator API returns per-field error locations, schema.org conformance scores, and AI-readiness signals in a single response, making it suitable for both pre-deployment checks and post-deployment monitoring.
+- The most common JSON-LD failures — missing `@context`, wrong `@type` casing, dangling `sameAs` URLs, and date format mismatches — are trivially detectable with automated validation. Schema validation in CI/CD catches most structured data regressions before they reach production.
+- AI crawlers (GPTBot, ClaudeBot, PerplexityBot, and Google AI Overviews) treat invalid or incomplete schema differently than Google's indexer (learn which [structured data signals matter most for AI Overviews](/blog/structured-data-for-ai-overviews-which-schema-signals-matter-most/)). Automated validation should cover both search-engine and AI-crawler requirements. Ollagraph's `/v1/seo/schema-validate` checks every JSON-LD block for JSON syntax errors and for Google's required fields across 20+ rich-result types, and `/v1/aeo/schema-coverage` adds an AEO coverage score, so the same calls serve pre-deployment checks and post-deployment monitoring.
 
 ---
 
@@ -54,7 +54,7 @@ In 2024-2025, open-source libraries like `pyld` and `schema-validator` made it p
 
 By mid-2026, AI crawlers and answer engines made schema validation more critical. Google's AI Overviews pipeline treats schema as a citation signal, not just a rich-results trigger. Perplexity and ChatGPT reference structured data for entity disambiguation. Invalid schema reduces your chances of being cited by AI systems that millions of users query daily. The shift from "schema for rich results" to "schema for AI visibility" changed the stakes entirely.
 
-The Ollagraph Schema Validator API was built to fill that gap: a developer-friendly, API-first validation service that checks JSON-LD syntax, Schema.org conformance, rich-result eligibility, and AI-crawler readiness in a single call, with batch processing for sitemap-scale validation.
+Ollagraph's schema endpoints were built to fill that gap: `/v1/seo/schema-validate` checks JSON-LD syntax and rich-result required fields for a URL or raw HTML in a single call, and `/v1/aeo/schema-coverage` scores a page against the schema types that matter for AI answers. For sitemap-scale validation, you loop over your URLs in your own code.
 
 ---
 
@@ -68,35 +68,34 @@ A Schema Markup Validator API is not a search engine simulator. It does not tell
 
 The validation covers several layers:
 
-- **Syntax layer:** Is the JSON-LD valid JSON? Are `@context` and `@type` present and correctly formatted? In our benchmark dataset of 50,000 URLs, 3.2% had JSON syntax errors: trailing commas, unescaped strings, truncated blocks.
+- **Syntax layer:** Is the JSON-LD valid JSON? Are `@context` and `@type` present and correctly formatted? The usual culprits are trailing commas, unescaped strings, and truncated blocks.
 - **Schema.org conformance layer:** Do the types and properties you used actually exist in the Schema.org vocabulary? This catches the common mistake of inventing custom properties or using deprecated types.
 - **Required properties layer:** For each Schema.org type, are the required properties present? Product requires name. FAQPage requires mainEntity with Question items. Missing required properties means the type will not be eligible for rich results.
 - **Rich result eligibility layer:** Does the schema match Google's rich result requirements? Google adds extra constraints beyond Schema.org: review snippets require an `itemReviewed` with a name, and HowTo requires at least one step with text or image.
-- **AI-readiness layer:** AI crawlers use `@id` for entity deduplication, `sameAs` for knowledge-graph linking, and `dateModified` for freshness signals. The validator checks whether your schema provides stable identifiers and sufficient property coverage for AI extraction. This layer is unique to Ollagraph; no other validator in our comparison set offers AI-readiness scoring.
+- **AI-readiness layer:** AI crawlers use `@id` for entity deduplication, `sameAs` for knowledge-graph linking, and `dateModified` for freshness signals. A validator should check whether your schema provides stable identifiers and sufficient property coverage for AI extraction.
 
 ---
 
 ## 4. Architecture: How API-Based Schema Validation Works
 
-The Ollagraph Schema Validator API follows a four-stage pipeline: fetch, parse, validate, and report. Each stage is independent and has its own timeout and retry logic.
+Ollagraph's `/v1/seo/schema-validate` endpoint runs a three-stage pipeline in one call: fetch, parse, and validate.
 
-1. **Stage 1: Fetch.** The API fetches rendered HTML using a headless browser, Chromium-based and the same engine used by most AI crawlers. This captures JSON-LD injected by client-side JavaScript that raw HTTP fetches would miss. For raw JSON-LD submissions, this stage is skipped. The default timeout is 15 seconds per URL, configurable up to 60 seconds. Why use a headless browser instead of a simple HTTP GET? Because modern frameworks—Next.js, Nuxt, Gatsby, Remix—often inject JSON-LD client-side after the initial HTML payload. We tested this across 200 sites built with JavaScript frameworks: 34% had at least one JSON-LD block that was present only in the rendered DOM, not in the raw HTML source. A validator that only checks raw HTML would give those pages a false pass.
-2. **Stage 2: Parse.** Each JSON-LD block is processed through a JSON-LD 1.1 processor that handles `@context` resolution, `@type` expansion, `@id` deduplication, and nested graph processing. The parser handles edge cases: relative `@context` URLs, `@graph` arrays with mixed types, `@reverse` properties, and `@container` constructs. If a JSON-LD block references an external `@context` URL that is unreachable, the parser falls back to the Schema.org default context and flags the issue as a warning.
-3. **Stage 3: Validate.** The expanded nodes are checked against three sources: the Schema.org vocabulary, updated within 24 hours of Schema.org publishing changes; Google's rich result requirements; and Ollagraph's AI-readiness rules. Each check produces a pass/fail/warning result with a human-readable message, an error code, and the exact field path where the issue was found.
-4. **Stage 4: Report.** Results are assembled into a JSON response with per-block validation results, per-field error locations, a conformance score from 0-100, and an AI-readiness score from 0-100. Batch submissions also return aggregate statistics: total URLs validated, pass rate, average scores, error distribution by type, and a list of the worst-performing URLs.
+1. **Stage 1: Fetch.** Send a `url` and the API fetches the page's HTML, or send the `html` yourself and the fetch is skipped. The URL fetch reads the server-delivered HTML; it does not run JavaScript. Modern frameworks such as Next.js, Nuxt, Gatsby and Remix often inject JSON-LD client-side after the initial payload, and a validator that only checks raw HTML gives those pages a false pass. For those pages, get the rendered HTML from `/v1/render` first and pass it in as `html`.
+2. **Stage 2: Parse.** Every `<script type="application/ld+json">` block is parsed as JSON. A block that is not valid JSON is reported with `status: "error"`, `error: "invalid_json"` and the parser's message. Arrays and `@graph` containers are walked so each node is checked on its own.
+3. **Stage 3: Validate.** Each node's `@type` is checked against the required-field lists for 20+ Google rich-result types (Product, Recipe, Article, Event, FAQPage, HowTo, JobPosting, LocalBusiness, Review, VideoObject and more). The report gives each node a `status` (`valid`, `missing_fields` or `unknown_type`), its `missing_required_fields`, and the list of rich-result types the page is eligible for.
 
 ```text
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
-│  FETCH  │ →  │  PARSE  │ →  │VALIDATE │ →  │  REPORT │
-│         │    │         │    │         │    │         │
-│ Headless│    │ JSON-LD │    │ Schema  │    │ Per-page│
-│ Browser │    │ 1.1 Proc│    │ .org    │    │ + Batch │
-│ + JS    │    │ + @id   │    │ Google  │    │ Stats   │
-│ Render  │    │ + Graph │    │ AI-Ready│    │ + Scores│
-└─────────┘    └─────────┘    └─────────┘    └─────────┘
+┌─────────┐    ┌─────────┐    ┌──────────┐
+│  FETCH  │ →  │  PARSE  │ →  │ VALIDATE │
+│         │    │         │    │          │
+│ URL or  │    │ JSON-LD │    │ Required │
+│ your    │    │ blocks  │    │ fields + │
+│ HTML    │    │ + @graph│    │ eligible │
+│         │    │         │    │ types    │
+└─────────┘    └─────────┘    └──────────┘
 ```
 
-The entire pipeline runs in under 500 milliseconds for a single URL under normal conditions. Batch processing parallelizes across available workers, with typical throughput of 200-300 pages per minute per worker.
+The endpoint checks the top-level required fields for each type. Deeper rules (an Offer's `price`, an Answer object inside FAQPage, `sameAs` coverage, `@id` consistency) belong in a few lines of your own code on the same JSON-LD, shown below. For an AEO view of the same page, `/v1/aeo/schema-coverage` scores it from 0 to 100 against the schema types that matter most for AI answers and lists which are present and which are missing.
 
 ---
 
@@ -111,115 +110,132 @@ A typical validation workflow involves four components:
 
 The workflow connects them in a loop: validate, fix, re-validate, deploy.
 
-1. **Step 1: Extract your URL list.** Generate a list of URLs from your XML sitemap, CMS, or database. The sitemap is usually the best source since it represents the canonical set of pages you want indexed. The API can fetch and parse sitemaps directly — pass the sitemap URL instead of a list of URLs, and the validator extracts all URLs, deduplicates them, and filters out non-indexable pages.
-2. **Step 2: Submit to the validator API.** Send URLs in batches. The API accepts up to 500 URLs per request for synchronous validation, or unlimited URLs for asynchronous batch processing with webhook delivery. Synchronous mode is best for CI/CD pipelines where you need a blocking check. Asynchronous mode is best for scheduled monitoring.
-3. **Step 3: Process results.** Each URL returns a validation report containing `valid` (boolean), `syntax_errors`, `schema_errors`, `rich_result_errors`, `ai_readiness_warnings`, `conformance_score` (0-100), `ai_readiness_score` (0-100), `detected_types`, and `warnings`. The response format is consistent between single-URL and batch modes.
-4. **Step 4: Store and alert.** Write results to your monitoring system. Configure alerts for thresholds: error rate above 5%, conformance score below 80, or any critical syntax errors. The API supports webhook delivery for batch jobs — results are POSTed to your endpoint as each page is validated.
-5. **Step 5: Fix and redeploy.** Each error includes the exact field path and a suggested fix. Apply fixes, redeploy, and re-validate. The API supports idempotent re-validation — running the same URL twice with no changes returns identical results.
+1. **Step 1: Extract your URL list.** Generate a list of URLs from your XML sitemap, CMS, or database. The sitemap is usually the best source since it represents the canonical set of pages you want indexed. `/v1/intel/sitemap` can fetch and unroll a sitemap for you and returns its page URLs.
+2. **Step 2: Call the validator for each URL.** `/v1/seo/schema-validate` takes one URL (or one HTML document) per call, so loop over the list in your own code with modest concurrency. Each call costs 1 credit, and calls that fail to fetch the page are refunded.
+3. **Step 3: Process results.** Each response contains `blocks_found`, a `json_ld_blocks` list (per node: `type`, `status`, `valid`, `missing_required_fields`), `eligible_rich_result_types` and `any_eligible`. Count a page as failing when any block has `status` `error` or `missing_fields`.
+4. **Step 4: Store and alert.** Write results to your monitoring system. Configure alerts for thresholds: error rate above 5%, or any page whose JSON-LD no longer parses. Alerting lives in your own pipeline (Slack webhook, PagerDuty, email).
+5. **Step 5: Fix and redeploy.** Each finding names the block, the type and the missing fields. Apply fixes, redeploy, and re-validate. Validation is deterministic: the same HTML always gives the same result.
 
-We have seen teams implement the entire pipeline in under two hours: write a script that fetches the sitemap, calls the batch endpoint, parses the results, posts errors to a Slack channel, and blocks the deployment if critical errors exceed a threshold.
+A first version of this pipeline is a short script: fetch the sitemap, call the validator for each URL, collect the failures, post them to a Slack channel, and block the deployment if critical errors exceed a threshold.
 
 ---
 
 ## 6. Configuration / Setup: Integrating the Validator into Your Pipeline
 
-Setting up the Ollagraph Schema Validator API takes about 15 minutes.
-
 ### Prerequisites
 
-You need an Ollagraph API key (available from the dashboard, free tier includes 1,000 validations per month), a list of URLs to validate, and a script or CI/CD step to call the API. No SDK installation is required.
+You need an Ollagraph API key (new accounts get 1,000 free credits; each validation call costs 1 credit), a list of URLs to validate, and a script or CI/CD step to call the API. No SDK installation is required: it is a plain HTTPS POST.
 
 ### Authentication
 
 The API uses Bearer token authentication:
 
 ```http
-Authorization: Bearer ola_sk_live_xxxxxxxxxxxx
+Authorization: Bearer $OLLAGRAPH_API_KEY
 ```
 
-You can create separate keys for development, staging, and production environments, each with its own rate limits and usage tracking.
+You can create separate keys for development, staging, and production environments, each with its own label and optional daily credit cap.
 
 ### Single URL Validation
 
 ```bash
-curl -X POST https://api.ollagraph.com/v1/schema/validate \
-  -H "Authorization: Bearer ola_sk_live_xxxxxxxxxxxx" \
+curl -X POST https://api.ollagraph.com/v1/seo/schema-validate \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/product/12345"}'
 ```
 
-The response includes the full validation report:
+Example response (trimmed):
 
 ```json
 {
+  "status": "success",
+  "source": "url_fetched",
   "url": "https://example.com/product/12345",
-  "valid": false,
-  "conformance_score": 72,
-  "ai_readiness_score": 65,
-  "syntax_errors": [],
-  "schema_errors": [
-    {
-      "field": "offers.price",
-      "type": "missing_required_property",
-      "message": "Property 'price' is required for type 'Offer' but was not found.",
-      "line": 24,
-      "column": 12
-    }
+  "blocks_found": 3,
+  "json_ld_blocks": [
+    {"block_index": 0, "node_index": 0, "type": "Product", "status": "valid", "valid": true, "missing_required_fields": []},
+    {"block_index": 1, "node_index": 0, "type": "Organization", "status": "valid", "valid": true, "missing_required_fields": []},
+    {"block_index": 2, "node_index": 0, "type": "Review", "status": "missing_fields", "valid": false, "missing_required_fields": ["itemReviewed"]}
   ],
-  "rich_result_errors": [
-    {
-      "type": "missing_review",
-      "message": "Product type 'Product' with 'aggregateRating' requires at least one 'review' for review snippet eligibility."
-    }
-  ],
-  "ai_readiness_warnings": [
-    {
-      "type": "missing_sameAs",
-      "message": "Organization type has no 'sameAs' URLs. AI crawlers use 'sameAs' for entity disambiguation."
-    }
-  ],
-  "detected_types": ["Product", "Offer", "Organization"],
-  "warnings": []
+  "eligible_rich_result_types": ["Organization", "Product"],
+  "any_eligible": true
 }
 ```
 
-The line and column fields point to the exact location in the JSON-LD block where the issue was detected.
+`block_index` points to the `<script>` block on the page and `node_index` to the node inside it, so you can find the broken template quickly.
 
-### Batch Validation
+### Validating Rendered HTML
+
+If the JSON-LD is injected by JavaScript, render the page first and validate the result (two calls, 2 credits):
 
 ```bash
-curl -X POST https://api.ollagraph.com/v1/schema/validate/batch \
-  -H "Authorization: Bearer ola_sk_live_xxxxxxxxxxxx" \
+curl -s -X POST https://api.ollagraph.com/v1/render \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"urls": ["https://example.com/product/1", "https://example.com/product/2"]}'
+  -d '{"url": "https://example.com/product/12345"}' \
+| jq '{html: .html}' \
+| curl -X POST https://api.ollagraph.com/v1/seo/schema-validate \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d @-
 ```
-
-The batch endpoint returns a job ID for tracking. Results are available via the job status endpoint or a configurable webhook.
 
 ### Python Integration Example
 
-```python
-import requests
+There is no batch validation endpoint, so run the loop yourself:
 
-API_KEY = "ola_sk_live_xxxxxxxxxxxx"
-API_URL = "https://api.ollagraph.com/v1/schema/validate/batch"
+```python
+import os
+import requests
+from concurrent.futures import ThreadPoolExecutor
+
+API_URL = "https://api.ollagraph.com/v1/seo/schema-validate"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
 
 urls = ["https://example.com/product/1", "https://example.com/product/2"]
 
-response = requests.post(
-    API_URL,
-    headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-    json={"urls": urls}
-)
+def validate(url):
+    r = requests.post(API_URL, headers=HEADERS, json={"url": url}, timeout=60)
+    return url, r.json()
 
-results = response.json()
-passed = [r for r in results["results"] if r["valid"]]
-failed = [r for r in results["results"] if not r["valid"]]
+with ThreadPoolExecutor(max_workers=5) as pool:
+    results = list(pool.map(validate, urls))
 
-print(f"Total: {len(results['results'])}")
-print(f"Passed: {len(passed)}")
-print(f"Failed: {len(failed)}")
-print(f"Avg conformance: {results['summary']['avg_conformance_score']}")
+problems = [
+    (url, block)
+    for url, res in results
+    for block in res.get("json_ld_blocks", [])
+    if block.get("status") in ("error", "missing_fields")
+]
+
+print(f"Total: {len(results)}")
+print(f"Blocks with problems: {len(problems)}")
+for url, block in problems:
+    print(url, block.get("type"), block.get("error") or block.get("missing_required_fields"))
+```
+
+### Deeper Checks in Your Own Code
+
+Rules beyond top-level required fields are easy to add yourself. Run a function like this over the `json_ld` list that `/v1/extract/structured` returns for the same URL:
+
+```python
+def extra_checks(node):
+    issues = []
+    t = node.get("@type")
+    if t == "Product":
+        offers = node.get("offers") or {}
+        if isinstance(offers, list):
+            offers = offers[0] if offers else {}
+        if not offers.get("price"):
+            issues.append("offers.price missing")
+    if t == "FAQPage":
+        for q in node.get("mainEntity") or []:
+            if not isinstance(q.get("acceptedAnswer"), dict):
+                issues.append("acceptedAnswer is not an Answer object")
+    if t in ("Organization", "Person") and not node.get("sameAs"):
+        issues.append("no sameAs URLs")
+    return issues
 ```
 
 ### CI/CD Integration (GitHub Actions)
@@ -231,30 +247,32 @@ jobs:
   validate-schema:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Validate production URLs
+        env:
+          OLLAGRAPH_API_KEY: ${{ secrets.OLLAGRAPH_API_KEY }}
         run: |
-          curl -X POST https://api.ollagraph.com/v1/schema/validate/batch \
-            -H "Authorization: Bearer ${{ secrets.OLLAGRAPH_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"urls": ${{ needs.generate-url-list.outputs.urls }}}' \
-            -o schema-results.json
-      - name: Check for critical errors
-        run: |
-          ERRORS=$(cat schema-results.json | jq '.summary.critical_errors')
-          if [ "$ERRORS" -gt "0" ]; then
-            echo "Schema validation failed with $ERRORS critical errors"
-            exit 1
-          fi
+          FAILED=0
+          while read -r url; do
+            curl -s -X POST https://api.ollagraph.com/v1/seo/schema-validate \
+              -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"url\": \"$url\"}" -o result.json
+            BAD=$(jq '[.json_ld_blocks[]? | select(.status == "error" or .status == "missing_fields")] | length' result.json)
+            if [ "$BAD" -gt "0" ]; then
+              echo "$url: $BAD broken JSON-LD block(s)"
+              FAILED=1
+            fi
+          done < urls.txt
+          exit $FAILED
 ```
 
 ### Scheduled Monitoring
 
 ```bash
-# Run every 6 hours via cron
-0 */6 * * * curl -X POST https://api.ollagraph.com/v1/schema/validate/batch \
-  -H "Authorization: Bearer ola_sk_live_xxxxxxxxxxxx" \
-  -H "Content-Type: application/json" \
-  -d '{"urls_file": "sitemap.xml", "webhook": "https://hooks.slack.com/services/xxx"}'
+# Run every 6 hours via cron. validate.py is the Python loop above,
+# extended to post failures to your Slack webhook.
+0 */6 * * * OLLAGRAPH_API_KEY=osk_... python3 /opt/schema/validate.py
 ```
 
 ---
@@ -278,7 +296,7 @@ A major retailer deployed a template update that accidentally removed the price 
 }
 ```
 
-The price field is required for Offer. Without it, Google cannot display price-rich snippets. The Ollagraph validator caught this immediately with a `missing_required_property` error on `offers.price`. The fix was a one-line template change, and re-validation confirmed all 12,000 pages passed. Total time from detection to resolution: 14 minutes.
+The price field is required for Offer. Without it, Google cannot display price-rich snippets. `/v1/seo/schema-validate` checks top-level required fields (Product needs `name`), so a nested rule like this one belongs in your own checks, such as the `extra_checks` function above. The fix was a one-line template change, followed by re-validation of all 12,000 pages.
 
 ### Scenario 2: FAQ page with invalid mainEntity structure
 
@@ -317,35 +335,33 @@ The `acceptedAnswer` property must be an Answer object, not a plain string. The 
 }
 ```
 
-Roughly 18% of FAQPage implementations in our benchmark had this exact error.
+This is one of the most common FAQPage mistakes.
 
 ### Scenario 3: Article page with stale dateModified
 
-A news publisher had 8,000 articles with `dateModified` set to the article's original publish date, even though many had been updated multiple times. AI crawlers use `dateModified` as a freshness signal. The validator flagged this as an AI-readiness warning. The publisher updated their CMS to set `dateModified` to the actual last edit timestamp, and within two weeks saw articles with accurate timestamps appear in AI Overviews roughly 2.4x more frequently.
+A news publisher had 8,000 articles with `dateModified` set to the article's original publish date, even though many had been updated multiple times. AI crawlers use `dateModified` as a freshness signal. `/v1/aeo/freshness-signal`, which compares `dateModified` with the page's other date signals, is a quick way to spot this. The publisher updated their CMS to set `dateModified` to the actual last edit timestamp, and within two weeks saw articles with accurate timestamps appear in AI Overviews roughly 2.4x more frequently.
 
 ### Scenario 4: Organization schema with no sameAs
 
-A B2B company had Organization schema on their homepage but no `sameAs` URLs. AI crawlers use `sameAs` to link entities across the knowledge graph. The validator returned an AI-readiness warning. Adding three `sameAs` URLs resolved it. The company reported that within three weeks, their brand entity appeared in 40% more AI-generated answers across ChatGPT and Perplexity.
+A B2B company had Organization schema on their homepage but no `sameAs` URLs. AI crawlers use `sameAs` to link entities across the knowledge graph. A `sameAs` check in the team's own pipeline flagged it. Adding three `sameAs` URLs resolved it. The company reported that within three weeks, their brand entity appeared in 40% more AI-generated answers across ChatGPT and Perplexity.
 
 ---
 
-## 8. Performance & Benchmarks: Validating 50,000 Pages in Under 5 Minutes
+## 8. Performance & Benchmarks: What Validating 50,000 Pages Takes
 
-We ran a benchmark to measure the Ollagraph Schema Validator API's throughput and accuracy. We selected 50,000 URLs from five e-commerce and content sites, ranging from 10 to 450 KB per page. We used a single API deployment with 16 parallel workers on a c6i.4xlarge EC2 instance (16 vCPUs, 32 GB RAM). The test was run three times over 48 hours; the results below reflect the median run.
+Every URL call fetches the page, so validation time depends mostly on how fast your own pages respond. Measure it on your own sitemap: run a sample of a few hundred URLs at a fixed concurrency, record p50 and p95 latency and the failure rate, then extrapolate.
 
-- **Throughput:** The batch completed in 4 minutes 23 seconds, averaging 190 pages per minute. Per-page latency ranged from 180 ms to 1.2 seconds. The 95th percentile was 890 ms.
-- **Error detection rate:** We seeded 500 pages with known schema errors. The validator detected 494 of 500 — a 98.8% detection rate. The six missed cases were edge cases involving deeply nested `@graph` arrays with malformed `@id` references.
-- **Comparison with manual validation:** We asked three SEO specialists to manually validate 100 URLs each using Google's Rich Results Test. Average time per URL was 22 seconds. Total time for 100 URLs: 37 minutes per person. Error detection rate: 76% — they missed 24% of seeded errors, mostly AI-readiness warnings that the Rich Results Test does not surface.
-- **Cost comparison:** Manual validation of 50,000 URLs at 22 seconds each would require 305 person-hours. At $75/hour, that is $22,875. The Ollagraph API processed the same 50,000 URLs for $0.003 per validation — $150 total.
+- **Throughput:** total time is roughly URL count × median latency ÷ concurrency. Keep concurrency modest so you do not overload your own origin.
+- **Detection coverage:** seed a handful of pages with known errors (broken JSON, a missing required field, a lowercase `@type`) and confirm each one shows up. `/v1/seo/schema-validate` covers JSON syntax and top-level required fields; nested rules need your own checks.
+- **Comparison with manual validation:** pasting a URL into Google's Rich Results Test, waiting, and reading the result takes around 20 seconds per URL.
+- **Cost comparison:** manual validation of 50,000 URLs at 22 seconds each would take about 305 person-hours. At $75/hour, that is $22,875. With the API, each validation is 1 credit, so 50,000 URLs is 50,000 credits; failed calls are refunded.
 
-| Metric | Manual (Rich Results Test) | Ollagraph Validator API |
+| Metric | Manual (Rich Results Test) | Ollagraph /v1/seo/schema-validate |
 | :--- | :--- | :--- |
-| Time for 50,000 URLs | 305 hours | 4 min 23 sec |
-| Cost for 50,000 URLs | $22,875 | $150 |
-| Error detection rate | 76% | 98.8% |
-| AI-readiness checks | None | Built-in |
+| Time for 50,000 URLs | ~305 hours | Depends on page latency and your concurrency |
+| Cost for 50,000 URLs | ~$22,875 | 50,000 credits |
+| Nested and AI-readiness rules | None | Your own code on the same JSON-LD |
 | CI/CD integrable | No | Yes |
-| Per-URL cost | ~$0.46 | $0.003 |
 
 ---
 
@@ -353,29 +369,25 @@ We ran a benchmark to measure the Ollagraph Schema Validator API's throughput an
 
 ### Data Handling
 
-The API does not store page content beyond the validation window. Raw HTML and extracted JSON-LD are held in memory during processing and discarded after the report is generated. Validation results are retained for 30 days for job tracking. You can delete results earlier via the API. We do not share validation data with third parties or use your page content for model training.
+Ollagraph does not store page content. Raw HTML and extracted JSON-LD are processed in memory and discarded once the response is returned. The request URL is recorded in your usage log so you can see what you called. Keep your own copy of results if you need a validation history.
 
 ### Authentication-Protected Pages
 
-The validator can authenticate to pages behind basic auth or custom headers if you provide credentials in the request. Credentials are encrypted in transit (TLS 1.3) and are not stored. For pages behind SSO or OAuth, you can submit raw JSON-LD directly instead of a URL.
+The validator only fetches public pages. It cannot log in, and it does not send cookies or custom headers. For pages behind basic auth, SSO or OAuth, fetch the HTML yourself and send it in the `html` field; validation runs the same way.
 
 ### Sensitive Data in Schema
 
-JSON-LD blocks sometimes contain internal information — employee names, internal product IDs, pricing tiers not shown publicly. The validator processes this data but does not log or expose it beyond the validation report. If concerned, review your JSON-LD before submitting or use the raw endpoint with a sanitized payload.
+JSON-LD blocks sometimes contain internal information — employee names, internal product IDs, pricing tiers not shown publicly. The validator processes this data but does not store it beyond the response. If concerned, review your JSON-LD before submitting or send a sanitized copy of the page in the `html` field.
 
 ### Rate Limiting and Abuse Prevention
 
-The API enforces per-key rate limits (configurable on enterprise plans). Excessive requests trigger a 429 response with a `Retry-After` header.
-
-### Data Residency
-
-The API processes data in the region closest to the endpoint. Current regions: US East (Virginia), EU West (Frankfurt), and Asia Pacific (Singapore). Enterprise plans can pin processing to a specific region.
+The API enforces per-key rate limits. Excessive requests receive a 429 response; back off and retry.
 
 ---
 
 ## 10. Troubleshooting: Common Validation Failures and How to Fix Them
 
-- **Error: Missing `@context`.** The JSON-LD block has no `@context` field. Fix: add `"@context": "https://schema.org"` at the top of every JSON-LD block. Roughly 4% of pages in our benchmark had this issue.
+- **Error: Missing `@context`.** The JSON-LD block has no `@context` field. Fix: add `"@context": "https://schema.org"` at the top of every JSON-LD block.
 - **Error: Invalid `@type`.** The `@type` value does not match any type in the schema.org vocabulary. Common causes: typos (`Produkt` instead of `Product`), lowercase types (`product` instead of `Product`). Fix: verify the type name against the schema.org type hierarchy.
 - **Error: Missing required property.** A schema.org type is missing a required property. `Event` requires `name` and `startDate`. `Offer` requires `price` and `priceCurrency`. Fix: add the missing property with a valid value.
 - **Error: Type mismatch.** A property expects a specific type but received something else. `author` on `Article` expects a Person or Organization object, not a plain string. Fix: wrap the value in the correct type object.
@@ -390,21 +402,21 @@ The API processes data in the region closest to the endpoint. Current regions: U
 
 - **Validate at every deployment.** Add schema validation to your CI/CD pipeline as a blocking check. If the validator finds critical errors, the deployment should fail. One e-commerce client added this to their GitHub Actions workflow and caught a broken `@context` template on the very first run — a regression that had been in production for three weeks.
 - **Validate on a schedule.** Deployments are not the only source of schema regressions. CMS updates, CDN changes, and A/B testing frameworks can all introduce errors. Run validation every 6 hours for high-traffic sites, daily for others.
-- **Monitor conformance scores over time.** Tracking scores reveals trends: gradual degradation as templates accumulate changes, or sudden drops after deployments. Set up a dashboard in Datadog or Grafana with conformance score and AI-readiness score as time-series metrics.
-- **Validate both rendered and raw HTML.** Some JSON-LD is injected by JavaScript after page load. The headless browser captures this, but also validate the raw HTML source for a faster check. A client of ours had a Next.js site where 40% of their JSON-LD was client-side rendered — raw HTTP validation showed zero schema.
-- **Include AI-readiness in your validation scope.** Google's Rich Results Test does not check `sameAs`, `@id` consistency, or `dateModified` freshness. We ran a comparison: 73% of pages that passed Google's Rich Results Test had at least one AI-readiness warning.
+- **Monitor validation results over time.** Tracking results reveals trends: gradual degradation as templates accumulate changes, or sudden drops after deployments. Set up a dashboard in Datadog or Grafana with error rate and eligible rich-result types as time-series metrics.
+- **Validate both rendered and raw HTML.** Some JSON-LD is injected by JavaScript after page load. Validate the raw HTML with a URL call, and the rendered HTML by passing `/v1/render` output in the `html` field. A client of ours had a Next.js site where 40% of their JSON-LD was client-side rendered — raw HTTP validation showed zero schema.
+- **Include AI-readiness in your validation scope.** Google's Rich Results Test does not check `sameAs`, `@id` consistency, or `dateModified` freshness, so add those checks yourself.
 - **Set up alerting for error rate spikes.** If the schema error rate exceeds 5% of validated pages, notify the engineering team. A sudden spike usually means a template change broke something site-wide.
-- **Keep a validation history.** Store results over time to compare before-and-after for any deployment. The API returns a `validation_id` for each result for historical retrieval.
+- **Keep a validation history.** Store results over time to compare before-and-after for any deployment. The API does not keep results for you, so write them to your own database.
 
 ---
 
 ## 12. Common Mistakes: What Teams Get Wrong with Automated Schema Validation
 
 - **Mistake 1: Validating only the homepage.** The homepage is hand-crafted and carefully maintained — the worst proxy for the other 99% of your site. We once onboarded a client whose homepage schema scored 94, while their product pages averaged 41.
-- **Mistake 2: Ignoring warnings.** Warnings are not errors, but they accumulate. Pages with more than 10 warnings have an average AI-readiness score of 52, compared to 84 for pages with fewer than 3 warnings. Treat warnings as technical debt.
-- **Mistake 3: Not testing with JavaScript rendering.** If your JSON-LD is injected by client-side JavaScript, a raw-HTTP fetch will not find it. We tested 200 sites built with JavaScript frameworks: 34% had JSON-LD only present in the rendered DOM.
+- **Mistake 2: Ignoring warnings.** Warnings are not errors, but they accumulate. Treat warnings as technical debt.
+- **Mistake 3: Not testing with JavaScript rendering.** If your JSON-LD is injected by client-side JavaScript, a raw-HTTP fetch will not find it. On JavaScript-framework sites, JSON-LD is often present only in the rendered DOM.
 - **Mistake 4: Validating only at launch.** Templates change, CMS platforms update, third-party plugins inject their own schema. One enterprise client discovered that a WordPress plugin update had been silently stripping `@context` from 8,000 pages over three months.
-- **Mistake 5: Not checking AI-readiness separately.** A page can pass Google's Rich Results Test and still have poor AI-readiness. We analyzed 1,000 pages that passed the Rich Results Test: 73% had at least one AI-readiness warning.
+- **Mistake 5: Not checking AI-readiness separately.** A page can pass Google's Rich Results Test and still have poor AI-readiness.
 - **Mistake 6: Over-relying on a single validator.** Different validators catch different issues. Use one that covers syntax, conformance, rich results, and AI-readiness, or run multiple tools.
 - **Mistake 7: Not validating after CMS migrations.** CMS migrations are the single biggest source of schema regressions. One client migrated from WordPress to Contentful and lost 60% of their rich snippets because the migration script dropped `@context` from every JSON-LD block.
 
@@ -420,13 +432,13 @@ The API processes data in the region closest to the endpoint. Current regions: U
 | **Merkle Schema Validator** | Yes | Yes | Partial | Yes | Free tier + enterprise |
 | **Ahrefs Site Audit** | Yes (via API) | Yes | No | Partial | $99+/month |
 | **Semrush Site Audit** | Yes (via API) | Yes | No | Partial | $119+/month |
-| **Ollagraph Schema Validator API** | Yes (REST) | Yes (sync + async) | Yes (full) | Yes (native) | Pay-per-use, $0.003/validation |
+| **Ollagraph /v1/seo/schema-validate** | Yes (REST) | No (one URL per call; loop in your code) | Partial (AEO coverage score; sameAs/@id checks in your code) | Yes | 1 credit per call, pay-as-you-go |
 
 Google's Rich Results Test is fine for ad-hoc debugging of a single URL. The Schema.org validator is useful for checking vocabulary conformance during development. None of these free tools are designed for scale, automation, or AI-readiness.
 
 For production-scale validation, you need an API. Merkle's validator is solid for Google-specific rich result checks, but its AI-readiness checks are partial — it checks `@id` presence but not `sameAs` coverage or `dateModified` freshness. Ahrefs and Semrush include schema validation as part of broader site audits, but their validation depth is limited and their batch APIs are designed for their own audit schedules rather than on-demand validation.
 
-The Ollagraph Schema Validator API is the only option that combines syntax validation, schema.org conformance, Google rich result eligibility, and AI-readiness checks in a single API call, with native batch processing and CI/CD integration.
+Ollagraph pairs rich-result validation (`/v1/seo/schema-validate`) with AEO schema coverage scoring (`/v1/aeo/schema-coverage`) under one API key, priced per call, and both drop into CI/CD as plain HTTPS requests.
 
 ### When to choose each tool:
 
@@ -435,7 +447,7 @@ The Ollagraph Schema Validator API is the only option that combines syntax valid
 - **W3C JSON-LD Playground:** Understanding how a complex `@context` file resolves.
 - **Merkle:** If you need basic API-based validation and are already in the Merkle ecosystem.
 - **Ahrefs/Semrush:** If you already use these platforms and want schema validation as part of a broader site audit.
-- **Ollagraph:** If you need automated, CI/CD-integrated validation with AI-readiness checks at scale.
+- **Ollagraph:** If you need automated, CI/CD-integrated validation plus AEO coverage scoring, priced per call.
 
 ---
 
@@ -443,27 +455,27 @@ The Ollagraph Schema Validator API is the only option that combines syntax valid
 
 ### Multi-Domain Validation
 
-The API supports validating URLs across multiple domains in a single batch, with results grouped by domain. One agency we work with validates 12 client sites in a single batch every morning and gets a domain-by-domain breakdown in their Slack channel by 8 AM.
+Validate URLs from several domains in the same loop and group the results by domain in your own code. An agency can run every client sitemap in one morning job and post a domain-by-domain breakdown to Slack.
 
 ### Custom Validation Rules
 
-Enterprise plans support custom rules beyond standard checks — for example, enforcing that all Product pages must have a brand property, or that all Article pages must include author with a Person type.
+Custom rules — for example, that every Product must have a `brand`, or every Article an `author` of type Person — live in your own code, run against the JSON-LD that `/v1/extract/structured` returns.
 
-### Webhook-Based Alerting
+### Alerting
 
-Configure webhooks for real-time alerting when validation fails. Integrate with Slack, PagerDuty, or your incident management system. Critical errors can trigger PagerDuty incidents while warnings go to a Slack channel.
+Route failures from your pipeline to Slack, PagerDuty, or your incident management system. Critical errors can trigger PagerDuty incidents while warnings go to a Slack channel.
 
 ### Observability Integration
 
-Export validation results to Datadog, Grafana, or CloudWatch as custom metrics. Track conformance score, error rate, and AI-readiness score over time.
+Export validation results from your pipeline to Datadog, Grafana, or CloudWatch as custom metrics. Track error rate and eligible rich-result types over time.
 
-### SLA and Throughput
+### Throughput
 
-Enterprise plans include a 99.9% uptime SLA. Standard throughput is 500 pages per minute, scalable to 5,000+ with advance provisioning.
+Throughput is bounded by your key's rate limit and by how quickly the target pages respond. Spread large sitemaps across a scheduled job rather than one burst.
 
 ### Team Management
 
-Enterprise plans support team API keys with granular permissions: read-only keys for monitoring, write keys for configuration, and admin keys for billing management.
+Create one API key per environment, team or client. Each key can carry a label, a project tag and a daily credit cap, and can be rotated or deleted on its own.
 
 ---
 
@@ -475,27 +487,27 @@ A web service that programmatically checks JSON-LD, Microdata, and RDFa for synt
 
 ### Q2. How is this different from Google's Rich Results Test?
 
-Google's Rich Results Test is a browser-based tool for single-URL debugging. It has no public API, no batch processing, and no AI-readiness checks. The Ollagraph Schema Validator API is built for automation: batch validation, CI/CD integration, scheduled monitoring, and coverage of AI-crawler requirements that the Rich Results Test does not address. If you manage more than 50 pages, the browser tool is costing you time and letting regressions through.
+Google's Rich Results Test is a browser-based tool for single-URL debugging. It has no public API, no batch processing, and no AI-readiness checks. Ollagraph's `/v1/seo/schema-validate` is a plain HTTPS endpoint built for automation: loop it over a sitemap, call it from CI/CD, or run it on a schedule, and pair it with `/v1/aeo/schema-coverage` for an AEO coverage score. If you manage more than 50 pages, the browser tool is costing you time and letting regressions through.
 
 ### Q3. Can it validate pages behind a login?
 
-Yes. The API supports basic authentication and custom headers for pages behind authentication. For complex SSO setups, you can submit raw JSON-LD directly instead of a URL — the raw endpoint performs all validation layers without fetching the page.
+Not by URL. The validator only fetches public pages and cannot log in or send cookies or custom headers. For pages behind authentication, fetch the HTML yourself and send it in the `html` field; validation runs the same way.
 
 ### Q4. Does it check for Google-specific rich result requirements?
 
-Yes. The validator includes a rich result eligibility layer that checks Google's additional constraints beyond schema.org — for example, the specific requirements for Product, Review, FAQPage, HowTo, Recipe, and Event rich snippets. These rules are updated within 48 hours of Google changing a requirement.
+Yes, for top-level required fields. The validator checks each JSON-LD node against required-field lists for 20+ rich-result types, including Product, Review, FAQPage, HowTo, Recipe, Event and JobPosting, and returns the types the page is eligible for. Nested rules, such as an Offer's `price`, are best added in your own code.
 
-### Q5. What does the AI-readiness score measure?
+### Q5. How do I check AI-readiness?
 
-The AI-readiness score (0-100) measures how well your structured data supports AI crawler extraction and entity disambiguation. It checks for stable `@id` identifiers, `sameAs` URLs for knowledge graph linking, `dateModified` freshness signals, property coverage depth, and entity consistency. A score above 80 indicates strong AI-readiness. Below 60 means AI crawlers will struggle to confidently extract your entities.
+`/v1/aeo/schema-coverage` scores a page from 0 to 100 against the schema types that matter most for AI answers and lists which are present and missing. `/v1/aeo/freshness-signal` checks `dateModified` and the page's other date signals. Checks such as stable `@id` identifiers and `sameAs` coverage are a few lines of your own code on the JSON-LD returned by `/v1/extract/structured`.
 
 ### Q6. How many URLs can I validate in a single batch?
 
-Synchronous batch requests support up to 500 URLs per call. Asynchronous batch processing supports unlimited URLs — submit your sitemap URL or a file of URLs, and the API processes them with results delivered via webhook or polled from a job endpoint.
+Each call validates one URL or one HTML document. To validate a sitemap, loop over its URLs in your own code with modest concurrency; each call costs 1 credit.
 
 ### Q7. What happens if a page has multiple JSON-LD blocks?
 
-The validator detects and processes all JSON-LD blocks independently. Each block gets its own validation results. Conflicts between blocks, for example, two blocks declaring different `@type` for the same `@id`, are flagged as warnings.
+The validator processes every JSON-LD block, and every node inside an array or `@graph`, independently. Each one gets its own entry, identified by `block_index` and `node_index`.
 
 ### Q8. How often should I run schema validation?
 
@@ -503,19 +515,19 @@ At minimum, run validation on every deployment and on a daily schedule. For high
 
 ### Q9. Is the validator GDPR compliant?
 
-Yes. The API does not store page content beyond the processing window. Validation results are retained for 30 days and can be deleted on demand. No personal data from validated pages is logged or exposed. The service runs on SOC 2-compliant infrastructure.
+Ollagraph does not store page content: HTML and JSON-LD are processed in memory and discarded after the response. The request URL is recorded in your usage log. If your pages put personal data in their schema, review that before you publish it.
 
 ### Q10. What schema formats does the validator support?
 
-JSON-LD is the primary format with full support. Microdata and RDFa are supported with partial validation — syntax and basic conformance checks are available, but rich result eligibility and AI-readiness checks are optimized for JSON-LD. For production validation, JSON-LD is strongly recommended.
+JSON-LD only. `/v1/seo/schema-validate` does not audit Microdata or RDFa yet. `/v1/extract/structured` returns a page's Microdata and RDFa if you want to inspect them, and JSON-LD is strongly recommended for production.
 
 ### Q11. Can I use this in a GitHub Actions workflow?
 
-Yes. The API is designed for CI/CD integration. The blog post above includes a complete GitHub Actions example. The API returns exit-code-compatible responses, so you can fail a build on critical errors. The same pattern works for GitLab CI, CircleCI, Jenkins, and Bitbucket Pipelines.
+Yes. The API is a plain HTTPS POST, so any CI step can call it and fail the build on broken blocks; the GitHub Actions example above does this with curl and jq. The same pattern works for GitLab CI, CircleCI, Jenkins, and Bitbucket Pipelines.
 
 ### Q12. What is the pricing model?
 
-The Ollagraph Schema Validator API uses a pay-per-use model: $0.003 per validation, one URL or one raw JSON-LD submission. The free tier includes 1,000 validations per month. Enterprise plans offer custom pricing with dedicated throughput, custom validation rules, and SLA guarantees. There are no annual contracts or minimum commitments.
+Pricing is credit-based and pay-as-you-go. Each `/v1/seo/schema-validate` call costs 1 credit, one URL or one HTML submission, and failed calls are refunded. New accounts get 1,000 free credits. There are no annual contracts or minimum commitments.
 
 ---
 
@@ -523,13 +535,13 @@ The Ollagraph Schema Validator API uses a pay-per-use model: $0.003 per validati
 
 Schema validation should not be a manual QA step. It should be an automated, continuous, and integrated part of your deployment and monitoring pipeline. The cost of invalid schema — lost rich results, lower CTR, reduced AI citation confidence — far exceeds the cost of catching errors before they reach production.
 
-The Ollagraph Schema Validator API gives you a single endpoint that checks JSON-LD syntax, schema.org conformance, Google rich result eligibility, and AI-crawler readiness. It processes 50,000 pages in under 5 minutes, integrates into any CI/CD system, and costs $0.003 per validation. No browser tabs, no copy-paste, no sampling risk.
+Ollagraph's `/v1/seo/schema-validate` checks JSON-LD syntax and rich-result required fields for any URL or HTML document, costs 1 credit per call, and fits into any CI/CD system as a single HTTPS request. Add your own nested and AI-readiness checks on top. No browser tabs, no copy-paste, no sampling risk.
 
 Start with your sitemap. Run a full validation. Fix the errors. Then set up the cron job and the CI/CD step. The next time a CMS migration or template change breaks your schema, you will know within minutes — not three days later when Google Search Console sends the alert.
 
 The shift from "schema for rich results" to "schema for AI visibility" is already happening. Google AI Overviews, ChatGPT, Perplexity, and Claude all use structured data as a signal for entity understanding and citation confidence. Pages with clean, complete, AI-ready schema will be cited more frequently by these systems. Pages with broken or incomplete schema will be invisible to them. Automate your validation now, or let your competitors gain the visibility you are leaving on the table.
 
-Next steps: Read the [Ollagraph Schema Validator API documentation](https://ollagraph.com/docs/schema-validator) for the full API reference. Check out the [How AI Crawlers Read Schema Markup](https://ollagraph.com/blog/how-ai-crawlers-read-schema-markup-json-ld-entities-structured-data) post for a deeper look at how structured data affects AI extraction. The [Schema Markup for Google AI Overviews: The 2026 Technical Audit Guide](https://ollagraph.com/blog/schema-markup-google-ai-overviews-2026-technical-audit-guide) provides a technical audit framework for AI-specific schema optimization.
+Next steps: Read the [Ollagraph API documentation](https://ollagraph.com/docs) for the full API reference. Check out the [How AI Crawlers Read Schema Markup](https://ollagraph.com/blog/how-ai-crawlers-read-schema-markup-json-ld-entities-structured-data) post for a deeper look at how structured data affects AI extraction. The [Schema Markup for Google AI Overviews: The 2026 Technical Audit Guide](https://ollagraph.com/blog/schema-markup-google-ai-overviews-2026-technical-audit-guide) provides a technical audit framework for AI-specific schema optimization.
 
 ---
 
@@ -540,7 +552,7 @@ Next steps: Read the [Ollagraph Schema Validator API documentation](https://olla
 - [Google — "Rich Results Test documentation"](https://developers.google.com/search/docs/appearance/structured-data/rich-results-test)
 - [Google — "Structured Data General Guidelines"](https://developers.google.com/search/docs/appearance/structured-data/sd-policies)
 - [Google — "AI Overviews and structured data"](https://developers.google.com/search/docs/appearance/ai-overviews)
-- [Ollagraph — "Schema Validator API Reference"](https://ollagraph.com/docs/schema-validator)
+- [Ollagraph — "API Reference"](https://ollagraph.com/docs)
 - [Ollagraph — "How AI Crawlers Read Schema Markup"](https://ollagraph.com/blog/how-ai-crawlers-read-schema-markup-json-ld-entities-structured-data)
 - [Ollagraph — "Schema Markup for Google AI Overviews: The 2026 Technical Audit Guide"](https://ollagraph.com/blog/schema-markup-google-ai-overviews-2026-technical-audit-guide)
 - [W3C — "Schema.org Validator"](https://validator.schema.org/)

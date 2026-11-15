@@ -23,7 +23,7 @@ Traditional technical SEO audits were built for Googlebot — a crawler that ind
 - In our benchmark of 200 pages, 68% passed traditional SEO checks but failed at least one AI-specific check — the most common being JavaScript-rendered content that AI crawlers couldn't extract.
 - robots.txt is necessary but insufficient. Many AI crawler failures happen after the crawler is allowed — at the WAF, the CDN, the renderer, or the extraction layer.
 - A good AI crawler audit produces a prioritized remediation list sorted by impact on citation probability, not just a score. Fix extraction failures before you optimize schema.
-- [Ollagraph](https://ollagraph.com)'s composite page-audit endpoint runs all six layers in a single API call and returns a prioritized fix list. You can integrate it into your CI/CD pipeline or run it as a weekly scheduled sweep.
+- [Ollagraph](https://ollagraph.com)'s composite page-audit endpoint (`/v1/aeo/page-audit`) runs nine checks across the first five layers in a single API call and returns a 0–100 score with a ranked fix list. You can integrate it into your CI/CD pipeline or run it as a weekly scheduled sweep.
 
 ---
 
@@ -309,30 +309,16 @@ Run layers 4-6 (Extraction & Passage, Citation & Trust, Monitoring & Regression)
 Add a lightweight AI crawler check to your deployment pipeline. Before you deploy a new page or a template change, run a fetch simulation with the three major AI crawler user agents. If any of them return a non-200 status or an empty body, block the deployment.
 
 ### Using Ollagraph for Automation
-Ollagraph's composite page-audit endpoint runs all six layers in a single API call. Here's how to integrate it into a weekly sweep:
+Ollagraph's composite `/v1/aeo/page-audit` endpoint runs nine probes in parallel in a single API call (3 credits): meta tags, readability, snippet candidates, schema coverage, citation readiness, AI-bot robots.txt rules, a per-crawler fetch simulation (with JS-only and cloaking detection), redirects, and llms.txt. Together they cover the first five layers; running it on a schedule covers the sixth. Here's how to integrate it into a weekly sweep:
 
 ```bash
-curl -X POST "https://api.ollagraph.com/v1/audit/page" \
+curl -X POST "https://api.ollagraph.com/v1/aeo/page-audit" \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com",
-    "checks": [
-      "robots-txt",
-      "llms-txt",
-      "http-status",
-      "per-agent-fetch",
-      "js-rendered-content",
-      "dom-extraction",
-      "passage-quality",
-      "citation-readiness",
-      "freshness-signal",
-      "schema-alignment"
-    ]
-  }'
+  -d '{"url": "https://example.com"}'
 ```
 
-The response includes a composite score, per-check scores, and a prioritized remediation list sorted by impact on citation probability.
+The response includes an overall 0–100 score and grade, five category scores (discoverability, content quality, structured data, answerability, citability), the top issues, a ranked list of recommendations, and each probe's full result. For freshness signals, add a call to `/v1/aeo/freshness-signal`.
 
 ---
 
@@ -400,7 +386,7 @@ You can run the six-layer framework manually using curl, Playwright, and manual 
 These tools excel at traditional SEO checks—backlinks, keywords, meta tags, redirects, and sitemaps. They don't simulate AI crawler behavior, test per-user-agent responses, measure passage extraction quality, or score citation readiness. They're complementary but insufficient for AI crawler audits.
 
 ### AI-Specific Audit Tools (Ollagraph, Other)
-Ollagraph's page-audit endpoint runs all six layers in a single API call. It simulates GPTBot, ClaudeBot, and PerplexityBot fetches, measures extraction quality, scores citation readiness, and returns a prioritized remediation list. It's designed for automation—integrate it into a CI/CD pipeline, a weekly sweep, or a deployment gate.
+Ollagraph's page-audit endpoint runs nine checks across the first five layers in a single API call. It simulates fetches by GPTBot, ClaudeBot, PerplexityBot and other AI crawlers, checks snippet and passage structure, scores citation readiness, and returns a ranked remediation list. It's designed for automation—integrate it into a CI/CD pipeline, a weekly sweep, or a deployment gate.
 
 | Feature | Manual | Traditional SEO Tools | Ollagraph |
 | :--- | :--- | :--- | :--- |
@@ -411,7 +397,7 @@ Ollagraph's page-audit endpoint runs all six layers in a single API call. It sim
 | **Citation readiness scoring** | Manual | No | Automated |
 | **Prioritized remediation list** | Manual | No | Automated |
 | **CI/CD integration** | No | Limited | API-native |
-| **Cost per audit (50 pages)** | 4-8 hours labor | Subscription | Per-request |
+| **Cost per audit (50 pages)** | 4-8 hours labor | Subscription | 150 credits (3 per page) |
 
 ---
 
@@ -427,7 +413,7 @@ AI crawler readiness touches SEO, engineering, content, security, and compliance
 Track your AI crawler audit score over time. Alert on drops of more than 10 points. Alert when a deployment fails the AI crawler check.
 
 ### Cost Management
-Batch requests and run during off-peak hours. Cache results for unchanged pages. Ollagraph's API includes caching headers to help manage costs.
+Batch requests and run during off-peak hours. Cache results for unchanged pages. Ollagraph's API reports each call's credit cost in response headers (`x-credits-cost`, `x-credits-charged`, `x-credits-balance`) to help manage costs.
 
 ---
 
@@ -488,8 +474,8 @@ The teams that build this capability now will have a significant advantage as AI
 ## 20. References
 
 - **Ollagraph AEO Framework:** [https://ollagraph.com/aeo](https://ollagraph.com/aeo)
-- **Ollagraph Page Audit API:** [https://ollagraph.com/docs/audit/page-audit](https://ollagraph.com/docs/audit/page-audit)
-- **Ollagraph LLM Fetch Simulator:** [https://ollagraph.com/docs/aeo/llm-fetch-simulator](https://ollagraph.com/docs/aeo/llm-fetch-simulator)
+- **Ollagraph Page Audit API (`/v1/aeo/page-audit`):** [https://ollagraph.com/docs](https://ollagraph.com/docs)
+- **Ollagraph LLM Fetch Simulator (`/v1/aeo/llm-fetch-simulator`):** [https://ollagraph.com/docs](https://ollagraph.com/docs)
 - **OpenAI GPTBot Documentation:** [https://platform.openai.com/docs/gptbot](https://platform.openai.com/docs/gptbot)
 - **Anthropic ClaudeBot Documentation:** [https://docs.anthropic.com/en/docs/claudebot](https://docs.anthropic.com/en/docs/claudebot)
 - **PerplexityBot Documentation:** [https://docs.perplexity.ai/docs/perplexitybot](https://docs.perplexity.ai/docs/perplexitybot)

@@ -214,7 +214,7 @@ The lifecycle of an automated inspection follows a structured telemetry pipeline
 
 Ollagraph eliminates the need to maintain private browser clusters or proxy networks by providing purpose-built multi-crawler analysis endpoints:
 
-- [`/v1/aeo/llm-fetch-simulator`](https://ollagraph.com/docs): Tests a URL concurrently across 11 AI crawlers and a browser baseline in a single call (learn more in our [AI crawler fetch simulator tutorial](/blog/ai-crawler-fetch-simulator-see-what-chatgpt/)).
+- [`/v1/aeo/llm-fetch-simulator`](https://ollagraph.com/docs): Fetches a URL concurrently as 10 AI crawler user agents plus a browser baseline in a single call (plain HTTP, no JavaScript execution) (learn more in our [AI crawler fetch simulator tutorial](/blog/ai-crawler-fetch-simulator-see-what-chatgpt/)).
 - [`/v1/scrape`](https://ollagraph.com/docs): Fetches a single page with custom `user_agent`, proxy routing, and JavaScript execution controls.
 - [`/v1/intel/waf`](https://ollagraph.com/docs): Probes edge infrastructure to detect specific WAF and CDN providers.
 - [`/v1/convert/html-to-markdown`](https://ollagraph.com/docs): Strips boilerplate chrome to isolate core editorial text for comparison.
@@ -232,32 +232,35 @@ TARGET_URL = "https://example.com/docs/api-guide"
 
 res = requests.post(
     "https://api.ollagraph.com/v1/aeo/llm-fetch-simulator",
-    headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-    json={"url": TARGET_URL, "render_js": True},
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={"url": TARGET_URL},
     timeout=60
 ).json()
 
-results = res["results"]
-baseline = results["browser_baseline"]
+results = res["results"]  # one entry per user agent, baseline included
+baseline = next(r for r in results if r["bot"] == "Browser (baseline)")
 
 print(f"Auditing: {TARGET_URL}")
-print(f"Baseline: HTTP {baseline['status_code']} | {baseline['word_count']} words\n")
+print(f"Baseline: HTTP {baseline['status']} | {baseline.get('visible_words', 0)} words\n")
 
-for bot, data in results.items():
-    if bot == "browser_baseline":
+for data in results:
+    bot = data["bot"]
+    if bot == "Browser (baseline)":
         continue
-    
-    # 1. Check HTTP Status
-    if data["status_code"] != baseline["status_code"]:
-        print(f"[FAIL] {bot}: Status {data['status_code']} (Expected {baseline['status_code']})")
-    # 2. Check WAF Challenge Interception
-    elif data.get("waf_mitigated"):
-        print(f"[FAIL] {bot}: Intercepted by WAF challenge page")
-    # 3. Check Content Truncation (>20% word drop)
-    elif data["word_count"] < (baseline["word_count"] * 0.8):
-        print(f"[FAIL] {bot}: Content truncated ({data['word_count']} vs {baseline['word_count']} words)")
+
+    # 1. Check HTTP status (None = connection failed or timed out)
+    if data["status"] != baseline["status"]:
+        print(f"[FAIL] {bot}: Status {data['status']} (Expected {baseline['status']}), reason={data.get('reason') or data.get('error')}")
+    # 2. Check for a JavaScript-only shell (200 OK, real-sized body, no visible text)
+    elif data.get("reason") == "js_only_spa":
+        print(f"[FAIL] {bot}: Received a JavaScript-only shell")
+    # 3. Check content truncation (>20% word drop)
+    elif data.get("visible_words", 0) < (baseline.get("visible_words", 0) * 0.8):
+        print(f"[FAIL] {bot}: Content truncated ({data['visible_words']} vs {baseline['visible_words']} words)")
     else:
         print(f"[OK]   {bot}: Parity verified")
+
+print("Cloaking detected:", res["summary"]["cloaking_detected"])
 ```
 
 ### 2. TypeScript / Node.js Implementation (CI Pipeline Check)
@@ -270,18 +273,19 @@ import axios from 'axios';
 async function verifyBotParity(url: string) {
   const { data } = await axios.post(
     'https://api.ollagraph.com/v1/aeo/llm-fetch-simulator',
-    { url, render_js: true },
+    { url },
     { headers: { Authorization: `Bearer ${process.env.OLLAGRAPH_API_KEY}` } }
   );
 
-  const baseline = data.results.browser_baseline;
-  const criticalBots = ['oai-searchbot', 'gptbot', 'claudebot', 'perplexitybot'];
+  const results: any[] = data.results;
+  const baseline = results.find((r) => r.bot === 'Browser (baseline)');
+  const criticalBots = ['OAI-SearchBot', 'GPTBot', 'ClaudeBot', 'PerplexityBot'];
   let hasFailure = false;
 
   for (const bot of criticalBots) {
-    const report = data.results[bot];
-    if (!report || report.status_code !== 200 || report.waf_mitigated || report.word_count < baseline.word_count * 0.8) {
-      console.error(`[FATAL] Multi-bot parity violation detected on ${bot}: HTTP ${report?.status_code}, Words: ${report?.word_count}/${baseline.word_count}`);
+    const report = results.find((r) => r.bot === bot);
+    if (!report || report.status !== 200 || report.reason === 'js_only_spa' || report.visible_words < baseline.visible_words * 0.8) {
+      console.error(`[FATAL] Multi-bot parity violation detected on ${bot}: HTTP ${report?.status}, reason: ${report?.reason}, Words: ${report?.visible_words}/${baseline.visible_words}`);
       hasFailure = true;
     }
   }
@@ -295,7 +299,7 @@ async function verifyBotParity(url: string) {
 verifyBotParity(process.argv[2] || 'https://example.com');
 ```
 
-A single API payload returns exact status codes, WAF challenge markers (`waf_mitigated`), extracted word counts, H1 tags, and detected JSON-LD entities across all major bots (GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot, Googlebot). Any silent failure (such as an unhydrated React shell or a Cloudflare 403) is immediately isolated.
+A single API payload returns, for each of 10 AI crawler user agents (GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, PerplexityBot, Google-Extended, Applebot-Extended, CCBot, Bytespider, MistralAI-User) plus a browser baseline: the HTTP status, final URL, body size, visible word count, a 500-character text preview, and a `reason` (`blocked_by_server`, `rate_limited`, `js_only_spa`, `http_<code>`). A `summary` block counts blocked and JavaScript-only responses and flags likely cloaking. The simulator fetches raw HTML without running JavaScript, the way most AI crawlers do, so an unhydrated React shell or a 403 from an edge firewall is immediately isolated. To see the hydrated page for comparison, fetch it separately with `/v1/render` or `/v1/scrape`.
 
 ## 7. Real-World Case Studies and Production Failure Modes
 
@@ -303,7 +307,7 @@ A single API payload returns exact status codes, WAF challenge markers (`waf_mit
 
 - **Profile:** B2B Enterprise Data Observability Platform ($80M ARR) on Next.js/Vercel with Cloudflare Enterprise.
 - **Incident:** A 40-article technical library ranked top-3 on Google but was never cited in ChatGPT Search, Claude, or Perplexity.
-- **Diagnosis via Ollagraph:** `/v1/aeo/llm-fetch-simulator` revealed `browser_baseline` and `googlebot` received 200 OK (4,280 words), while `gptbot`, `oai-searchbot`, `perplexitybot`, and `claudebot` received 403 Forbidden (`cf-mitigated: challenge`).
+- **Diagnosis via Ollagraph:** `/v1/aeo/llm-fetch-simulator` revealed the browser baseline and the Google-Extended probe received 200 OK (4,280 words), while GPTBot, OAI-SearchBot, PerplexityBot, and ClaudeBot received 403 Forbidden (`reason: blocked_by_server`).
 - **Root Cause:** The cybersecurity team enabled Cloudflare's toggle "Block AI Crawlers and Scrapers", unintentionally blocking real-time search crawlers (`OAI-SearchBot`, `PerplexityBot`) along with offline training bots.
 - **Remediation:** Replaced the global toggle with custom Cloudflare WAF rules:
   ```text
@@ -313,13 +317,13 @@ A single API payload returns exact status codes, WAF challenge markers (`waf_mit
   (http.user_agent contains "PerplexityBot") or
   (http.user_agent contains "Claude-Web") -> Action: Skip WAF Managed Rules
   ```
-  Within 96 hours, Ollagraph confirmed 100% parity; within three weeks, ChatGPT Search began citing the domain.
+  Within 96 hours, a re-run of the simulator showed every bot receiving full content; within three weeks, ChatGPT Search began citing the domain.
 
 ### Post-Mortem 2: The Vite Client-Side SPA Content Collapse
 
 - **Profile:** FinTech Single-Page Application on React 19/Vite, hosted on AWS S3/CloudFront.
 - **Incident:** Zero referral traffic from AI engines despite high SEO audit scores in headless Chrome tools.
-- **Diagnosis via Ollagraph:** Raw wire inspection revealed `browser_baseline` rendered 3,150 words (8 H2 headings), whereas `gptbot` and `claudebot` raw static bodies contained 48 words (`<div id="root"></div>`).
+- **Diagnosis via Ollagraph:** `/v1/aeo/llm-fetch-simulator` flagged GPTBot, ClaudeBot, and every other raw fetch with `reason: js_only_spa`: the static body contained 48 visible words (`<div id="root"></div>`), against 3,150 words (8 H2 headings) in the hydrated page captured with `/v1/render`.
 - **Root Cause:** AI crawlers do not execute client-side JavaScript. Because S3 served a bare `index.html` shell dependent on client-side React hooks, AI crawlers recorded empty pages.
 - **Remediation:** Deployed CloudFront Functions paired with Lambda@Edge to serve pre-rendered Static Site Generation (SSG) HTML to non-browser crawler agents from edge cache.
 
@@ -327,7 +331,7 @@ A single API payload returns exact status codes, WAF challenge markers (`waf_mit
 
 - **Profile:** Developer API Platform utilizing Fastly Compute@Edge pre-rendering stored in Fastly KV.
 - **Incident:** ChatGPT Search and Perplexity hallucinated deprecated API v1 parameters sunset six months earlier.
-- **Diagnosis via Ollagraph:** `browser_baseline` and `googlebot` reflected API v3 syntax, whereas `oai-searchbot` and `perplexitybot` reflected deprecated v1 parameters.
+- **Diagnosis via Ollagraph:** In the simulator's text previews, the browser baseline and the Google-Extended probe (which sends Googlebot's user agent) reflected API v3 syntax, whereas OAI-SearchBot and PerplexityBot reflected deprecated v1 parameters.
 - **Root Cause:** Fastly edge logic triggered revalidation for Googlebot, but routed AI crawlers to an un-purged legacy KV namespace.
 - **Remediation:** Unified cache keys (`hash_data(req.url)`) and added an automated webhook in GitHub Actions to invalidate Fastly edge caches on release.
 
@@ -340,7 +344,7 @@ A single API payload returns exact status codes, WAF challenge markers (`waf_mit
 | **Local Ad-Hoc cURL Script** | 1 URL (Sequential) | 16,400 ms | < 50 MB, 1 vCPU | 6.2 MB (Raw HTML) | Low |
 | **Self-Hosted Puppeteer Cluster** | 4 URLs (Parallel) | 28,500 ms | 8 GB RAM, 4 vCPU (95% Spikes) | 210 MB (Assets/JS) | Extreme (Leaks/Crashes) |
 | **Distributed Celery / Python** | 50 URLs (Parallel) | 19,800 ms | 32 GB RAM, 16 vCPU + Redis | 2.4 GB / hour | High (Proxy/Drivers) |
-| **Ollagraph Managed API** | 250+ (Concurrent) | 1,820 ms | 0 Local Footprint (Serverless) | Minimal (JSON only) | Zero (Fully Managed) |
+| **Ollagraph Managed API** | All bots in parallel per call | Bounded by the slowest bot (15 s per-bot timeout) | 0 Local Footprint (Managed) | Minimal (JSON only) | Zero (Fully Managed) |
 
 ### Prevalence of Discrepancies Across 50,000 Commercial Domains
 
@@ -443,7 +447,7 @@ When managing multi-crawler web access, engineering teams often introduce new fa
 | :--- | :--- | :--- | :--- | :--- |
 | **Setup Time** | < 1 hour | 2–4 weeks | 1–2 weeks | < 15 minutes |
 | **JS Hydration Inspection** | No | Yes | No | Yes |
-| **TLS/JA4 Fingerprint Accuracy** | Low (Trivially flagged) | Medium (Requires stealth plugins) | N/A (Passive) | High (Authentic browser handshakes) |
+| **TLS/JA4 Fingerprint Accuracy** | Low (Trivially flagged) | Medium (Requires stealth plugins) | N/A (Passive) | Simulator: HTTP-client handshake; real browser via `/v1/scrape` |
 | **Concurrent Bot Coverage** | Sequential / Slow | Scalable but expensive | Comprehensive historical | Instant parallel |
 | **Maintenance Burden** | Low | High (Driver updates, memory leaks) | Low (Pipeline monitoring) | Zero (Fully managed SaaS) |
 | **Infrastructure Cost** | Negligible | $500–$3,000 / month | $200–$1,000 / month | Low consumption-based pricing |
@@ -456,10 +460,10 @@ To prevent multi-bot discrepancies from reaching production, engineering teams a
 ### The 3-Step CI/CD Gate
 
 1. **Deploy Staging/Preview:** Git push deploys to an ephemeral staging URL (`https://pr-142.staging.example.com`).
-2. **Audit via Ollagraph API:** CI calls `/v1/aeo/llm-fetch-simulator` to test the URL concurrently across 11 AI bots and a browser baseline.
+2. **Audit via Ollagraph API:** CI calls `/v1/aeo/llm-fetch-simulator` to test the URL concurrently across 10 AI crawler user agents and a browser baseline.
 3. **Pass/Fail Gate:**
-   - **Pass (Score ≥ 90):** Identical status codes, no WAF challenges, and word count within 80% of baseline across critical bots (`OAI-SearchBot`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, `Googlebot`).
-   - **Fail (Score < 90):** Deployment is blocked and an anomaly diff is posted directly to the PR.
+   - **Pass:** Identical status codes, no blocks or JavaScript-only shells, and word count within 80% of baseline across critical bots (`OAI-SearchBot`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, `Google-Extended`).
+   - **Fail:** Deployment is blocked and an anomaly diff is posted directly to the PR.
 
 ### Minimal GitHub Actions Step
 
@@ -471,8 +475,8 @@ To prevent multi-bot discrepancies from reaching production, engineering teams a
     curl -s -X POST "https://api.ollagraph.com/v1/aeo/llm-fetch-simulator" \
       -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
       -H "Content-Type: application/json" \
-      -d '{"url": "${{ steps.deploy.outputs.preview_url }}", "render_js": true}' \
-      | jq -e '.results | to_entries[] | select(.key != "browser_baseline") | select(.value.status_code != 200 or .value.waf_mitigated == true) | empty'
+      -d '{"url": "${{ steps.deploy.outputs.preview_url }}"}' \
+      | jq -e '[.results[] | select(.bot != "Browser (baseline)") | select(.status != 200 or .reason == "js_only_spa")] | length == 0'
 ```
 
 ## 15. Cloud and Edge Worker Deployment Patterns
@@ -565,7 +569,7 @@ A `robots.txt` directive is a voluntary, protocol-level instruction. Well-behave
 High-traffic digital properties should integrate parity audits as an automated, blocking gate within their CI/CD deployment pipelines on every release. Additionally, production URLs should be audited on a scheduled weekly cadence to detect silent regressions introduced by upstream CDN managed ruleset updates, WAF heuristic changes, or third-party script integrations.
 
 ### 8. How does Ollagraph handle IP verification for crawlers?
-Ollagraph’s distributed fetch infrastructure routes simulation probes through managed network pathways configured to accurately reproduce authentic crawler connection parameters and headers. This allows engineering teams to evaluate how origin firewalls and edge security policies respond to real-world bot signatures without having to build and maintain their own residential or datacenter proxy pools.
+It doesn't verify or reproduce crawler IPs. The simulator sends each crawler's user-agent string from Ollagraph's own servers, so a WAF that checks reverse DNS or published crawler IP ranges will treat the probes as unverified. What it shows is how your stack responds to the user-agent string alone, without you building and maintaining your own proxy pools; if your WAF verifies crawler IPs, confirm real-crawler behaviour from your CDN or server logs.
 
 ## 17. Conclusion and Strategic Roadmap
 

@@ -3,127 +3,133 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { navHtml, footerHtml } from '../chrome';
 import stats from '../data/api-stats.json';
 
-const openExample = `# Open a persistent, LLM-driven browser session.
-# Free to open — you only pay per action (goto/act/observe/extract).
-curl -X POST https://api.ollagraph.com/v1/stagehand \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{}'
-# -> { "stagehand_session_id": "sh_...", "llm_provider": "...",
-#      "model_name": "...", "expires_at": "..." }
-# Bring your own model instead (held in memory for the session only):
-#   {"llm_provider": "openai", "model_name": "...", "llm_api_key": "sk-..."}`;
-
-const actExample = `# Drive the session in plain English — no selectors to maintain.
-SID=sh_...
-# 1) Navigate
-curl -X POST https://api.ollagraph.com/v1/stagehand/$SID/goto \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -d '{"url": "https://example.com/search"}'
-
-# 2) Act — the model resolves the instruction to a real element + action
-curl -X POST https://api.ollagraph.com/v1/stagehand/$SID/act \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -d '{"instruction": "type the phrase wireless headphones into the search box and press Enter"}'
-# -> { "ok": true, "success": true, "message": "<selector used>", "url_after": "..." }`;
-
-const extractExample = `# Observe what is actionable, then extract structured data.
-SID=sh_...
-# List candidate actions on the current page (optionally focus with an instruction)
-curl -X POST https://api.ollagraph.com/v1/stagehand/$SID/observe \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -d '{"instruction": "find the add-to-cart buttons"}'
-# -> { "ok": true, "candidates": [{"description": "...", "method": "click", "selector": "..."}] }
-
-# Pull structured data, coerced to your JSON Schema
-curl -X POST https://api.ollagraph.com/v1/stagehand/$SID/extract \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -d '{
-    "instruction": "extract the product name and price",
-    "schema": {"type": "object", "properties": {
-      "name": {"type": "string"}, "price": {"type": "number"}}}
-  }'`;
-
-const macroExample = `# Prefer deterministic JSON macros? Drive a multi-step flow in one shot.
+const openExample = `# Click, type, and scroll on the loaded page, then capture it. One call, one fresh browser.
 curl -X POST https://api.ollagraph.com/v1/scrape \\
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
   -d '{
-    "url": "https://example.com/login",
-    "stealth": true,
+    "url": "https://example.com/catalog",
+    "format": "markdown",
+    "wait_until": "networkidle0",
+    "actions": [
+      {"action": "click", "selector": "button.load-more"},
+      {"action": "click", "selector": "button.load-more"},
+      {"action": "scroll_to_bottom"}
+    ]
+  }'
+# => { "status": "success", "url": "...", "format": "markdown",
+#      "content": "...", "time_ms": 3120, "fallback": false }`;
+
+const actExample = `# Act on the page, then read it with your own JavaScript.
+curl -X POST https://api.ollagraph.com/v1/scrape \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://example.com/catalog",
+    "actions": [
+      {"action": "type", "selector": "input[name=filter]", "text": "wireless headphones"},
+      {"action": "scroll_to_bottom"}
+    ],
+    "js_eval": "JSON.stringify([...document.querySelectorAll(\\".product h2\\")].map(e => e.textContent.trim()))"
+  }'
+# eval_result comes back as a string — parse it in your code:
+# -> { "status": "success", ..., "eval_result": "[\\"Model A\\",\\"Model B\\"]" }`;
+
+const extractExample = `# Wait for an element to appear, then screenshot just that element.
+curl -X POST https://api.ollagraph.com/v1/screenshot \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://example.com/pricing",
+    "wait_for_selector": "#pricing-table",
+    "selector": "#pricing-table",
+    "format": "png",
+    "output": "json"
+  }'
+# -> { "status": "success", "url": "...", "final_url": "...",
+#      "content_type": "image/png", "bytes": 48213, "image_base64": "..." }`;
+
+const macroExample = `# Run the same actions across many URLs in one request.
+curl -X POST https://api.ollagraph.com/v1/scrape/batch \\
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "urls": [
+      "https://example.com/catalog?page=1",
+      "https://example.com/catalog?page=2",
+      "https://example.com/catalog?page=3"
+    ],
+    "concurrency": 3,
     "format": "markdown",
     "actions": [
-      {"type": "type", "selector": "#email", "text": "you@example.com"},
-      {"type": "type", "selector": "#password", "text": "..."},
-      {"type": "click", "selector": "button[type=submit]"},
-      {"type": "wait", "ms": 2500},
-      {"type": "click", "selector": ".load-more"},
-      {"type": "wait", "ms": 1500}
+      {"action": "click", "selector": "button.load-more"},
+      {"action": "scroll_to_bottom"}
     ]
   }'`;
 
-const sessionExample = `# Raw persistent session: render + run a script across calls, keeping cookies.
-SID=$(curl -s -X POST https://api.ollagraph.com/v1/session \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" | jq -r .session_id)
-
-curl -X POST https://api.ollagraph.com/v1/session/$SID/render \\
+const sessionExample = `# Queue a scrape and get the result posted to your webhook.
+curl -X POST https://api.ollagraph.com/v1/scrape/async \\
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -d '{"url": "https://example.com/dashboard"}'
-
-# Reuse the same authenticated context as many times as you need, then close it.
-curl -X DELETE https://api.ollagraph.com/v1/session/$SID \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"`;
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://example.com/catalog",
+    "webhook_url": "https://your-app.example/hooks/ollagraph",
+    "format": "markdown",
+    "actions": [{"action": "scroll_to_bottom"}]
+  }'
+# -> { "status": "queued", "job_id": "..." }`;
 
 const pillars = [
   {
-    title: "Natural-language actions",
-    body: "Tell the session what to do in plain English — goto, act, observe, extract. The model resolves each instruction to a concrete element and action (click, type, select, scroll), so a copy change on the target site does not break your script. No selectors to babysit.",
-    tag: "AGENT-DRIVEN",
+    title: "Explicit page actions",
+    body: "Describe the steps as JSON: click a selector, type into a field, scroll to the bottom. Up to 50 actions run in order on the loaded page before it is captured, so the same request runs the same steps every time. No browser code to write.",
+    tag: "DETERMINISTIC",
     color: "sky"
   },
   {
-    title: "Persistent agent sessions",
-    body: "Open a session once and drive it across many calls. Cookies, storage, and the logged-in context stay alive between steps, so multi-page journeys — log in, navigate, act, extract — run as one coherent flow instead of disconnected requests.",
-    tag: "PERSISTENT STATE",
+    title: "A fresh browser every call",
+    body: "Each request gets a clean headless browser that is discarded when the call ends. No cookies, storage, or logged-in state carry from one call to the next — nothing to keep alive, nothing to reap, no state leaking between jobs.",
+    tag: "STATELESS",
     color: "emerald"
   },
   {
-    title: "JSON action macros too",
-    body: "When you already know the page, skip the model and send a deterministic JSON array of click / type / wait / scroll steps to the scraping endpoint. Same hosted browser, fully reproducible, zero per-step model latency. Mix and match per task.",
-    tag: "DETERMINISTIC",
+    title: "Read the page with your own JS",
+    body: "Pass js_eval with any JavaScript expression and its value comes back in eval_result. Wrap it in JSON.stringify to pull a list of names, prices, or links out of the rendered DOM and parse it on your side.",
+    tag: "JS EVAL",
     color: "purple"
   },
   {
     title: "No Playwright fleet to run",
-    body: "You write instructions, not browser code. There is no headless Chrome to deploy, no Puppeteer or Playwright scripts to maintain, no stealth tuning — the hosted browser handles fingerprinting and rendering. Bring a managed model (no key required), or bring your own.",
+    body: "There is no headless Chrome to deploy, no browser pool to scale, no stealth tuning — scrape calls run in stealth mode by default. Run the same actions over many URLs with batch requests, or queue async jobs that post results to your webhook.",
     tag: "SERVERLESS",
     color: "rose"
   },
 ];
 
 const flows = [
-  { title: "Search, then extract results", steps: "goto the search page, act to type a query and submit, observe the result cards, then extract a structured list — name, price, URL — coerced to your JSON Schema. One session, four readable calls." },
-  { title: "Multi-step authenticated journey", steps: "Open a session, act through the login form, navigate to the protected page, and extract — all on one persistent context. The cookies set during login carry forward to every later step." },
-  { title: "Deterministic macro for known pages", steps: "When the DOM is stable, send a JSON action macro to the scraping endpoint: type credentials, click submit, wait, click load-more, return markdown. No model in the loop, fully reproducible." },
-  { title: "Walk an infinite-scroll feed", steps: "Loop act instructions like “scroll down and load more results” until the feed stops growing, then extract everything rendered so far. The session keeps the full page state between scrolls." },
-  { title: "Discover before you act", steps: "Not sure what is on the page? Call observe to list every actionable element with a description, method, and selector — then decide which act instructions to issue next. Great for building resilient agent loops." },
-  { title: "Raw persistent browser control", steps: "Need lower-level control? Open a session, render URLs and run scripts inside it across calls while cookies persist, then delete it when done. See the browser API for the full session surface." },
+  { title: "Load everything, then read it", steps: "Click the load-more button a few times, scroll_to_bottom, and get the fully expanded page back as markdown. One scrape call, one fresh browser." },
+  { title: "Pull structured data with JS", steps: "Add a js_eval expression that JSON.stringify-s the product cards on the rendered page, then parse eval_result in your code into name, price, and URL fields." },
+  { title: "Filter a client-side list", steps: "Type into an in-page filter box and click apply before capture. Works for interactions that update the page in place — actions don't wait for a navigation to a new page." },
+  { title: "Same steps across many URLs", steps: "Send a list of URLs to /v1/scrape/batch with one actions array and a concurrency limit. Each URL runs in its own fresh browser." },
+  { title: "Fire and forget with a webhook", steps: "Queue a scrape with /v1/scrape/async and a webhook_url. You get a job_id immediately and the result is posted to your endpoint when it finishes." },
+  { title: "Visual check of the result", steps: "Use /v1/screenshot with wait_for_selector and selector to capture just the element you care about, as PNG or JPEG, for visual diffs or reports." },
 ];
 
 const faqs = [
-  { q: "What is the difference between this, the scraping API, and the browser API?", a: "This automation page is about multi-step, agent-style flows: a persistent session you drive with natural-language instructions (goto, act, observe, extract) or deterministic JSON action macros. The scraping API is single-shot — send a URL, optionally a JSON action macro, get clean data back in one call. The browser API exposes the raw persistent-session surface: open a session, render and run scripts inside it across calls, then close it. Use automation when the task is a journey across several pages; use scraping when it is one page; use the browser API when you want low-level session control." },
-  { q: "Do I need to write CSS selectors?", a: "No. With act and extract you describe what you want in plain English and the model resolves it to a precise element and action under the hood. The response from act even returns the selector it used, so you can inspect or pin it later. If you prefer to be explicit, the JSON action macro on the scraping endpoint takes selectors directly." },
-  { q: "Which model powers the natural-language actions?", a: "By default a managed model handles act, observe, and extract with no key required from you. If you would rather use your own provider, pass your provider, model name, and key when you open the session, or point at any OpenAI-compatible base URL. Bring-your-own keys are held in memory for the life of the session only and are never logged or persisted." },
-  { q: "Are sessions persistent across calls?", a: "Yes. Opening a session is free; you are billed per action (goto, act, observe, extract, screenshot). The session keeps cookies, storage, and the logged-in context alive between calls, so a login on step one carries through to an extract on step five. Each session has an idle timeout that you can set when you open it, and a keepalive call resets the timer." },
-  { q: "How do I keep a session from being reaped?", a: "Set an idle timeout when you open the session, and send a keepalive call to reset the idle timer during long pauses. When you are finished, delete the session to free its browser context immediately rather than waiting for the timeout." },
-  { q: "Can I get reproducible, model-free automation?", a: "Yes. Send a JSON action macro to the scraping endpoint: an ordered array of click, type, wait, and scroll steps that runs exactly the same way every time, with no model in the loop and no per-step inference latency. Use natural-language actions when the page changes often; use macros when the DOM is stable and you want determinism." },
-  { q: "What does observe return, and when should I use it?", a: "Observe lists the actionable elements on the current page — each with a human-readable description, the method (such as click or type), and a selector. It is the discovery step in an agent loop: observe first to see what is possible, then issue the act instructions that make sense. You can pass an optional instruction to focus the search, or omit it to list everything." },
-  { q: "Can I extract data against a fixed shape?", a: "Yes. Extract takes a plain-English instruction and an optional JSON Schema. When you pass a schema, the result is coerced and validated against it, so you get typed fields like name and price instead of free-form text. Omit the schema for quick free-form extraction." },
-  { q: "How is this billed?", a: "Opening a session is free. Each goto, act, observe, extract, and screenshot counts as a single metered action; keepalive and closing the session are free. JSON action macros on the scraping endpoint are billed as the scrape call that carries them. Failed calls are auto-refunded, so a timeout or a missed element never costs you. See pricing for the current credit packs and the free monthly grant." },
+  { q: "What is the difference between this, the scraping API, and the browser API?", a: "They all run on the same stateless headless browser. This automation page is about driving a page with explicit actions — click, type, scroll — and running those steps at scale with batch and async jobs. The scraping API is the single-page call that carries those actions. The browser API page covers rendering to hydrated HTML and screenshots. Every call, on every page, is a fresh browser." },
+  { q: "Do I need to write CSS selectors?", a: "Yes. Click and type actions target elements by CSS selector, for example {\"action\": \"click\", \"selector\": \"button.load-more\"}. There is no natural-language element matching, so if the target site changes its markup you update the selector." },
+  { q: "Is there a natural-language or AI agent mode?", a: "No. There is no model in the loop: you send explicit JSON steps and they run exactly as written. If you want an LLM to decide the steps, run that logic in your own code and send the resulting actions array to /v1/scrape." },
+  { q: "Are sessions persistent across calls?", a: "No. Every call starts a fresh browser and discards it when the call ends — cookies, storage, and any logged-in state are not kept. That also means logging in is not supported: actions cannot complete a login, and you cannot pass your own cookies. Use the API for publicly reachable pages." },
+  { q: "What happens if an action navigates to a new page?", a: "Actions don't wait for a navigation, so they are meant for in-page interactions: opening a panel, typing into a filter, clicking load more, scrolling. To get a different page, call /v1/scrape with that page's URL directly." },
+  { q: "Which actions are supported?", a: "Three: {\"action\": \"click\", \"selector\": ...}, {\"action\": \"type\", \"selector\": ..., \"text\": ...}, and {\"action\": \"scroll_to_bottom\"}. The key is action. You can send up to 50 per call. There is no wait action — set wait_until on /v1/scrape to control when the page counts as loaded." },
+  { q: "How do I get structured data out?", a: "Pass a js_eval expression. Its value comes back as a string in eval_result, so wrap structured results in JSON.stringify and parse them on your side. You can combine js_eval with actions in the same call." },
+  { q: "Can I run the same actions on many pages?", a: "Yes. /v1/scrape/batch takes a list of URLs plus one actions array and a concurrency limit. /v1/scrape/batch/async does the same as a background job with an optional webhook_url, and /v1/scrape/async queues a single URL and posts the result to your webhook_url." },
+  { q: "How is this billed?", a: "A scrape call costs 1 credit, and JavaScript rendering and the actions in that call add nothing. Screenshots cost 3 credits. Opting into a residential proxy adds 3 credits. Failed calls are refunded, so a timeout or a missed element never costs you. You get 1,000 free credits on signup — see pricing for the current credit packs." },
 ];
 
 const url = "https://ollagraph.com/automation/";
 const jsonLd = [
-  { "@context": "https://schema.org", "@type": "WebPage", name: "Browser automation API — Ollagraph", url, description: "Drive a real browser through multi-step, agent-style flows. Natural-language actions, persistent sessions, and deterministic JSON action macros — no Playwright fleet to run." },
+  { "@context": "https://schema.org", "@type": "WebPage", name: "Browser automation API — Ollagraph", url, description: "Drive a real headless browser with JSON page actions — click, type, scroll — plus JavaScript evaluation, screenshots, batch runs, and async webhooks. A fresh browser every call, no Playwright fleet to run." },
   { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
     { "@type": "ListItem", position: 1, name: "Ollagraph", item: "https://ollagraph.com/" },
     { "@type": "ListItem", position: 2, name: "Browser automation API", item: url },
@@ -132,8 +138,8 @@ const jsonLd = [
 ];
 ---
 <BaseLayout
-  title="Browser automation API — natural-language actions, persistent sessions — Ollagraph"
-  description="Drive a real browser through multi-step, agent-style flows. Natural-language goto/act/observe/extract, persistent sessions, and deterministic JSON action macros — no Playwright fleet to run."
+  title="Browser automation API — click, type, scroll page actions — Ollagraph"
+  description="Drive a real headless browser with JSON page actions — click, type, scroll — plus JavaScript evaluation, screenshots, batch runs, and async webhooks. A fresh browser every call, no Playwright fleet to run."
   jsonLd={jsonLd}
 >
   <Fragment slot="head">
@@ -173,17 +179,17 @@ const jsonLd = [
           <span class="w-2 h-2 rounded-full bg-brand animate-pulse"></span>
           <span class="text-ink-900 font-semibold">AUTOMATION</span>
           <span class="text-ink-300 select-none">•</span>
-          <span class="text-ink-600 font-medium">Agent-Driven Browser Control</span>
+          <span class="text-ink-600 font-medium">Click · Type · Scroll</span>
         </div>
 
         <!-- Headline -->
         <h1 class="text-4xl sm:text-5xl lg:text-[3.75rem] leading-[1.1] font-bold tracking-tight text-ink-950 mb-6 max-w-4xl mx-auto">
-          Drive a browser <span class="text-brand underline decoration-brand/30 decoration-4 underline-offset-4">like an agent.</span>
+          Drive a browser <span class="text-brand underline decoration-brand/30 decoration-4 underline-offset-4">with JSON steps.</span>
         </h1>
 
         <!-- Subtitle -->
         <p class="text-base sm:text-lg lg:text-xl text-ink-600 max-w-3xl mx-auto leading-relaxed mb-8 font-normal">
-          Open a persistent session and steer it in plain English — navigate, act, observe, extract — or send a deterministic JSON action macro when you already know the page. Multi-step journeys across login walls and dynamic apps, without a single line of Playwright.
+          Send a URL and a list of page actions — click, type, scroll — and get the page back after they run, as markdown, HTML, or the result of your own JavaScript. Every call is a fresh browser and nothing is kept between calls. Scale it with batch and async jobs, without a single line of Playwright.
         </p>
 
         <!-- CTA Row -->
@@ -198,7 +204,7 @@ const jsonLd = [
         </div>
 
         <p class="text-xs sm:text-sm text-ink-500 mt-6 max-w-xl mx-auto">
-          For single-page extraction see <a href="/scrape" class="text-brand hover:underline font-medium">the scraping API</a>; for raw headless-session control see <a href="/browser" class="text-brand hover:underline font-medium">the browser API</a>.
+          For single-page extraction see <a href="/scrape" class="text-brand hover:underline font-medium">the scraping API</a>; for rendering and screenshots see <a href="/browser" class="text-brand hover:underline font-medium">the browser API</a>.
         </p>
       </div>
     </section>
@@ -211,7 +217,7 @@ const jsonLd = [
             CORE CAPABILITIES
           </div>
           <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950">
-            Intelligent actions, persistent state, zero browser ops.
+            Explicit actions, fresh browsers, zero browser ops.
           </h2>
         </div>
 
@@ -251,7 +257,7 @@ const jsonLd = [
       </div>
     </section>
 
-    <!-- Code Examples Section: Drive it four ways -->
+    <!-- Code Examples Section: Drive it five ways -->
     <section class="py-16 sm:py-20 border-b border-ink-200 bg-white">
       <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-10">
@@ -259,15 +265,15 @@ const jsonLd = [
             EXECUTION MODES
           </div>
           <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-ink-950 mb-3">
-            Drive it four ways.
+            Drive it five ways.
           </h2>
           <p class="text-sm sm:text-base text-ink-600">
-            Open a session, act in plain English, observe, extract — or fall back to deterministic macros and raw session control.
+            Page actions, JavaScript evaluation, element screenshots, batch runs, and async jobs with a webhook.
           </p>
         </div>
 
         <div class="space-y-6">
-          <!-- Terminal 1: Open a session -->
+          <!-- Terminal 1: Click, type, scroll -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -276,8 +282,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Open a session</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/stagehand</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Click, type, scroll</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={openExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -289,7 +295,7 @@ const jsonLd = [
             </div>
           </div>
 
-          <!-- Terminal 2: Navigate & act -->
+          <!-- Terminal 2: Act, then evaluate JS -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -298,8 +304,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Navigate &amp; act</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/stagehand/{'{session_id}'}/act</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Act, then evaluate JS</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={actExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -311,7 +317,7 @@ const jsonLd = [
             </div>
           </div>
 
-          <!-- Terminal 3: Observe & extract -->
+          <!-- Terminal 3: Element screenshot -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -320,8 +326,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Observe &amp; extract</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/stagehand/{'{session_id}'}/extract</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Element screenshot</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/screenshot</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={extractExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -333,7 +339,7 @@ const jsonLd = [
             </div>
           </div>
 
-          <!-- Terminal 4: Deterministic JSON macro -->
+          <!-- Terminal 4: Batch across URLs -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -342,8 +348,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Deterministic JSON macro</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Batch across URLs</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape/batch</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={macroExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -355,7 +361,7 @@ const jsonLd = [
             </div>
           </div>
 
-          <!-- Terminal 5: Raw persistent session -->
+          <!-- Terminal 5: Async with a webhook -->
           <div class="rounded-xl border border-ink-800 bg-[#090D14] overflow-hidden shadow-xl font-mono text-xs text-ink-100">
             <div class="flex items-center justify-between border-b border-ink-800 px-4 py-2.5 bg-ink-950 select-none">
               <div class="flex items-center gap-2">
@@ -364,8 +370,8 @@ const jsonLd = [
                   <div class="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]"></div>
                   <div class="w-2.5 h-2.5 rounded-full bg-[#27C93F]"></div>
                 </div>
-                <span class="ml-2 text-ink-200 text-xs font-semibold">Raw persistent session</span>
-                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/session/{'{session_id}'}/render</span>
+                <span class="ml-2 text-ink-200 text-xs font-semibold">Async with a webhook</span>
+                <span class="text-ink-500 text-[11px] hidden sm:inline">• POST /v1/scrape/async</span>
               </div>
               <button type="button" class="quick-copy-btn text-ink-400 hover:text-white p-1 rounded hover:bg-ink-800 flex items-center gap-1 text-[11px] transition-colors" data-copy={sessionExample}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
@@ -380,7 +386,7 @@ const jsonLd = [
       </div>
     </section>
 
-    <!-- Flows Section: Flows that ship today -->
+    <!-- Flows Section: Common patterns -->
     <section class="py-16 sm:py-20 border-b border-ink-200 bg-[#FAFAFA]">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-3xl mx-auto mb-12">
@@ -391,7 +397,7 @@ const jsonLd = [
             Flows that ship today.
           </h2>
           <p class="text-sm sm:text-base text-ink-600 leading-relaxed">
-            Patterns customers run in production — each is a handful of readable calls.
+            Common patterns — each is one or two readable calls.
           </p>
         </div>
 
@@ -414,7 +420,7 @@ const jsonLd = [
         </div>
 
         <p class="text-xs sm:text-sm text-ink-500 text-center mt-10">
-          Working through a login wall? See the <a href="/recipes/scrape-pages-behind-login" class="text-brand hover:underline font-medium">behind-a-login recipe</a>, browse all <a href="/recipes" class="text-brand hover:underline font-medium">recipes</a>, or wire results to your stack with <a href="/webhooks" class="text-brand hover:underline font-medium">webhooks</a>.
+          Browse all <a href="/recipes" class="text-brand hover:underline font-medium">recipes</a>, or wire results to your stack with <a href="/webhooks" class="text-brand hover:underline font-medium">webhooks</a>.
         </p>
       </div>
     </section>
@@ -469,7 +475,7 @@ const jsonLd = [
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span class="text-white font-semibold">1,000 free credits</span>
             <span class="text-ink-500 select-none">•</span>
-            <span class="text-ink-300 font-normal">Free session opening</span>
+            <span class="text-ink-300 font-normal">Failed calls refunded</span>
           </div>
 
           <!-- Title -->
@@ -479,7 +485,7 @@ const jsonLd = [
 
           <!-- Subtitle -->
           <p class="text-sm sm:text-base text-ink-300 max-w-xl mx-auto leading-relaxed mb-8 relative z-10">
-            1,000 free credits, one bearer token, failed calls auto-refund. Sessions are free to open — you only pay per action.
+            1,000 free credits, one bearer token, failed calls auto-refund. A scrape call costs 1 credit, with JavaScript rendering and page actions included.
           </p>
 
           <!-- CTA Buttons -->
@@ -502,7 +508,7 @@ const jsonLd = [
             <span class="text-ink-700 hidden sm:inline">•</span>
             <span class="flex items-center gap-1.5">
               <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>
-              Pay only for actions
+              Pay per call
             </span>
             <span class="text-ink-700 hidden sm:inline">•</span>
             <span class="flex items-center gap-1.5">

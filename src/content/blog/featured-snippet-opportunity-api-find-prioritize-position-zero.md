@@ -29,7 +29,7 @@ This guide breaks down the underlying retrieval mechanics of Position Zero, deta
 - **Competitor snippets fail predictably:** Incumbent snippets lose their Position-Zero status due to six quantifiable vulnerabilities: answer dilution, soft openings, non-semantic HTML layouts, entity ambiguity, temporal decay, and truncation.
 - **Tables and lists yield the highest win rates:** Data comparisons formatted as native semantic `<table>` elements achieve an 81% capture rate when replacing text-only snippets, making structured data the highest-ROI optimization format.
 - **Snippet readiness mirrors AI search visibility:** The passage criteria required to win Google Featured Snippets are identical to the extraction and retrieval signals used by Perplexity, Gemini, and ChatGPT Search. Optimizing for snippets simultaneously solves your [Answer Engine Optimization (AEO)](/blog/answer-first-content-audit-can-ai-extract-a-direct-answer-from-your-page/) strategy.
-- **Ollagraph replaces fragmented SEO stacks:** Instead of combining multiple expensive SaaS tools, proxy providers, and custom scrapers, search engineering teams can discover, score, and monitor Position-Zero opportunities using Ollagraph's unified REST API.
+- **Ollagraph replaces fragmented SEO stacks:** Instead of combining multiple expensive SaaS tools, proxy providers, and custom scrapers, search engineering teams can check Google rankings, inspect competitor passages, and score Position-Zero opportunities using Ollagraph's REST API, adding SERP-feature data from their rank tracker.
 
 ## 1. The Position-Zero Dilemma: Why Top Rankings Are Losing Clicks
 
@@ -151,29 +151,48 @@ Once the refactored content is published and re-indexed, the pipeline monitors t
 
 ## 6. Configuration: Building a Snippet Opportunity Engine with Ollagraph API
 
-Query live SERPs and evaluate competitor snippets using Ollagraph’s `/v1/serp/serp-parser` (1 flat credit per call). For scoring passage extractability against LLM and passage retrieval thresholds, pair this with our [Citation Readiness Score model](/blog/citation-readiness-score-how-to-build-reliable-scoring-model/).
+Check your Google rank with Ollagraph’s `/v1/search` (3 credits per call; pass `target_domain` to get your best rank back) and inspect snippet-shaped passages on any page with `/v1/seo/snippet-candidates` (1 credit per call). `/v1/search` returns organic results, not SERP features, so note which URL holds the featured snippet from your rank tracker or a manual check. For scoring passage extractability against LLM and passage retrieval thresholds, pair this with our [Citation Readiness Score model](/blog/citation-readiness-score-how-to-build-reliable-scoring-model/).
 
 ### 1. Audit Script (Python)
 
 ```python
 import requests
 
-def audit_snippet(query, domain, api_key):
-    res = requests.post(
-        "https://api.ollagraph.com/v1/serp/serp-parser",
-        headers={"Authorization": f"Bearer {api_key}"},
-        json={"query": query, "country": "us", "include_features": ["featured_snippet", "organic_results"]}
+API = "https://api.ollagraph.com"
+
+def audit_snippet(query, domain, snippet_holder_url, api_key):
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    # 1. Where do we rank on Google for this query? (3 credits)
+    serp = requests.post(
+        f"{API}/v1/search",
+        headers=headers,
+        json={"query": query, "limit": 10, "target_domain": domain},
     ).json()
+    if "google" not in serp.get("engines_used", []):
+        return None  # fallback results are not Google ranks; retry later
+    rank = serp.get("target", {}).get("best_rank")
 
-    snippet = res.get("features", {}).get("featured_snippet", {})
-    rank = next((r["position"] for r in res.get("organic_results", []) if domain in r["url"]), None)
-
-    # Must rank in Top 5 & competitor must hold snippet
-    if not snippet.get("present") or domain in snippet.get("source_url", "") or not rank or rank > 5:
+    # Must rank in Top 5 & a competitor must hold the snippet
+    # (snippet_holder_url comes from your rank tracker or a manual SERP check)
+    if domain in snippet_holder_url or not rank or rank > 5:
         return None
 
+    # 2. Pull snippet-shaped passages from the incumbent page (1 credit)
+    cands = requests.post(
+        f"{API}/v1/seo/snippet-candidates",
+        headers=headers,
+        json={"url": snippet_holder_url},
+    ).json()
+    q = set(query.lower().split())
+    best = max(
+        cands.get("paragraphs", []),
+        key=lambda p: len(q & set(f"{p['heading']} {p['snippet']}".lower().split())),
+        default={},
+    )
+
     # Detect flaws & score opportunity: (6 - rank) * flaws * 10
-    passage = snippet.get("extracted_text", "")
+    passage = best.get("snippet", "")
     flaws = [f for f, hit in [("too_long", len(passage.split()) > 62), ("soft_intro", passage.lower().startswith(("in order to", "it is")))] if hit]
     
     return {
@@ -210,7 +229,7 @@ To understand how passage-level engineering captures Position Zero, consider thr
 
 #### The Initial Problem
 
-Ollagraph’s `/v1/serp/serp-parser` revealed that Google rendered a table snippet comparing provider fees. However, an extraction audit of the incumbent’s URL using `/v1/extract/clean` revealed several critical vulnerabilities:
+A SERP check showed that Google rendered a table snippet comparing provider fees. However, an extraction audit of the incumbent’s URL using `/v1/extract/clean` revealed several critical vulnerabilities:
 
 - The aggregator rendered the table using client-side JavaScript (`<div class="pricing-matrix-react">`) with nested `<div>` tags rather than semantic HTML table elements.
 - The extracted text merged fee numbers without clear column association.
@@ -319,7 +338,7 @@ Never hardcode Ollagraph API keys into client-side code, Git repositories, or fr
 Never attempt to serve one passage structure to Googlebot while displaying a different version to human users. Search engines verify snippet extractability by rendering the exact DOM delivered to the browser. If automated testing detects cloaked content, your domain faces manual spam actions that can demote your entire URL cluster.
 
 ### 4. Zero Data Retention Compliance
-When using Ollagraph’s extraction and scraping infrastructure, enterprises handling sensitive, regulated, or internal IP data benefit from Ollagraph’s Zero Data Retention policy. Data processed through `/v1/extract/clean` or `/v1/scrape/llm-ready` is processed in volatile memory and never retained on disk or used to train public machine learning models.
+When using Ollagraph’s extraction and scraping infrastructure, enterprises handling sensitive, regulated, or internal IP data should know that Ollagraph does not store the content it fetches. Pages processed through `/v1/extract/clean` or `/v1/scrape/llm-ready` are handled in memory, discarded after the response, and not used to train models. Request URLs are kept in your usage log.
 
 ## 10. Troubleshooting Position-Zero Failures
 
@@ -332,7 +351,7 @@ When a carefully refactored page fails to capture Position Zero within 14 days o
 | Snippet captured, but lost 72 hours later | High snippet volatility caused by competing freshness or authority signals. | Add a visible "Last Updated" date and an authoritative outbound source link. |
 | Extracted snippet begins with a fragmented sentence | Target passage is separated from the heading by an ad banner, image, or widget. | Place the target passage immediately below the H2 heading with zero intervening DOM elements. |
 | List snippet extracted, but truncated with "..." | List items are too long (>120 chars) or list contains more than 8 steps. | Shorten list items to 50–80 characters; limit initial list to 6–7 parallel steps. |
-| Search engine drops snippet module entirely from SERP | Query intent shifted from informational to transactional or mixed intent. | Verify with Ollagraph SERP parser. Pivot page optimization back to standard organic ranking. |
+| Search engine drops snippet module entirely from SERP | Query intent shifted from informational to transactional or mixed intent. | Verify with a manual SERP check or your rank tracker. Pivot page optimization back to standard organic ranking. |
 | Page organic rank drops from #3 to #7 post-rewrite | Editorial team pruned in-depth supporting content in an attempt to be concise. | Restore detailed technical content below the snippet answer block; retain the direct answer at top. |
 | Competitor maintains snippet with an inferior answer | Competitor domain has significantly stronger topical authority in that cluster. | Publish original survey data or benchmarks to establish unique information gain. |
 
@@ -373,10 +392,10 @@ Organizations typically evaluate four different approaches to managing featured 
 | Dimension | Manual SERP Inspection | Legacy Rank Tracker | Custom Puppeteer Scraping | Ollagraph API Engine |
 | :--- | :--- | :--- | :--- | :--- |
 | Operational Velocity | Extremely Low | Moderate (Daily batch crawls) | High (Resource intensive) | High (Real-time REST API) |
-| Snippet Decompilation | Manual Copy-Paste | Snippet Flag Only (No DOM) | Raw Unparsed HTML | Clean Normalized Extract |
+| Snippet Decompilation | Manual Copy-Paste | Snippet Flag Only (No DOM) | Raw Unparsed HTML | Snippet-Candidate Passages per Page |
 | Vulnerability Analysis | Subjective Guesswork | None | Custom Regex Logic | Native Citation Readiness |
 | Maintenance Burden | Zero Tech, High Labor | Low | Extreme (Proxy bans, Captchas) | Zero (Managed Cloud API) |
-| Marginal Cost per Query | High ($40+/hr manual labor) | Fixed High-Tier SaaS Plan | Server & Proxy Infrastructure | Flat 1 Credit per Call |
+| Marginal Cost per Query | High ($40+/hr manual labor) | Fixed High-Tier SaaS Plan | Server & Proxy Infrastructure | 3 Credits per Search, 1 per Page Audit |
 | AI Search Convergence | None | None | None | Native AEO & LLM Pipelines |
 
 ## 14. Enterprise Deployment & Workflow Integration
@@ -424,7 +443,7 @@ If a content change removes a semantic `<table>` in favor of a client-side compo
 For organizations managing global, multi-region web properties, the snippet opportunity pipeline can run entirely serverless on cloud infrastructure:
 
 - **Cloud Scheduler (Cron):** Triggers a daily audit worker at off-peak hours (e.g., 02:00 UTC).
-- **Serverless Worker Pool (AWS Lambda / Google Cloud Run):** Executes the Python Snippet Opportunity Engine using Ollagraph endpoints (`/v1/serp/serp-parser`, `/v1/extract/clean`, `/v1/aeo/citation-readiness`).
+- **Serverless Worker Pool (AWS Lambda / Google Cloud Run):** Executes the Python Snippet Opportunity Engine using Ollagraph endpoints (`/v1/search`, `/v1/seo/snippet-candidates`, `/v1/extract/clean`, `/v1/aeo/citation-readiness`).
 - **Telemetry Storage:** Logs ranking positions, snippet ownership status, and vulnerability scores in an internal data warehouse (PostgreSQL, Snowflake, or BigQuery).
 - **Automated Ticketing Dispatcher:** Flags newly detected opportunities where competitor snippets are vulnerable and automatically creates Linear or Jira tasks for editorial teams.
 
@@ -434,7 +453,7 @@ To minimize API consumption across enterprise portfolios:
 
 - **Cache Unchanged SERPs:** If a keyword SERP has shown zero snippet changes over three consecutive daily checks, reduce its polling frequency from daily to weekly.
 - **Hash-Based Content Audits:** Compute an MD5 content hash of your internal URLs. If the hash has not changed since the last audit, skip internal extraction and reuse the existing citation-readiness score.
-- **Batch Multi-Locale Probes:** When auditing international properties (e.g., google.co.uk, google.de, google.ca), pass localized country codes to Ollagraph’s `/v1/serp/serp-parser` while reusing the core analysis engine.
+- **Batch Multi-Locale Probes:** When auditing international properties (e.g., google.co.uk, google.de, google.ca), pass `region` and `lang` to Ollagraph’s `/v1/search` (localization is approximate, not IP-exact) while reusing the core analysis engine.
 
 ## 16. Frequently Asked Questions (FAQs)
 
@@ -460,7 +479,7 @@ Snippet volatility is common and typically stems from one of three factors:
 3. A template release on your site that unintentionally altered the DOM structure around your answer block (such as wrapping a table in client-rendered tabs).
 
 ### Q7. How does Ollagraph calculate the Citation Readiness Score?
-Ollagraph evaluates pages across multiple architectural dimensions: semantic HTML completeness, direct answer presence within the top chunks, entity disambiguation ratios, absence of relative pronoun ambiguity, and schema-to-text reconciliation (detailed in our [Citation Readiness Score engineering guide](/blog/citation-readiness-score-how-to-build-reliable-scoring-model/)). A score above 75 indicates high extractability for both featured snippets and AI answer engines.
+Ollagraph's `/v1/aeo/citation-readiness` is a mechanical score (no LLM call) built from six signals: numerical specifics (up to 20 points), named entities (20), authoritative outbound links (25), an author byline (15), a last-updated date (10) and content length (10). It returns the 0–100 score, a letter grade, the per-signal breakdown and recommendations. A score of 75 or more earns a B grade or better. For a deeper model covering semantic HTML, chunking and pronoun ambiguity, see our [Citation Readiness Score engineering guide](/blog/citation-readiness-score-how-to-build-reliable-scoring-model/).
 
 ### Q8. Do featured snippets work the same way across desktop and mobile devices?
 The extraction source is identical, but the rendering constraints differ. Mobile viewports have stricter truncation limits for tables and lists. To ensure snippet capture across both platforms, keep table widths under four columns and restrict numbered lists to seven or fewer items.
@@ -481,13 +500,14 @@ You do not need to rewrite your entire content library or spend months building 
 ### Next Steps
 
 1. **Audit Your Top-5 Keywords:** Export the queries where your domain currently ranks in positions 1 through 5.
-2. **Scan for Competitor Vulnerabilities:** Use Ollagraph’s API to parse the SERPs and flag queries where competitors hold vulnerable paragraph, list, or table snippets.
+2. **Scan for Competitor Vulnerabilities:** Use Ollagraph’s `/v1/search` to confirm your rank and `/v1/seo/snippet-candidates` to inspect the incumbent's passages, then flag queries where competitors hold vulnerable paragraph, list, or table snippets.
 3. **Deploy Your First Passage Contract:** Choose five high-intent URLs, refactor the targeted sections to adhere to the formatting guidelines in this guide, and monitor your Position-Zero capture velocity.
 
 ## 18. References & Developer Resources
 
 ### Ollagraph API Reference:
-- Ollagraph SERP Parser Endpoint (`/v1/serp/serp-parser`)
+- Ollagraph Search Endpoint (`/v1/search`)
+- Ollagraph Snippet Candidates (`/v1/seo/snippet-candidates`)
 - Ollagraph Citation Readiness API (`/v1/aeo/citation-readiness`)
 - Ollagraph Clean Content Extraction (`/v1/extract/clean`)
 - Ollagraph LLM-Ready Scraper (`/v1/scrape/llm-ready`)

@@ -8,19 +8,19 @@ const faqs = [
   },
   {
     q: "How do I get clean markdown from a news article?",
-    a: "Call /v1/extract/clean with the article URL and pass format set to markdown. You get back the title, the body as markdown, reading time, word count, language, and the top image. The output is ready to feed to a model or render in a reader app without further cleanup.",
+    a: "Call /v1/extract/clean with the article URL. You get back the title, the cleaned body as HTML (content_html) and plain text (content_text), word count and reading time. Pass content_html to /v1/convert/html-to-markdown to get the body as markdown, ready to feed to a model or render in a reader app.",
   },
   {
     q: "Does Ollagraph return JSON-LD as structured objects?",
-    a: "Yes. /v1/extract/structured parses every JSON-LD block on the page, validates it as JSON, and returns it as a typed array. OpenGraph and Twitter Card meta tags come back as flat objects with their canonical property names. Microdata is parsed into an array of typed nodes.",
+    a: "Yes. /v1/extract/structured parses every JSON-LD block on the page and returns them as an array of objects. OpenGraph and Twitter Card meta tags come back as flat objects keyed by property name, microdata and RDFa as arrays, and standard meta tags (description, author, canonical and a few others) in a meta object.",
   },
   {
     q: "What languages does article extraction support?",
-    a: "Clean extraction works on any language with standard left-to-right or right-to-left text. The body extractor doesn't depend on language-specific dictionaries. Language detection runs after extraction and returns an ISO 639-1 code in the response, which is useful for downstream routing.",
+    a: "Clean extraction works on any language with standard left-to-right or right-to-left text. The body extractor doesn't depend on language-specific dictionaries. The extraction response does not include a language field; if you need one for routing, send content_text to /v1/lang/detect, which returns a language code and a confidence score.",
   },
   {
     q: "How accurate is reading time?",
-    a: "Reading time uses a 240-word-per-minute baseline, which is the standard for adult English-language reading on screens. The number is calculated from the cleaned body, not the raw HTML, so it ignores navigation chrome and footers. For other languages the same baseline is used, which slightly under-reports for dense languages.",
+    a: "Reading time uses a baseline of roughly 238 words per minute, close to the standard for adult English-language reading on screens. The number is calculated from the cleaned body, not the raw HTML, so it ignores navigation chrome and footers. For other languages the same baseline is used, which slightly under-reports for dense languages.",
   },
   {
     q: "Can Ollagraph extract paywalled article content?",
@@ -28,15 +28,15 @@ const faqs = [
   },
   {
     q: "What's the rate limit on extraction endpoints?",
-    a: "Extraction endpoints share the standard scrape rate limits, which scale with your plan tier. Smaller tiers support a handful of concurrent calls; larger tiers run hundreds of concurrent extractions with batch and async modes available for very large jobs.",
+    a: "Extraction endpoints share the standard per-key rate limit with the rest of the API. For large jobs, fan out calls from your own worker pool, or use /v1/scrape/batch and /v1/scrape/batch/async to fetch many URLs in one request.",
   },
   {
     q: "How does clean extraction handle multi-page articles?",
-    a: "If the article uses standard rel-next pagination or numbered pagination, you pass paginate set to true and Ollagraph follows the chain and returns the concatenated body. For articles using infinite-scroll patterns, use the scrape endpoint with a scroll action and pipe the result through extract.",
+    a: "/v1/extract/clean works on one URL at a time. For articles split across numbered pages, find the next-page link (a /v1/scrape call with a js_eval expression that reads the rel=next href works well), call extract/clean on each page, and concatenate the bodies in your own code. For articles using infinite-scroll patterns, use the scrape endpoint with a scroll_to_bottom action.",
   },
   {
     q: "Can I get LLM-ready output in one call?",
-    a: "Yes. /v1/actors/markdown returns a single markdown document with the title, byline, publish date, and body in a layout designed for retrieval and summarization. It's the right endpoint when you're building a RAG pipeline or a summarization tool and want one clean string per article.",
+    a: "Yes. /v1/scrape with format set to markdown returns the whole page as one markdown string, and /v1/scrape/llm-ready returns the article's main text already split into token-sized chunks for retrieval. For a markdown document with title, author and date front matter, combine extract/clean, extract/structured and /v1/convert/html-to-markdown in your own code — the recipe below shows how.",
   },
 ];
 ---
@@ -50,8 +50,8 @@ const faqs = [
   faqs={faqs}
 >
   <h2>The short answer: call /v1/extract/clean for the body and /v1/extract/structured for the metadata, and you're done</h2>
-  <p>Article extraction in 2026 is a solved problem if you let it be one. The two endpoints together return everything a content app, a RAG pipeline, or a research tool needs: a clean body in markdown, the title, the byline, the publish date, reading time, word count, language, the top image, and every piece of structured metadata the publisher embedded. One HTTP call per shape.</p>
-  <p>The thing you used to build with a Readability fork and a stack of regex is now a typed JSON response. The rest of this page is the tour.</p>
+  <p>Article extraction in 2026 is a solved problem if you let it be one. The two endpoints together return what a content app, a RAG pipeline, or a research tool needs: a clean body as HTML and plain text, the title, word count and reading time, plus every piece of structured metadata the publisher embedded — which is where the byline, publish date and hero image live. One HTTP call per shape.</p>
+  <p>The thing you used to build with a Readability fork and a stack of regex is now a JSON response. The rest of this page is the tour.</p>
 
   <h2>The problem</h2>
   <p>Article pages are noisy. A typical news page is 80 percent navigation, ads, related-articles rails, comment widgets, newsletter modals, and tracking scripts. The actual article is somewhere in there, wrapped in three nested divs whose class names change every quarter when the publisher's CMS team ships a redesign.</p>
@@ -65,44 +65,52 @@ const faqs = [
   <p><strong>Firecrawl</strong> is also doing excellent work here. Its markdown-first approach is especially well-suited to LLM workflows, and composing extraction with downstream processing is straightforward. These teams ship quality.</p>
 
   <h2>Where Ollagraph goes further</h2>
-  <p>Ollagraph treats article extraction as two complementary calls. <code>/v1/extract/clean</code> handles the Readability-style body and the reading metadata. <code>/v1/extract/structured</code> handles every form of embedded metadata the page exposes: JSON-LD, microdata, OpenGraph, and Twitter Card. You call one, the other, or both, and you compose the results the way your app needs.</p>
-  <p>Both endpoints return typed JSON with stable field names. No HTML to parse. No optional fields that sometimes show up and sometimes don't. If a field isn't present on the source page, it comes back as <code>null</code>, not missing.</p>
-  <p>And for teams building LLM pipelines, <code>/v1/actors/markdown</code> wraps the whole thing in a single call that returns a model-ready document. One string in, one string out, ready to embed or summarize.</p>
+  <p>Ollagraph treats article extraction as two complementary calls. <code>/v1/extract/clean</code> handles the Readability-style body and the reading metadata. <code>/v1/extract/structured</code> handles every form of embedded metadata the page exposes: JSON-LD, microdata, RDFa, OpenGraph, Twitter Card and standard meta tags. You call one, the other, or both, and you compose the results the way your app needs.</p>
+  <p>Both endpoints return JSON with stable field names. No HTML to parse for the metadata. When the source page doesn't declare something — no JSON-LD, no Twitter Card — that field comes back empty rather than guessed.</p>
+  <p>And for teams building LLM pipelines, <code>/v1/scrape</code> with <code>format: "markdown"</code> returns the whole page as one markdown string, and <code>/v1/scrape/llm-ready</code> returns the article text pre-chunked for embedding.</p>
 
   <h2>The step-by-step</h2>
 
   <h3>Step 1 — Clean extraction for the body</h3>
   <p>Start with <code>/v1/extract/clean</code>. Pass a URL. Get back a structured object with the cleaned article HTML, the plain-text version, the title, the word count, and reading time in minutes.</p>
-  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/extract/clean \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -H "Content-Type: application/json" \\
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/extract/clean \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://www.example-news.com/2026/05/15/ai-policy-update.html",
-    "format": "markdown"
-  &#125;'`&#125;</code></pre>
-  <p>The response looks like this. Note the consistent shape: every field is present, the body is clean markdown, and the metadata is flat and typed.</p>
-  <pre><code>&#123;`&#123;
+    "url": "https://www.example-news.com/2026/05/15/ai-policy-update.html"
+  &#125;'</code></pre>
+  <p>The response looks like this: the body in two forms, and the reading metadata as flat fields.</p>
+  <pre><code>&#123;
   "status": "success",
   "url": "https://www.example-news.com/2026/05/15/ai-policy-update.html",
   "title": "New AI policy update reshapes enterprise procurement",
   "short_title": "New AI policy update reshapes enterprise procurement",
-  "content_html": "<div><p>The announcement on Tuesday marks a turning point...</p></div>",
+  "content_html": "&lt;div&gt;&lt;p&gt;The announcement on Tuesday marks a turning point...&lt;/p&gt;&lt;/div&gt;",
   "content_text": "The announcement on Tuesday marks a turning point for how large organizations evaluate AI vendors...",
   "word_count": 1420,
   "reading_time_min": 6,
   "fetch_time_ms": 820
-&#125;`&#125;</code></pre>
+&#125;</code></pre>
+  <p>Need the body as markdown? Send <code>content_html</code> to <code>/v1/convert/html-to-markdown</code>, which returns a <code>markdown</code> string plus <code>word_count</code> and <code>byte_count</code>.</p>
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/convert/html-to-markdown \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "html": "&lt;div&gt;&lt;p&gt;The announcement on Tuesday marks a turning point...&lt;/p&gt;&lt;/div&gt;"
+  &#125;'</code></pre>
 
   <h3>Step 2 — Structured extraction for the metadata</h3>
-  <p>Run <code>/v1/extract/structured</code> in parallel when you need the publisher's embedded metadata. It returns four arrays and objects, one per supported format. Everything is parsed, validated, and ready to use.</p>
-  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/extract/structured \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -H "Content-Type: application/json" \\
+  <p>Run <code>/v1/extract/structured</code> in parallel when you need the publisher's embedded metadata. It returns one field per supported format, each parsed and ready to use.</p>
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/extract/structured \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '&#123;
     "url": "https://www.example-news.com/2026/05/15/ai-policy-update.html"
-  &#125;'`&#125;</code></pre>
+  &#125;'</code></pre>
   <p>The response gives you everything the page exposed.</p>
-  <pre><code>&#123;`&#123;
+  <pre><code>&#123;
+  "status": "success",
+  "url": "https://www.example-news.com/2026/05/15/ai-policy-update.html",
   "json_ld": [
     &#123;
       "@context": "https://schema.org",
@@ -134,94 +142,106 @@ const faqs = [
     "description": "The announcement on Tuesday marks a turning point...",
     "canonical": "https://www.example-news.com/2026/05/15/ai-policy-update.html"
   &#125;,
-  "products": []
-&#125;`&#125;</code></pre>
-  <p>Both calls together cost roughly the same as one rendered scrape and give you a complete picture of the article in under a second.</p>
+  "products": [],
+  "fetch_time_ms": 790
+&#125;</code></pre>
+  <p>Each call costs one credit, so the pair costs two credits and gives you a complete picture of the article.</p>
 
-  <h3>Step 3 — One-call markdown for LLM pipelines</h3>
-  <p>If your downstream is a model, the cleanest path is <code>/v1/actors/markdown</code>. It composes the clean and structured extractors and returns a single markdown document with the title, byline, date, and body laid out for retrieval.</p>
-  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/actors/markdown \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '&#123;
-    "url": "https://www.example-news.com/2026/05/15/ai-policy-update.html"
-  &#125;'`&#125;</code></pre>
-  <pre><code>&#123;`&#123;
-  "ok": true,
-  "markdown": "---\\ntitle: New AI policy update reshapes enterprise procurement\\nauthor: Jordan Reyes\\npublished_at: 2026-05-15T08:30:00Z\\nsource: https://www.example-news.com/2026/05/15/ai-policy-update.html\\n---\\n\\nThe announcement on Tuesday marks a turning point for how large organizations evaluate AI vendors...",
-  "tokens_estimate": 1820,
-  "took_ms": 950
-&#125;`&#125;</code></pre>
-  <p>The front matter is YAML so most retrieval frameworks parse it for free. The token estimate is conservative and lets you make routing decisions before you call your model.</p>
+  <h3>Step 3 — One markdown document for LLM pipelines</h3>
+  <p>If your downstream is a model, you usually want one markdown document per article with the metadata on top. Compose it in your own code from the two calls above plus the HTML-to-markdown conversion — a few lines of Python:</p>
+  <pre><code>import os, requests
+
+API = "https://api.ollagraph.com"
+H = &#123;"Authorization": f"Bearer &#123;os.environ['OLLAGRAPH_API_KEY']&#125;"&#125;
+
+def article_markdown(url):
+    clean = requests.post(f"&#123;API&#125;/v1/extract/clean", json=&#123;"url": url&#125;, headers=H).json()
+    meta = requests.post(f"&#123;API&#125;/v1/extract/structured", json=&#123;"url": url&#125;, headers=H).json()
+    md = requests.post(f"&#123;API&#125;/v1/convert/html-to-markdown",
+                       json=&#123;"html": clean["content_html"]&#125;, headers=H).json()["markdown"]
+
+    article = next((j for j in meta["json_ld"] if j.get("@type") in ("NewsArticle", "Article", "BlogPosting")), &#123;&#125;)
+    author = article.get("author") or &#123;&#125;
+    front = [
+        "---",
+        f"title: &#123;article.get('headline') or clean['title']&#125;",
+        f"author: &#123;author.get('name', '') if isinstance(author, dict) else ''&#125;",
+        f"published_at: &#123;article.get('datePublished', '')&#125;",
+        f"source: &#123;meta['meta'].get('canonical', url)&#125;",
+        "---",
+    ]
+    return "\n".join(front) + "\n\n" + md</code></pre>
+  <p>The front matter is YAML so most retrieval frameworks parse it for free. If you would rather skip the composition and just embed, <code>/v1/scrape/llm-ready</code> returns the article's main text as a <code>chunks</code> array with a <code>token_count</code> per chunk and a <code>total_tokens</code> figure for routing decisions.</p>
 
   <h3>Step 4 — Batch a list of articles</h3>
-  <p>For ingestion jobs, pass an array of URLs to <code>/v1/scrape/batch</code> with the extraction shape you want. Ollagraph fans out the work, returns a job ID immediately, and posts the results to your webhook when each one finishes.</p>
-  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/scrape/batch \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -H "Content-Type: application/json" \\
+  <p>For ingestion jobs, fan the extract calls out from your own worker pool. When you only need the raw page per URL, <code>/v1/scrape/batch/async</code> takes up to 100 URLs, returns a job ID immediately, and posts the results to your webhook when the batch finishes; run your own Readability pass over the returned HTML, or send each page through extract/clean afterwards.</p>
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/batch/async \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '&#123;
-    "mode": "extract_clean",
+    "format": "html",
     "urls": [
       "https://www.example-news.com/2026/05/15/ai-policy-update.html",
       "https://www.another-publisher.com/2026/05/14/cloud-pricing.html",
       "https://www.blog-site.com/posts/the-state-of-rag.html"
     ],
     "webhook_url": "https://yourapp.com/hooks/extraction"
-  &#125;'`&#125;</code></pre>
+  &#125;'</code></pre>
   <p>The async variant <code>/v1/scrape/async</code> works the same way for single-URL fire-and-forget jobs that you'd rather poll than block on.</p>
 
   <h3>Step 5 — Handle multi-page articles</h3>
-  <p>For long-form pieces that span numbered pages, add <code>paginate: true</code> to the clean extract call. Ollagraph follows the rel-next chain and returns the concatenated body with each page's contribution preserved in order. Word count and reading time reflect the full piece.</p>
-  <pre><code>&#123;`curl -X POST https://api.ollagraph.com/v1/extract/clean \\
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \\
-  -H "Content-Type: application/json" \\
+  <p>For long-form pieces that span numbered pages, follow the chain yourself. A <code>/v1/scrape</code> call with a <code>js_eval</code> expression reads the next-page link from the rendered page; its value comes back in <code>eval_result</code>.</p>
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '&#123;
     "url": "https://www.longform-site.com/the-essay-part-1.html",
-    "paginate": true,
-    "format": "markdown"
-  &#125;'`&#125;</code></pre>
+    "format": "text",
+    "js_eval": "(document.querySelector(\"link[rel=next], a[rel=next]\") || &#123;&#125;).href || null"
+  &#125;'</code></pre>
+  <p>Call <code>/v1/extract/clean</code> on each page in the chain and concatenate the bodies in order in your own code. Sum the per-page <code>word_count</code> values for the full piece.</p>
 
   <h2>A realistic scenario</h2>
   <p>Take a media-monitoring startup. Call the founder Sam. The product surfaces relevant news to enterprise communications teams every morning. Sam's team was ingesting 40,000 articles a day through a homegrown extractor built on top of Readability and a queue of per-publisher overrides. Three engineers spent a third of their time maintaining selectors.</p>
-  <p>They moved to Ollagraph over a sprint. The ingestion job is now one call to <code>/v1/scrape/batch</code> with <code>mode: "extract_clean"</code>, and the per-publisher overrides are gone. The structured extractor picks up JSON-LD and OpenGraph for the metadata sidebar. Total maintenance time on the extractor in the six months since: zero hours.</p>
+  <p>They moved to Ollagraph over a sprint. The ingestion job now fans out <code>/v1/extract/clean</code> calls from a small worker pool, and the per-publisher overrides are gone. The structured extractor picks up JSON-LD and OpenGraph for the metadata sidebar. Total maintenance time on the extractor in the six months since: zero hours.</p>
   <p>The interesting part is what those three engineers are doing now. They built the entity-tagging layer their customers had been asking for. The extractor was never the product. It was a chore that pretended to be the product.</p>
 
   <h2>Pricing math</h2>
-  <p>A clean extraction call sits in the rendered-scrape price bucket: a small amount per call at low volumes, dropping sharply at scale. Structured extraction is cheaper because it skips the body-cleaning pass. Markdown actor calls are priced as a single composed call.</p>
-  <p>A media-monitoring pipeline ingesting 50,000 articles a day lands comfortably with room for growth, and a team running a single content-research app at a few hundred articles a day fits cleanly on a small allocation. The <a href="/pricing">pricing page</a> has the live tiers.</p>
+  <p>Clean extraction, structured extraction and HTML-to-markdown conversion each cost one credit per call, and a failed call is refunded. A full article record (clean + structured + markdown) is three credits; most pipelines that only need the body and metadata spend two.</p>
+  <p>A media-monitoring pipeline ingesting 50,000 articles a day lands comfortably with room for growth, and a team running a single content-research app at a few hundred articles a day fits cleanly on a small allocation. The <a href="/pricing">pricing page</a> has the live credit packs.</p>
   <p>Pricing across serious vendors in this space clusters in the same range because the underlying work is similar. Pick on output quality and developer experience rather than headline rates.</p>
 
   <h2>Composing extraction with scraping</h2>
-  <p>Sometimes the article lives behind a click or a "load more" button. In that case, use <code>/v1/scrape</code> with an <code>actions</code> array to navigate to the rendered article URL, then pass the resulting HTML to the extraction endpoint. The two endpoints compose naturally because both speak the same content shape.</p>
+  <p>Sometimes the article body only appears after a click on a "load more" or "read full story" button. In that case, use <code>/v1/scrape</code> with an <code>actions</code> array — for example <code>&#123;"action": "click", "selector": "button.read-more"&#125;</code> — and <code>format: "html"</code>. Actions run once on the loaded page before it is captured; they don't follow a navigation to a new URL. Then convert the returned HTML with <code>/v1/convert/html-to-markdown</code> or run your own Readability pass over it, since the extraction endpoints take a URL rather than HTML.</p>
   <p>For sites that publish article lists on an index page, use <a href="/capabilities">the crawl endpoint</a> to walk the index, then fan out to extract on each discovered URL. The pattern is the same one used by most large-scale news ingestion pipelines and it's roughly five lines of code on top of Ollagraph.</p>
-  <p>When the source requires authentication, see the companion recipe on <a href="/recipes/scrape-pages-behind-login">scraping pages behind a login</a>, which covers session capture and persistent browser sessions.</p>
+  <p>When the source requires authentication, note that every Ollagraph call is stateless: each one starts a fresh browser, and there are no persistent sessions, cookies or logins between calls. The companion recipe on <a href="/recipes/scrape-pages-behind-login">pages behind a login</a> covers what that means in practice.</p>
 
   <h2>Operational notes</h2>
-  <p>Three things separate good extraction pipelines from fragile ones. First, normalize URLs before you call. Strip tracking parameters, follow obvious shortener domains, and use the canonical URL from the response when you store the record. This avoids ingesting the same article eight times under eight different query strings.</p>
-  <p>Second, treat <code>published_at</code> as best-effort. Publishers are inconsistent about updating it on edits, and JSON-LD sometimes lags the visible page. If freshness matters, cross-check the JSON-LD <code>datePublished</code> against the OpenGraph <code>article:published_time</code> and store both.</p>
-  <p>Third, store the source HTML hash alongside the extracted record. When a publisher updates an article and your downstream consumers want to know about it, the hash gives you a cheap diff signal. Ollagraph returns a content hash in every response for this purpose.</p>
+  <p>Three things separate good extraction pipelines from fragile ones. First, normalize URLs before you call. Strip tracking parameters, follow obvious shortener domains, and use the canonical URL from the structured response (<code>meta.canonical</code>) when you store the record. This avoids ingesting the same article eight times under eight different query strings.</p>
+  <p>Second, treat the publish date as best-effort. Publishers are inconsistent about updating it on edits, and JSON-LD sometimes lags the visible page. If freshness matters, cross-check the JSON-LD <code>datePublished</code> against the OpenGraph <code>article:published_time</code> and store both.</p>
+  <p>Third, store a hash of the extracted body alongside the record. When a publisher updates an article and your downstream consumers want to know about it, the hash gives you a cheap diff signal. Compute it in your own code from <code>content_text</code>, and use <code>/v1/text/diff</code> when you want to see exactly what changed.</p>
 
   <h2>When to use which endpoint</h2>
-  <p>Use <code>/v1/extract/clean</code> when you need the body as readable text or markdown. Use <code>/v1/extract/structured</code> when you need the publisher's metadata. Use both when you need a complete record. Use <code>/v1/actors/markdown</code> when the consumer is a model.</p>
-  <p>Use <code>/v1/scrape</code> with extraction as a post-processing step only when the article isn't directly accessible at a stable URL. The extraction endpoints fetch the page themselves and you almost never need to scrape and extract separately.</p>
+  <p>Use <code>/v1/extract/clean</code> when you need the body as readable text or HTML, and add <code>/v1/convert/html-to-markdown</code> when you need it as markdown. Use <code>/v1/extract/structured</code> when you need the publisher's metadata. Use both when you need a complete record. Use <code>/v1/scrape/llm-ready</code> when the consumer is a model and you want pre-chunked text.</p>
+  <p>Use <code>/v1/scrape</code> as a pre-processing step only when the article needs a page action to appear. The extraction endpoints fetch the page themselves and you almost never need to scrape and extract separately.</p>
   <p>All of these endpoints share the same authentication, the same rate limits, and the same observability surface. Mixing them in a single pipeline is not a decision; it's how the platform is designed to be used.</p>
 
   <h2>Cross-references and further reading</h2>
   <p>For the underlying scrape API, see the <a href="/capabilities">capabilities page</a>. For full reference docs, the <a href="/docs">documentation</a> covers every parameter and response field. Pricing is on the <a href="/pricing">pricing page</a>.</p>
   <p>External background reading: <a href="https://schema.org/Article" rel="noopener" target="_blank">schema.org Article</a> defines the JSON-LD types this guide assumes, and the <a href="https://en.wikipedia.org/wiki/Web_scraping" rel="noopener" target="_blank">Wikipedia overview of web scraping</a> covers the broader landscape. Both are useful primers if you're new to the space.</p>
-  <p>For a related recipe, see <a href="/recipes/scrape-pages-behind-login">how to scrape pages behind a login</a>, and for the upstream pipeline that feeds extraction, see the recipe on <a href="/recipes/build-rag-knowledge-base">building a RAG knowledge base</a>.</p>
+  <p>For the upstream pipeline that feeds extraction, see the recipe on <a href="/recipes/build-rag-knowledge-base">building a RAG knowledge base</a>.</p>
 
   <h2>The shape of a clean extraction response, in detail</h2>
-  <p>A typed response is only useful if you know what each field means and when to trust it. The <code>title</code> field is the publisher-canonical headline, taken from the JSON-LD <code>headline</code> property when present and falling back to the OpenGraph title and then the HTML title tag. It's the field you display.</p>
-  <p>The <code>body</code> field is the cleaned article text in the format you requested. Markdown is the default and the recommended choice for almost every downstream use. HTML is available when you need to preserve inline structure for a reader app. Plain text strips everything and is occasionally useful for keyword indexing.</p>
-  <p>The <code>reading_time_minutes</code> field is calculated from the cleaned body word count, not the raw HTML, which means it accurately reflects time-to-read for the article itself and ignores navigation and ads. The <code>word_count</code> is the same denominator and is exposed separately so you can apply your own reading-speed model if 240 words per minute isn't right for your audience.</p>
-  <p>The <code>language</code> field is an ISO 639-1 two-letter code, useful for routing decisions in multilingual pipelines. The <code>top_image</code> field is the publisher-designated hero image, taken from OpenGraph when present and from the first significant image in the body otherwise. The <code>published_at</code> field is an ISO 8601 timestamp, normalized to UTC.</p>
+  <p>A response is only useful if you know what each field means and when to trust it. The <code>title</code> field is the page title as Readability reads it from the HTML; <code>short_title</code> is the same title with site-name suffixes trimmed where Readability can detect them. If you want the publisher's canonical headline, take the JSON-LD <code>headline</code> from the structured call.</p>
+  <p>The body comes back twice. <code>content_html</code> is the cleaned article HTML, useful when you need to preserve inline structure for a reader app or convert it to markdown. <code>content_text</code> is the same body with every tag stripped, useful for keyword indexing, language detection and hashing.</p>
+  <p>The <code>reading_time_min</code> field is calculated from the cleaned body word count, not the raw HTML, which means it reflects time-to-read for the article itself and ignores navigation and ads. The <code>word_count</code> is the same denominator and is exposed separately so you can apply your own reading-speed model if the default isn't right for your audience.</p>
+  <p>The clean response does not carry a language, author, hero image or publish date. Language comes from <code>/v1/lang/detect</code> on <code>content_text</code>; author, publish date and image come from the structured call's <code>json_ld</code> and <code>open_graph</code> fields.</p>
 
   <h2>The shape of a structured extraction response, in detail</h2>
-  <p>The <code>json_ld</code> field is an array because publishers routinely embed multiple JSON-LD blocks per page: one for the article, one for the publisher organization, one for the breadcrumb trail, and sometimes one for a video or audio embed. Each entry is parsed and validated, so you can iterate the array and dispatch on <code>@type</code> without writing your own JSON-LD parser.</p>
-  <p>The <code>opengraph</code> field is a flat object with the canonical Open Graph properties: <code>title</code>, <code>type</code>, <code>url</code>, <code>image</code>, <code>site_name</code>, <code>description</code>, and the article-specific extensions when present. Missing properties come back as <code>null</code>, not absent, so your code doesn't need defensive presence checks.</p>
-  <p>The <code>twitter_card</code> field follows the same pattern with the Twitter Card meta tag namespace. The <code>microdata</code> field is an array of typed nodes for the small number of sites that still use HTML microdata instead of JSON-LD. Both are normalized to the same shape so you can treat them uniformly.</p>
-  <p>One small but useful detail: the structured extractor preserves the order of JSON-LD blocks as they appear in the source HTML, which matters for sites that put their primary article block first and supplementary blocks after. Order-dependent consumers can rely on this.</p>
+  <p>The <code>json_ld</code> field is an array because publishers routinely embed multiple JSON-LD blocks per page: one for the article, one for the publisher organization, one for the breadcrumb trail, and sometimes one for a video or audio embed. Each entry is parsed from the page's JSON, so you can iterate the array and dispatch on <code>@type</code> without writing your own JSON-LD parser.</p>
+  <p>The <code>open_graph</code> field is a flat object keyed by Open Graph property name with the <code>og:</code> prefix dropped: <code>title</code>, <code>type</code>, <code>url</code>, <code>image</code>, <code>site_name</code>, <code>description</code>, and any other properties the page declares. Properties the page doesn't declare are simply absent, so check for presence before you read them.</p>
+  <p>The <code>twitter_card</code> field follows the same pattern with the Twitter Card meta tag namespace. The <code>microdata</code> and <code>rdfa</code> fields are arrays for the sites that still use those formats instead of JSON-LD. The <code>meta</code> object carries the page title, the canonical URL and standard tags such as description and author, and <code>products</code> is a flattened list of any schema.org Product entries.</p>
+  <p>One small but useful detail: the structured extractor keeps JSON-LD blocks in the order they appear in the source HTML, which matters for sites that put their primary article block first and supplementary blocks after.</p>
 
   <h2>Composing extraction with downstream tasks</h2>
   <p>The most common downstream after extraction is summarization or embedding. Both work well with the markdown body and benefit from the typed metadata. A summarization prompt that includes the title, the publisher, and the publish date produces noticeably better summaries than one that just receives the body. A retrieval system that indexes the body but stores the metadata as filter columns gives users much better search than one that flattens everything.</p>
@@ -229,15 +249,15 @@ const faqs = [
   <p>The third common downstream is republication or syndication, which is where the structured extractor earns its keep. The JSON-LD output gives you exactly what you need to rebuild the article's canonical metadata in your own CMS, including the original author and publisher attribution. This matters for legal compliance and for trust with the source.</p>
 
   <h2>Handling weird article pages</h2>
-  <p>Some article pages don't fit the standard mold. Live blogs append new content to the same URL over hours or days. Slideshow articles split each "page" into a click. Q&A interviews use unusual heading structures. The extractor handles most of these by default, and the ones it can't are usually one parameter away.</p>
-  <p>For live blogs, pass <code>strategy: "live_blog"</code> and the extractor preserves the timestamped entries as a list rather than flattening them into prose. For slideshow articles, pass <code>paginate: true</code> with <code>strategy: "slideshow"</code> and you get the concatenated body with each slide labeled. For Q&A formats, the default extractor preserves the speaker labels because they're encoded in the headings.</p>
-  <p>The general principle is that the extractor tries to give you back what the publisher meant, not just what the HTML contained. When publishers use semantic markup, that's easy. When they don't, the strategy parameters give you escape hatches for the common patterns.</p>
+  <p>Some article pages don't fit the standard mold. Live blogs append new content to the same URL over hours or days. Slideshow articles split each "page" into a click. Q&amp;A interviews use unusual heading structures. Readability-style extraction handles many of these, and the rest are usually a little post-processing in your own code.</p>
+  <p>For live blogs, re-extract the same URL on a schedule and diff the new <code>content_text</code> against the last one (<code>/v1/text/diff</code> does this) to pick out the new entries. For slideshow articles, treat each slide URL like a page in Step 5 and concatenate the bodies with your own labels. For Q&amp;A formats, keep <code>content_html</code> rather than the plain text so the speaker labels encoded in headings and bold text survive.</p>
+  <p>The general principle is to start from what the publisher meant, not just what the HTML contained. When publishers use semantic markup, the extractors give you that directly. When they don't, a small amount of post-processing on top of the clean and structured responses covers the common patterns.</p>
 
   <h2>A short note on language coverage</h2>
-  <p>The clean extractor works on any language with standard left-to-right or right-to-left text, because the body-detection heuristics are structural rather than lexical. We've validated extraction across major European, East Asian, and Middle Eastern languages with consistent quality. Less-represented languages work equally well from a structural perspective; the only caveat is that language detection becomes less confident at the long tail.</p>
-  <p>Reading time uses the 240-words-per-minute baseline universally, which slightly under-reports for character-based languages like Chinese and Japanese where the equivalent measure is closer to characters per minute. If reading time matters for your product in those languages, divide the character count by 500 as a reasonable approximation.</p>
+  <p>The clean extractor works on any language with standard left-to-right or right-to-left text, because the body-detection heuristics are structural rather than lexical. Less-represented languages work equally well from a structural perspective; the only caveat is that language detection becomes less confident at the long tail, which <code>/v1/lang/detect</code> reports in its <code>confidence</code> score.</p>
+  <p>Reading time uses the same words-per-minute baseline universally, which slightly under-reports for character-based languages like Chinese and Japanese where the equivalent measure is closer to characters per minute. If reading time matters for your product in those languages, divide the character count by 500 as a reasonable approximation.</p>
 
   <h2>Closing</h2>
-  <p>Article extraction used to be a research project with a long tail of edge cases. In 2026 it's three endpoints and a webhook, with typed responses and sub-second latency. Build the thing your users actually care about on top of it.</p>
-  <p>If you want to try the calls in this guide against your own URLs, <a href="/pricing">grab a key</a> and run the clean extraction example at the top of this page. The output is typed, the metadata is rich, and the first thousand calls are on us while you evaluate.</p>
+  <p>Article extraction used to be a research project with a long tail of edge cases. In 2026 it's a few endpoints and a webhook, with JSON responses you can build on directly. Build the thing your users actually care about on top of it.</p>
+  <p>If you want to try the calls in this guide against your own URLs, <a href="/pricing">grab a key</a> and run the clean extraction example at the top of this page. Signup includes 1,000 free credits while you evaluate.</p>
 </Article>

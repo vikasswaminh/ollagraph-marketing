@@ -1,8 +1,8 @@
 ---
 title: 'Headless Browser API: Automate Browsers at Scale'
-description: 'Run rendered browser jobs without managing browser farms. Learn how Ollagraph uses CDP, sessions, and stealth controls to scale reliably.'
+description: 'Run rendered browser jobs without managing browser farms. Learn how Ollagraph uses CDP and stealth controls to scale reliably.'
 metaTitle: 'Headless Browser API: Automate Chrome at Scale'
-metaDescription: 'Run rendered browser jobs without managing browser farms. Learn how Ollagraph uses CDP, sessions, and stealth controls to scale reliably.'
+metaDescription: 'Run rendered browser jobs without managing browser farms. Learn how Ollagraph uses CDP and stealth controls to scale reliably.'
 primaryKeyword: 'headless browser API'
 secondaryKeywords: 'headless browser, CDP, automation, web scraping, orchestration, stealth controls'
 pubDate: 2026-07-31
@@ -62,9 +62,9 @@ The key distinction from a traditional web scraping API is **interactivity**. A 
 
 ### Three Tiers of Headless Browser APIs
 
-- **Tier 1 — Render APIs.** Send a URL, get back rendered HTML or a screenshot. No interaction, no session. Uses CDP's `Page.navigate` and `Page.captureScreenshot` domains. Example: Ollagraph `/v1/render`.
-- **Tier 2 — Session APIs.** Open a persistent browser session, then issue multiple commands against it. Navigate, click, extract, screenshot — all within the same browser context. Uses CDP's `Runtime.evaluate` for custom JavaScript execution. Example: Ollagraph `/v1/session` family.
-- **Tier 3 — LLM-Driven APIs.** Describe what you want in natural language. The API uses an LLM to interpret the instruction, find the right element via CDP's `Runtime.evaluate` and `DOM.querySelector`, and execute the action. Example: Ollagraph `/v1/stagehand` family.
+- **Tier 1 — Render APIs.** Send a URL, get back rendered HTML or a screenshot. No session. Uses CDP's `Page.navigate` and `Page.captureScreenshot` domains. Example: Ollagraph `/v1/render` and `/v1/screenshot`, plus `/v1/scrape`, which can also run a few page actions (click/type/scroll) and a JavaScript expression on the loaded page before capture.
+- **Tier 2 — Session APIs.** Open a persistent browser session, then issue multiple commands against it. Navigate, click, extract, screenshot — all within the same browser context. Uses CDP's `Runtime.evaluate` for custom JavaScript execution. Example: hosted session providers, or a Playwright/Puppeteer context you run yourself. Ollagraph does not offer this tier.
+- **Tier 3 — LLM-Driven APIs.** Describe what you want in natural language. The API uses an LLM to interpret the instruction, find the right element via CDP's `Runtime.evaluate` and `DOM.querySelector`, and execute the action. Example: the open-source Stagehand library on top of Playwright. Ollagraph does not offer this tier.
 
 ## 4. Architecture: How Headless Chrome Automation Works
 
@@ -100,13 +100,13 @@ Your Code ◀── API Gateway ◀── Response Parser ◀── CDP Response
 
 ### Session Lifecycle
 
-Session-based headless APIs maintain a browser context across multiple API calls:
-- **Create Session** — `POST /v1/session` provisions a new Chromium instance and returns a `session_id`.
-- **Navigate** — `POST /v1/session/{id}/render` sends `Page.navigate` via CDP.
-- **Interact** — `POST /v1/session/{id}/script` sends `Runtime.evaluate` with your JavaScript.
+Session-based headless APIs (and your own Playwright/Puppeteer contexts) maintain a browser context across multiple calls. Ollagraph has no session tier — every call is a fresh browser — but the lifecycle is worth understanding:
+- **Create Session** — a create call provisions a new Chromium context and returns a session ID.
+- **Navigate** — a navigate command sends `Page.navigate` via CDP.
+- **Interact** — a script command sends `Runtime.evaluate` with your JavaScript.
 - **Extract** — Read rendered HTML or take a screenshot via `Page.captureScreenshot`.
 - **Keep Alive** — Send periodic keepalive requests to prevent idle timeout.
-- **Close** — `DELETE /v1/session/{id}` sends `Browser.close` and frees the container.
+- **Close** — a close call sends `Browser.close` and frees the container.
 
 ### Memory Architecture
 
@@ -144,238 +144,166 @@ A typical multi-step extraction using a session-based headless API follows this 
 
 ### Getting Started with Ollagraph Headless Browser API
 
+Every Ollagraph call is stateless: a fresh browser per request, nothing kept between calls.
+
 #### Step 1 — Make your first render request
 
 ```bash
 curl -X POST https://api.ollagraph.com/v1/render \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com",
-    "wait_until": "networkidle",
-    "timeout": 30000,
-    "stealth": true
-  }'
+  -d '{"url": "https://example.com"}'
 ```
 
-#### Step 2 — Create a persistent session
+The response includes `html` (post-hydration), `url`, `final_url`, `status_code`, and `tier_used`.
+
+#### Step 2 — Interact and run custom JavaScript in one call
 
 ```bash
-curl -X POST https://api.ollagraph.com/v1/session \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+curl -X POST https://api.ollagraph.com/v1/scrape \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
+    "url": "https://target-site.com/products",
+    "wait_until": "networkidle0",
     "stealth": true,
-    "proxy": "residential",
-    "proxy_region": "us",
-    "idle_ttl_seconds": 120,
-    "block_resources": ["image", "font", "stylesheet"]
+    "actions": [
+      {"action": "click", "selector": "button.load-more"},
+      {"action": "scroll_to_bottom"}
+    ],
+    "js_eval": "JSON.stringify(Array.from(document.querySelectorAll(\".product-price\")).map(el => el.textContent))"
   }'
 ```
 
-#### Step 3 — Navigate and run custom JavaScript
+Actions run once on the loaded page before capture; the value of `js_eval` comes back in `eval_result`. Actions do not wait for a navigation, so they cannot log in — run login flows in your own Playwright code.
+
+#### Step 3 — Take a screenshot
 
 ```bash
-curl -X POST "https://api.ollagraph.com/v1/session/{session_id}/render" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
+curl -X POST https://api.ollagraph.com/v1/screenshot \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://target-site.com/dashboard",
-    "wait_until": "networkidle"
-  }'
-
-curl -X POST "https://api.ollagraph.com/v1/session/{session_id}/script" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "script": "document.querySelectorAll(\".product-price\").map(el => el.textContent)"
-  }'
+  -d '{"url": "https://target-site.com/products", "full_page": true}' \
+  --output products.png
 ```
 
-#### Step 4 — Close the session
-
-```bash
-curl -X DELETE "https://api.ollagraph.com/v1/session/{session_id}" \
-  -H "Authorization: Bearer osk_YOUR_API_KEY"
-```
-
-### Configuration Options
+### Configuration Options (`/v1/scrape`)
 
 | Parameter | Values | Description |
 |---|---|---|
-| `stealth` | `true`, `false` | Apply anti-detection patches. Always `true` for production. |
-| `proxy` | `datacenter`, `residential`, `none` | Proxy type for request routing. |
-| `proxy_region` | `us`, `eu`, `asia`, `auto` | Geographic region for the proxy IP. |
-| `wait_until` | `load`, `domcontentloaded`, `networkidle` | CDP `Page.navigate` wait condition. |
-| `timeout` | milliseconds (default `30000`) | Maximum time to wait for page load. |
-| `idle_ttl_seconds` | seconds (default `60`) | How long a session stays alive without commands. |
-| `block_resources` | array of resource types | Resources to block via CDP `Fetch.enable`. |
-| `custom_headers` | object | Extra HTTP headers sent via CDP `Network.setExtraHTTPHeaders`. |
+| `stealth` | `true`, `false` (default `true`) | Apply anti-detection patches. |
+| `proxy` | proxy URL (optional) | Route the request through your own proxy. |
+| `wait_until` | `load` (default), `domcontentloaded`, `networkidle0` | Page load wait condition. |
+| `timeout` | seconds, 1–60 (default `30`) | Maximum time to wait for page load. |
+| `actions` | list of up to 50 (`click`, `type`, `scroll_to_bottom`) | Page actions run once before capture. |
+| `js_eval` | JavaScript expression | Evaluated in the page via the browser; value returned in `eval_result`. |
+| `user_agent` | string | Override the browser's user agent. |
 
 ## 7. Code Examples
 
 ### Python — One-Shot Render
 
 ```python
+import os
 import requests
 
-API_KEY = "osk_YOUR_API_KEY"
+API_KEY = os.environ["OLLAGRAPH_API_KEY"]
 BASE_URL = "https://api.ollagraph.com"
 
 response = requests.post(
     f"{BASE_URL}/v1/render",
     headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
-    json={
-        "url": "https://example.com",
-        "stealth": True,
-        "proxy": "residential",
-        "wait_until": "networkidle",
-        "timeout": 30000,
-        "block_resources": ["image", "font"]
-    }
+    json={"url": "https://example.com"}
 )
 
 data = response.json()
-print(f"Rendered {len(data['rendered_html'])} bytes of HTML")
-print(f"Final URL: {data['url']}")
+print(f"Rendered {len(data['html'])} bytes of HTML")
+print(f"Final URL: {data['final_url']}")
 ```
 
-### Python — Persistent Session with Login
+### Python — Login Flow in Your Own Playwright Code
+
+Ollagraph's endpoints are stateless and cannot log in or keep cookies between calls, so an authenticated dashboard is your own Playwright code (sync API shown):
 
 ```python
-import requests
-import time
+# Your own Playwright code — not an Ollagraph API
+import json
+from playwright.sync_api import sync_playwright
 
-API_KEY = "osk_YOUR_API_KEY"
-BASE_URL = "https://api.ollagraph.com"
+with sync_playwright() as pw:
+    browser = pw.chromium.launch()
+    context = browser.new_context()
+    page = context.new_page()
 
-# Step 1: Create session
-session_resp = requests.post(
-    f"{BASE_URL}/v1/session",
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={"stealth": True, "proxy": "residential", "proxy_region": "us", "idle_ttl_seconds": 120}
-)
-session_id = session_resp.json()["session_id"]
+    # Steps 1-2: log in
+    page.goto("https://target-site.com/login", wait_until="networkidle")
+    page.fill("#username", "myuser")
+    page.fill("#password", "mypassword")
+    page.click('button[type="submit"]')
+    page.wait_for_url("**/dashboard")
 
-# Step 2: Navigate to login page
-requests.post(
-    f"{BASE_URL}/v1/session/{session_id}/render",
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={"url": "https://target-site.com/login", "wait_until": "networkidle"}
-)
+    # Step 3: extract data from the authenticated page
+    data = page.evaluate("""() => ({
+        total_revenue: document.querySelector('.revenue-value')?.textContent?.trim(),
+        active_users: document.querySelector('.user-count')?.textContent?.trim(),
+        recent_orders: Array.from(document.querySelectorAll('.order-row')).map(row => ({
+            id: row.querySelector('.order-id')?.textContent?.trim(),
+            amount: row.querySelector('.order-amount')?.textContent?.trim(),
+            status: row.querySelector('.order-status')?.textContent?.trim()
+        }))
+    })""")
+    print(json.dumps(data, indent=2))
 
-# Step 3: Fill login form
-login_script = """
-document.querySelector('#username').value = 'myuser';
-document.querySelector('#password').value = 'mypassword';
-document.querySelector('button[type="submit"]').click();
-"""
-requests.post(
-    f"{BASE_URL}/v1/session/{session_id}/script",
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={"script": login_script}
-)
-time.sleep(3)
-
-# Step 4: Navigate to target page
-requests.post(
-    f"{BASE_URL}/v1/session/{session_id}/render",
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={"url": "https://target-site.com/dashboard", "wait_until": "networkidle"}
-)
-
-# Step 5: Extract data
-extract_script = """
-JSON.stringify({
-    total_revenue: document.querySelector('.revenue-value')?.textContent?.trim(),
-    active_users: document.querySelector('.user-count')?.textContent?.trim(),
-    recent_orders: Array.from(document.querySelectorAll('.order-row')).map(row => ({
-        id: row.querySelector('.order-id')?.textContent?.trim(),
-        amount: row.querySelector('.order-amount')?.textContent?.trim(),
-        status: row.querySelector('.order-status')?.textContent?.trim()
-    }))
-});
-"""
-extract_resp = requests.post(
-    f"{BASE_URL}/v1/session/{session_id}/script",
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={"script": extract_script}
-)
-print(extract_resp.json()["result"])
-
-# Step 6: Close session
-requests.delete(f"{BASE_URL}/v1/session/{session_id}")
+    # Step 4: close
+    context.close()
+    browser.close()
 ```
 
-### Node.js — Stagehand Natural Language Control
+### Node.js — Page Actions and JS Extraction with `/v1/scrape`
+
+For public pages, one `/v1/scrape` call can click, scroll, and evaluate JavaScript before the page is captured. (For natural-language actions, the open-source Stagehand library runs on top of your own Playwright browser; Ollagraph does not offer it.)
 
 ```javascript
-const API_KEY = "osk_YOUR_API_KEY";
+const API_KEY = process.env.OLLAGRAPH_API_KEY;
 const BASE_URL = "https://api.ollagraph.com";
 
-async function stagehandDemo() {
-  const createResp = await fetch(`${BASE_URL}/v1/stagehand`, {
+async function scrapeProducts() {
+  const resp = await fetch(`${BASE_URL}/v1/scrape`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${API_KEY}` },
-    body: JSON.stringify({ engine: "playwright", llm_provider: "openai", model_name: "gpt-4o", idle_ttl_seconds: 60 })
-  });
-  const { session_id } = await createResp.json();
-
-  await fetch(`${BASE_URL}/v1/stagehand/${session_id}/goto`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${API_KEY}` },
-    body: JSON.stringify({ url: "https://example.com/products" })
-  });
-
-  await fetch(`${BASE_URL}/v1/stagehand/${session_id}/act`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${API_KEY}` },
-    body: JSON.stringify({ instruction: "click the 'Sort by price' dropdown and select 'Low to High'" })
-  });
-
-  const extractResp = await fetch(`${BASE_URL}/v1/stagehand/${session_id}/extract`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${API_KEY}` },
+    headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      instruction: "extract all product names and prices",
-      schema: { type: "object", properties: { products: { type: "array", items: { type: "object", properties: { name: { type: "string" }, price: { type: "string" } } } } } }
+      url: "https://example.com/products",
+      wait_until: "networkidle0",
+      actions: [
+        { action: "click", selector: "button.load-more" },
+        { action: "scroll_to_bottom" }
+      ],
+      js_eval: "JSON.stringify(Array.from(document.querySelectorAll('.product')).map(p => ({name: p.querySelector('.name')?.textContent?.trim(), price: p.querySelector('.price')?.textContent?.trim()})))"
     })
   });
 
-  const data = await extractResp.json();
-  console.log(JSON.stringify(data, null, 2));
-  await fetch(`${BASE_URL}/v1/stagehand/${session_id}`, { method: "DELETE" });
+  const data = await resp.json();
+  const products = JSON.parse(data.eval_result);
+  console.log(JSON.stringify({ products }, null, 2));
 }
-stagehandDemo();
+scrapeProducts();
 ```
 
 ## 8. Performance & Benchmarks
 
-We tested Ollagraph's Headless Browser API against a self-hosted Chromium farm to compare latency, success rate, and cost. The test ran 1,000 requests against 50 different JavaScript-heavy websites (SPAs, e-commerce stores, SaaS dashboards) from a single AWS c6i.xlarge instance in `us-east-1`.
-
-### Results
-
-| Metric | Self-Hosted Chromium | Ollagraph Render API | Ollagraph Session API |
-|---|---|---|---|
-| **Median render time** | 3.2s | 4.1s | 2.8s (warm session) |
-| **P95 latency** | 8.7s | 6.3s | 4.9s (warm session) |
-| **Success rate** | 72% | 94% | 96% |
-| **Memory per browser** | 320 MB | N/A (managed) | N/A (managed) |
-| **CAPTCHA bypass rate** | 18% | 89% | 91% |
-| **Stealth detection rate** | 64% blocked | 7% blocked | 5% blocked |
-| **Max concurrent sessions** | 12 (OOM at 15) | 100 (plan limit) | 100 (plan limit) |
-
-*The self-hosted setup failed on 28% of requests. Primary failure modes: Cloudflare challenge pages (14%), CAPTCHA walls (8%), timeout on slow SPAs (4%), and memory exhaustion (2%). The API handled all of these transparently.*
+We have not published a controlled benchmark of `/v1/render`, and numbers measured on someone else's targets rarely transfer to yours. Run the comparison yourself before you commit: pick 30-50 of the JavaScript-heavy pages you actually need, send each one through your self-hosted setup and through `/v1/render`, and record median and P95 latency, the share of calls that return usable content (not a challenge page or an empty shell), and the cost per successful page. Each `/v1/render` response includes `status_code` and `tier_used`, which help explain the failures you see.
 
 ### Cost Comparison
 
 | Volume | Self-Hosted (monthly) | Ollagraph API (monthly) |
 |---|---|---|
-| **1,000 renders** | $150 (server + proxy) | $5 |
-| **10,000 renders** | $350 (server + proxy) | $50 |
-| **50,000 renders** | $800 (2 servers + proxy pool) | $250 |
-| **100,000 renders** | $1,200 (2 servers + proxy pool) | $500 |
-| **1,000,000 renders** | $8,000 (cluster + proxy infra) | $5,000 |
+| **1,000 renders** | $150 (server + proxy) | 1,000 credits |
+| **10,000 renders** | $350 (server + proxy) | 10,000 credits |
+| **50,000 renders** | $800 (2 servers + proxy pool) | 50,000 credits |
+| **100,000 renders** | $1,200 (2 servers + proxy pool) | 100,000 credits |
+| **1,000,000 renders** | $8,000 (cluster + proxy infra) | 1,000,000 credits |
+
+*Ollagraph bills `/v1/render` at 1 credit per call, refunds failed calls, and gives 1,000 free credits on signup; see the pricing page for current credit-pack prices.*
 
 ## 9. Security Considerations
 
@@ -384,7 +312,7 @@ We tested Ollagraph's Headless Browser API against a self-hosted Chromium farm t
 - **Session Hijacking.** Persistent browser sessions maintain cookies, authentication tokens, and localStorage. If a session ID leaks, an attacker can reuse it. Treat session IDs as sensitive tokens. Rotate them after each login flow. Close sessions explicitly when done.
 - **CDP Security.** CDP was designed for debugging, not production. It gives full access to the browser — network requests, cookies, localStorage, file system. Managed APIs protect this by running CDP over authenticated WebSocket connections inside isolated containers.
 - **Bot Detection Risks.** Using a Headless Browser API to access websites that prohibit automated access may violate terms of service. Consult your legal team before extracting data at scale.
-- **Provider Security.** Evaluate your provider's security posture. Ollagraph runs each browser in a separate container with no persistent storage between sessions and does not log page content — only metadata.
+- **Provider Security.** Evaluate your provider's security posture. Ollagraph runs a fresh browser for every call, keeps nothing between calls, and does not store page content — only request metadata.
 
 ## 10. Troubleshooting
 
@@ -392,13 +320,13 @@ We tested Ollagraph's Headless Browser API against a self-hosted Chromium farm t
 - **Session Timeout.** Send a keepalive request before the idle timeout expires. Set your keepalive interval to half the `idle_ttl_seconds` value.
 - **CAPTCHA Interception.** Enable automatic CAPTCHA solving. For aggressive triggers, reduce request frequency and use residential proxies.
 - **Stealth Detection.** Switch to a residential proxy. Ensure `stealth: true` is set. Add delays between requests. If a site uses interaction-based fingerprinting, add random mouse movements and scroll events.
-- **High Latency.** Use session-based API to keep the browser warm — cold starts add 1–2 seconds. Switch to datacenter proxy for faster requests. Block images and fonts using `block_resources` — this alone can cut render time by 40%.
+- **High Latency.** Use session-based API to keep the browser warm — cold starts add 1–2 seconds. Switch to datacenter proxy for faster requests. Block images and fonts where your tool supports it (for example `page.route()` in Playwright) — this alone can cut render time by 40%.
 - **CDP WebSocket Disconnection.** Implement retry logic. If the session ID is still valid, the provider may reconnect. If not, create a new session and restart the workflow.
 
 ## 11. Best Practices
 
 - **Use sessions for multi-step workflows.** Each step in a session reuses the same browser, cookies, and proxy. One-shot renders create a new browser for every request. The latency difference is 30–40% in favor of sessions.
-- **Block unnecessary resources.** Images, fonts, and stylesheets account for 60–80% of page load time. Use `block_resources` to abort these via CDP's `Fetch.enable` domain.
+- **Block unnecessary resources.** Images, fonts, and stylesheets account for 60–80% of page load time. In your own Playwright/Puppeteer code, abort these via CDP's `Fetch.enable` domain (or `page.route()`).
 - **Set realistic timeouts.** Start with 30 seconds. Increase to 60 for heavy SPAs. Monitor P95 latency per target domain and adjust accordingly.
 - **Implement retry logic with exponential backoff.** Retry failed requests with 1s, 3s, 9s backoff. Cap at five retries.
 - **Monitor credit consumption.** Log credit cost from response headers. Set alerts when daily consumption exceeds a threshold.
@@ -423,22 +351,22 @@ We tested Ollagraph's Headless Browser API against a self-hosted Chromium farm t
 | **Stealth mode** | Manual patches | Manual patches | Basic | None | Built-in |
 | **Residential proxies** | Self-managed | Self-managed | Limited | No | Yes |
 | **CAPTCHA solving** | External integration | External integration | No | No | Built-in |
-| **Persistent sessions** | Yes (self-managed) | Yes (self-managed) | Limited | Yes (testing) | Yes |
-| **LLM-driven control** | No | No | No | No | Stagehand |
-| **Cost at 10K/month** | ~$350 | ~$350 | ~$100 | ~$400 | ~$50 |
-| **Success rate (JS sites)** | ~72% | ~74% | ~80% | ~75% | ~94% |
-| **CDP access** | Full | Full | Limited | Limited | Full (via script) |
+| **Persistent sessions** | Yes (self-managed) | Yes (self-managed) | Limited | Yes (testing) | No (stateless; fresh browser per call) |
+| **LLM-driven control** | No | No | No | No | No (page actions (click/type/scroll) + JS eval) |
+| **Cost at 10K/month** | ~$350 | ~$350 | ~$100 | ~$400 | 10,000 credits (1 per render) |
+| **Success rate (JS sites)** | ~72% | ~74% | ~80% | ~75% | Not published |
+| **CDP access** | Full | Full | Limited | Limited | None (JS eval via `/v1/scrape`) |
 
 - **Self-Hosted Puppeteer / Playwright:** Best for teams with dedicated infrastructure engineering or low-volume automation.
 - **Browserless:** Best for simple rendering needs without persistent sessions.
 - **BrowserStack:** Best for cross-browser testing, not production data extraction.
-- **Ollagraph API:** Best for production data extraction pipelines, AI agent browser control, and teams avoiding browser infrastructure entirely.
+- **Ollagraph API:** Best for production extraction of public, JavaScript-heavy pages — render, page actions, JS eval, screenshots, and batch/async scraping — without running browser infrastructure. Logins and multi-step sessions stay in your own Playwright code.
 
 ## 14. Enterprise / Cloud Deployment
 
-- **Concurrency limits.** Most providers cap concurrent sessions. Ollagraph's default is 10 for starter plans and 100 for enterprise. Implement a semaphore or queue to stay within the limit.
+- **Concurrency limits.** Most providers cap concurrent sessions; Ollagraph has no sessions and rate-limits requests instead. Implement a semaphore or queue to stay within the limit, or use `/v1/scrape/batch` with its `concurrency` setting.
 - **Geographic distribution.** Use proxy regions that match your targets — US proxies for US sites, EU for EU sites.
-- **Webhook-based async processing.** For high-volume extraction, use async endpoints. Send the request, get a job ID, and receive the result via webhook.
+- **Webhook-based async processing.** For high-volume extraction, use async endpoints (`/v1/scrape/async`, `/v1/scrape/batch/async` with a `webhook_url`). Send the request, get a job ID, and receive the result via webhook.
 - **Observability.** Log every API call with request URL, response status, latency, credit cost, session ID, and error type. Set up dashboards for success rate per target domain, P95 latency, and credit consumption.
 - **Multi-Tenant Usage.** Use separate API keys per team for cost attribution, independent rate limits, and selective revocation.
 
@@ -451,7 +379,7 @@ A Headless Browser API is a managed HTTP service that runs headless Chromium ins
 CDP is a WebSocket-based protocol that exposes browser internals as JSON-RPC methods. When you send a command like `Page.navigate`, the API provider opens a WebSocket connection to a Chromium instance, sends the CDP command, waits for the response, and returns the result to you.
 
 ### Q3. Can I use a Headless Browser API to log into websites?
-Yes. Session-based APIs are designed for exactly this. You create a session, navigate to the login page, fill in credentials using a custom script, wait for the post-login redirect, and then navigate to authenticated pages.
+Yes. Session-based APIs are designed for exactly this. You create a session, navigate to the login page, fill in credentials using a custom script, wait for the post-login redirect, and then navigate to authenticated pages. Ollagraph's endpoints are stateless and cannot log in; run logins in your own Playwright code.
 
 ### Q4. How do Headless Browser APIs avoid bot detection?
 They apply stealth patches via CDP's `Runtime.evaluate` before any website JavaScript runs. These patches override `navigator.webdriver`, populate `navigator.plugins`, match WebGL renderer strings to real GPU hardware, and set realistic screen dimensions.
@@ -469,7 +397,7 @@ Use a provider that integrates CAPTCHA solving into the browser flow. When the b
 Roughly 50,000 pages per month. Below that, the API is almost always cheaper when you factor in server costs, proxy costs, and engineering time. Above that, self-hosted can be more cost-effective on raw compute, but you need to budget for ongoing maintenance.
 
 ### Q9. Can I run custom JavaScript in the headless browser?
-Yes. Session-based APIs expose a script endpoint that lets you execute arbitrary JavaScript in the page context via CDP's `Runtime.evaluate`.
+Yes. Session-based APIs expose a script endpoint that lets you execute arbitrary JavaScript in the page context via CDP's `Runtime.evaluate`. With Ollagraph, pass a JavaScript expression in `js_eval` on `/v1/scrape`; its value comes back in `eval_result`.
 
 ### Q10. What is Stagehand and how does it relate to headless browser automation?
 Stagehand is an open-source framework that adds an LLM layer on top of Playwright. Instead of writing CSS selectors, you describe what you want in natural language. Stagehand uses an LLM to interpret the instruction, find the right element via CDP, and execute the action.
@@ -497,6 +425,6 @@ Start with a render API for simple JavaScript rendering. Graduate to session-bas
 - [Playwright Documentation](https://playwright.dev/docs/intro)
 - [Stagehand — LLM-Driven Browser Automation](https://github.com/browserbase/stagehand)
 - [W3C WebDriver Specification](https://www.w3.org/TR/webdriver/)
-- [Ollagraph API Documentation](https://docs.ollagraph.com)
+- [Ollagraph API Documentation](https://ollagraph.com/docs/)
 - [Cloudflare Bot Management](https://www.cloudflare.com/products/bot-management/)
 - [Chromium Headless Mode](https://chromium.googlesource.com/chromium/src/+/main/headless/README.md)

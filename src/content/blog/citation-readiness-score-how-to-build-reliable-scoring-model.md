@@ -138,7 +138,7 @@ Measures response latency and client-side JavaScript rendering dependency.
 
 Building a Citation Readiness Scoring pipeline requires eight core computational components:
 
-- **Ingestion Fetch Gateway:** Manages outbound networking, HTTP request headers, proxy routing, and SSL certificate verification. Connects to model-ready scraping APIs like Ollagraph (POST api.ollagraph.com/v1/scrape/llm-ready) to retrieve pre-cleaned markdown and extracted DOM features in a single automated step.
+- **Ingestion Fetch Gateway:** Manages outbound networking, HTTP request headers, proxy routing, and SSL certificate verification. Connects to model-ready scraping APIs like Ollagraph (POST api.ollagraph.com/v1/scrape/llm-ready) to retrieve the page as cleaned, token-counted text chunks (rendered with JavaScript when the static HTML is too thin) in a single automated step.
 - **DOM Parser and Sanitizer:** Converts raw HTML documents into DOM trees, stripping non-content elements.
 - **Markdown Transformer:** Converts sanitized HTML DOM nodes into standardized GitHub-Flavored Markdown (GFM), maintaining header structures.
 - **JSON-LD Schema Processor:** Extracts JSON-LD scripts and validates declared properties against schema.org specifications.
@@ -151,7 +151,7 @@ Building a Citation Readiness Scoring pipeline requires eight core computational
 
 The following execution sequence outlines how an automated CRS service processes an inbound web document from initial request to final audit report generation.
 
-1. **Request Submission:** The client application submits a target URL payload to the /v1/audit/citation-readiness endpoint.
+1. **Request Submission:** The client application submits a target URL to your CRS service. As a baseline, the same URL can be sent to Ollagraph's /v1/aeo/citation-readiness, which returns a mechanical 0-100 score with a per-signal breakdown.
 2. **Parallel Fetch Execution:** The Fetch Gateway initiates parallel requests: a static HTTP GET fetch and an API call to Ollagraph's model-ready extraction endpoint.
 3. **Transport Metric Collection:** Network transport telemetry is recorded.
 4. **Rendering Path Check:** If the static HTTP response contains less than 30% of the body text returned by the rendered pipeline, the system logs a JS_REQUIRED penalty flag.
@@ -213,7 +213,7 @@ Running real-time Citation Readiness audits across large enterprise websites req
 - **Audit Latency Target:** The evaluation microservice must process static HTTP GET requests in under 450 milliseconds and headless browser requests in under 2,200 milliseconds.
 - **Streaming AST Sanitization:** Instead of loading multi-megabyte DOM strings fully into system memory, the HTML parser should use streaming AST tokenization to sanitize elements on the fly.
 - **Caching Layer Strategy:** Store intermediate converted markdown trees and computed feature graphs inside a high-speed Redis cache. Key cache entries using the document's ETag or Last-Modified header values.
-- **Offloading Web Ingestion:** Operating in-house clusters of headless Chromium instances incurs high CPU overhead, memory consumption, and IP blocking risks. Software teams can streamline this infrastructure by consuming specialized, high-throughput extraction APIs like Ollagraph (POST api.ollagraph.com/v1/scrape/llm-ready). Ollagraph handles anti-bot challenges, executes rendering pipelines, and returns model-ready markdown.
+- **Offloading Web Ingestion:** Operating in-house clusters of headless Chromium instances incurs high CPU overhead, memory consumption, and IP blocking risks. Software teams can streamline this infrastructure by consuming specialized, high-throughput extraction APIs like Ollagraph (POST api.ollagraph.com/v1/scrape/llm-ready). Ollagraph handles anti-bot challenges, renders JavaScript when needed, and returns clean, pre-chunked text.
 
 ## 11. Security
 
@@ -338,7 +338,7 @@ Below is a comparative breakdown evaluating the four major content auditing meth
 Enterprise adoption requires embedding Citation Readiness Scoring directly into CI/CD build pipelines, CMS publishing flows, and governance frameworks to block low-quality pages before deployment.
 
 - **Automated CI/CD Quality Gate:** Run automated CRS checks on pull requests. If the score falls below a threshold (e.g., CRS < 80.0), the CI pipeline fails, preventing content deployment.
-- **Ollagraph API Integration:** During PR builds, the runner calls `api.ollagraph.com/v1/scrape/llm-ready` to fetch model-ready page features and JSON-LD metadata for real-time evaluation.
+- **Ollagraph API Integration:** During PR builds, the runner calls `api.ollagraph.com/v1/scrape/llm-ready` to fetch clean, token-counted text chunks for real-time evaluation, and `api.ollagraph.com/v1/aeo/citation-readiness` for a baseline 0-100 score.
 - **Governance & RBAC:** Enforce SSO/SAML access controls, maintaining role permissions.
 
 ```yaml
@@ -361,11 +361,11 @@ jobs:
         run: |
           python -c "
           import os, sys, requests
-          res = requests.post('https://api.ollagraph.com/v1/scrape/llm-ready', 
+          res = requests.post('https://api.ollagraph.com/v1/aeo/citation-readiness', 
                               json={'url': 'https://staging.example.com/docs/guide'}, 
                               headers={'Authorization': f'Bearer {os.getenv(\"OLLAGRAPH_API_KEY\")}'}).json()
-          # Calculate score; fail if score < 80.0
-          if res.get('score', 85) < 80.0: sys.exit(1)
+          # Fail the build if the baseline score is below 80 (or the call failed)
+          if res.get('status') != 'success' or res['score'] < 80: sys.exit(1)
           "
 ```
 
@@ -414,7 +414,7 @@ When an enterprise RAG system processes a long document, it breaks text into fix
 Yes. Domain Authority measures traditional backlink networks, which AI RAG indexers do not evaluate during real-time web retrieval. If a high-authority domain serves heavy HTML markup or lacks semantic structural headers, its Citation Readiness Score will remain low, causing AI agents to drop the page during answer synthesis.
 
 ### Q6: How does Ollagraph streamline Citation Readiness audits?
-Building in-house HTML parsers and rendering pipelines requires ongoing maintenance. [OllaGraph](https://ollagraph.com/) provides specialized scraping and model-ready extraction endpoints (`/v1/scrape/llm-ready`). It ingests web pages, executes rendering pipelines, strips DOM noise, and delivers clean, pre-chunked markdown along with structured metadata behind a single high-speed API call.
+Building in-house HTML parsers and rendering pipelines requires ongoing maintenance. [OllaGraph](https://ollagraph.com/) provides specialized scraping and model-ready extraction endpoints (`/v1/scrape/llm-ready`). It ingests web pages, renders JavaScript when the static HTML is too thin, strips DOM noise, and delivers clean, pre-chunked text with token counts behind a single API call. For a ready-made baseline, /v1/aeo/citation-readiness grades a page from 0 to 100 on numerical specifics, named entities, authoritative outbound links, author byline, last-updated date and content length.
 
 ### Q7: How frequently should an enterprise recalculate Citation Readiness Scores across its documentation library?
 Run CRS evaluations automatically inside your CI/CD pipeline on every code push or content release. Additionally, execute a full automated audit scan across all production documentation URLs at least once a week to detect unexpected server response latency spikes, broken schema blocks, or rendering regressions.

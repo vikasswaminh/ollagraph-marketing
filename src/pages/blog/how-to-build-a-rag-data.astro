@@ -135,29 +135,30 @@ QUERY TIME
   "max_tokens": 512,
   "overlap_tokens": 64
 &#125;</code></pre>
-<p>The API detects the page is a SPA, spins up a browser, waits for the content to load, and returns clean Markdown plus pre-chunked segments. The response includes:</p>
+<p>If the static HTML is too thin (an SPA shell, for example), the API re-fetches the page with JavaScript rendering, strips boilerplate, and returns clean text already split into chunks. The response includes:</p>
 <pre><code>&#123;
   "status": "success",
   "url": "https://docs.example.com/api/authentication",
+  "final_url": "https://docs.example.com/api/authentication",
   "title": "Authentication — Example API Docs",
-  "content_markdown": "# Authentication...",
+  "rendered_with_js": true,
   "chunks": [
     &#123;
-      "text": "# Authentication\n\nAuthentication is required for all API endpoints...",
+      "text": "Authentication\n\nAuthentication is required for all API endpoints...",
       "token_count": 487,
       "byte_start": 0,
-      "byte_end": 2156,
-      "position": 0
+      "byte_end": 2156
     &#125;,
     &#123;
-      "text": "## API Keys\n\nAPI Keys are the primary...",
+      "text": "API Keys\n\nAPI Keys are the primary...",
       "token_count": 501,
       "byte_start": 2156,
-      "byte_end": 4203,
-      "position": 1
+      "byte_end": 4203
     &#125;
     ...
-  ]
+  ],
+  "chunk_count": 4,
+  "total_tokens": 1987
 &#125;</code></pre>
 <p>The key detail: the scraping API already did Stages 1, 2, and 3 (fetch, clean, chunk). You got back chunks that are:</p>
 <ul>
@@ -211,7 +212,7 @@ vector = embedding.data[0].embedding  # [0.042, -0.123, ..., 0.556]</code></pre>
   "url": "https://docs.example.com/api/authentication",
   "chunks_ingested": 4,
   "total_tokens": 1987,
-  "total_cost_credits": 0.15,
+  "total_cost_credits": 1,
   "vectors_stored": 4,
   "ingestion_timestamp": "2026-06-18T14:23:45Z",
   "status": "success"
@@ -339,8 +340,7 @@ def fetch_chunks(url: str, max_tokens: int = 512, overlap_tokens: int = 64):
             "url": url,
             "max_tokens": max_tokens,
             "overlap_tokens": overlap_tokens,
-            "js_eval": True,          # render JS-heavy pages
-            "wait_until": "networkidle",
+            # JS rendering happens automatically when the static HTML is too thin
         &#125;,
         timeout=120,
     )
@@ -490,7 +490,7 @@ A: Add an embedding_model column to your schema. At ingest time, write the model
 
 <h2>Refrences:</h2>
 <ul>
-<li>Ollagraph API: https://docs.ollagraph.com (/v1/scrape, /v1/scrape/llm-ready, /v1/convert/*)</li>
+<li>Ollagraph API: https://ollagraph.com/docs (/v1/scrape, /v1/scrape/llm-ready, /v1/convert/*)</li>
 <li>pgvector: https://github.com/pgvector/pgvector (PostgreSQL vector extension; HNSW indexing)</li>
 <li>OpenAI Embeddings: https://platform.openai.com/docs/guides/embeddings (text-embedding-3-small, 1536d, $0.02/1M tokens)</li>
 <li>Mistral Embeddings: https://docs.mistral.ai/capabilities/embeddings/ (1024d, multilingual)</li>

@@ -12,19 +12,19 @@ const faqs = [
   },
   {
     q: "What's the cleanest format for RAG ingestion in 2026?",
-    a: "Markdown with structured metadata is the consensus format. Clean markdown gives the embedding model and the LLM a stable, semantic input, while metadata fields like title, author, published date, and source URL anchor the retrieval and citation. Ollagraph's markdown actor returns both in a single call."
+    a: "Markdown with structured metadata is the consensus format. Clean markdown gives the embedding model and the LLM a stable, semantic input, while metadata fields like title, author, published date, and source URL anchor the retrieval and citation. Ollagraph's /v1/scrape returns the page as markdown, and /v1/extract/structured returns the metadata the page declares."
   },
   {
     q: "How many pages can I crawl with Ollagraph?",
-    a: "The crawl endpoint scales to millions of pages per job with depth, include, and exclude filters that keep crawls focused. Teams typically run focused crawls of 10,000 to 500,000 pages for a knowledge base, refreshed on a schedule. Larger crawls are common for full-corpus ingestion."
+    a: "A single crawl job discovers up to 5,000 pages (max_pages), with a depth setting that keeps it focused below the start URL and robots.txt respected by default. Larger knowledge bases are built from several focused crawls — one per docs section or domain — refreshed on a schedule."
   },
   {
     q: "Does Ollagraph handle JavaScript-rendered sites?",
-    a: "Yes. Every actor renders pages when needed and serves the rendered DOM to the markdown and extraction layers. Single-page apps, hydrated sites, and content that loads after scroll all return clean markdown without any client-side configuration."
+    a: "Yes. /v1/scrape renders JavaScript at no extra credit cost, and its wait_until option (for example networkidle0) lets a hydrated page settle before it is captured. For content that loads after a scroll or a click, add a page action such as scroll_to_bottom or click."
   },
   {
     q: "How do I chunk markdown for embedding?",
-    a: "Most teams chunk on heading boundaries first and fall back to a token-count split for long sections. A 512 to 1024 token chunk with 50 to 100 tokens of overlap works for most retrieval setups. The markdown actor returns content already split by heading, which removes the first half of the chunking work."
+    a: "Most teams chunk on heading boundaries first and fall back to a token-count split for long sections. A 512 to 1024 token chunk with 50 to 100 tokens of overlap works for most retrieval setups. If you would rather not write the splitter, /v1/scrape/llm-ready returns the page's main text already split into token-sized chunks with configurable max_tokens and overlap_tokens."
   },
   {
     q: "What metadata should each chunk carry?",
@@ -50,7 +50,7 @@ const faqs = [
   faqs={faqs}
 >
   <h2>The short answer for RAG ingestion in 2026</h2>
-  <p>Building a RAG knowledge base from the web in 2026 means crawling target sites, converting pages to clean markdown, attaching structured metadata, and writing the result to a vector store. Ollagraph's crawl and markdown actors handle the first three steps in a single pipeline. Teams ship production-grade RAG knowledge bases in days, not quarters, on a per-page cost that is a fraction of a single engineer's hour.</p>
+  <p>Building a RAG knowledge base from the web in 2026 means crawling target sites, converting pages to clean markdown, attaching structured metadata, and writing the result to a vector store. Ollagraph's crawl, scrape and extract endpoints handle the first three steps in a single pipeline. Teams ship production-grade RAG knowledge bases in days, not quarters, on a per-page cost that is a fraction of a single engineer's hour.</p>
 
   <p>The market has standardized on this shape. Clean markdown is the input format every modern embedding model handles well, structured metadata is the contract every retrieval layer reads, and the only remaining question is which managed service does the ingestion.</p>
 
@@ -75,16 +75,16 @@ const faqs = [
   <p>Common Crawl rounds out the field with a deep complementary strength. Common Crawl is the public-good corpus that has powered a generation of LLM research, and its archives remain the right starting point for any team that needs petabyte-scale historical web data.</p>
 
   <h2>Where Ollagraph goes further</h2>
-  <p>Ollagraph is built for teams that want the full ingestion pipeline behind one auth contract. The crawl endpoint discovers pages, the markdown actor returns clean LLM-ready content, the extract/clean endpoint gives the article body alone, and the extract/structured endpoint surfaces JSON-LD and OpenGraph. Four calls, one bill, one schema.</p>
+  <p>Ollagraph is built for teams that want the full ingestion pipeline behind one auth contract. The crawl endpoint discovers pages, the scrape endpoint returns each page as markdown, the extract/clean endpoint gives the article body alone, and the extract/structured endpoint surfaces JSON-LD and OpenGraph. Four calls, one bill, one auth contract.</p>
 
-  <p>The markdown output is opinionated in the right places. Headings are preserved as a path, code blocks survive intact, tables convert to GFM, images come back as references with their alt text, and the noise — navigation, footers, cookie banners — is stripped before the markdown is emitted. That output is the input to almost every modern embedding model without further work.</p>
+  <p>Markdown keeps the structure that matters for retrieval — headings, lists, code blocks and links — in a form almost every modern embedding model reads well. When you want only the article prose, extract/clean runs Mozilla's Readability algorithm to drop navigation and sidebars, and /v1/scrape/llm-ready goes one step further and returns that text pre-chunked.</p>
 
-  <p>The other Ollagraph advantage is freshness. Every call is a live fetch, every crawl is a live walk of the target site, and the markdown a chunk is built from matches what a reader saw on the source page at the moment of the call. There is no pre-built index between the user's question and the source content. The full set of crawling and AI actors is on the <a href="/actors">actors page</a>.</p>
+  <p>The other Ollagraph advantage is freshness. Every call is a live fetch, every crawl is a live walk of the target site, and the markdown a chunk is built from matches what a reader saw on the source page at the moment of the call. There is no pre-built index between the user's question and the source content. The full set of crawling and extraction endpoints is on the <a href="/capabilities">capabilities page</a>.</p>
 
   <h2>The step-by-step</h2>
 
   <h3>1. Discover the pages with a crawl</h3>
-  <p>The first call walks the target site. The crawl endpoint accepts a seed URL, a depth, include and exclude patterns, and a soft cap on page count. The output is a list of discovered URLs that the markdown actor consumes next.</p>
+  <p>The first call walks the target site. The crawl endpoint accepts a start URL, a depth (path levels below the start URL), and a cap on page count (up to 5,000). It runs as a background job; the finished job's result is the list of discovered URLs that the scrape step consumes next.</p>
 
   <pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"
 
@@ -92,40 +92,42 @@ curl -X POST https://api.ollagraph.com/v1/crawl \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "seed_urls": ["https://docs.examplecorp.com/"],
+    "url": "https://docs.examplecorp.com/guides/",
     "depth": 3,
-    "include": ["/docs/*", "/guides/*"],
-    "exclude": ["/changelog/*"],
-    "max_pages": 5000
+    "max_pages": 5000,
+    "webhook_url": "https://yourapp.com/hooks/crawl-done"
   &#125;'</code></pre>
 
   <pre><code>&#123;
-  "job_id": "crawl_8mPq2nLr9wK",
-  "discovered": 1247,
-  "queued": 1247,
-  "status_url": "/v1/jobs/crawl_8mPq2nLr9wK"
+  "status": "queued",
+  "job_id": "4f1c2b7e-0d9a-4e3b-8c21-6a5f9e0b7d13",
+  "message": "Crawl queued successfully."
 &#125;</code></pre>
+
+  <p>Poll <code>GET /v1/jobs/&#123;job_id&#125;</code> or wait for the webhook; the completed result carries the crawled <code>urls</code>. Filter that list in your own code (for example, keep <code>/docs/</code> and <code>/guides/</code>, drop <code>/changelog/</code>) before the next step.</p>
 
   <p>For teams that already have a list of URLs — from a sitemap, an export, or a previous crawl — the discovery step can be skipped. When the target site exposes a sitemap, the <a href="/capabilities">crawl and discovery capabilities</a> return the URL list directly without a full crawl.</p>
 
   <h3>2. Convert each page to clean markdown</h3>
-  <p>The markdown actor is the workhorse of the RAG pipeline. It renders the page, strips the chrome, and emits LLM-ready markdown with the structure intact. Tables, code blocks, lists, and heading hierarchy all survive.</p>
+  <p>The scrape endpoint is the workhorse of the RAG pipeline. It renders the page (JavaScript included, at no extra cost) and returns it as markdown with the structure intact — headings, lists, code blocks and links.</p>
 
-  <pre><code>curl -X POST https://api.ollagraph.com/v1/actors/markdown \
+  <pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '&#123;"url": "https://docs.examplecorp.com/guides/getting-started"&#125;'</code></pre>
+  -d '&#123;"url": "https://docs.examplecorp.com/guides/getting-started", "format": "markdown"&#125;'</code></pre>
 
   <pre><code>&#123;
-  "title": "Getting started with ExampleCorp",
-  "markdown": "# Getting started with ExampleCorp\n\nWelcome to ExampleCorp...",
-  "word_count": 1843
+  "status": "success",
+  "url": "https://docs.examplecorp.com/guides/getting-started",
+  "format": "markdown",
+  "content": "# Getting started with ExampleCorp\n\nWelcome to ExampleCorp...",
+  "time_ms": 1840
 &#125;</code></pre>
 
-  <p>The markdown field is the input the embedding model reads. Many teams split it on heading boundaries before embedding — that work lives in the chunker, not in the ingestion call. Pair this with <code>/v1/extract/structured</code> below to attach published-date and author metadata for freshness logic and source attribution.</p>
+  <p>The content field is the input the embedding model reads. Many teams split it on heading boundaries before embedding — that work lives in the chunker, not in the ingestion call. If you want chunks straight from the API, <code>POST /v1/scrape/llm-ready</code> with <code>&#123;"url": ..., "max_tokens": 512&#125;</code> returns the page's main text as a <code>chunks</code> array with per-chunk token counts. For a long URL list, <code>/v1/scrape/batch</code> takes up to 100 URLs per call. Pair this with <code>/v1/extract/structured</code> below to attach published-date and author metadata for freshness logic and source attribution.</p>
 
   <h3>3. Pull the article body when you want only the content</h3>
-  <p>For news sites, blog posts, and long-form content, the extract/clean endpoint strips down to the article body alone. Reading time and a normalized author field come back in the same call.</p>
+  <p>For news sites, blog posts, and long-form content, the extract/clean endpoint strips down to the article body alone. Word count and an estimated reading time come back in the same call.</p>
 
   <pre><code>curl -X POST https://api.ollagraph.com/v1/extract/clean \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
@@ -133,18 +135,19 @@ curl -X POST https://api.ollagraph.com/v1/crawl \
   -d '&#123;"url": "https://news.examplecorp.com/2026/q2-report"&#125;'</code></pre>
 
   <pre><code>&#123;
+  "status": "success",
+  "url": "https://news.examplecorp.com/2026/q2-report",
   "title": "ExampleCorp Q2 2026 report",
-  "author": "Jordan Park",
-  "published": "2026-05-08T12:00:00Z",
-  "reading_time_min": 6,
-  "content": "ExampleCorp's second quarter results came in ahead of consensus...",
-  "language": "en"
+  "content_text": "ExampleCorp's second quarter results came in ahead of consensus...",
+  "content_html": "&lt;div&gt;&lt;p&gt;ExampleCorp's second quarter results...&lt;/p&gt;&lt;/div&gt;",
+  "word_count": 1420,
+  "reading_time_min": 6
 &#125;</code></pre>
 
-  <p>The output is cleaner than the markdown actor's for the narrow case where only the prose matters. For RAG over a news corpus, extract/clean is the right primitive — it removes the related-articles widget, the comments section, and the byline metadata that the markdown actor preserves in its richer output.</p>
+  <p>The output is cleaner than the full-page markdown for the narrow case where only the prose matters. For RAG over a news corpus, extract/clean is the right primitive — Readability drops the related-articles widget, the comments section and the page chrome that a full-page scrape keeps. Author and publish date come from the structured-data call below.</p>
 
   <h3>4. Attach structured metadata</h3>
-  <p>The extract/structured endpoint returns the machine-readable data the page already declares about itself. JSON-LD, OpenGraph, microdata, and Twitter Cards all come back in a normalized object that drops cleanly onto a chunk record.</p>
+  <p>The extract/structured endpoint returns the machine-readable data the page already declares about itself. JSON-LD, OpenGraph, microdata, RDFa, Twitter Cards and standard meta tags all come back in one object that drops cleanly onto a chunk record.</p>
 
   <pre><code>curl -X POST https://api.ollagraph.com/v1/extract/structured \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
@@ -152,11 +155,13 @@ curl -X POST https://api.ollagraph.com/v1/crawl \
   -d '&#123;"url": "https://docs.examplecorp.com/guides/getting-started"&#125;'</code></pre>
 
   <pre><code>&#123;
+  "status": "success",
   "url": "https://docs.examplecorp.com/guides/getting-started",
-  "jsonld": [&#123;"@type": "TechArticle", "headline": "Getting started", "datePublished": "2025-11-02"&#125;],
-  "opengraph": &#123;"og:title": "Getting started", "og:type": "article", "og:image": "https://docs.examplecorp.com/og.png"&#125;,
-  "canonical": "https://docs.examplecorp.com/guides/getting-started",
-  "language": "en"
+  "json_ld": [&#123;"@type": "TechArticle", "headline": "Getting started", "datePublished": "2025-11-02"&#125;],
+  "open_graph": &#123;"title": "Getting started", "type": "article", "image": "https://docs.examplecorp.com/og.png"&#125;,
+  "twitter_card": &#123;&#125;,
+  "microdata": [],
+  "meta": &#123;"title": "Getting started | ExampleCorp", "description": "...", "canonical": "https://docs.examplecorp.com/guides/getting-started"&#125;
 &#125;</code></pre>
 
   <p>The schema.org work that the wider web has invested in for SEO turns out to be exactly the metadata RAG pipelines want. The W3C's <a href="https://www.w3.org/TR/json-ld11/">JSON-LD specification</a> is the right reference for any team building structured-data-aware retrieval logic, and the MDN documentation on <a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta">meta elements</a> covers the OpenGraph surface in depth.</p>
@@ -191,33 +196,33 @@ curl -X POST https://api.ollagraph.com/v1/crawl \
 
   <p>The first version of the pipeline took six months and three engineers. A custom crawler, a Python HTML cleaner, a hand-rolled markdown converter, and a chunking script that had its own bug tracker. The cleanest pages came out fine. The messiest pages — anything with embedded interactive examples or heavy hydration — were a mess. Half the engineering meetings were about ingestion edge cases.</p>
 
-  <p>Lin moved the pipeline to Ollagraph over a single sprint. The crawl endpoint discovers the page list, the markdown actor returns clean LLM-ready content, the extract/structured endpoint attaches metadata, and the team's own code handles only the chunking, embedding, and vector store write. The support copilot ships a quarter ahead of schedule and the engineers go back to working on retrieval quality instead of HTML parsing.</p>
+  <p>Lin moved the pipeline to Ollagraph over a single sprint. The crawl endpoint discovers the page list, the scrape endpoint returns clean markdown, the extract/structured endpoint attaches metadata, and the team's own code handles only the chunking, embedding, and vector store write. The support copilot ships a quarter ahead of schedule and the engineers go back to working on retrieval quality instead of HTML parsing.</p>
 
   <h2>Pricing math</h2>
-  <p>RAG ingestion is one of the most concentrated cost categories in the AI stack. The crawl and markdown conversion are each metered per call. A 50,000-page knowledge base refresh has a predictable per-page cost that lives on the <a href="/pricing">pricing page</a> and updates as the market moves.</p>
+  <p>RAG ingestion is one of the most concentrated cost categories in the AI stack. The crawl job and each page scrape are metered per call, at one credit each. A 50,000-page knowledge base refresh has a predictable per-page cost that lives on the <a href="/pricing">pricing page</a> and updates as the market moves.</p>
 
   <p>The comparison to a self-hosted ingestion pipeline is loud at this volume. A custom crawler, a rendering layer, an HTML cleaner, and a markdown converter together require three to five engineers over a quarter to build well, plus an on-call rotation to keep running. Below 100k requests a month, a managed API is usually cheaper than building, and at RAG ingestion scale, the savings stay clear well past that line.</p>
 
   <p>The deeper math is the time-to-market math. A team that ships a working RAG application in a sprint with managed ingestion produces a quarter or more of revenue ahead of a team that builds ingestion from scratch. Even when the per-month cost would equal out at very high volume, the time-saved comparison rarely closes.</p>
 
   <h2>The architecture that scales</h2>
-  <p>RAG pipelines that scale share a common shape. There is a list of source domains and their refresh cadences in a small config table. There is a scheduler that fires the crawl and markdown calls. There is a webhook handler that lands raw markdown and metadata in object storage. There is a transformation layer that chunks, embeds, and writes to the vector store. And there is an evaluation harness that catches regressions when a source site changes.</p>
+  <p>RAG pipelines that scale share a common shape. There is a list of source domains and their refresh cadences in a small config table. There is a scheduler that fires the crawl and scrape calls. There is a webhook handler that lands raw markdown and metadata in object storage. There is a transformation layer that chunks, embeds, and writes to the vector store. And there is an evaluation harness that catches regressions when a source site changes.</p>
 
   <p>The decoupling pays off the first time the model changes. New embedding model, new chunking strategy, new metadata field — all of those changes happen in the transformation layer and re-process the existing raw markdown without touching the ingestion call. Teams running this architecture iterate on retrieval quality without re-paying for crawls.</p>
 
-  <p>For teams running on Ollagraph, the <a href="/docs">docs</a> include reference implementations that read a source list, fire crawl and markdown calls in parallel, and write a clean record per page to object storage. The pipeline is small enough to be reviewed by a single engineer in an afternoon.</p>
+  <p>For teams running on Ollagraph, the <a href="/docs">docs</a> cover the crawl, scrape and extract calls this pipeline is built from: read a source list, fire crawl and scrape calls in parallel, and write a clean record per page to object storage. The pipeline is small enough to be reviewed by a single engineer in an afternoon.</p>
 
   <h2>Common pitfalls and how to avoid them</h2>
   <p>The first pitfall is chunking before cleaning. A pipeline that chunks raw HTML produces vectors that retrieve on navigation text, footer links, and cookie-banner copy as often as on the actual content. Every minute spent fixing retrieval quality on a messy ingestion is a minute spent on the wrong layer. Clean the markdown first, chunk second.</p>
 
-  <p>The second pitfall is ignoring freshness in retrieval. A chunk that is six months old should not retrieve with the same weight as a chunk that was updated yesterday, and a chunk from a page that no longer exists should not retrieve at all. The last_modified field on every markdown response is the signal that makes freshness-aware retrieval straightforward to implement.</p>
+  <p>The second pitfall is ignoring freshness in retrieval. A chunk that is six months old should not retrieve with the same weight as a chunk that was updated yesterday, and a chunk from a page that no longer exists should not retrieve at all. Record the time you fetched each page, and the dateModified or datePublished the page declares in its JSON-LD (from extract/structured) where it has one — those are the signals that make freshness-aware retrieval straightforward to implement.</p>
 
   <p>The third pitfall is over-crawling. A 50,000-page site rarely needs all 50,000 pages in the retrieval set. The pages users actually ask about — documentation, guides, FAQs, recent changelog entries — are usually a small subset. A focused crawl with smart include and exclude patterns produces a smaller, higher-quality dataset that retrieves better than a sprawling everything-crawl.</p>
 
   <h2>Citation, attribution, and trust</h2>
   <p>The single biggest quality-of-experience improvement in modern RAG applications is source citation. When the LLM answer is accompanied by a link to the section it pulled from, the user can verify the claim in one click and the application's trust score climbs. The metadata bundle on each chunk is what makes that citation possible.</p>
 
-  <p>For domains where the source matters legally — compliance, healthcare, financial services — citation is not optional. The application needs to show its work, and the work lives in the chunk metadata. Ollagraph's extract/structured output includes canonical URLs, which are the right field to render in the citation, since they survive query strings and redirects.</p>
+  <p>For domains where the source matters legally — compliance, healthcare, financial services — citation is not optional. The application needs to show its work, and the work lives in the chunk metadata. Ollagraph's extract/structured output includes the page's canonical URL (in meta.canonical), which are the right field to render in the citation, since they survive query strings and redirects.</p>
 
   <p>The deeper move is to expose the chunk's last-modified date alongside the source link. A reader who sees that the cited source was updated within the past week reads the answer with one level of confidence. A reader who sees that the source has not been touched in two years reads it with a different one. Both are honest, and both build trust.</p>
 

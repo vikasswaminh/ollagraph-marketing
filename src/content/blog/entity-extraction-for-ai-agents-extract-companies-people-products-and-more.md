@@ -24,7 +24,7 @@ This article covers the full stack: how to extract entities from web pages, how 
 - The three-stage pipeline (extract → resolve → structure) consistently outperforms single-pass LLM extraction on both recall and precision for multi-entity pages.
 - Confidence scoring lets agents decide when to act vs. when to ask for clarification, reducing hallucinated actions from bad entity data.
 - Schema-driven extraction with typed entity contracts produces output that vector stores, graph databases, and MCP tools can consume without post-processing.
-- The Ollagraph Entity Resolution API handles disambiguation across 50+ entity types with sub-500ms latency per page, making it viable for real-time agent workflows.
+- Ollagraph supplies the fetch layer for this pipeline — clean page text, the Organization, Person and Product records a page already publishes as JSON-LD, and contact details — while NER and resolution run in your own code.
 
 ## 1. Problem Statement
 
@@ -48,7 +48,7 @@ The problem is that most entity extraction tools were built for search and analy
 
 2025 and 2026 have seen a shift. GLiNER and similar zero-shot NER models made it possible to define custom entity types on the fly. LLM-based extraction (using GPT-4, Claude, or local models) showed impressive recall but struggled with consistency and latency at scale. The real breakthrough has been in hybrid pipelines: use a fast NER model for initial extraction, an LLM for context-aware disambiguation, and a resolution layer that links extracted entities to canonical knowledge bases.
 
-Ollagraph's approach combines all three stages into a single API call. The extraction stage uses a fine-tuned model that handles 50+ entity types including company, person, product, organization, location, event, job title, email, phone, URL, and industry-specific types like drug name, stock ticker, and funding round. The resolution stage links each entity to Wikidata, Crunchbase, or a custom knowledge base. The structuring stage outputs typed JSON that an agent can consume directly.
+Ollagraph does not run NER or entity resolution. It covers the step before them: fetching the page (with JavaScript rendering and anti-bot handling where needed), stripping boilerplate, and returning the structured data the page already publishes, plus emails, phones and social profiles. The extraction, resolution, and structuring stages described below run in your own code, with tools like spaCy, GLiNER or an LLM, and knowledge bases like Wikidata.
 
 ## 3. What Is Entity Extraction for AI Agents?
 
@@ -210,38 +210,58 @@ The pipeline is designed so each stage can be replaced independently. You could 
 ### Prerequisites
 
 - Python 3.11+ or Node.js 18+
-- An Ollagraph API key (free tier handles 1,000 pages/month)
-- Basic familiarity with JSON Schema
+- An Ollagraph API key (new accounts get 1,000 free credits; most calls cost 1 credit)
+- An NER model you can run (spaCy, GLiNER, or an LLM) and basic familiarity with JSON Schema
 
-### Quick Start with the Ollagraph Entity Extraction API
+### Quick Start: Fetch with Ollagraph, Extract in Your Own Code
+
+Ollagraph handles the fetch layer: `/v1/extract/clean` returns the main text of a page with boilerplate removed, and `/v1/extract/structured` returns the Organization, Person and Product records the page already publishes as JSON-LD. Named entity recognition and resolution run in your own code. This example uses spaCy and the public Wikidata search API.
 
 ```python
+import os
 import requests
-import json
+import spacy  # pip install spacy && python -m spacy download en_core_web_lg
 
-API_KEY = "your_ollagraph_api_key"
-URL = "https://api.ollagraph.com/v1/extract/entities"
-
-# A real SaaS pricing page
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
 target_url = "https://example.com/pricing"
 
-response = requests.post(
-    URL,
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={
-        "url": target_url,
-        "entity_types": ["company", "person", "product", "organization"],
-        "resolve": True,
-        "confidence_threshold": 0.7,
-        "schema": "agent-ready"
-    }
-)
+# Stage 0 (Ollagraph): clean main text + structured data the page publishes
+clean = requests.post(f"{API}/v1/extract/clean", headers=HEADERS, json={"url": target_url}).json()
+structured = requests.post(f"{API}/v1/extract/structured", headers=HEADERS, json={"url": target_url}).json()
 
-data = response.json()
-print(json.dumps(data, indent=2))
+# Publisher-declared entities are high-confidence seeds
+declared = [
+    {"name": node.get("name"), "type": node.get("@type")}
+    for node in structured.get("json_ld", [])
+    if node.get("@type") in ("Organization", "Person", "Product")
+]
+
+# Stage 1 (your code): NER on the clean text, keeping character offsets for provenance
+nlp = spacy.load("en_core_web_lg")
+doc = nlp(clean["content_text"])
+mentions = [
+    {"text": e.text, "label": e.label_, "start": e.start_char, "end": e.end_char}
+    for e in doc.ents
+    if e.label_ in ("ORG", "PERSON", "PRODUCT")
+]
+
+# Stage 2 (your code): resolve candidates against Wikidata
+def resolve(name):
+    r = requests.get("https://www.wikidata.org/w/api.php", params={
+        "action": "wbsearchentities", "search": name, "language": "en",
+        "type": "item", "format": "json", "limit": 5,
+    })
+    return r.json().get("search", [])
+
+for m in mentions[:10]:
+    candidates = resolve(m["text"])
+    print(m["text"], m["label"], [c["id"] for c in candidates])
 ```
 
-### Response Structure
+### Target Output Structure
+
+After resolution and structuring (Stages 2 and 3), your pipeline should emit records like this:
 
 ```json
 {
@@ -272,9 +292,7 @@ print(json.dumps(data, indent=2))
       }
     ],
     "organizations": []
-  },
-  "processing_time_ms": 423,
-  "tokens_consumed": 1240
+  }
 }
 ```
 
@@ -282,64 +300,53 @@ print(json.dumps(data, indent=2))
 
 ### Example 1: Simple Product Page (Server-Rendered)
 
-A basic WooCommerce product page with a single variant and server-rendered HTML.
+A basic WooCommerce product page with a single variant and server-rendered HTML. The product and brand are entities the publisher already declares in JSON-LD, so start there.
 
 ```bash
-curl -X POST https://api.ollagraph.com/v1/extract \
+curl -X POST https://api.ollagraph.com/v1/extract/structured \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example-woocommerce.com/product/leather-wallet",
-    "schema": "ecommerce_product_v2",
-    "render_js": false
-  }'
+  -d '{"url": "https://example-woocommerce.com/product/leather-wallet"}'
 ```
 
-Response:
+Response (trimmed):
 
 ```json
 {
   "status": "success",
-  "data": {
-    "product_name": "Handcrafted Leather Wallet",
-    "brand": "Artisan Goods Co.",
-    "sku": "HLW-001",
-    "price": 89.00,
-    "currency": "USD",
-    "compare_at_price": null,
-    "availability": "in_stock",
-    "variants": [
-      { "sku": "HLW-001-BRN", "options": { "color": "Brown" }, "price": 89.00, "currency": "USD", "availability": "in_stock" },
-      { "sku": "HLW-001-BLK", "options": { "color": "Black" }, "price": 89.00, "currency": "USD", "availability": "out_of_stock" }
-    ],
-    "provenance": {
-      "product_name": { "strategy": "json_ld", "confidence": 0.99 },
-      "price": { "strategy": "json_ld", "confidence": 0.99 }
+  "url": "https://example-woocommerce.com/product/leather-wallet",
+  "products": [
+    {
+      "name": "Handcrafted Leather Wallet",
+      "brand": "Artisan Goods Co.",
+      "sku": "HLW-001",
+      "price": "89.00",
+      "currency": "USD",
+      "availability": "InStock"
     }
-  }
+  ],
+  "json_ld": [ { "@type": "Product", "name": "Handcrafted Leather Wallet", "offers": [ ... ] } ],
+  "open_graph": { "title": "Handcrafted Leather Wallet" },
+  "meta": { "title": "Handcrafted Leather Wallet | Artisan Goods Co." }
 }
 ```
 
+`products` is a flattened view of the first offer. The full variant list is in `json_ld`, so map each offer to its own record in your own code.
+
 ### Example 2: Multi-Variant Shopify Store (JavaScript-Rendered)
 
-A Shopify product page with 48 variants (6 colors × 8 sizes) where variant data loads via client-side API. The pipeline renders the page, waits for all network requests to settle, extracts the JSON-LD (which Shopify embeds with all variant data), and returns the full variant list — 48 variant records, each with its own SKU, price, and stock status.
+A Shopify product page with 48 variants (6 colors × 8 sizes) where variant data loads via client-side API. `/v1/render` returns the HTML after the page's JavaScript has run. Shopify embeds the variant data in the product JSON-LD, so parse it in your own code (for example with extruct) to get the full variant list — 48 variant records, each with its own SKU, price, and stock status.
 
 ```bash
-curl -X POST https://api.ollagraph.com/v1/extract \
+curl -X POST https://api.ollagraph.com/v1/render \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example-shopify.com/products/performance-tee",
-    "schema": "ecommerce_product_v2",
-    "render_js": true,
-    "wait_strategy": "network_idle",
-    "wait_timeout": 15000
-  }'
+  -d '{"url": "https://example-shopify.com/products/performance-tee"}'
 ```
 
 ### Example 3: Price with Discount and Out-of-Stock Handling
 
-The pipeline correctly distinguishes sale prices from compare-at prices and maps site-specific stock text to normalized values. A product showing "Ships in 2-3 weeks" gets mapped to backordered with an estimated restock date extracted from the description.
+Your normalization step should distinguish sale prices from compare-at prices and map site-specific stock text to normalized values. A product showing "Ships in 2-3 weeks" gets mapped to backordered with an estimated restock date extracted from the description.
 
 ```json
 {
@@ -358,32 +365,32 @@ The pipeline correctly distinguishes sale prices from compare-at prices and maps
 
 ## 8. Performance & Benchmarks
 
-We benchmarked the Ollagraph Entity Extraction API against three alternatives: spaCy (en_core_web_lg), GLiNER (zero-shot), and GPT-4o (prompt-based extraction). The test set included 200 web pages across five categories: news articles, SaaS pricing pages, startup directories, job listings, and product documentation.
+We compared three common extraction approaches: spaCy (en_core_web_lg), GLiNER (zero-shot), and GPT-4o (prompt-based extraction). The test set included 200 web pages across five categories: news articles, SaaS pricing pages, startup directories, job listings, and product documentation.
 
 ### Recall by Entity Type
 
 ```
-Entity Type    spaCy   GLiNER  GPT-4o  Ollagraph
-Company        62%     71%     88%     94%
-Person         78%     74%     91%     96%
-Product        34%     58%     82%     91%
-Organization   71%     69%     85%     92%
-Location       83%     76%     90%     95%
-Event          41%     52%     79%     88%
-Job Title      28%     61%     84%     90%
-Email/Phone    12%     44%     76%     93%
+Entity Type    spaCy   GLiNER  GPT-4o
+Company        62%     71%     88%
+Person         78%     74%     91%
+Product        34%     58%     82%
+Organization   71%     69%     85%
+Location       83%     76%     90%
+Event          41%     52%     79%
+Job Title      28%     61%     84%
+Email/Phone    12%     44%     76%
 ```
 
-spaCy's low product recall (34%) is expected — its training data (OntoNotes 5.0) barely covers product entities. GLiNER does better with zero-shot prompting but struggles with email and phone patterns. GPT-4o shows strong recall across the board but at 10–20x the latency and cost.
+spaCy's low product recall (34%) is expected — its training data (OntoNotes 5.0) barely covers product entities. GLiNER does better with zero-shot prompting but struggles with email and phone patterns; a deterministic extractor such as Ollagraph's `/v1/extract/contacts` is a better fit for those. GPT-4o shows strong recall across the board but at 10–20x the latency and cost.
 
 ### Precision (Accuracy of Extracted Entities)
 
 ```
-Entity Type    spaCy   GLiNER  GPT-4o  Ollagraph
-Company        84%     76%     91%     95%
-Person         91%     82%     93%     97%
-Product        72%     68%     87%     93%
-Organization   86%     74%     89%     94%
+Entity Type    spaCy   GLiNER  GPT-4o
+Company        84%     76%     91%
+Person         91%     82%     93%
+Product        72%     68%     87%
+Organization   86%     74%     89%
 ```
 
 ### Latency per Page
@@ -393,8 +400,9 @@ System      Avg Latency   P95 Latency   Cost per 1K Pages
 spaCy       180ms         320ms         $0.00 (local)
 GLiNER      420ms         680ms         $0.00 (local)
 GPT-4o      4.2s          7.8s          ~$15.00
-Ollagraph   450ms         820ms         $2.50
 ```
+
+These figures cover the extraction step only. Fetching and cleaning the page adds its own latency, which depends mostly on the target site.
 
 ### Resolution Accuracy
 
@@ -405,20 +413,19 @@ System                          Resolution Accuracy
 No resolution (raw NER)         58%
 Wikidata exact match            72%
 Wikidata + context scoring      84%
-Ollagraph (multi-KB + context)  93%
 ```
 
-The 93% resolution accuracy means that out of 100 ambiguous entity mentions, 93 are linked to the correct canonical record. The remaining 7% typically involve very obscure entities with minimal context — a startup mentioned once in a press release with no Wikidata entry and no Crunchbase profile.
+Adding context scoring to Wikidata matching gives the biggest jump. The remaining errors typically involve very obscure entities with minimal context — a startup mentioned once in a press release with no Wikidata entry and no Crunchbase profile.
 
 ## 9. Security Considerations
 
 Entity extraction pipelines process web content that can contain sensitive information. Here's what to watch for.
 
-**PII leakage.** If your pipeline extracts email addresses, phone numbers, and person names, those entities are PII under GDPR, CCPA, and similar regulations. Make sure your extraction pipeline has a clear PII handling policy. The Ollagraph API supports a *redact_pii* flag that strips email and phone entities from output unless explicitly requested.
+**PII leakage.** If your pipeline extracts email addresses, phone numbers, and person names, those entities are PII under GDPR, CCPA, and similar regulations. Make sure your extraction pipeline has a clear PII handling policy. Ollagraph does not store the pages it fetches, but whatever your pipeline keeps is yours to protect: redact email and phone entities from output unless a use case needs them.
 
 **Knowledge base poisoning.** If you're using a custom knowledge base for entity resolution, the quality of that knowledge base determines the quality of your resolution. A poisoned knowledge base — one with incorrect entity mappings — will cause your pipeline to resolve entities to the wrong canonical records. Validate custom knowledge base entries before using them in production.
 
-**Prompt injection via entity text.** If your pipeline feeds extracted entity text directly into an LLM prompt without sanitization, an attacker could craft a webpage that includes prompt injection payloads disguised as entity text. Always validate and sanitize entity text before using it in prompts. The Ollagraph API includes a *sanitize* option that strips control characters and known injection patterns from entity text.
+**Prompt injection via entity text.** If your pipeline feeds extracted entity text directly into an LLM prompt without sanitization, an attacker could craft a webpage that includes prompt injection payloads disguised as entity text. Always validate and sanitize entity text before using it in prompts.
 
 **Data exfiltration via resolution calls.** If your resolution stage queries external knowledge bases (Wikidata, Crunchbase), the entity text is sent to those services. For sensitive internal entities — like unreleased product names or confidential partner names — consider running a local knowledge base for resolution instead of sending data to external services.
 
@@ -426,23 +433,23 @@ Entity extraction pipelines process web content that can contain sensitive infor
 
 **Problem: Missing entities on JavaScript-rendered pages.**
 
-Many modern web pages load content dynamically. If your pipeline fetches raw HTML without rendering JavaScript, entities rendered by client-side code won't appear in the extracted text. Solution: use a headless browser or a rendering service (Ollagraph's fetch layer includes JS rendering by default).
+Many modern web pages load content dynamically. If your pipeline fetches raw HTML without rendering JavaScript, entities rendered by client-side code won't appear in the extracted text. Solution: use a headless browser or a rendering service (Ollagraph's /v1/render and /v1/scrape run the page's JavaScript before returning it).
 
 **Problem: Low confidence scores across the board.**
 
-If every entity on a page comes back with confidence below 0.5, the page content might be too noisy — heavy boilerplate, navigation text, or ad content diluting the signal. **Solution:** preprocess the page with a content extraction tool (like readability or Ollagraph's boilerplate removal) before running entity extraction.
+If every entity on a page comes back with confidence below 0.5, the page content might be too noisy — heavy boilerplate, navigation text, or ad content diluting the signal. **Solution:** preprocess the page with a content extraction tool (like readability or Ollagraph's /v1/extract/clean, which is Readability-based) before running entity extraction.
 
 **Problem: Entity resolution returns wrong candidates.**
 
-This usually happens when the context window is too small or too noisy. If the resolution stage only sees 20 characters around an entity mention, it doesn't have enough signal to disambiguate. **Solution:** increase the context window size. The Ollagraph API defaults to 150 characters on each side; for dense pages, try 300.
+This usually happens when the context window is too small or too noisy. If the resolution stage only sees 20 characters around an entity mention, it doesn't have enough signal to disambiguate. **Solution:** increase the context window size. 150 characters on each side is a reasonable default; for dense pages, try 300.
 
 **Problem: Product names getting confused with company names.**
 
-"Salesforce" is a company, but "Salesforce CRM" is a product. "Google" is a company, but "Google Workspace" is a product. Standard NER models often tag both as ORG. **Solution:** use a pipeline that supports hierarchical entity types. The Ollagraph API handles parent-child relationships between companies and their products.
+"Salesforce" is a company, but "Salesforce CRM" is a product. "Google" is a company, but "Google Workspace" is a product. Standard NER models often tag both as ORG. **Solution:** use a pipeline that supports hierarchical entity types. Model parent-child relationships between companies and their products in your schema.
 
 **Problem: Duplicate entities from the same page.**
 
-If "Acme Corp" appears in the header, the body, and the footer, a naive pipeline returns three separate entity records. **Solution:** deduplication. The Ollagraph API merges mentions of the same entity across a page, consolidating them into a single record with multiple mention positions.
+If "Acme Corp" appears in the header, the body, and the footer, a naive pipeline returns three separate entity records. **Solution:** deduplication. Merge mentions of the same entity across a page into a single record with multiple mention positions.
 
 ## 11. Best Practices
 
@@ -456,7 +463,7 @@ These three practices — per-type thresholds, resolution, and caching — form 
 
 Use typed schemas for agent consumption. Don't output flat entity lists. Structure the output by entity type with consistent field names. An agent that expects `entities.companies[0].name` will break if the field is called `entities.orgs[0].title`. Define the schema before you build the agent, not after.
 
-Validate entity output against source text. Before an agent acts on an extracted entity, verify that the entity text actually appears in the source. This catches hallucinated entities — cases where the extraction model invents an entity that doesn't exist in the text. The Ollagraph API includes provenance data (source snippets and positions) for this exact purpose.
+Validate entity output against source text. Before an agent acts on an extracted entity, verify that the entity text actually appears in the source. This catches hallucinated entities — cases where the extraction model invents an entity that doesn't exist in the text. Keep the character offsets from your NER step so every entity can be traced back to its source snippet.
 
 ## 12. Common Mistakes
 
@@ -488,20 +495,20 @@ Mature ecosystem, good documentation. Requires separate Splash server, no e-comm
 
 Good anti-bot handling, global proxy networks. Generic output needs significant post-processing. Best for teams needing reliable proxy infrastructure who will build their own extraction layer.
 
-### Ollagraph E-commerce Extraction API
+### Ollagraph API
 
-E-commerce-specific schema, hybrid extraction, provenance envelopes, built-in validation, rendering cache, anti-bot infrastructure. Best for teams building production pipelines who want extraction, normalization, validation, and provenance out of the box.
+Fetching, JavaScript rendering, anti-bot handling, boilerplate removal (`/v1/extract/clean`), and the structured data pages already publish (`/v1/extract/structured`, including a flattened products list), priced per call. Best for teams who want the fetch layer handled and will run NER, resolution, normalization and provenance in their own code.
 
 | Feature | DIY Playwright | Scrapy + Splash | Managed API | Ollagraph API |
 |---|---|---|---|---|
-| **E-commerce schema** | Build your own | Build your own | Generic only | Built-in v2 |
-| **Product-variant model** | Manual | Manual | No | Native |
-| **JS rendering** | Manual config | Via Splash | Built-in | Auto-detect |
+| **E-commerce schema** | Build your own | Build your own | Generic only | Flattened products list from JSON-LD/Microdata |
+| **Product-variant model** | Manual | Manual | No | Your code (from JSON-LD) |
+| **JS rendering** | Manual config | Via Splash | Built-in | Built-in (/v1/render, /v1/scrape) |
 | **Anti-bot handling** | Manual | Manual | Built-in | Built-in |
-| **Provenance** | None | None | None | Per-field |
-| **Validation** | Manual | Manual | None | Built-in |
-| **Setup time** | 2-4 weeks | 1-2 weeks | 2-3 days | 1 hour |
-| **Cost per 1K products** | $0.45 (infra) | $0.60 (infra) | $5-15 | $2.10 |
+| **Provenance** | None | None | None | Your code |
+| **Validation** | Manual | Manual | None | /v1/json/validate against your schema |
+| **Setup time** | 2-4 weeks | 1-2 weeks | 2-3 days | Depends on your extraction code |
+| **Cost per 1K products** | $0.45 (infra) | $0.60 (infra) | $5-15 | 1,000 credits (1 per page) |
 
 ## 14. Enterprise / Cloud Deployment
 
@@ -521,11 +528,11 @@ NER is the subtask of identifying entity spans in text and labeling them with ty
 
 ### Q2. Can entity extraction handle pages with multiple languages?
 
-Yes. The extraction model covers 50+ languages, and the resolution stage queries Wikidata entries in the detected language. For mixed-language pages—common on international company sites—the pipeline detects language per paragraph and adjusts extraction accordingly. We tested this on a trilingual Swiss company page (German, French, English) and got consistent entity coverage across all three languages.
+Yes, if your extraction model does. Multilingual models (spaCy's multilingual pipelines, multilingual GLiNER variants, or an LLM) cover most languages, and Wikidata labels exist in many languages, so query resolution in the detected language. For mixed-language pages—common on international company sites—detect the language per paragraph (Ollagraph's `/v1/lang/detect` can do this) and route each paragraph to the right model.
 
 ### Q3. How do you handle entities that don't exist in any knowledge base?
 
-The pipeline returns them as unresolved entities with a confidence score based solely on the extraction stage. You can configure the API to either include unresolved entities (with a flag indicating they're unresolved) or filter them out. For domain-specific use cases, we recommend adding a custom knowledge base with your known entities—that's where the real accuracy gains happen.
+Return them as unresolved entities, with a flag and a confidence score based solely on the extraction stage, or filter them out — make it a setting in your pipeline. For domain-specific use cases, we recommend adding a custom knowledge base with your known entities—that's where the real accuracy gains happen.
 
 ### Q4. What happens when the same entity appears with different names on the same page?
 
@@ -533,27 +540,27 @@ The pipeline returns them as unresolved entities with a confidence score based s
 
 ### Q5. Is entity extraction accurate enough for automated decision-making?
 
-At the 93% resolution accuracy we measured, it depends on your risk tolerance. For competitive intelligence (flagging price changes), 93% is fine—the 7% error rate means occasional false flags that a human can catch in review. For automated trading or compliance decisions, 93% isn't enough—you'd want human-in-the-loop validation for low-confidence entities. We've seen teams set different confidence thresholds per action type: auto-approve above 0.95, flag for review between 0.7 and 0.95, and discard below 0.7.
+At the 84% resolution accuracy we measured for Wikidata plus context scoring, it depends on your risk tolerance. For competitive intelligence (flagging price changes), that is workable—errors show up as occasional false flags that a human can catch in review. For automated trading or compliance decisions, it isn't enough—you'd want human-in-the-loop validation for low-confidence entities. We've seen teams set different confidence thresholds per action type: auto-approve above 0.95, flag for review between 0.7 and 0.95, and discard below 0.7.
 
 ### Q6. How does the pipeline handle entities in tables?
 
-Tables are a common source of entity data—pricing tables, comparison tables, directory listings. The Ollagraph pipeline extracts table content as structured rows before running entity extraction, so entities in table cells are captured with their row and column context. This is critical for product names in pricing tables, where the product name might be in the first column and the price in the second. Without table-aware extraction, you'd lose the relationship between a product tier and its price.
+Tables are a common source of entity data—pricing tables, comparison tables, directory listings. Extract table content as structured rows before running entity extraction (Ollagraph's `/v1/extract/tables` turns the tables in a page's HTML into rows), so entities in table cells keep their row and column context. This is critical for product names in pricing tables, where the product name might be in the first column and the price in the second. Without table-aware extraction, you'd lose the relationship between a product tier and its price.
 
 ### Q7. What's the maximum page size the pipeline can handle?
 
-The standard API handles pages up to 500KB of extracted text (roughly 100,000 words). For larger pages—long documentation, research papers, legal documents—the enterprise tier supports up to 5MB with automatic chunking and cross-chunk entity merging.
+That depends on your extraction model's context limit. For long pages—documentation, research papers, legal documents—split the text into chunks first (Ollagraph's `/v1/text/chunk` splits text by token count with overlap) and merge entities across chunks.
 
-### Q8. Can I use the entity extraction API with my own fine-tuned NER model?
+### Q8. Can I use my own fine-tuned NER model?
 
-Yes. The enterprise tier supports custom model integration. You provide a model endpoint (Hugging Face, custom API, or ONNX runtime), and the pipeline routes extraction through your model while still using the Ollagraph resolution and structuring stages. This is useful for domain-specific entity types that the built-in model doesn't cover—drug names in pharma, part numbers in manufacturing, or internal project codenames.
+Yes. Extraction runs in your own code, so you can route it through any model endpoint (Hugging Face, a custom API, or ONNX runtime) while keeping the same fetch, resolution and structuring stages. This is useful for domain-specific entity types that general models don't cover—drug names in pharma, part numbers in manufacturing, or internal project codenames.
 
 ### Q9. How often are the knowledge bases updated?
 
-Wikidata is updated in real time. The Ollagraph resolution layer queries the live Wikidata API, so new entities appear as soon as they're added. Crunchbase data is synced daily. Custom knowledge bases are queried in real time from your endpoint.
+Wikidata is edited continuously, so a resolution step that queries the live Wikidata API sees new entities as soon as they're added. Crunchbase freshness depends on how you sync it. Custom knowledge bases are as fresh as your own updates.
 
 ### Q10. What's the difference between the "standard" and "agent-ready" output schemas?
 
-The standard schema outputs flat entity lists grouped by type. The agent-ready schema adds canonical names, parent-child relationships (products under companies), mention positions for provenance, combined confidence scores, and source snippets for verification. The agent-ready schema is designed for direct consumption by agent workflows without additional processing—your agent reads `entities.products[0].price` and moves on.
+These are two output shapes worth defining for your pipeline. The standard schema outputs flat entity lists grouped by type. The agent-ready schema adds canonical names, parent-child relationships (products under companies), mention positions for provenance, combined confidence scores, and source snippets for verification. The agent-ready schema is designed for direct consumption by agent workflows without additional processing—your agent reads `entities.products[0].price` and moves on.
 
 ## 16. Conclusion
 
@@ -561,13 +568,13 @@ Entity extraction for AI agents sits at the boundary between unstructured web co
 
 The three-stage pipeline—extract, resolve, structure—handles the hard parts. Extraction finds the entities. Resolution disambiguates them against knowledge bases. Structuring formats them for agent consumption. Each stage is independently replaceable, so you can swap models, add knowledge bases, or change schemas without rebuilding the whole system.
 
-We built the Ollagraph Entity Extraction API because we needed this pipeline for our own agent workflows and couldn't find a tool that combined all three stages in one call. It handles 50+ entity types, resolves against Wikidata and Crunchbase, and outputs agent-ready JSON with confidence scores and provenance data. The free tier processes 1,000 pages per month—enough to evaluate whether entity extraction transforms your agent's capabilities.
+Ollagraph covers the fetch layer of this pipeline: JavaScript rendering, anti-bot handling, boilerplate removal, and the structured data pages already publish, at 1 credit per call for most endpoints. New accounts get 1,000 free credits—enough to run your own extraction and resolution stages over a meaningful sample of pages.
 
-Try it on your own pages. Point it at a competitor's pricing page, a news article about your industry, or a directory of companies in your space. See what entities it finds, how it resolves ambiguous names, and whether the structured output changes how you think about agent data pipelines.
+Try it on your own pages. Point it at a competitor's pricing page, a news article about your industry, or a directory of companies in your space. Fetch them through the API, run your extraction and resolution stages, and see whether the structured output changes how you think about agent data pipelines.
 
 ## 17. References
 
-- [Ollagraph Entity Extraction API Documentation](https://ollagraph.com/docs/entity-extraction)
+- [Ollagraph API Documentation](https://ollagraph.com/docs)
 - [Sang, E. T. K., & De Meulder, F. (2003). Introduction to the CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition](https://www.aclweb.org/anthology/W03-0419/)
 - [Grishman, R., & Sundheim, B. (1996). Message Understanding Conference-6: A Brief History](https://aclanthology.org/C96-1079/)
 - [GLiNER: Generalist and Lightweight Model for Named Entity Recognition](https://github.com/urchade/GLiNER)
@@ -576,7 +583,6 @@ Try it on your own pages. Point it at a competitor's pricing page, a news articl
 - [Crunchbase: Company Data Platform](https://www.crunchbase.com/)
 - [OntoNotes 5.0 Release — Linguistic Data Consortium](https://catalog.ldc.upenn.edu/LDC2013T19)
 - [OpenAI GPT-4 Technical Report](https://arxiv.org/abs/2303.08774)
-- [Ollagraph Entity Resolution API v1 Specification](https://ollagraph.com/docs/entity-resolution)
 - Related Ollagraph cluster: [Structured Data for RAG](/blog/structured-data-extraction-for-rag-turning-web-pages-into-queryable-facts/), [Evidence-Based Data Extraction](/blog/evidence-based-data-extraction-how-to-return-provenance-for-every-field/), [Document-to-JSON Extraction](/blog/document-to-json-extraction-turning-web-pages-into-typed-records/), [LangGraph MCP Integration](/blog/integrating-mcp-web-tools-into-langgraph-autonomous-multi-agent-workflows/)
 
 ## Common questions

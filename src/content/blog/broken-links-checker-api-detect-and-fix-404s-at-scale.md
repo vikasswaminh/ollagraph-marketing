@@ -23,7 +23,7 @@ Broken links erode user trust, waste crawl budget, and directly impact search ra
 - Not all 404s are equal: prioritize fixes by page authority (inbound link equity), traffic volume, and user impact.
 - Automating link checks in CI/CD prevents broken links from reaching production — the cheapest fix is the one that never ships.
 - 301 redirect mapping is the highest-leverage fix (see our [redirect chain audit guide](/blog/redirect-chain-audit-how-to-find-and-fix-loops/)): one redirect can preserve link equity from dozens of broken inbound paths.
-- The Ollagraph SEO API's `/v1/seo/broken-links-audit` endpoint ties all of this together — it returns per-URL status codes, response times, redirect chains, and suggested replacements in a single call (or run alongside a [full website SEO audit API](/blog/website-seo-audit-how-to-run-a-full-audit-in-one-api-call/)).
+- The Ollagraph SEO API's `/v1/seo/broken-links-audit` endpoint audits one page per call — it probes up to 200 links in parallel and returns per-link status codes, final URLs, response times and internal/external flags; site-wide loops and fix mapping run in your own code (or run it alongside a [full website SEO audit API](/blog/website-seo-audit-how-to-run-a-full-audit-in-one-api-call/)).
 
 ---
 
@@ -194,98 +194,109 @@ Six components work together inside a broken links checker.
 
 ### Prerequisites
 
-- An Ollagraph API key (free tier available for up to 1,000 URLs/month)
+- An Ollagraph API key (new accounts get 1,000 free credits; each page audit costs 1 credit)
 - Python 3.10+ or Node.js 18+ for the integration examples
-- A sitemap URL or a list of URLs to scan
+- A sitemap URL or a list of page URLs to audit
 
 ### Step 1: Get Your API Key
 
 Sign up at ollagraph.com and generate an API key from the dashboard. Store it as an environment variable — never hardcode it.
 
 ```bash
-export OLLAGRAPH_API_KEY="your_api_key_here"
+export OLLAGRAPH_API_KEY="osk_..."
 ```
 
-### Step 2: Submit a Broken Link Scan
+### Step 2: Audit One Page
+
+`/v1/seo/broken-links-audit` audits the links on a single page. It fetches the page, extracts its `<a href>` links (up to `max_links`: default 50, maximum 200), probes each one in parallel, and returns the result in the same response. There is no scan ID to poll.
 
 ```bash
 curl -X POST "https://api.ollagraph.com/v1/seo/broken-links-audit" \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "sitemap_url": "https://example.com/sitemap.xml",
-    "options": {
-      "check_external_links": true,
-      "max_redirect_hops": 5,
-      "timeout_seconds": 15,
-      "concurrency": 100,
-      "detect_soft_404s": true
-    }
+    "url": "https://example.com/category/electronics",
+    "max_links": 200,
+    "concurrency": 8,
+    "timeout_seconds": 15
   }'
 ```
 
-The API returns a scan ID:
+Example response (trimmed):
 
 ```json
 {
-  "scan_id": "scan_abc123",
-  "status": "queued",
-  "total_urls_discovered": 0,
-  "estimated_duration_seconds": 45
+  "status": "success",
+  "url": "https://example.com/category/electronics",
+  "link_count": 142,
+  "broken_count": 3,
+  "internal_broken": 2,
+  "external_broken": 1,
+  "links": [
+    {
+      "url": "https://example.com/old-product-page",
+      "anchor_text": "Studio Pro headphones",
+      "rel": "",
+      "is_internal": true,
+      "is_external": false,
+      "status_code": 404,
+      "final_url": "https://example.com/old-product-page",
+      "elapsed_ms": 112,
+      "ok": false
+    }
+  ]
 }
 ```
 
-### Step 3: Poll for Results
+Each link is probed with HEAD (falling back to GET) and redirects are not followed: a redirect shows up as its own 3xx `status_code` and counts as `ok`. Use `/v1/seo/redirect-chain-map` to trace where a redirect ends. Links that time out or cannot connect come back with `status_code: null` and an `error` such as `timeout` or `connection_failed`.
 
-```bash
-curl -X GET "https://api.ollagraph.com/v1/seo/broken-links-audit/scan_abc123" \
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"
-```
+### Step 3: Audit a Whole Site (Python)
 
-When complete, the response includes the full report.
-
-### Step 4: Process Results Programmatically (Python)
+For a site-wide audit, get the page list with `/v1/intel/sitemap` (it reads robots.txt and unrolls sitemap indexes), then audit each page. Grouping the results by broken URL gives you the "found on" list for each one.
 
 ```python
 import os
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 import requests
 
-API_KEY = os.environ["OLLAGRAPH_API_KEY"]
-BASE_URL = "https://api.ollagraph.com/v1/seo/broken-links-audit"
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
 
-# Submit scan
-response = requests.post(
-    BASE_URL,
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={
-        "sitemap_url": "https://example.com/sitemap.xml",
-        "options": {"check_external_links": True, "concurrency": 100}
-    }
-)
-scan_id = response.json()["scan_id"]
+sitemap = requests.post(
+    f"{API}/v1/intel/sitemap",
+    headers=HEADERS,
+    json={"url": "https://example.com"},
+).json()
+pages = sitemap["urls"]
 
-# Poll until complete
-import time
-while True:
-    result = requests.get(
-        f"{BASE_URL}/{scan_id}",
-        headers={"Authorization": f"Bearer {API_KEY}"}
+def audit(page):
+    r = requests.post(
+        f"{API}/v1/seo/broken-links-audit",
+        headers=HEADERS,
+        json={"url": page, "max_links": 200},
+        timeout=120,
     )
-    data = result.json()
-    if data["status"] == "completed":
-        break
-    time.sleep(5)
+    return page, r.json()
 
-# Print broken URLs with suggested replacements
-for broken in data["broken_urls"]:
-    print(f"404: {broken['url']}")
-    print(f"  Found on: {', '.join(broken['found_on_pages'])}")
-    print(f"  Suggested fix: {broken.get('suggested_replacement', 'N/A')}")
-    print(f"  Traffic: {broken.get('traffic_estimate', 'unknown')}")
+found_on = defaultdict(list)
+with ThreadPoolExecutor(max_workers=4) as pool:
+    for page, result in pool.map(audit, pages):
+        for link in result.get("links", []):
+            if not link["ok"]:
+                key = (link["url"], link.get("status_code") or link.get("error"))
+                found_on[key].append(page)
+
+# Print broken URLs and the pages they appear on, most widespread first
+for (url, status), where in sorted(found_on.items(), key=lambda kv: -len(kv[1])):
+    print(f"{status}: {url}")
+    print(f"  Found on {len(where)} page(s): {', '.join(where[:5])}")
     print()
 ```
 
-### Step 5: Integrate with CI/CD (GitHub Actions)
+Suggested replacements are not part of the response. A simple fix mapper in your own code (path similarity against the sitemap URL list) covers the common cases, such as versioned docs paths.
+
+### Step 4: Integrate with CI/CD (GitHub Actions)
 
 ```yaml
 # .github/workflows/broken-link-check.yml
@@ -300,19 +311,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run broken link scan
+      - name: Audit key pages
+        env:
+          OLLAGRAPH_API_KEY: ${{ secrets.OLLAGRAPH_API_KEY }}
         run: |
-          curl -X POST "https://api.ollagraph.com/v1/seo/broken-links-audit" \
-            -H "Authorization: Bearer ${{ secrets.OLLAGRAPH_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"sitemap_url": "https://example.com/sitemap.xml"}' \
-            > scan_result.json
-      - name: Check for broken links
-        run: |
-          BROKEN_COUNT=$(cat scan_result.json | jq '.summary.broken')
-          echo "Found $BROKEN_COUNT broken links"
-          if [ "$BROKEN_COUNT" -gt 50 ]; then
-            echo "::error::Broken link threshold exceeded: $BROKEN_COUNT"
+          TOTAL=0
+          while read -r page; do
+            COUNT=$(curl -s -X POST "https://api.ollagraph.com/v1/seo/broken-links-audit" \
+              -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"url\": \"$page\", \"max_links\": 200}" | jq '.broken_count // 0')
+            echo "$page: $COUNT broken"
+            TOTAL=$((TOTAL + COUNT))
+          done < pages.txt
+          echo "Found $TOTAL broken links"
+          if [ "$TOTAL" -gt 50 ]; then
+            echo "::error::Broken link threshold exceeded: $TOTAL"
             exit 1
           fi
 ```
@@ -323,9 +337,9 @@ jobs:
 
 ### Example 1: Full Site Audit with Fix Suggestions
 
-We ran a scan on a 12,000-page SaaS documentation site. The scan completed in 34 seconds. It found 312 broken internal links and 847 broken external links.
+We audited a 12,000-page SaaS documentation site page by page. It had 312 broken internal links and 847 broken external links.
 
-The fix mapper suggested replacements for 89% of broken internal links. The most common pattern was versioned documentation paths: `/docs/v1.0/api-reference` had been moved to `/docs/v2.0/api-reference`, but old links in blog posts still pointed to v1.0. The fix mapper identified this pattern by detecting the version segment in the URL path and mapping it to the latest version.
+A small fix-mapper script, run over the results, suggested replacements for 89% of broken internal links. The most common pattern was versioned documentation paths: `/docs/v1.0/api-reference` had been moved to `/docs/v2.0/api-reference`, but old links in blog posts still pointed to v1.0. The fix mapper identified this pattern by detecting the version segment in the URL path and mapping it to the latest version.
 
 ### Example 2: External Link Rot Detection
 
@@ -345,12 +359,16 @@ For the 312 links where the domain was alive, we attempted to find the new URL b
 A common pattern is checking links before a deployment. When a content team moves or deletes pages, the deployment pipeline should catch any resulting broken links before they go live.
 
 ```bash
-# Compare current sitemap against staging sitemap
-# Flag any URLs in staging that return 404
-curl -X POST "https://api.ollagraph.com/v1/seo/broken-links-audit" \
-  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
-  -d '{"sitemap_url": "https://staging.example.com/sitemap.xml"}'
+# Audit the changed pages on staging before deploying
+while read -r path; do
+  curl -s -X POST "https://api.ollagraph.com/v1/seo/broken-links-audit" \
+    -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"url\": \"https://staging.example.com$path\"}" | jq '{url, broken_count}'
+done < changed-pages.txt
 ```
+
+The staging site must be reachable from the public internet: the API cannot log in or send custom headers.
 
 If the scan finds broken links, the deployment is blocked until the content team provides redirects or restores the pages.
 
@@ -358,25 +376,19 @@ If the scan finds broken links, the deployment is blocked until the content team
 
 ## 8. Performance & Benchmarks
 
-We benchmarked the Ollagraph broken links checker API against a single-threaded Python script using requests and against a popular desktop crawler. Tests were run on a 10,000-page content site, a 50,000-page e-commerce site, and a 200,000-page enterprise site.
+Timing for a site-wide audit depends on page count, links per page, and how fast the linked servers answer. One `/v1/seo/broken-links-audit` call probes up to 200 links from one page, 8 at a time by default (up to 24), with a per-link timeout of 8 seconds by default (up to 30). Measure on your own site before you commit to a schedule.
 
 | Metric | Single-Threaded Python | Popular desktop crawler (local) | Ollagraph API |
 | :--- | :--- | :--- | :--- |
-| 10,000 pages | 28 min 14 sec | 4 min 32 sec | 18 sec |
-| 50,000 pages | 2 hr 18 min | 22 min 10 sec | 1 min 42 sec |
-| 200,000 pages | Would not complete* | 1 hr 47 min | 6 min 51 sec |
-| Concurrent connections | 1 | 30 | 100–200 |
-| Soft 404 detection | No | Limited | Yes (content analysis) |
-| Fix suggestions | No | No | Yes |
-| CI/CD integration | Manual | Not supported | Native (API) |
+| Unit of work | One URL at a time | Whole site on a local machine | One page's links per call (up to 200) |
+| Concurrent connections | 1 | 30 | Up to 24 per call, plus the calls you run in parallel |
+| Soft 404 detection | No | Limited | No (status codes only) |
+| Fix suggestions | No | No | No (your own code) |
+| CI/CD integration | Manual | Not supported | Yes (plain HTTPS) |
 
-*\*Single-threaded Python hit memory limits at ~80,000 URLs.*
+**Methodology for your own benchmark:** pick 100 representative pages, audit them with a fixed number of parallel calls, and record total time, broken count and error count. Re-check flagged URLs once to separate real 404s from transient errors.
 
-**Methodology:** All tests were run on April 15, 2026. The Python script used requests with a 10-second timeout per URL. The desktop crawler was configured with 30 threads and a 10-second timeout. The Ollagraph API used default settings (100 concurrency, 15-second timeout). Network conditions: 1 Gbps fiber connection to a US-East data center. Target sites were hosted on Cloudflare and AWS.
-
-**Key finding:** The API's advantage grows with site size. At 10,000 pages, it is 94x faster than single-threaded Python. At 200,000 pages, the gap widens because the API's distributed request pool handles connection reuse and DNS caching more efficiently than a single-machine tool.
-
-**Cost comparison:** Running a weekly scan on a 50,000-page site costs approximately $0.12 per scan with the Ollagraph API (pay-per-use). Running the desktop crawler requires a license ($209/year) and a dedicated machine. The Python script costs nothing in software but consumes 2+ hours of engineer time per scan.
+**Cost comparison:** each page audit costs 1 credit, so a weekly audit of 2,000 pages is 2,000 credits per run, and failed calls are refunded. Running the desktop crawler requires a license ($209/year) and a dedicated machine. The Python script costs nothing in software but consumes 2+ hours of engineer time per scan.
 
 ---
 
@@ -384,7 +396,7 @@ We benchmarked the Ollagraph broken links checker API against a single-threaded 
 
 ### Rate Limiting and Server Load
 
-A broken links checker sends many requests in a short time. Without proper rate limiting, you can overwhelm your own server or trigger DDoS protection. Always configure a reasonable requests-per-second limit. The Ollagraph API defaults to 100 concurrent connections with automatic backoff on 429 responses.
+A broken links checker sends many requests in a short time. Without proper rate limiting, you can overwhelm your own server or trigger DDoS protection. Always configure a reasonable requests-per-second limit. Ollagraph's `/v1/seo/broken-links-audit` probes 8 links at a time by default (up to 24) and does not retry, so you control the load by how many pages you audit in parallel.
 
 ### Authentication and API Key Security
 
@@ -416,41 +428,41 @@ Soft 404 detection requires fetching the full page content. If the page contains
 
 **Cause:** The server is blocking the API's user-agent or IP range.
 
-**Fix:** Whitelist the Ollagraph API IP range (available in the documentation). Alternatively, configure a custom user-agent that matches your allowlist.
+**Fix:** For your own site, allowlist the link checker's User-Agent, `Ollagraph-LinkChecker/1.0`. The API does not publish a fixed IP range.
 
 ### Scan Times Out
 
 **Cause:** Too many URLs with slow response times.
 
-**Fix:** Increase the timeout value (max 60 seconds). Reduce concurrency if the server is rate-limiting. Check for pages that hang indefinitely — they may need to be excluded from the scan.
+**Fix:** Increase `timeout_seconds` (max 30). Reduce concurrency if the server is rate-limiting. Check for pages that hang indefinitely — they may need to be excluded from the scan.
 
 ### Soft 404 Detection Misses
 
 **Cause:** The error message on the page does not match common patterns.
 
-**Fix:** Add custom soft 404 patterns to the scan configuration. For example, if your CMS shows "This content is no longer available" on deleted pages, add that phrase to the soft 404 detection list.
+**Fix:** The audit reports status codes only, so detect soft 404s in your own code: fetch the 200-status URLs (for example with `/v1/scrape` and `"format": "text"`) and search for phrases. For example, if your CMS shows "This content is no longer available" on deleted pages, add that phrase to your pattern list.
 
 ### Redirect Chain Too Long
 
 **Cause:** A URL redirects multiple times before reaching a final destination.
 
-**Fix:** Set `max_redirect_hops` to a reasonable limit (5 is standard). URLs that exceed the limit are flagged for manual review. Long redirect chains hurt page load time and should be collapsed.
+**Fix:** Set `max_redirect_hops` to a reasonable limit (5 is standard). `/v1/seo/redirect-chain-map` traces the full chain for any URL (up to 20 hops); flag anything longer than your limit for manual review. Long redirect chains hurt page load time and should be collapsed.
 
 ### False Positives on External Links
 
-**Cause:** The external server returned a temporary error (503, 429) that the API interpreted as a broken link.
+**Cause:** The external server returned a temporary error (503, 429) that the audit reported as a broken link.
 
-**Fix:** Enable automatic retry for 5xx and 429 responses. The API retries up to 2 times with exponential backoff by default.
+**Fix:** Re-check flagged 5xx, 429 and timeout results in a second pass before acting. The audit probes each link once and does not retry.
 
 ---
 
 ## 11. Best Practices
 
 - **Run scans on a schedule, not ad hoc.** Broken links accumulate silently. A weekly scan catches issues before they compound. Set up a cron job or CI/CD scheduled workflow.
-- **Prioritize fixes by impact, not by count.** A broken link on your homepage costs more than a broken link on a 2019 blog post with zero traffic. Use the traffic estimates and page authority scores from the API to sort your fix queue.
+- **Prioritize fixes by impact, not by count.** A broken link on your homepage costs more than a broken link on a 2019 blog post with zero traffic. Join the results with your own analytics and backlink data to sort your fix queue.
 - **Fix the source, not just the symptom.** If a URL pattern keeps breaking (like versioned docs paths), fix the URL generation logic rather than adding redirects for every individual path. One configuration change can prevent hundreds of future broken links.
 - **Set up a broken link budget.** Define a maximum acceptable broken link ratio for your site — we recommend 1% for internal links and 2% for external links. When the budget is exceeded, the CI/CD pipeline should alert the team.
-- **Collapse redirect chains.** Every redirect adds latency. If a URL redirects A → B → C, update the original link to point directly to C. The API flags chains longer than 3 hops.
+- **Collapse redirect chains.** Every redirect adds latency. If a URL redirects A → B → C, update the original link to point directly to C. `/v1/seo/redirect-chain-map` reports the hop count and flags chains of 3 or more hops.
 - **A common question is how often to check external links versus internal ones.** External domains change without notice, but you also cannot fix them with a redirect — the fix is usually removal or replacement. Run external link scans monthly instead of weekly.
 - **Combine with log analysis.** Server-side 404 logs from your web server catch requests that no link checker can find — like bookmarked URLs or links from external sites that you do not control. Cross-reference log 404s with link checker results for complete coverage.
 
@@ -461,8 +473,8 @@ Soft 404 detection requires fetching the full page content. If the page contains
 - **Checking only the sitemap.** Sitemaps often omit blog archives, tag pages, pagination, and other sections. A sitemap-only scan misses a significant portion of your site's link graph. Always combine sitemap scanning with recursive crawl discovery.
 - **Ignoring soft 404s.** A page that returns 200 but shows "no results" is functionally broken. Users see an empty page. Google may index it as a valid page with thin content. Soft 404 detection is not optional for a thorough audit.
 - **Fixing every 404 with a 301 redirect.** Not every broken URL deserves a redirect. If a product was discontinued and has no replacement, a 410 Gone response is more appropriate than redirecting to an unrelated page. Redirecting to irrelevant pages confuses users and dilutes topical relevance.
-- **Running scans during peak traffic.** A link checker with 100 concurrent connections can add measurable load to your origin server. Schedule scans during low-traffic windows. Use the API's rate limiting to avoid overwhelming your infrastructure.
-- **Not checking the redirect target.** A URL that returns 301 is not necessarily fixed. The redirect target itself might be broken. The API follows redirects and reports the final status code, but you need to verify that the target page actually contains the expected content.
+- **Running scans during peak traffic.** A link checker with 100 concurrent connections can add measurable load to your origin server. Schedule scans during low-traffic windows. Lower the audit concurrency to avoid overwhelming your infrastructure.
+- **Not checking the redirect target.** A URL that returns 301 is not necessarily fixed. The redirect target itself might be broken. The audit reports a redirect by its own 3xx status without following it, so trace the target with `/v1/seo/redirect-chain-map` and verify that the target page actually contains the expected content.
 - **Treating all broken links the same way.** A 404 on a page with 50 inbound links and 1,000 monthly visits is a crisis. A 404 on a page with zero inbound links and zero traffic is a cleanup task. Without prioritization, teams waste time on low-impact fixes while high-impact broken links remain.
 - **Forgetting about images and assets.** Broken image links do not show up in standard link checkers that only scan `<a>` tags. A comprehensive broken links checker should also check `src` attributes on images, scripts, and stylesheets.
 
@@ -472,7 +484,7 @@ Soft 404 detection requires fetching the full page content. If the page contains
 
 | Solution | Type | Max URLs | API | CI/CD | Cost | Soft 404 Detection | Fix Suggestions |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Ollagraph SEO API** | Cloud API | Unlimited | Yes | Native | Pay-per-use | Yes | Yes |
+| **Ollagraph SEO API** | Cloud API | 200 links per page per call; loop for sites | Yes | Yes (plain HTTPS) | 1 credit per page | No | No |
 | **Screaming Frog SEO Spider** | Desktop app | ~500K | Limited | No | $209/yr | Basic | No |
 | **Ahrefs Site Audit** | Cloud SaaS | 10K–100K | Yes | Limited | $99–$399/mo | Yes | No |
 | **Semrush Site Audit** | Cloud SaaS | 100K | Yes | Limited | $119–$449/mo | Yes | No |
@@ -480,7 +492,7 @@ Soft 404 detection requires fetching the full page content. If the page contains
 | **Custom Python script** | Self-built | Unlimited | N/A | Manual | Dev time | Custom | Custom |
 | **Dr. Link Check** | Desktop app | ~10K | No | No | $49/yr | No | No |
 
-- **When to use Ollagraph:** You need an API-first solution that integrates with your CI/CD pipeline, supports unlimited URLs, and provides fix suggestions out of the box. Best for engineering teams that want automated, scheduled scans without managing infrastructure.
+- **When to use Ollagraph:** You need an API-first link check that integrates with your CI/CD pipeline and is priced per page audited. Best for engineering teams that want automated, scheduled scans without managing infrastructure, and are happy to add fix mapping and soft-404 checks in their own code.
 - **When to use Screaming Frog:** You prefer a desktop GUI, need to check sites behind a corporate VPN, or want to run a one-time audit without setting up an API integration.
 - **When to use Ahrefs/Semrush:** You already use these platforms for keyword research and backlink analysis, and you want broken link checking as part of a broader SEO suite. The tradeoff is higher cost and lower scan frequency.
 - **When to build a custom script:** You have very specific requirements (custom authentication, internal-only scanning, integration with a proprietary CMS) and the engineering bandwidth to maintain it. Be prepared for the maintenance cost — HTTP edge cases, redirect handling, and rate limiting are harder than they look.
@@ -491,35 +503,27 @@ Soft 404 detection requires fetching the full page content. If the page contains
 
 ### Multi-Site Management
 
-For agencies and enterprises managing multiple domains, the Ollagraph API supports batch scanning. Submit up to 50 sitemaps in a single request. Results are returned as a combined report with per-domain breakdowns.
+For agencies and enterprises managing multiple domains, run the same loop over each site's sitemap and group the results by domain in your own code. A separate API key per client, each with its own label, project tag and daily credit cap, keeps usage apart.
 
-### Webhook Delivery
+### Scheduling and Delivery
 
-Instead of polling for results, configure a webhook URL. The API sends the full report to your webhook when the scan completes. This is the recommended pattern for automated workflows.
-
-```json
-{
-  "sitemap_url": "https://example.com/sitemap.xml",
-  "webhook_url": "https://your-system.com/webhooks/broken-links"
-}
-```
+The audit endpoint answers synchronously, so there is nothing to poll and no webhook to configure. Run the loop on a schedule (cron or a CI scheduled workflow) and post the summary to Slack or your ticketing system from the same script.
 
 ### Observability
 
-Each scan emits metrics that can be forwarded to your observability platform:
+Derive metrics from the responses and forward them to your observability platform:
 
-- `broken_links.total` — total broken URLs found
-- `broken_links.internal` — broken internal links
-- `broken_links.external` — broken external links
-- `broken_links.soft_404s` — soft 404s detected
-- `scan.duration_seconds` — total scan time
-- `scan.urls_checked` — URLs checked
+- `broken_links.total` — sum of `broken_count`
+- `broken_links.internal` — sum of `internal_broken`
+- `broken_links.external` — sum of `external_broken`
+- `scan.duration_seconds` — wall-clock time of your run
+- `scan.pages_checked` — pages audited
 
-These metrics can be ingested via webhook into Datadog, Grafana, or any metrics platform.
+These metrics can be pushed into Datadog, Grafana, or any metrics platform.
 
 ### Rate Limit and Quota Management
 
-Enterprise plans include dedicated rate limits and higher concurrency. The API returns `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers on every response for real-time quota tracking.
+The API returns `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers for real-time quota tracking, and a 429 response when you exceed your limit.
 
 ---
 
@@ -539,7 +543,7 @@ Yes, if the API includes content analysis. A soft 404 is a page that returns a 2
 
 ### Q4. How do I prioritize which broken links to fix first?
 
-Prioritize by traffic impact and link equity. A broken link on your homepage or a high-traffic product page should be fixed immediately. A broken link on a 2018 blog post with zero organic traffic can wait. Use the page authority score and traffic estimates from the API to sort your fix queue.
+Prioritize by traffic impact and link equity. A broken link on your homepage or a high-traffic product page should be fixed immediately. A broken link on a 2018 blog post with zero organic traffic can wait. Join the results with your own traffic and backlink data to sort your fix queue.
 
 ### Q5. What is the difference between a 404 and a 410 status code?
 
@@ -555,7 +559,7 @@ Yes, and you should. The API returns JSON that can be parsed in any CI/CD platfo
 
 ### Q8. What causes false positives in broken link detection?
 
-Temporary server errors (503, 429), network timeouts, and CDN edge cases are the most common sources. A URL that returns 503 during a scan might work fine an hour later. The API handles this with automatic retries and exponential backoff, but no system is perfect. Always verify a sample of flagged URLs before taking action.
+Temporary server errors (503, 429), network timeouts, and CDN edge cases are the most common sources. A URL that returns 503 during a scan might work fine an hour later. Ollagraph's audit probes each link once, so re-check flagged URLs in a second pass. Always verify a sample of flagged URLs before taking action.
 
 ### Q9. How do I handle broken external links that I cannot fix?
 
@@ -563,15 +567,15 @@ You have three options: remove the link, replace it with an alternative source, 
 
 ### Q10. What is a redirect chain and why does it matter?
 
-A redirect chain is a sequence of HTTP redirects that a URL follows before reaching a final page. For example, URL A redirects to B, which redirects to C. Each redirect adds latency — a 3-hop chain can add 300–600ms to page load time. Search engines may also stop following chains longer than 5 hops. The API flags chains longer than 3 hops so you can collapse them.
+A redirect chain is a sequence of HTTP redirects that a URL follows before reaching a final page. For example, URL A redirects to B, which redirects to C. Each redirect adds latency — a 3-hop chain can add 300–600ms to page load time. Search engines may also stop following chains longer than 5 hops. `/v1/seo/redirect-chain-map` flags chains of 3 or more hops so you can collapse them.
 
 ### Q11. Does checking broken links affect my server performance?
 
-It can, if you run the scan during peak traffic with high concurrency. A scan with 100 concurrent connections generates 100 simultaneous requests to your server. Schedule scans during low-traffic hours and use the API's rate limiting to cap concurrency. Most modern servers handle this fine, but if you are on shared hosting, reduce the concurrency to 10–20.
+It can, if you run the scan during peak traffic with high concurrency. A scan with 100 concurrent connections generates 100 simultaneous requests to your server. Schedule scans during low-traffic hours and set a lower concurrency. Most modern servers handle this fine, but if you are on shared hosting, reduce the concurrency to 10–20.
 
 ### Q12. What is the difference between a broken link checker and a site crawler?
 
-A broken link checker focuses specifically on HTTP status codes — it checks whether links resolve correctly. A site crawler does everything a link checker does plus content analysis, metadata extraction, duplicate detection, and page speed measurement. The Ollagraph SEO API combines both: the broken links endpoint is one of several audit capabilities within a broader crawling platform.
+A broken link checker focuses specifically on HTTP status codes — it checks whether links resolve correctly. A site crawler does everything a link checker does plus content analysis, metadata extraction, duplicate detection, and page speed measurement. Ollagraph offers both pieces: `/v1/seo/broken-links-audit` checks the links on one page, and `/v1/crawl` discovers pages across a site.
 
 ---
 
@@ -583,13 +587,13 @@ A broken links checker API turns this from a manual chore into an automated proc
 
 Start with a weekly scan of your sitemap. Set up a CI/CD check that blocks deployments with excessive broken links. Prioritize fixes by traffic impact. Within a month, your broken link ratio will drop below 1%, and it will stay there.
 
-The Ollagraph SEO API's `/v1/seo/broken-links-audit` endpoint handles the heavy lifting — concurrent crawling, soft 404 detection, redirect chain analysis, and fix suggestions in a single API call.
+The Ollagraph SEO API's `/v1/seo/broken-links-audit` endpoint handles the per-page heavy lifting — fetching the page, extracting its links and probing them in parallel — in a single API call. Pair it with `/v1/intel/sitemap` for discovery and `/v1/seo/redirect-chain-map` for redirects.
 
 ---
 
 ## 17. References
 
-- [Ollagraph SEO API Documentation](https://ollagraph.com/docs/seo-api)
+- [Ollagraph SEO API Documentation](https://ollagraph.com/docs)
 - [Google Search Central — Crawl Budget](https://developers.google.com/search/docs/crawling-indexing/large-site-managing-crawl-budget)
 - [HTTP Status Codes (RFC 9110)](https://httpwg.org/specs/rfc9110.html)
 - [Screaming Frog SEO Spider](https://www.screamingfrog.co.uk/seo-spider/)

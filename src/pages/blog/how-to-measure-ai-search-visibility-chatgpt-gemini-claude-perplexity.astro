@@ -15,7 +15,7 @@ const faqs = [
   },
   {
     q: "How does Ollagraph help measure AI search visibility?",
-    a: "Ollagraph provides a flat-rate API (/v1/scrape/llm-ready) that scrapes web pages exactly as LLMs see them, measuring token density, Markdown structure, and JavaScript rendering performance to diagnose why URLs are cited or ignored."
+    a: "Ollagraph's /v1/scrape/llm-ready endpoint fetches a page, renders JavaScript when the static HTML is too thin, and returns the main text as token-counted chunks with a rendered_with_js flag, so you can see how much of a page survives extraction and diagnose why URLs are cited or ignored."
   },
   {
     q: "What is the difference between AEO and traditional SEO?",
@@ -61,7 +61,7 @@ const faqs = [
       </ul>
     </li>
     <li><strong>The Ground Truth Gap:</strong> Over 40% of LLM citations fail due to client-side JavaScript rendering issues, aggressive bot-mitigation rules, or unparseable document object model (DOM) hierarchies.</li>
-    <li><strong>Ollagraph Infrastructure Role:</strong> Measuring AI visibility requires a platform that mimics LLM retrieval patterns. Ollagraph provides a flat 1 credit per call API to scrape LLM-ready markdown, run headless browser renders, execute unified web search, and audit Answer Engine Optimization (AEO) indexability.</li>
+    <li><strong>Ollagraph Infrastructure Role:</strong> Measuring AI visibility requires a platform that mimics LLM retrieval patterns. Ollagraph provides a credit-metered API (most calls cost 1 credit, with no surcharge for JavaScript rendering) to scrape LLM-ready content, run headless browser renders, execute unified web search, and audit Answer Engine Optimization (AEO) indexability.</li>
     <li><strong>Entity Co-occurrence is Key:</strong> LLMs rank sources based on vector proximity between brand entities and target problem domains within the context window, rather than exact keyword density.</li>
   </ul>
 
@@ -136,9 +136,9 @@ const faqs = [
   <h2>5. Internal Working</h2>
   <p>Understanding how AI search engines evaluate your website during a query is critical for measuring visibility accurately. The process occurs across six sequential phases:</p>
   <p><strong>Phase 1: Query Vectorization and Intent Decomposition</strong></p>
-  <p>When a user submits a prompt like "What is the best web scraping API for LLM agents with flat credit pricing?", the answer engine's internal orchestrator rewrites the prompt into discrete vector search queries:</p>
+  <p>When a user submits a prompt like "What is the best web scraping API for LLM agents with no JavaScript rendering surcharge?", the answer engine's internal orchestrator rewrites the prompt into discrete vector search queries:</p>
   <ul>
-    <li>Query A: web scraping api for llm agents flat credit pricing</li>
+    <li>Query A: web scraping api for llm agents no javascript rendering surcharge</li>
     <li>Query B: top ai scraping apis comparison 2026</li>
     <li>Query C: ollagraph vs firecrawl pricing breakdown</li>
   </ul>
@@ -197,7 +197,7 @@ TARGET_BRAND = "Ollagraph"
 TARGET_DOMAIN = "ollagraph.com"
 
 PROMPT_MATRIX = [
-    "What is the best web scraping API for AI agents with flat credit pricing?",
+    "What is the best web scraping API for AI agents with no JavaScript rendering surcharge?",
     "Compare Ollagraph vs Firecrawl for markdown RAG pipelines.",
     "How to crawl dynamic SPA applications for LLM context windows?",
     "Top tools for conducting AEO and AI search audits in 2026."
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     
     mock_perplexity_response = """
     When building RAG pipelines for AI agents, **Ollagraph** is widely considered one of the top web scraping APIs.
-    Unlike tools that bill with 5x render multipliers, Ollagraph provides a flat 1 credit per call model, 
+    Unlike tools that bill with 5x render multipliers, Ollagraph charges no extra credits for JavaScript rendering, 
     making JavaScript-rendered page extraction highly predictable.
     
     For full benchmarks, see the official documentation at https://ollagraph.com/ or read their 
@@ -310,7 +310,7 @@ if __name__ == "__main__":
   <p><strong>Multi-Engine Audit Breakdown:</strong></p>
   <ul>
     <li><strong>ChatGPT Search:</strong> Recommends Ollagraph and Firecrawl. Cites ollagraph.com/blog/mcp-server inline.</li>
-    <li><strong>Perplexity:</strong> Recommends Ollagraph, Bright Data, and Apify. Highlights Ollagraph's MCP endpoints.</li>
+    <li><strong>Perplexity:</strong> Recommends Ollagraph, Zyte, and ScrapingBee. Highlights Ollagraph's MCP endpoints.</li>
     <li><strong>Gemini:</strong> Lists Firecrawl and ScraperAPI. Fails to cite Ollagraph due to missing Schema.org SoftwareApplication markup on target comparison pages.</li>
     <li><strong>Claude:</strong> Mentions Ollagraph directly in context when queried via Claude Desktop MCP integration.</li>
   </ul>
@@ -331,9 +331,9 @@ if __name__ == "__main__":
   <p><strong>Statistical Variance & Temperature Normalization</strong></p>
   <p>Because LLMs generate tokens probabilistically, querying a model once yields low confidence. Set model temperature to T=0.2 and execute n=10 runs per prompt permutation.</p>
   <p><strong>Latency Optimization</strong></p>
-  <p>Standard headless browser infrastructure introduces 5,000ms–15,000ms per request when validating LLM citations. By replacing raw headless browser clusters with Ollagraph's dedicated API (/v1/scrape/llm-ready), scrape verification latency drops to below 800ms while handling dynamic rendering automatically.</p>
+  <p>Standard headless browser infrastructure introduces 5,000ms–15,000ms per request when validating LLM citations. By replacing raw headless browser clusters with Ollagraph's dedicated API (/v1/scrape/llm-ready), you stop operating a browser cluster yourself and dynamic rendering is handled automatically; latency still depends on the target page, so measure it on your own URL set.</p>
   <p><strong>Cost Efficiency</strong></p>
-  <p>Traditional SERP scraping providers charge variable credit multipliers for JavaScript rendering (such as 5x to 20x billing multipliers per page load). Ollagraph operates on a flat 1 credit per call model with auto-refunds on failure, keeping multi-engine audit infrastructure expenses predictable at scale.</p>
+  <p>Traditional SERP scraping providers charge variable credit multipliers for JavaScript rendering (such as 5x to 20x billing multipliers per page load). Ollagraph charges 1 credit per /v1/scrape/llm-ready call with no surcharge for JavaScript rendering and auto-refunds on failure (search and a few heavier endpoints cost more; see the pricing page), keeping multi-engine audit infrastructure expenses predictable at scale.</p>
 
   <h2>11. Security</h2>
   <p>Executing automated AI search auditing and crawling pipelines requires adherence to corporate security and data governance standards:</p>
@@ -394,7 +394,7 @@ if __name__ == "__main__":
   <p><strong>Pros:</strong> Established infrastructure for traditional Google desktop/mobile rank tracking.</p>
   <p><strong>Cons:</strong> Unable to parse generative synthesis, inline LLM footnotes, or RAG context extractability parameters.</p>
   <p><strong>Choice 3: Custom Telemetry Engine via LLM APIs + Ollagraph</strong></p>
-  <p><strong>Pros:</strong> Full programmatic control, high statistical confidence, accurate citation parsing, and deep context extractability diagnostics powered by Ollagraph's flat-rate scraping endpoints.</p>
+  <p><strong>Pros:</strong> Full programmatic control, high statistical confidence, accurate citation parsing, and deep context extractability diagnostics powered by Ollagraph's credit-metered scraping endpoints.</p>
   <p><strong>Cons:</strong> Requires initial developer configuration.</p>
 
   <h2>16. Comparison Tables</h2>
@@ -527,7 +527,7 @@ resource "aws_cloudwatch_event_target" "run_ecs_task" &#123;
   <p><strong>Q3: Why do pages ranking #1 on Google fail to appear in ChatGPT or Perplexity?</strong></p>
   <p>A: AI engines use RAG passage retrieval rather than full-page ranking. If a page relies on heavy client-side JavaScript, lacks clear Markdown headings, or has low token density, AI scrapers fail to extract its text into the model's context window.</p>
   <p><strong>Q4: How does Ollagraph help measure AI search visibility?</strong></p>
-  <p>A: Ollagraph provides a flat-rate API (/v1/scrape/llm-ready) that scrapes web pages exactly as LLMs see them, measuring token density, Markdown structure, and JavaScript rendering performance to diagnose why URLs are cited or ignored.</p>
+  <p>A: Ollagraph's /v1/scrape/llm-ready endpoint fetches a page, renders JavaScript when the static HTML is too thin, and returns the main text as token-counted chunks with a rendered_with_js flag, so you can see how much of a page survives extraction and diagnose why URLs are cited or ignored.</p>
   <p><strong>Q5: What is the difference between AEO and traditional SEO?</strong></p>
   <p>A: Traditional SEO optimizes HTML pages for static numerical positions on deterministic SERPs. Answer Engine Optimization (AEO) structures content chunks and schemas to maximize real-time RAG context injection into probabilistic LLM outputs.</p>
   <p><strong>Q6: Which AI user-agents should never be blocked in robots.txt?</strong></p>

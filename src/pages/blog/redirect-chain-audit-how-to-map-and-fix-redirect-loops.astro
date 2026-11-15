@@ -25,7 +25,7 @@ const faqs = [
 <p><strong>Pillar Page:</strong> Technical SEO Audit API</p>
 <p><strong>Related Cluster Articles:</strong> Broken Links Checker API Guide, Website SEO Audit in One API Call, SEO Audit API vs Manual</p>
 <p><strong>Last Updated:</strong> 2026-07-31</p>
-<p><strong>Versions Tested:</strong> Ollagraph /v1/seo/redirect-chain-map v2.3, curl 8.x, Chrome 126, Screaming Frog 21.0</p>
+<p><strong>Versions Tested:</strong> Ollagraph /v1/seo/redirect-chain-map (API v1), curl 8.x, Chrome 126, Screaming Frog 21.0</p>
 
 <h2>Executive Summary</h2>
 <p>A redirect chain audit traces every HTTP redirect path on a website — from initial URL to final destination — and identifies chains that are too long, looping, broken, or leaking link equity. Left unchecked, redirect chains silently erode page rank, waste crawl budget, and create indexation failures invisible to most monitoring tools. This article covers how to map redirect chains using curl, Python, Screaming Frog, and the Ollagraph Redirect Chain Map API. It includes a decision framework for prioritizing fixes, real chain data from a 200,000-page e-commerce audit, and a production checklist. The core takeaway: any chain longer than three hops should be collapsed, and any loop must be treated as a critical incident.</p>
@@ -36,7 +36,7 @@ const faqs = [
   <li>Redirect loops are a crawl budget catastrophe — a single loop can consume an entire site's daily crawl allocation in under an hour.</li>
   <li>The most common loop causes are CMS plugin conflicts, CDN misconfigurations, HTTPS redirect wars, and trailing-slash normalization loops.</li>
   <li>Mapping redirect chains manually with <code>curl -IL</code> works for spot checks but does not scale beyond a handful of URLs.</li>
-  <li>The Ollagraph <code>/v1/seo/redirect-chain-map</code> API returns hop-by-hop JSON with status codes, TTLs, and timing data for every redirect in the chain.</li>
+  <li>The Ollagraph <code>/v1/seo/redirect-chain-map</code> API returns hop-by-hop JSON with the URL, status code and Location header of every redirect in the chain, plus total time, a 0-100 score and flagged issues.</li>
   <li>Collapsing a five-hop chain to a single 301 redirect recovers roughly 40–60% of lost PageRank flow and cuts page load time by 300–600ms.</li>
   <li>Automated redirect chain audits should run weekly on any site with more than 10,000 pages or frequent CMS changes.</li>
 </ul>
@@ -258,42 +258,42 @@ print(json.dumps(result, indent=2))</code></pre>
 
 <h3>Method 4: Ollagraph Redirect Chain Map API (Production Scale)</h3>
 
-<p>For sites with more than 10,000 URLs, or for automated weekly audits, the Ollagraph /v1/seo/redirect-chain-map endpoint provides hop-by-hop chain data:</p>
+<p>For sites with more than 10,000 URLs, or for automated weekly audits, the Ollagraph <code>/v1/seo/redirect-chain-map</code> endpoint provides hop-by-hop chain data. It takes one URL per call (1 credit) and follows HTTP redirects up to 20 hops:</p>
 
 <pre><code>curl -X POST "https://api.ollagraph.com/v1/seo/redirect-chain-map" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '&#123;
-    "url": "https://example.com/old-page",
-    "max_redirects": 10,
-    "user_agent": "googlebot",
-    "follow": true
-  &#125;'</code></pre>
+  -d '&#123;"url": "https://example.com/old-page"&#125;'</code></pre>
 
 <p>Response:</p>
 
 <pre><code>&#123;
-  "initial_url": "https://example.com/old-page",
+  "status": "success",
+  "starting_url": "https://example.com/old-page",
   "final_url": "https://www.example.com/new-page/",
-  "hop_count": 3,
+  "final_status": 200,
   "hops": [
-    &#123;"hop": 0, "url": "https://example.com/old-page", "status_code": 301, "location": "https://example.com/old-page/", "response_time_ms": 142, "cache_ttl": 3600&#125;,
-    &#123;"hop": 1, "url": "https://example.com/old-page/", "status_code": 301, "location": "https://example.com/new-page", "response_time_ms": 98, "cache_ttl": 3600&#125;,
-    &#123;"hop": 2, "url": "https://example.com/new-page", "status_code": 301, "location": "https://www.example.com/new-page/", "response_time_ms": 134, "cache_ttl": 3600&#125;,
-    &#123;"hop": 3, "url": "https://www.example.com/new-page/", "status_code": 200, "response_time_ms": 211, "cache_ttl": null&#125;
+    &#123;"url": "https://example.com/old-page", "status": 301, "location": "https://example.com/old-page/"&#125;,
+    &#123;"url": "https://example.com/old-page/", "status": 301, "location": "https://example.com/new-page"&#125;,
+    &#123;"url": "https://example.com/new-page", "status": 301, "location": "https://www.example.com/new-page/"&#125;,
+    &#123;"url": "https://www.example.com/new-page/", "status": 200, "location": null&#125;
   ],
-  "loop_detected": false,
-  "total_response_time_ms": 585
+  "hop_count": 4,
+  "elapsed_ms": 585,
+  "score": 85,
+  "issues": ["chain_4_hops"]
 &#125;</code></pre>
 
-<p>The API returns every intermediate hop with status code, location header, response time, and cache TTL, making it straightforward to identify which hop is slow or misconfigured.</p>
+<p>The API returns every hop with its status code and <code>Location</code> header, plus a 0-100 <code>score</code> and <code>issues</code> such as long chains, HTTPS-to-HTTP downgrades and 302/307 redirects where a 301 fits better. <code>hop_count</code> counts the final response too, so this chain has three redirects. A loop comes back as an error (<code>"error": "redirect_loop"</code>) with the hops traced up to the repeat, which makes it easy to see where the cycle starts.</p>
 
-<p>For bulk audits, send a list of URLs in a single request:</p>
+<p>For bulk audits, loop over your URL list in your own code:</p>
 
-<pre><code>curl -X POST "https://api.ollagraph.com/v1/seo/redirect-chain-map/bulk" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '&#123;"urls": ["https://example.com/old-page-1", "https://example.com/old-page-2"], "max_redirects": 10&#125;'</code></pre>
+<pre><code>while read -r url; do
+  curl -s -X POST "https://api.ollagraph.com/v1/seo/redirect-chain-map" \
+    -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "&#123;\"url\": \"$url\"&#125;" | jq -c '&#123;starting_url, final_url, hop_count, issues, error&#125;'
+done &lt; urls.txt</code></pre>
 
 <h2>7. Examples: Real-World Redirect Chain Data</h2>
 
@@ -392,7 +392,7 @@ print(json.dumps(result, indent=2))</code></pre>
 <h3>Issue 1: Chain Reports 0 Hops But Page Is Redirecting</h3>
 <p><strong>Symptom:</strong> Your audit tool says the URL returns 200, but your browser shows a redirect.</p>
 <p><strong>Root cause:</strong> Client-side redirect via JavaScript window.location or &lt;meta http-equiv="refresh"&gt;.</p>
-<p><strong>Fix:</strong> Run the URL through a headless browser. The Ollagraph API supports render_mode: "headless".</p>
+<p><strong>Fix:</strong> Run the URL through a headless browser. Ollagraph's /v1/seo/redirect-chain-map traces HTTP redirects only; fetch the page with /v1/render instead and check the final_url it reports, or look for a meta refresh tag in the returned HTML.</p>
 
 <h3>Issue 2: Chain Length Varies by User-Agent</h3>
 <p><strong>Symptom:</strong> The chain is 2 hops with curl but 5 hops with Googlebot user-agent.</p>
@@ -450,26 +450,37 @@ Screaming Frog           Count only         Yes           Partial           Limi
 Ahrefs Site Audit        No                 Yes           No                Yes                $99/month+
 Semrush Site Audit       No                 Yes           No                Yes                $119/month+
 Google Search Console    No                 No            No                Yes                Free
-Ollagraph API            Yes                Yes           Yes               Yes                Usage-based</code></pre>
+Ollagraph API            Yes                Loop per URL  Yes               Yes                1 credit per URL</code></pre>
 <p>curl is best for quick spot checks on single URLs. Free and universally available, but does not scale.</p>
 <p>Python scripts work well for teams needing a custom solution. You control the logic, but you also own maintenance and error handling.</p>
 <p>Screaming Frog is the best desktop option for mid-scale audits. It reports redirect counts but not the full hop-by-hop chain.</p>
 <p>Ahrefs and Semrush report only the final redirect count. Useful for high-level monitoring but insufficient for detailed analysis.</p>
 
 <p>Google Search Console reports crawl errors but not chain-level data.</p>
-<p>The Ollagraph API is the best option for production-scale audits. Full hop-by-hop data, automatic loop detection, bulk requests, and CI/CD integration.</p>
+<p>The Ollagraph API is the best option for production-scale audits. Full hop-by-hop data, automatic loop detection, a 0-100 chain score, and CI/CD integration over plain HTTPS; you loop over your URL list yourself.</p>
 
 <h2>14. Enterprise / Cloud Deployment</h2>
 <p>For organizations managing multiple sites, redirect chain auditing needs to be embedded in the deployment pipeline.</p>
 
 <h3>CI/CD Integration</h3>
-<p>Add a redirect chain audit step to your deployment pipeline. Before any production deploy that changes URL structure, run a bulk audit and fail the deploy if any chain exceeds 3 hops or contains a loop.</p>
+<p>Add a redirect chain audit step to your deployment pipeline. Before any production deploy that changes URL structure, audit the affected URLs and fail the deploy if any chain exceeds 3 hops or contains a loop.</p>
 <pre><code>- name: Redirect Chain Audit
+  env:
+    OLLAGRAPH_API_KEY: $&#123;&#123; secrets.OLLAGRAPH_API_KEY &#125;&#125;
   run: |
-    curl -X POST "https://api.ollagraph.com/v1/seo/redirect-chain-map/bulk" \
-      -H "Authorization: Bearer $&#123;&#123; secrets.OLLAGRAPH_API_KEY &#125;&#125;" \
-      -H "Content-Type: application/json" \
-      -d '&#123;"urls": $&#123;&#123; steps.changed-urls.outputs.urls &#125;&#125;, "max_redirects": 10&#125;'</code></pre>
+    FAILED=0
+    while read -r url; do
+      RES=$(curl -s -X POST "https://api.ollagraph.com/v1/seo/redirect-chain-map" \
+        -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d "&#123;\"url\": \"$url\"&#125;")
+      # Fail on a loop or error, or on more than 3 redirects (hop_count includes the final response)
+      if echo "$RES" | jq -e '.status == "error" or .hop_count &gt; 4' &gt; /dev/null; then
+        echo "$url: $(echo "$RES" | jq -c '&#123;error, hop_count, issues&#125;')"
+        FAILED=1
+      fi
+    done &lt; changed-urls.txt
+    exit $FAILED</code></pre>
 
 <h3>Multi-Site Dashboard</h3>
 <p>For agencies managing 50+ sites, aggregate redirect chain data into a single dashboard. Track chain length distribution, loop count, and top offenders per site.</p>
@@ -495,7 +506,7 @@ Ollagraph API            Yes                Yes           Yes               Yes 
 <p>Yes, through three mechanisms. Long chains dilute link equity. Chains consume crawl budget, so Googlebot indexes fewer pages. Chains increase page load time, which is a ranking factor. A 5-hop chain adds 500–800ms to load time.</p>
 
 <h3>Q5. How do I find all redirect chains on my site without crawling every page?</h3>
-<p>Combine Google Search Console (export indexed URLs), your XML sitemap, and your CMS database (export URL aliases). Deduplicate and run through a bulk redirect chain checker. The Ollagraph bulk endpoint handles up to 10,000 URLs per request and returns hop-by-hop data for every chain.</p>
+<p>Combine Google Search Console (export indexed URLs), your XML sitemap, and your CMS database (export URL aliases). Deduplicate and run through a bulk redirect chain checker. Ollagraph's /v1/seo/redirect-chain-map traces one URL per call (1 credit), so loop over the list with modest concurrency to get hop-by-hop data for every chain.</p>
 
 <h3>Q6. What causes a redirect loop?</h3>
 <p>Conflicting rules between layers (CMS vs. CDN vs. server), trailing slash normalization wars, WWW vs. non-WWW canonicalization with HSTS, language detection plugins, and affiliate tracking parameters that trigger re-adding and re-stripping cycles. The most common pattern we see is a CDN rule and a CMS rule fighting over the same URL.</p>
@@ -510,7 +521,7 @@ Ollagraph API            Yes                Yes           Yes               Yes 
 <p>For sites with more than 10,000 pages or frequent CMS changes, run a full audit weekly. For smaller sites, monthly is sufficient. Also audit after every major deploy, CMS update, or CDN configuration change. We run ours every Sunday night and review results Monday morning.</p>
 
 <h3>Q10. Does the Ollagraph API handle JavaScript redirects?</h3>
-<p>The standard HTTP mode does not execute JavaScript. For pages using window.location or meta refresh redirects, enable render_mode: "headless" to route through a headless Chromium browser. This catches redirects that HTTP-level tools miss entirely.</p>
+<p>No. /v1/seo/redirect-chain-map traces HTTP-level redirects (3xx responses with a Location header) and does not execute JavaScript. For pages using window.location or meta refresh redirects, fetch the page with /v1/render, which loads it in a headless browser, and check where it ended up. HTTP-level tools miss these redirects entirely.</p>
 
 <h3>Q11. What is the cost of not fixing redirect chains?</h3>
 <p>The cost compounds. A single 5-hop chain on a page with 100 backlinks can leak 40–50% of link equity. Multiply by thousands of chains and the traffic loss is substantial. We have seen sites recover 15–30% of organic traffic within 60 days of collapsing all chains longer than 3 hops.</p>

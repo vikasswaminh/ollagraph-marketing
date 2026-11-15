@@ -23,7 +23,7 @@ Running headless Chrome at scale means you will encounter crashes, memory leaks,
 - **CDP's `Performance.enable` and `Tracing.start` domains** give you nanosecond-precision timing on page loads, network requests, and JavaScript execution — without adding instrumentation code to the page.
 - **A three-tier alerting strategy** (page-level, session-level, fleet-level) prevents alert fatigue while ensuring critical failures get paged within 60 seconds.
 - **Structured logging with a shared correlation ID** (`browser session ID` → `page task ID` → `API request ID`) makes debugging multi-step automation failures possible in under five minutes.
-- **The Ollagraph Browser API exposes real-time metrics endpoints and webhook-based alerting** so you can integrate browser observability into your existing monitoring stack without running your own browser infrastructure.
+- **With the Ollagraph API there is no browser fleet for you to monitor.** Every response carries a request ID and timing headers, and `GET /v1/me/usage` gives you a per-request log you can feed into your existing monitoring stack.
 
 ## 1. Problem Statement
 
@@ -139,7 +139,7 @@ Resource metrics and CDP traces tell you the browser is working. Business metric
 A browser observability pipeline has five components that work together:
 
 ### 1. Instrumentation Layer
-This runs inside your browser automation code (Puppeteer, Playwright, or the Ollagraph Browser API). It enables CDP domains, attaches event listeners, and emits metrics and logs at every step.
+This runs inside your browser automation code (Puppeteer or Playwright). It enables CDP domains, attaches event listeners, and emits metrics and logs at every step.
 
 ### 2. Metrics Aggregator
 Prometheus is the standard choice. Each browser worker exposes a metrics endpoint (typically on a separate port) that Prometheus scrapes every 15 seconds. For serverless or short-lived workers, use a push gateway or the OpenTelemetry Collector.
@@ -340,55 +340,69 @@ When a user reports that product data extraction is taking 30 seconds instead of
 
 In this case, TTFB is 3.4 seconds (slow server response) and network idle takes 28.3 seconds (lazy-loaded resources). The fix: increase the navigation timeout, or switch to `domcontentloaded` instead of `networkidle0` and wait for specific selectors.
 
-### Example 3: Ollagraph Browser API Observability
+### Example 3: Monitoring Calls to the Ollagraph API
 
-If you use the Ollagraph Browser API, observability is built in. Every API response includes timing headers:
+If you send pages through the Ollagraph API instead of running your own browsers, there is no fleet for you to watch — every call runs in a fresh browser on our side, so memory leaks, crashed tabs and context recycling are not your problem. What you monitor is your own calls. Every response carries standard headers you can log next to your own correlation ID:
 
 ```http
-x-ollagraph-timing: navigate=2347ms;extract=891ms;total=3238ms
-x-ollagraph-session-id: brow-abc123
-x-ollagraph-task-id: task-456def
+x-request-id: 9b2f6c0e4d7a4e1f8c3b5a6d7e8f9012
+server-timing: total;dur=3238
+x-credits-cost: 1
+x-credits-charged: 1
+x-credits-balance: 9874
 ```
 
-You can also pull real-time metrics from the `/v1/metrics` endpoint:
+Send your own `X-Request-ID` header (8–64 letters, digits, `-` or `_`) and the API uses it instead of generating one, so a single ID spans your logs and ours.
+
+Your per-request log comes from `GET /v1/me/usage` (up to 200 rows per page, filterable by endpoint, or `format=csv`):
 
 ```bash
-curl https://api.ollagraph.com/v1/metrics \
-  -H "Authorization: Bearer $API_KEY"
+curl "https://api.ollagraph.com/v1/me/usage?endpoint=/v1/scrape&limit=50" \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY"
 ```
 
-Response:
+Response (one row shown, some fields omitted):
 
 ```json
 {
-  "active_sessions": 12,
-  "queued_tasks": 3,
-  "avg_task_duration_ms": 2847,
-  "p95_task_duration_ms": 6200,
-  "success_rate_5m": 0.987,
-  "memory_usage_pct": 67,
-  "errors_by_type": {
-    "navigation_timeout": 4,
-    "selector_not_found": 12,
-    "captcha_detected": 1
-  }
+  "rows": [
+    {
+      "endpoint": "/v1/scrape",
+      "url": "https://shop.example.com/p/123",
+      "status": "success",
+      "time_ms": 3238,
+      "credits_charged": 1,
+      "request_id": "9b2f6c0e4d7a4e1f8c3b5a6d7e8f9012",
+      "created_at": "2026-07-30T02:14:07.512000+00:00"
+    }
+  ],
+  "limit": 50,
+  "offset": 0
 }
 ```
 
-And you can configure webhook alerts:
+For daily rollups, `GET /v1/me/usage/summary?days=7` returns `by_day` (calls and credits per endpoint per day) and `by_endpoint` (calls, credits and `avg_ms` per endpoint).
 
-```bash
-curl -X POST https://api.ollagraph.com/v1/alerts \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "webhook_url": "https://hooks.slack.com/services/...",
-    "conditions": [
-      {"metric": "success_rate", "operator": "lt", "value": 0.95, "window": "5m"},
-      {"metric": "memory_usage_pct", "operator": "gt", "value": 85, "window": "2m"}
-    ]
-  }'
+There is no alerting API. Alerts live in your own code: poll the usage log on a schedule, compute the error rate, and notify Slack or your pager yourself:
+
+```python
+import os, requests
+
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
+
+# Your own scheduled job (cron, Lambda, etc.) — Ollagraph has no alerting API.
+rows = requests.get(f"{API}/v1/me/usage", headers=HEADERS,
+                    params={"endpoint": "/v1/scrape", "limit": 200}).json()["rows"]
+if rows:
+    error_rate = sum(r["status"] == "error" for r in rows) / len(rows)
+    if error_rate > 0.05:
+        requests.post(os.environ["SLACK_WEBHOOK_URL"], json={
+            "text": f"Ollagraph scrape error rate {error_rate:.1%} over the last {len(rows)} calls"
+        })
 ```
+
+If you already run an OpenTelemetry backend (Datadog, Honeycomb, Grafana Cloud, Axiom and others), you can register it with `POST /v1/me/forwarders` to receive spans for your requests there, and alert with the tools you already use.
 
 ## 8. Performance & Benchmarks
 
@@ -492,7 +506,7 @@ Enabling CDP domains in production opens attack surface. If an attacker can inje
 - **Set memory alerts at 80%, not 95%.** By the time Chrome hits 95% memory, the OOM killer is seconds away. Alert at 80% so you have time to investigate or scale.
 - **Monitor the orchestrator, not just the browsers.** The queue depth, task assignment latency, and worker pool size are as important as per-browser metrics. A full queue with idle workers means something is wrong with task distribution.
 - **Test your alerts.** Fire a test alert every week by intentionally causing a failure (e.g., navigating to a known-broken URL). If the alert does not fire, your monitoring has a gap.
-- **Use the Ollagraph Browser API's built-in observability** if you do not want to run your own Prometheus/Grafana stack. The API exposes real-time metrics, timing headers on every response, and configurable webhook alerts.
+- **Use the Ollagraph API** if you do not want to run browsers yourself. There is no fleet to monitor: log the `x-request-id` and `server-timing` headers on every response and poll `GET /v1/me/usage` for error rates. Alerting stays in your own stack.
 
 ## 12. Common Mistakes
 
@@ -511,12 +525,12 @@ Enabling CDP domains in production opens attack surface. If an attacker can inje
 | **Grafana Cloud** | Full | Full | Full (Loki) | Full | Partial | $50–500/mo |
 | **Datadog** | Full | Partial | Full | Full | Yes | $1,000–5,000/mo |
 | **New Relic** | Full | Partial | Full | Full | Yes | $800–4,000/mo |
-| **Ollagraph Browser API** | Built-in | Built-in | Built-in | Built-in (webhooks) | Yes | Per-usage |
+| **Ollagraph API** | Per-request usage log + daily summary | No | Per-request log (`/v1/me/usage`) | No (alert from your own stack) | Yes | Per-usage |
 | **SigNoz (open source)** | Full | Full (OpenTelemetry) | Full | Full | No | Self-hosted |
 
 - **When to choose DIY:** You have existing Prometheus/Grafana infrastructure and an SRE team to maintain it. You need full control over alert logic and dashboard design.
 - **When to choose Grafana Cloud:** You want managed Prometheus and Loki without running your own infrastructure.
-- **When to choose Ollagraph Browser API:** You do not want to manage browser infrastructure at all. Observability is built into the API — you get metrics, timing headers, and webhook alerts without setting up any monitoring stack.
+- **When to choose the Ollagraph API:** You do not want to manage browser infrastructure at all. There is no fleet for you to monitor; you get a request ID and timing headers on every response plus a per-request usage log, and you build alerts in your own monitoring stack.
 - **When to choose Datadog or New Relic:** Your organization already uses them for application monitoring and you want browser automation metrics in the same dashboards.
 
 ## 14. Enterprise / Cloud Deployment
@@ -577,7 +591,7 @@ Treat CAPTCHA detection as a metric, not an error. Track `captcha_detected_total
 No. A single page load can generate 10 MB of trace data. Store full traces for a 1% sample and for every failed task. Store trace summaries — navigation timing, network waterfall, error counts — for 100% of tasks.
 
 ### Q8. How do I correlate browser metrics with application backend metrics?
-Use a shared correlation ID that flows from your application backend through the browser automation API. When a user reports slow data, you search for their request ID in both the application logs and the browser automation logs. The Ollagraph Browser API returns this ID in the `x-ollagraph-request-id` response header, making this straightforward.
+Use a shared correlation ID that flows from your application backend through the browser automation API. When a user reports slow data, you search for their request ID in both the application logs and the browser automation logs. The Ollagraph API returns this ID in the `x-request-id` response header (and uses yours if you send one), making this straightforward.
 
 ### Q9. What is the difference between observability and monitoring for browser automation?
 Monitoring tells you something is wrong: "task success rate dropped below 95%." Observability tells you why: "the CDP trace shows navigation timing increased because the target site's CDN had a DNS resolution failure." You need both layers.
@@ -586,7 +600,7 @@ Monitoring tells you something is wrong: "task success rate dropped below 95%." 
 We recycle browser contexts every 50 navigations or when memory per context exceeds 500 MB, whichever comes first. The optimal number depends on the sites you visit. Heavy single-page applications with infinite scroll or streaming updates may need recycling every 10–20 navigations.
 
 ### Q11. Can I monitor browser automation without modifying my code?
-If you use the Ollagraph Browser API, yes — observability is built into the platform. Every API response includes timing headers, you can pull real-time metrics from the `/v1/metrics` endpoint, and you can configure webhook alerts without any client-side instrumentation. For self-managed Puppeteer or Playwright, you must add instrumentation code.
+If you use the Ollagraph API, you do not instrument browsers at all — they run on our side. You still log the `x-request-id` and `server-timing` headers on your calls and poll `GET /v1/me/usage` if you want error-rate alerts; there is no built-in alerting. For self-managed Puppeteer or Playwright, you must add instrumentation code.
 
 ## 16. References
 
@@ -596,7 +610,7 @@ If you use the Ollagraph Browser API, yes — observability is built into the pl
 - [Grafana Loki Documentation — Structured Logging](https://grafana.com/docs/loki/latest/)
 - [Puppeteer — CDPSession API](https://pptr.dev/api/puppeteer.cdpsession)
 - [Playwright — Browser Context Management](https://playwright.dev/docs/api/class-browsercontext)
-- [Ollagraph Browser API Documentation](https://ollagraph.com/docs)
+- [Ollagraph API Documentation](https://ollagraph.com/docs)
 - [OpenTelemetry Collector Documentation](https://opentelemetry.io/docs/collector/)
 - [Google Chrome — Runtime Performance Guide](https://developer.chrome.com/docs/devtools/performance)
 - Related Ollagraph cluster: [Headless Chrome as a Service](/blog/headless-browser-api-the-complete-guide-to-automating-chrome-at-scale/)
@@ -607,4 +621,4 @@ Browser automation observability is not optional once you run headless Chrome in
 
 The overhead is small (4–5% on page load time, ~9% on memory) and the return is large: 73% faster incident response, fewer failed tasks, and less time spent debugging blind. Start with memory monitoring and structured logging, then add CDP traces and alerting as your fleet grows.
 
-If managing browser infrastructure and observability sounds like overhead you do not need, the Ollagraph Browser API includes built-in metrics, timing headers, and webhook alerts — so you can focus on extracting data instead of debugging browser crashes.
+If managing browser infrastructure and observability sounds like overhead you do not need, the Ollagraph API runs the browsers for you and gives you a request ID, timing headers and a per-request usage log — so you can focus on extracting data instead of debugging browser crashes.

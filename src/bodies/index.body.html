@@ -75,7 +75,7 @@
         </h1>
         <p class="text-base sm:text-lg text-ink-600 leading-relaxed max-w-xl font-normal">
           Scrape, crawl, search, and extract the live web (plus domain intelligence and browser automation) behind one
-          API key, one bill, and one MCP server. Flat 1 credit per call, no multipliers, refund on failure.
+          API key, one bill, and one MCP server. Most calls cost 1 credit, JS rendering costs nothing extra, refund on failure.
         </p>
         <div class="flex flex-wrap items-center gap-3 pt-2">
           <a class="relative group overflow-hidden inline-flex items-center px-4 py-2.5 text-sm font-semibold rounded bg-brand text-white shadow-sm hover:shadow-lg hover:shadow-brand/25 hover:bg-brand-hover transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:ring-2 focus:ring-brand/40"
@@ -183,15 +183,14 @@
             <div
               class="p-2.5 rounded bg-ink-900/90 border border-ink-800 flex items-center justify-between text-[11px] transition-all duration-150 hover:border-ink-700 hover:bg-ink-900">
               <div class="flex items-center space-x-2.5 min-w-0 mr-4">
-                <span class="text-purple-400 font-semibold shrink-0">DELETE</span>
-                <span class="text-ink-400 text-[10px] shrink-0">/v1/session/sess_49a</span>
+                <span class="text-purple-400 font-semibold shrink-0">POST</span>
+                <span class="text-ink-400 text-[10px] shrink-0">/v1/render</span>
                 <span class="text-ink-200 truncate">bloomberg.com/markets</span>
               </div>
               <div class="flex items-center gap-2.5 shrink-0">
                 <span class="text-emerald-400 shrink-0">200 OK</span>
                 <span
-                  class="px-1.5 py-0.5 rounded text-[10px] bg-purple-900/50 text-purple-300 border border-purple-800/40 shrink-0 font-medium">CLOSED</span>
-                <span class="text-ink-400 shrink-0">18ms</span>
+                  class="px-1.5 py-0.5 rounded text-[10px] bg-purple-900/50 text-purple-300 border border-purple-800/40 shrink-0 font-medium">RENDERED</span>
               </div>
             </div>
           </div>
@@ -207,7 +206,7 @@
               <span>MCP SERVER: <strong class="text-emerald-300">CONNECTED</strong></span>
             </div>
             <div class="flex items-center gap-4">
-              <span>PRICING: <span class="text-ink-200 font-semibold">1 CREDIT</span></span>
+              <span>PRICING: <span class="text-ink-200 font-semibold">FROM 1 CREDIT</span></span>
               <span class="hidden sm:inline">SUCCESS: <span class="text-ink-200">99.98%</span></span>
               <span>ON FAILURE: <span class="text-emerald-400 font-medium">AUTO REFUND</span></span>
             </div>
@@ -310,8 +309,8 @@
               REFUND-ON-FAIL</span>
           </div>
           <p class="font-sans text-xs text-ink-300 leading-relaxed">
-            Standard endpoints cost <span class="text-white font-medium">1 credit</span>; multi-step orchestrators cost
-            <span class="text-white font-medium">3</span>. If an upstream fetch fails, your balance is refunded
+            Most endpoints cost <span class="text-white font-medium">1 credit</span>; search, screenshots, and full page
+            audits cost <span class="text-white font-medium">3</span>. If an upstream fetch fails, your balance is refunded
             automatically before returning.
           </p>
         </div>
@@ -601,7 +600,7 @@
               Agent observability</h3>
           </div>
           <p class="text-xs leading-relaxed text-ink-600">
-            Trace every tool call, token, and step. Replay runs. Diff prompts. Find regressions fast.
+            Every call logged with URL, status, latency, and credits. Forward traces to your own OpenTelemetry collector.
           </p>
         </div>
         <div
@@ -626,13 +625,13 @@
               Browser automation</h3>
           </div>
           <p class="text-xs leading-relaxed text-ink-600">
-            Stealth Chromium pools that scale to thousands of concurrent sessions in seconds.
+            Render JS-heavy pages, click, type, scroll, and evaluate JavaScript. Every call is a fresh, stateless browser.
           </p>
         </div>
         <div
           class="mt-5 pt-3 border-t border-ink-100 flex items-center justify-between text-[11px] font-mono text-ink-500">
-          <span>POST /v1/browser</span>
-          <span class="text-amber-600 font-medium">Stealth pool</span>
+          <span>POST /v1/render</span>
+          <span class="text-amber-600 font-medium">Stateless</span>
         </div>
       </div>
       <!-- Card 6: AEO audits -->
@@ -700,12 +699,12 @@
               Async jobs</h3>
           </div>
           <p class="text-xs leading-relaxed text-ink-600">
-            Fire-and-forget jobs with webhooks, idempotency keys, fan-out, and durable retries.
+            Async scrape, batch, and crawl jobs with webhooks and idempotency keys. Poll any job by ID.
           </p>
         </div>
         <div
           class="mt-5 pt-3 border-t border-ink-100 flex items-center justify-between text-[11px] font-mono text-ink-500">
-          <span>POST /v1/jobs</span>
+          <span>GET /v1/jobs/{id}</span>
           <span class="text-pink-600 font-medium">Webhooks</span>
         </div>
       </div>
@@ -734,8 +733,8 @@
         <span class="text-brand font-semibold">02 / 07</span> • DEVELOPER EXPERIENCE
       </div>
       <span
-        class="font-mono text-xs text-ink-300 bg-ink-900/90 px-2.5 py-1 rounded border border-ink-800 font-medium">SDK •
-        REST • MCP</span>
+        class="font-mono text-xs text-ink-300 bg-ink-900/90 px-2.5 py-1 rounded border border-ink-800 font-medium">REST •
+        OPENAPI • MCP</span>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
       <!-- Left Column Content -->
@@ -744,8 +743,8 @@
           One endpoint.<br>One auth. One billing.
         </h2>
         <p class="text-ink-300 text-sm leading-relaxed">
-          Typed SDKs in TypeScript and Python. A first-class REST API. Idempotent jobs, streaming responses, webhooks,
-          and structured errors. Built the way you wished scraping APIs were built ten years ago.
+          A plain REST API with a published OpenAPI spec: call it with fetch, requests, or curl. Idempotent jobs,
+          webhooks, and structured errors. Built the way you wished scraping APIs were built ten years ago.
         </p>
         <div class="space-y-4 pt-2">
           <div class="flex items-start gap-3.5 group">
@@ -759,7 +758,7 @@
             <div>
               <h4 class="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">Typed
                 everywhere</h4>
-              <p class="text-xs text-ink-300">Schemas generate SDK methods, error types, and trace shape.</p>
+              <p class="text-xs text-ink-300">Every request and response is described in the OpenAPI spec, with examples.</p>
             </div>
           </div>
           <div class="flex items-start gap-3.5 group">
@@ -772,9 +771,9 @@
             </div>
             <div>
               <h4 class="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">
-                Streaming-first</h4>
-              <p class="text-xs text-ink-300">SSE &amp; Websocket for long crawls, tail logs, results, and progress
-                live.</p>
+                Async by default</h4>
+              <p class="text-xs text-ink-300">Long crawls and batches run as jobs: poll the job ID or get a webhook when
+                they finish.</p>
             </div>
           </div>
           <div class="flex items-start gap-3.5 group">
@@ -786,9 +785,9 @@
               </svg>
             </div>
             <div>
-              <h4 class="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">Local-first DX
+              <h4 class="text-sm font-semibold text-white group-hover:text-emerald-300 transition-colors">Per-request visibility
               </h4>
-              <p class="text-xs text-ink-300">CLI dashboards in the terminal, replay from a trace ID.</p>
+              <p class="text-xs text-ink-300">Look up any call by request ID; usage and credits broken down per key.</p>
             </div>
           </div>
         </div>
@@ -849,55 +848,51 @@
           </div>
           <!-- Code Content: TypeScript -->
           <div class="p-6 overflow-x-auto text-ink-300 leading-relaxed min-h-[320px]" id="code-ts">
-            <pre class="font-mono text-xs leading-relaxed"><code><span class="text-ink-400 italic">// Crawl a site, extract structured data, observe every step.</span>
-<span class="text-purple-400">import</span> { <span class="text-sky-300">Ollagraph</span> } <span class="text-purple-400">from</span> <span class="text-emerald-300">"@ollagraph/sdk"</span>;
+            <pre class="font-mono text-xs leading-relaxed"><code><span class="text-ink-400 italic">// Crawl a site as an async job, then poll it until it finishes.</span>
+<span class="text-purple-400">const</span> headers = {
+  Authorization: <span class="text-emerald-300">`Bearer ${process.env.</span><span class="text-amber-300">OLLAGRAPH_API_KEY</span><span class="text-emerald-300">}`</span>,
+  <span class="text-emerald-300">"Content-Type"</span>: <span class="text-emerald-300">"application/json"</span>,
+};
 
-<span class="text-purple-400">const</span> og = <span class="text-purple-400">new</span> <span class="text-sky-300">Ollagraph</span>({ apiKey: process.env.<span class="text-amber-300">OLLAGRAPH_API_KEY</span>! });
+<span class="text-purple-400">const</span> { job_id } = <span class="text-purple-400">await</span> (<span class="text-purple-400">await</span> <span class="text-sky-300">fetch</span>(<span class="text-emerald-300">"https://api.ollagraph.com/v1/crawl"</span>, {
+  method: <span class="text-emerald-300">"POST"</span>,
+  headers,
+  body: JSON.<span class="text-sky-300">stringify</span>({
+    url:       <span class="text-emerald-300">"https://news.ycombinator.com"</span>,
+    max_pages: <span class="text-amber-300">50</span>,
+    depth:     <span class="text-amber-300">2</span>,
+  }),
+})).<span class="text-sky-300">json</span>();
 
-<span class="text-purple-400">const</span> job = <span class="text-purple-400">await</span> og.crawl.<span class="text-sky-300">start</span>({
-  url:       <span class="text-emerald-300">"https://news.ycombinator.com"</span>,
-  depth:     <span class="text-amber-300">3</span>,
-  renderer:  <span class="text-emerald-300">"chromium-stealth"</span>,
-  extract: {
-    schema: {
-      title:   <span class="text-emerald-300">"string"</span>,
-      url:     <span class="text-emerald-300">"url"</span>,
-      points:  <span class="text-emerald-300">"int"</span>,
-      author:  <span class="text-emerald-300">"string"</span>,
-    },
-  },
-  observe: { trace: <span class="text-purple-400">true</span>, redact: [<span class="text-emerald-300">"email"</span>] },
-});
+<span class="text-purple-400">let</span> job;
+<span class="text-purple-400">do</span> {
+  <span class="text-purple-400">await</span> <span class="text-purple-400">new</span> <span class="text-sky-300">Promise</span>((r) => <span class="text-sky-300">setTimeout</span>(r, <span class="text-amber-300">5000</span>));
+  job = <span class="text-purple-400">await</span> (<span class="text-purple-400">await</span> <span class="text-sky-300">fetch</span>(<span class="text-emerald-300">`https://api.ollagraph.com/v1/jobs/${job_id}`</span>, { headers })).<span class="text-sky-300">json</span>();
+} <span class="text-purple-400">while</span> (job.status !== <span class="text-emerald-300">"completed"</span> &amp;&amp; job.status !== <span class="text-emerald-300">"failed"</span>);
 
-<span class="text-purple-400">for await</span> (<span class="text-purple-400">const</span> ev <span class="text-purple-400">of</span> og.<span class="text-sky-300">stream</span>(job.id)) {
-  console.<span class="text-sky-300">log</span>(ev.phase, ev.url, ev.latencyMs);
-}</code></pre>
+console.<span class="text-sky-300">log</span>(job.status, job.result);</code></pre>
           </div>
           <!-- Code Content: Python (hidden initially) -->
           <div class="p-6 overflow-x-auto text-ink-300 leading-relaxed min-h-[320px] hidden" id="code-py">
-            <pre class="font-mono text-xs leading-relaxed"><code><span class="text-ink-400 italic"># Crawl a site, extract structured data, observe every step.</span>
-<span class="text-purple-400">import</span> os
-<span class="text-purple-400">from</span> <span class="text-sky-300">ollagraph</span> <span class="text-purple-400">import</span> Ollagraph
+            <pre class="font-mono text-xs leading-relaxed"><code><span class="text-ink-400 italic"># Crawl a site as an async job, then poll it until it finishes.</span>
+<span class="text-purple-400">import</span> os, time, requests
 
-og = <span class="text-sky-300">Ollagraph</span>(api_key=os.environ[<span class="text-emerald-300">"OLLAGRAPH_API_KEY"</span>])
+API = <span class="text-emerald-300">"https://api.ollagraph.com"</span>
+headers = {<span class="text-emerald-300">"Authorization"</span>: <span class="text-emerald-300">f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"</span>}
 
-job = og.crawl.<span class="text-sky-300">start</span>(
-    url=<span class="text-emerald-300">"https://news.ycombinator.com"</span>,
-    depth=<span class="text-amber-300">3</span>,
-    renderer=<span class="text-emerald-300">"chromium-stealth"</span>,
-    extract={
-        <span class="text-emerald-300">"schema"</span>: {
-            <span class="text-emerald-300">"title"</span>:  <span class="text-emerald-300">"string"</span>,
-            <span class="text-emerald-300">"url"</span>:    <span class="text-emerald-300">"url"</span>,
-            <span class="text-emerald-300">"points"</span>: <span class="text-emerald-300">"int"</span>,
-            <span class="text-emerald-300">"author"</span>: <span class="text-emerald-300">"string"</span>,
-        },
-    },
-    observe={<span class="text-emerald-300">"trace"</span>: <span class="text-purple-400">True</span>, <span class="text-emerald-300">"redact"</span>: [<span class="text-emerald-300">"email"</span>]},
-)
+job_id = requests.<span class="text-sky-300">post</span>(f<span class="text-emerald-300">"{API}/v1/crawl"</span>, headers=headers, json={
+    <span class="text-emerald-300">"url"</span>: <span class="text-emerald-300">"https://news.ycombinator.com"</span>,
+    <span class="text-emerald-300">"max_pages"</span>: <span class="text-amber-300">50</span>,
+    <span class="text-emerald-300">"depth"</span>: <span class="text-amber-300">2</span>,
+}).<span class="text-sky-300">json</span>()[<span class="text-emerald-300">"job_id"</span>]
 
-<span class="text-purple-400">for</span> ev <span class="text-purple-400">in</span> og.<span class="text-sky-300">stream</span>(job.id):
-    <span class="text-sky-300">print</span>(ev.phase, ev.url, ev.latency_ms)</code></pre>
+<span class="text-purple-400">while</span> <span class="text-purple-400">True</span>:
+    time.<span class="text-sky-300">sleep</span>(<span class="text-amber-300">5</span>)
+    job = requests.<span class="text-sky-300">get</span>(f<span class="text-emerald-300">"{API}/v1/jobs/{job_id}"</span>, headers=headers).<span class="text-sky-300">json</span>()
+    <span class="text-purple-400">if</span> job[<span class="text-emerald-300">"status"</span>] <span class="text-purple-400">in</span> (<span class="text-emerald-300">"completed"</span>, <span class="text-emerald-300">"failed"</span>):
+        <span class="text-purple-400">break</span>
+
+<span class="text-sky-300">print</span>(job[<span class="text-emerald-300">"status"</span>], job.get(<span class="text-emerald-300">"result"</span>))</code></pre>
           </div>
           <!-- Code Content: Curl (hidden initially) -->
           <div class="p-6 overflow-x-auto text-ink-300 leading-relaxed min-h-[320px] hidden" id="code-curl">
@@ -907,20 +902,13 @@ job = og.crawl.<span class="text-sky-300">start</span>(
   -H <span class="text-emerald-300">"Content-Type: application/json"</span> \
   -d <span class="text-amber-200">'{
     "url": "https://news.ycombinator.com",
-    "depth": 3,
-    "renderer": "chromium-stealth",
-    "extract": {
-      "schema": {
-        "title":  "string",
-        "url":    "url",
-        "points": "int",
-        "author": "string"
-      }
-    },
-    "observe": { "trace": true, "redact": ["email"] }
+    "max_pages": 50,
+    "depth": 2,
+    "webhook_url": "https://your-app.example.com/hooks/crawl"
   }'</span>
 
-<span class="text-ink-400 italic"># → { "job_id": "job_8431", "stream": "wss://…/v1/jobs/job_8431" }</span></code></pre>
+<span class="text-ink-400 italic"># → { "status": "queued", "job_id": "…", "message": "Crawl queued successfully." }</span>
+<span class="text-ink-400 italic"># Poll GET /v1/jobs/{job_id}, or wait for the webhook.</span></code></pre>
           </div>
         </div>
       </div>
@@ -983,8 +971,8 @@ job = og.crawl.<span class="text-sky-300">start</span>(
       </div>
     </div>
     <p class="text-ink-600 text-base max-w-3xl mb-10 -mt-4">
-      From RAG ingestion to lead enrichment, price monitoring, and AI-search audits: the same key, the same flat
-      pricing.
+      From RAG ingestion to lead enrichment, price monitoring, and AI-search audits: the same key, the same
+      credits.
     </p>
 
     <!-- Use Case Grid with High-Contrast Structured Cards -->
@@ -1271,12 +1259,12 @@ job = og.crawl.<span class="text-sky-300">start</span>(
       </div>
       <div class="hidden sm:block text-right">
         <span
-          class="font-mono text-xs text-brand font-semibold bg-brand/10 border border-brand/20 px-3 py-1.5 rounded-full">FLAT
-          1 CREDIT</span>
+          class="font-mono text-xs text-brand font-semibold bg-brand/10 border border-brand/20 px-3 py-1.5 rounded-full">MOST
+          CALLS 1 CREDIT</span>
       </div>
     </div>
     <p class="text-ink-600 text-base max-w-3xl mb-10 -mt-4 leading-relaxed">
-      A flat 1 credit per call; no JS extract multipliers, so a JavaScript-rendered page costs the same as a static one.
+      Most calls cost 1 credit (search and screenshots cost 3); no JS render multiplier, so a JavaScript-rendered page costs the same as a static one.
       Pay as you go from $5, get refunded automatically when a fetch fails, and start with 1,000 free credits.
     </p>
     <!-- Feature Highlight Tactile Pills -->
@@ -1294,7 +1282,7 @@ job = og.crawl.<span class="text-sky-300">start</span>(
       <div
         class="flex items-center gap-2.5 px-3.5 py-2.5 bg-white border border-ink-200/90 rounded-xl shadow-xs hover:border-emerald-500/50 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-200">
         <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_6px_rgba(16,185,129,0.5)]"></span>
-        <span class="text-xs font-mono font-medium text-ink-800">Flat 1 credit / call</span>
+        <span class="text-xs font-mono font-medium text-ink-800">1 credit / scrape</span>
       </div>
       <div
         class="flex items-center gap-2.5 px-3.5 py-2.5 bg-white border border-ink-200/90 rounded-xl shadow-xs hover:border-emerald-500/50 hover:shadow-sm hover:-translate-y-0.5 transition-all duration-200">
@@ -1361,7 +1349,7 @@ job = og.crawl.<span class="text-sky-300">start</span>(
               <td class="p-4 sm:py-4 sm:px-5 bg-brand/[0.04] border-x border-brand/25">
                 <div
                   class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-brand text-white shadow-xs">
-                  Flat 1 credit
+                  1 credit
                 </div>
                 <div class="text-[11px] text-emerald-700 font-medium font-mono mt-1 flex items-center gap-1">
                   <svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 16 16" fill="none"
@@ -1591,7 +1579,7 @@ job = og.crawl.<span class="text-sky-300">start</span>(
           rendering without multipliers</h4>
         <p class="text-xs text-ink-600 leading-relaxed font-sans">
           On raw static HTML, a few providers match our entry rate. Where Ollagraph separates is real-world,
-          JavaScript-rendered pages: <strong class="text-ink-900 font-semibold">flat 1 credit</strong> with zero render
+          JavaScript-rendered pages: <strong class="text-ink-900 font-semibold">1 credit per scrape</strong> with zero render
           multipliers, true pay-as-you-go from $5, automated refund-on-failure, and the largest free tier.
         </p>
       </div>
@@ -1966,7 +1954,7 @@ job = og.crawl.<span class="text-sky-300">start</span>(
               class="mt-3.5 pt-3.5 border-t border-ink-100 text-xs text-ink-600 leading-relaxed font-normal bg-ink-50/70 rounded-lg p-4 border border-ink-200/60">
               Firecrawl is an excellent markdown-first context API. Ollagraph covers the same scrape, crawl, and extract
               surface, then adds web search, domain intelligence, browser automation, and agent observability behind one
-              key. On price it bills a flat 1 credit per call with no per-feature multipliers, offers true pay-as-you-go
+              key. On price most calls cost 1 credit, with no JS render multiplier, offers true pay-as-you-go
               from $5, refunds automatically on failed calls, and gives 1,000 free credits. See the <a
                 class="text-brand font-medium underline hover:text-brand-dark" href="/blog/firecrawl-alternatives">full
                 Firecrawl comparison</a>.
@@ -2007,7 +1995,7 @@ job = og.crawl.<span class="text-sky-300">start</span>(
           </summary>
           <div class="faq-answer">
             <div class="mt-3.5 pt-3.5 border-t border-ink-100 text-xs text-ink-600 leading-relaxed font-normal bg-ink-50/70 rounded-lg p-4 border border-ink-200/60">
-              Every standard endpoint consumes exactly 1 credit per successful HTTP 200 call. We do not apply JS multipliers or complexity penalties. Orchestrated multi-step operations cost 3 credits. If any upstream fetch or extraction fails, the credit is refunded to your balance automatically.
+              Most endpoints cost 1 credit per call. Search, screenshots, and full AEO page audits cost 3; file scans cost 2; transcription costs 5; opting into residential proxies adds 3. JavaScript rendering costs nothing extra. If any upstream fetch or extraction fails, the credit is refunded to your balance automatically.
             </div>
           </div>
         </details>
@@ -2249,7 +2237,7 @@ job = og.crawl.<span class="text-sky-300">start</span>(
               <span class="w-5 h-5 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
                 <svg class="w-3 h-3 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
               </span>
-              <span>Flat 1 credit / call</span>
+              <span>1 credit / scrape</span>
             </div>
             <div class="p-3 rounded-lg bg-ink-900/80 border border-ink-800/90 text-xs font-mono text-ink-300 flex items-center gap-2.5">
               <span class="w-5 h-5 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">

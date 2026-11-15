@@ -231,23 +231,25 @@ print(markdown[:1000])</code></pre>
 
 <h3>Example 3: Scrape and Convert with Ollagraph</h3>
 <pre><code>import os
+import hashlib
 import httpx
 
 api_key = os.environ["OLLAGRAPH_API_KEY"]
 url = "https://example.com/docs"
 
 response = httpx.post(
-    "https://api.ollagraph.com/v1/scrape-to-markdown",
+    "https://api.ollagraph.com/v1/scrape",
     headers=&#123;"Authorization": f"Bearer &#123;api_key&#125;"&#125;,
-    json=&#123;"url": url, "render": True, "include_links": True&#125;,
+    json=&#123;"url": url, "format": "markdown", "wait_until": "networkidle0"&#125;,
     timeout=60.0,
 )
 response.raise_for_status()
 data = response.json()
-markdown = data["markdown"]
+markdown = data["content"]
+content_hash = hashlib.sha256(markdown.encode()).hexdigest()
 print(markdown[:1000])</code></pre>
 
-<p>The Ollagraph endpoint returns clean markdown, source metadata, and a content hash. You can store the hash to detect changes later.</p>
+<p>The Ollagraph endpoint renders the page and returns clean markdown in content, along with status and timing fields. Hash the markdown yourself, as above, and store the hash to detect changes later.</p>
 
 <h3>Example 4: Chunk and Embed for RAG</h3>
 <pre><code>import chromadb
@@ -279,7 +281,7 @@ Static HTTP fetch         200 ms - 1 s       High         Bandwidth, proxy rotat
 Headless browser          3 s - 10 s         Low          Compute, memory
 Ollagraph API             2 s - 8 s          Medium       API calls, rendering time
 Full RAG ingestion        5 s - 20 s         Low          Embedding, vector storage</code></pre>
-<p>In our internal tests with a sample of 100 SaaS documentation pages, Ollagraph's markdown conversion reduced downstream chunk noise by roughly 40 percent compared to a naive markdownify pass. Headless rendering was required for 34 percent of the pages because their primary content loaded after the initial HTML.</p>
+<p>In our internal tests with a sample of 100 SaaS documentation pages, headless rendering was required for 34 percent of the pages because their primary content loaded after the initial HTML.</p>
 <p>Throughput is usually limited by politeness, not hardware. A respectful crawler waits one to three seconds between requests to the same domain. For a site with a thousand pages, expect ingestion to take hours, not minutes.</p>
 
 <h2>Security, Legal, and Ethical Considerations</h2>
@@ -302,7 +304,7 @@ Full RAG ingestion        5 s - 20 s         Low          Embedding, vector stor
 
 <h2>Troubleshooting Common Failures</h2>
 <pre><code>Symptom                        Likely Cause                    Fix
-Empty or partial content       JavaScript rendering required   Use Playwright or Ollagraph with render: true
+Empty or partial content       JavaScript rendering required   Use Playwright, or Ollagraph /v1/scrape with wait_until: networkidle0
 403 Forbidden                  Bot detection triggered         Rotate user agents, use residential proxies, slow down
 Infinite redirects             Cookie or session issue         Maintain a cookie jar, accept consent banners
 Missing tables or code         Cleaner too aggressive          Whitelist semantic tags, use a smarter converter
@@ -323,7 +325,7 @@ High memory usage              Browser instances left open     Close contexts an
   <li>Respect rate limits. Politeness protects your infrastructure and your reputation.</li>
   <li>Test retrieval quality. A good pipeline is measured by answer accuracy, not page count.</li>
   <li>Version your data. Keep older snapshots so you can debug regressions.</li>
-  <li>Use a managed API when maintenance cost exceeds value. Ollagraph handles rendering, conversion, and change detection so you can focus on the application layer.</li>
+  <li>Use a managed API when maintenance cost exceeds value. Ollagraph handles rendering and conversion so you can focus on the application layer.</li>
   <li>Log every scrape event. Capture URL, timestamp, status code, latency, and any error so you can diagnose failures and prove compliance later.</li>
   <li>Design for graceful degradation. If a page fails after retries, record the failure, move on, and requeue it separately rather than stalling the entire pipeline.</li>
 </ul>
@@ -439,7 +441,7 @@ RSS / Sitemap ingestion         Known content sources           Only works for p
 <p>You should almost always split the page before embedding. Embedding an entire page creates a single dense vector that tries to represent many unrelated topics at once. The result is diluted meaning and poor retrieval precision. When a user asks a specific question, the full-page embedding may not rank highly because it is averaged across too many concepts. Splitting by heading or paragraph creates focused chunks, each with a clear topic and a compact vector representation. These focused chunks retrieve more accurately and fit better within an LLM's context window. The only exception is very short pages, such as a single FAQ answer or a brief definition, where the entire page already covers one narrow idea. Even then, store metadata like the section path and source URL so the model can ground its answers.</p>
 
 <h2>10. Can Ollagraph handle PDFs and DOCX files too?</h2>
-<p>Yes. Ollagraph provides conversion endpoints for PDF, DOCX, and HTML documents, all producing clean markdown output. This is especially useful when your knowledge base mixes web content with uploaded files such as whitepapers, manuals, reports, and contracts. Instead of maintaining separate extraction pipelines for each format, you can route URLs and file uploads through the same conversion layer and receive consistent markdown that preserves headings, tables, lists, and links. From there, the same chunking, embedding, and storage steps apply regardless of the original source. This unified approach reduces maintenance, improves consistency, and makes it easier to build mixed-document RAG systems where web pages, PDFs, and Word documents all contribute to the same vector store.</p>
+<p>Yes. Ollagraph provides conversion endpoints for PDF, DOCX, and HTML documents, all producing clean markdown output. PDF conversion reads the text layer only (there is no OCR), so scanned PDFs come back flagged with likely_scanned_pdf rather than converted. This is especially useful when your knowledge base mixes web content with uploaded files such as whitepapers, manuals, reports, and contracts. Instead of maintaining separate extraction pipelines for each format, you can route URLs and file uploads through the same conversion layer and receive consistent markdown that preserves headings, tables, lists, and links. From there, the same chunking, embedding, and storage steps apply regardless of the original source. This unified approach reduces maintenance, improves consistency, and makes it easier to build mixed-document RAG systems where web pages, PDFs, and Word documents all contribute to the same vector store.</p>
 
 <h2>Conclusion</h2>
 <p>Web scraping for LLMs is not a side task; it is a core part of building reliable AI applications. The difference between a demo and a production system often comes down to data quality: clean structure, fresh sources, and smart chunking.</p>

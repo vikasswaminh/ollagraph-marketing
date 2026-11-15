@@ -169,7 +169,7 @@ Three approaches, each with different trade-offs:
 | Approach | Speed | Cost | Determinism | Best For |
 |---|---|---|---|---|
 | **LLM-based (GPT-4o + JSON mode)** | 2-5s/page | $0.01-0.03/page | Low | Messy pages, implicit facts |
-| **Extraction API (Ollagraph)** | 500-1500ms/page | ~$0.015/page | High | Structured fields at scale |
+| **Extraction API (Ollagraph)** | 500-1500ms/page | 1 credit/page | High | Structured fields at scale |
 | **Hybrid (API for structure + LLM for enrichment)** | 1-3s/page | Medium | Medium | Production — best of both |
 
 **The pragmatic choice:** Use an extraction API for the 80% of fields that are structural (prices, dates, stock status, IDs). Use LLMs only for the 20% that need semantic understanding (descriptions, categories, implicit attributes). Getting this split wrong is the single biggest cost driver.
@@ -252,29 +252,48 @@ class ProductFact(BaseModel):
 
 ```python
 import httpx
+from datetime import datetime, timezone
 
 url = "https://example.com/products/dell-u2724d"
-schema = ProductFact.model_json_schema()
 
 response = httpx.post(
     "https://api.ollagraph.com/v1/extract/structured",
-    json={
-        "url": url,
-        "schema": schema,
-        "render_js": True,
-        "include_provenance": True
-    },
-    headers={"Authorization": "Bearer YOUR_KEY"}
+    json={"url": url},
+    headers={"Authorization": "Bearer YOUR_KEY"},
+    timeout=60,
 )
 
 result = response.json()
-# result contains the extracted ProductFact with provenance
+# result["products"] is a flattened view of the page's Product JSON-LD / Microdata;
+# result["json_ld"] holds the full blocks if you need more fields
+product = result["products"][0]
+extracted_at = datetime.now(timezone.utc).isoformat()
 ```
 
 ### Step 3: Validate and Store
 
 ```python
-validated_fact = ProductFact(**result["entities"][0]["attributes"])
+validated_fact = ProductFact(
+    sku=product["sku"],
+    name=product["name"],
+    category="monitor",                # from your own taxonomy
+    price_usd=float(product["price"]),
+    in_stock=product.get("availability") == "InStock",
+    vendor=product.get("brand", ""),
+    vendor_tier=VendorTier.PREMIUM,    # from your vendor table
+    specifications=ProductSpec(),      # fill from json_ld or an LLM pass
+    url=url,
+)
+
+# Keep your own provenance record next to the fact
+provenance = {
+    "price_usd": {
+        "raw_value": product["price"],
+        "source": "json_ld.offers.price",
+        "source_url": url,
+        "extracted_at": extracted_at,
+    }
+}
 ```
 
 ### Store in PostgreSQL
@@ -341,16 +360,16 @@ $ psql -h localhost -d fact_store -c "
 (3 rows)
 ```
 
-**Check provenance for the Dell price field:**
+**Check provenance for the Dell price field** (stored by your pipeline; Ollagraph does not keep extracted data):
 
 ```bash
-$ curl -s "https://api.ollagraph.com/v1/provenance/fact-20260728-001" \
-  -H "Authorization: Bearer $OLLAGRAPH_KEY" | jq '.provenance.fields.price_usd'
+$ psql -h localhost -d fact_store -At -c "
+    SELECT provenance->'price_usd' FROM facts WHERE fact_id = 'fact-20260728-001';
+"
 
 {
-  "raw_text": "$449.99",
-  "dom_path": "html > body > main > div.price > span.amount",
-  "confidence": 0.99,
+  "raw_value": "449.99",
+  "source": "json_ld.offers.price",
   "source_url": "https://example.com/products/dell-u2724d",
   "extracted_at": "2026-07-28T10:30:00Z"
 }
@@ -406,7 +425,7 @@ This happened repeatedly. Finova tracked 47 similar incidents over three months.
 
 ### The migration
 
-Finova defined four entity schemas — LoanProduct, EligibilityCriterion, BranchLocation, and RateCard — and ran their 2,400 pages through the Ollagraph extraction API. The extraction pipeline produced 18,000 validated facts with provenance envelopes. They stored the facts in PostgreSQL with pgvector for hybrid retrieval and built an NL2SQL layer using GPT-4o-mini for query routing.
+Finova defined four entity schemas — LoanProduct, EligibilityCriterion, BranchLocation, and RateCard — and ran their 2,400 pages through an extraction pipeline: Ollagraph fetched each page and its embedded structured data, and an LLM with structured output mapped the text onto the four schemas. The pipeline produced 18,000 validated facts with provenance envelopes. They stored the facts in PostgreSQL with pgvector for hybrid retrieval and built an NL2SQL layer using GPT-4o-mini for query routing.
 
 ### The results after 8 weeks in production
 
@@ -531,7 +550,7 @@ It depends on how fast your source data changes. E-commerce prices change daily 
 The system should flag the contradiction and apply a resolution strategy. Common strategies: prefer the most recent extraction, prefer the extraction from the official source (vendor site over retailer site), or prefer the extraction with higher confidence. Contradictions that cannot be resolved automatically should be queued for human review.
 
 ### Q5. Can structured extraction handle pages that require login?
-Yes, but it requires session management. The extraction pipeline needs valid authentication credentials (cookies, API tokens, or OAuth flows) for the target domain. Most extraction APIs support cookie injection and session header forwarding. For pages behind SSO, you may need a dedicated integration.
+Yes, but it requires session management. The extraction pipeline needs valid authentication credentials (cookies, API tokens, or OAuth flows) for the target domain. Ollagraph fetches public pages only and does not accept cookies or session headers, so for authenticated pages fetch the HTML yourself and run extraction on it in your own pipeline (Ollagraph endpoints that take an `html` field, such as `/v1/convert/html-to-markdown` and `/v1/extract/tables`, still work). For pages behind SSO, you may need a dedicated integration.
 
 ### Q6. How do I handle pages with multiple entities of the same type?
 A product listing page might show 50 products. The extraction pipeline should return an array of entities, each with its own provenance. The schema should define whether the page is expected to contain a single entity or multiple entities, and the validation layer should check that the count is reasonable (not zero, not 10,000 from a page that should have 50).

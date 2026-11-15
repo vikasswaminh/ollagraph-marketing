@@ -274,7 +274,7 @@ The single largest cost driver is the number of observe-reason-act-verify cycles
 - **Dynamic content interaction:** Stagehand 68%, Browser-Use 72%, Operator 78%.
 
 ### Testing Methodology
-We ran this benchmark on 16 dedicated AWS c6i.4xlarge instances (8 vCPU, 32 GB RAM each) spread across two regions (us-east-1 and eu-west-1) to minimize geographic bias. Each instance ran a Dockerized Playwright 1.48 environment with Chromium headless. Network egress used Ollagraph residential proxy pools — one pool per region — to avoid IP-based blocking and rate limiting.
+We ran this benchmark on 16 dedicated AWS c6i.4xlarge instances (8 vCPU, 32 GB RAM each) spread across two regions (us-east-1 and eu-west-1) to minimize geographic bias. Each instance ran a Dockerized Playwright 1.48 environment with Chromium headless. Network egress used residential proxy pools — one pool per region — to avoid IP-based blocking and rate limiting.
 
 Every task was executed 10 times per framework. Between runs, we cleared browser cache, rotated the proxy IP, and waited 5 seconds to avoid session contamination. A task was marked successful only if the extracted data matched a pre-validated ground-truth record within a 5% numeric tolerance (for prices) or exact string match (for text fields). Partial successes were counted as failures.
 

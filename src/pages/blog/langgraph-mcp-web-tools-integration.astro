@@ -66,7 +66,7 @@ const faqs = [
     Connecting Model Context Protocol (MCP) web tools to LangGraph multi-agent workflows equips autonomous agent swarms with real-time web search, dynamic JavaScript rendering, and structured document parsing without risking state corruption or context window bloat. By connecting LangGraph's state machine nodes to Ollagraph's MCP Server, agent nodes execute live web retrieval over a standardized JSON-RPC 2.0 interface.
   </p>
   <p>
-    To implement this integration in production, define your LangGraph StateGraph state, initialize an asynchronous MCP ClientSession that launches Ollagraph's <code>ollagraph-mcp</code> server over stdio, and route tool execution requests through a centralized tool-node. This setup exposes every Ollagraph endpoint as a tool&mdash;including multi-engine search, stealth browser rendering, PDF conversion, and domain reconnaissance&mdash;while maintaining strict state isolation across agent steps.
+    To implement this integration in production, define your LangGraph StateGraph state, initialize an asynchronous MCP ClientSession that launches Ollagraph's <code>ollagraph-mcp</code> server over stdio, and route tool execution requests through a centralized tool-node. This setup exposes every Ollagraph endpoint as a tool&mdash;including Google web search, stealth browser rendering, PDF conversion, and domain reconnaissance&mdash;while maintaining strict state isolation across agent steps.
   </p>
   <p>
     Building autonomous multi-agent systems requires moving beyond single-prompt execution loops. While frameworks like LangGraph provide the stateful graph orchestration necessary for complex multi-agent collaboration, agents frequently fail when attempting to fetch live web information. Legacy approaches rely on fragile, custom scraping scripts or static HTTP GET tools that fail on dynamic JavaScript single-page applications (SPAs) and pollute prompt context windows with unparsed HTML boilerplate.
@@ -122,7 +122,7 @@ const faqs = [
     </li>
   </ul>
   <p>
-    By combining LangGraph's stateful graph orchestration with Ollagraph's enterprise MCP server, developers eliminate the friction between multi-agent reasoning and web data retrieval. LangGraph manages memory state and node transitions, while Ollagraph handles multi-engine search, stealth browser rendering, and document conversion in the cloud.
+    By combining LangGraph's stateful graph orchestration with Ollagraph's enterprise MCP server, developers eliminate the friction between multi-agent reasoning and web data retrieval. LangGraph manages memory state and node transitions, while Ollagraph handles live web search, stealth browser rendering, and document conversion in the cloud.
   </p>
 
   <h2>3. Technical Definition &amp; Core Concept</h2>
@@ -135,7 +135,7 @@ const faqs = [
       <strong>Model Context Protocol (MCP) Client Session:</strong> An asynchronous JSON-RPC 2.0 transport connection (mcp.ClientSession) established between the Python application process running LangGraph and the local <code>ollagraph-mcp</code> server process, which forwards each call to Ollagraph's hosted API.
     </li>
     <li>
-      <strong>Ollagraph Web Intelligence Engine:</strong> The external cloud infrastructure exposed via MCP that executes real-time multi-engine search queries, renders dynamic client-side JavaScript via stealth Chromium pools, and parses unstructured files (PDF, DOCX, XLSX) into clean Markdown.
+      <strong>Ollagraph Web Intelligence Engine:</strong> The external cloud infrastructure exposed via MCP that executes real-time Google search queries (with a labelled DuckDuckGo-backed fallback), renders dynamic client-side JavaScript via stealth Chromium pools, and parses unstructured files (PDF, DOCX, XLSX) into clean Markdown.
     </li>
   </ul>
   <p><em>Example JSON-RPC 2.0 Payload Sent by LangGraph MCP Tool Node</em></p>
@@ -171,7 +171,7 @@ const faqs = [
   <p><strong>Layer 3: Ollagraph Cloud Gateway Layer</strong></p>
   <ul>
     <li><strong>Authentication &amp; Credit Engine:</strong> Validates OLLAGRAPH_API_KEY headers, deducts each endpoint's credit cost from the account balance, and triggers automatic refunds on failed requests.</li>
-    <li><strong>Request Router:</strong> Directs tool calls to specialized workers (Search Aggregator, Stealth Browser Pool, File Parser Engine, Domain Intel Suite).</li>
+    <li><strong>Request Router:</strong> Directs tool calls to specialized workers (Search, Stealth Browser Pool, File Parser Engine, Domain Intel Suite).</li>
   </ul>
   <p><strong>Layer 4: Public Web Target Layer</strong></p>
   <ul>
@@ -197,7 +197,7 @@ const faqs = [
     <li><strong>MCP Tool Execution Adapter:</strong> Bridges Python asyncio event loops with external MCP sessions. Intercepts outgoing tool requests and sanitizes arguments.</li>
     <li><strong>ollagraph-mcp Server:</strong> Runs as a local stdio process, builds its tool list from Ollagraph's OpenAPI spec at startup, and forwards each JSON-RPC tool call to the API with your key attached.</li>
     <li><strong>Ollagraph Cloud Gateway:</strong> Enforces authentication, credit ledgering, rate limiting, and request routing across backend workers.</li>
-    <li><strong>Multi-Engine Search Aggregator:</strong> Collects, deduplicates, and ranks live search engine results across top indexes.</li>
+    <li><strong>Search Service:</strong> Returns deduplicated, ranked live Google results, falling back to a DuckDuckGo-backed source (labelled in <code>engines_used</code>) when Google is unavailable.</li>
     <li><strong>Markdown &amp; Conversion Engine:</strong> Transforms raw HTML, PDFs, Excel sheets, and Word documents into clean, LLM-ready Markdown using the PDF to Markdown API.</li>
   </ul>
 
@@ -208,7 +208,7 @@ const faqs = [
     <li><strong>Node 1 (Planner Agent):</strong> Deconstructs query into sub-questions and populates AgentState["tasks"].</li>
     <li><strong>Node 2 (Researcher Agent):</strong> Selects sub-task 1, formulates search arguments, and requests <code>search</code>.</li>
     <li><strong>Tool Transition:</strong> Conditional edge redirects control to mcp_tool_node.</li>
-    <li><strong>MCP Remote Call:</strong> mcp_tool_node invokes Ollagraph's API via JSON-RPC. Ollagraph returns aggregated live search results; mcp_tool_node then fetches the most relevant pages with <code>scrape_llm_ready</code>, which renders them in stealth Chromium where needed, strips non-essential elements, and returns clean Markdown.</li>
+    <li><strong>MCP Remote Call:</strong> mcp_tool_node invokes Ollagraph's API via JSON-RPC. Ollagraph returns ranked live search results; mcp_tool_node then fetches the most relevant pages with <code>scrape_llm_ready</code>, which renders them in stealth Chromium where needed, strips non-essential elements, and returns clean Markdown.</li>
     <li><strong>State Mutation:</strong> mcp_tool_node updates AgentState["research_data"] with Markdown content and verified source links.</li>
     <li><strong>Node 3 (Verifier Agent):</strong> Reads AgentState["research_data"], identifies factual claims, and cross-references source links using Ollagraph's Domain &amp; Security Intel APIs.</li>
     <li><strong>Node 4 (Synthesizer Agent):</strong> Compiles verified research into a finalized report, appends source citations, and returns final state to user.</li>
@@ -405,7 +405,7 @@ def sanitize_agent_tool_input(input_text: str) -&gt; str:
   <p><strong>Architectural Breakdown Across Core Metrics</strong></p>
   <ul>
     <li><strong>Multi-Agent State Management:</strong> Custom scraping scripts require manual state management. LangChain tools produce unstructured output that causes state bloat. Single-purpose APIs provide no native graph hooks. LangGraph paired with Ollagraph MCP provides native StateGraph integration with explicit memory boundaries.</li>
-    <li><strong>Live Multi-Engine Web Search:</strong> Custom scripts and single-purpose scrapers lack search capabilities. LangChain tools query single search indexes. Ollagraph MCP provides unified multi-engine search aggregation across top indexes in a single API call.</li>
+    <li><strong>Live Web Search:</strong> Custom scripts and single-purpose scrapers lack search capabilities. LangChain tools need a separately configured search provider. Ollagraph MCP provides live Google search, with a labelled DuckDuckGo-backed fallback, in a single API call.</li>
     <li><strong>Dynamic JavaScript Rendering:</strong> Custom Playwright scripts require ongoing browser cluster maintenance. LangChain tools fail completely on dynamic SPAs. Single-purpose scrapers charge variable credit multipliers. Ollagraph MCP includes stealth headless Chromium rendering automatically.</li>
     <li><strong>Multi-Format Document Parsing:</strong> Custom scripts and standard scrapers cannot parse non-HTML files. Single-purpose scrapers offer basic PDF parsing. Ollagraph MCP converts PDFs, Excel workbooks, and Word docs into structured Markdown.</li>
     <li><strong>Domain &amp; Network Security Reconnaissance:</strong> Competitor architectures provide zero domain or network security endpoints. Ollagraph MCP includes domain intelligence tools such as WHOIS lookups, DNS resolution, SSL cert auditing, and WAF detection.</li>
@@ -508,7 +508,7 @@ spec:
 
   <h2>21. Conclusion &amp; Next Action Steps</h2>
   <p>
-    Unifying LangGraph's stateful graph orchestration with Ollagraph's MCP web intelligence tools gives you a robust framework for building production-grade autonomous agent swarms. By grounding multi-agent workflows with live multi-engine web search, stealth browser rendering, and clean Markdown parsing, you eliminate outdated LLM code hallucinations and build resilient, real-time AI applications.
+    Unifying LangGraph's stateful graph orchestration with Ollagraph's MCP web intelligence tools gives you a robust framework for building production-grade autonomous agent swarms. By grounding multi-agent workflows with live web search, stealth browser rendering, and clean Markdown parsing, you eliminate outdated LLM code hallucinations and build resilient, real-time AI applications.
   </p>
   <p><strong>Recommended Implementation Roadmap</strong></p>
   <ul>
