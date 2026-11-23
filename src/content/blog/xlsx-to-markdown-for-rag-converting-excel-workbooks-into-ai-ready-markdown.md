@@ -20,7 +20,7 @@ In this post, you'll get a production blueprint for converting Excel workbooks i
 
 **Key takeaway:** XLSX-to-Markdown for RAG is a pipeline problem. The goal is not "conversion," it's "retrieval correctness."
 
-In our pipeline, we treat every workbook as a set of sheet-level table contracts. We only embed Markdown that passes structural gates (rectangular tables, header coverage, and unit attachment). Everything else is quarantined with evidence so you can replay it after you improve normalization rules.
+In this blueprint, we treat every workbook as a set of sheet-level table contracts. We only embed Markdown that passes structural gates (rectangular tables, header coverage, and unit attachment). Everything else is quarantined with evidence so you can replay it after you improve normalization rules.
 
 ## Key Takeaways
 
@@ -139,7 +139,7 @@ Normalization is where you enforce stability. Typical steps:
 -   **Unit preservation:** keep units in header text; if units appear in separate rows, attach them to the nearest header.
 -   **Formula handling:** decide whether to use precomputed values from the workbook or evaluate formulas before conversion.
 
-In practice, we also normalize spreadsheet-specific semantics that frequently break RAG:
+In practice, also normalize spreadsheet-specific semantics that frequently break RAG:
 
 -   **Merged cells:** expand merges into repeated values so the table becomes rectangular.
 -   **Multi-level headers:** collapse header rows into a single "header path" per column (group header + subheader).
@@ -313,30 +313,30 @@ In production, you typically:
 -   cap output size with `max_rows_per_sheet`
 -   quarantine failures early to avoid wasting embedding compute
 
-### What we tested (mini case study)
+### Try it yourself (mini evaluation)
 
-To make this concrete, we ran a small internal evaluation on a mixed corpus of workbooks that commonly appear in analytics and ops teams:
+To make this concrete, run a small evaluation on a mixed corpus of workbooks that commonly appear in analytics and ops teams. Record the corpus size:
 
--   120 workbooks total
--   312 sheets processed
--   1,084 extracted tables
+-   workbooks total
+-   sheets processed
+-   extracted tables
 
-We compared two pipelines:
+Compare two pipelines:
 
 -   **Naive conversion:** XLSX → Markdown → chunk → embed (no structural gates)
 -   **Contract pipeline:** XLSX → deterministic normalization → validation gates → chunk → embed
 
-**Results (structural quality):**
+**Measure (structural quality):**
 
--   Header coverage pass rate improved from 0.62 to 0.91
--   Orphan cell rate dropped from 0.18 to 0.04
--   Table alignment error rate dropped from 0.11 to 0.02
+-   Header coverage pass rate
+-   Orphan cell rate
+-   Table alignment error rate
 
-**Results (retrieval quality proxy):**
+**Measure (retrieval quality proxy):**
 
--   For a 40-question set targeting table lookups (units, grouped headers, and entity keys), answer correctness improved from 0.71 to 0.86.
+-   Answer correctness on a question set targeting table lookups (units, grouped headers, and entity keys).
 
-The key point isn't the exact numbers—it's the mechanism. Structural gates catch the failure modes that make RAG answers wrong.
+The key point is the mechanism. Structural gates should catch the failure modes that make RAG answers wrong, and the comparison shows you how often those failure modes occur in your own workbooks.
 
 ### Evidence snippet (validation report)
 

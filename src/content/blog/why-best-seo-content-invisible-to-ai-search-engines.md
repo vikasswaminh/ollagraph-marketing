@@ -35,15 +35,15 @@ A SaaS content team ships a 4,200-word pillar post. It ranks in the top three fo
 
 This is the invisibility paradox: the content that wins traditional search can still lose AI search.
 
-I have reviewed libraries where:
+Pages that end up invisible tend to share patterns like these:
 
-- The H1 matched the query, but the first 300 words were brand story and soft context—no direct answer.
-- The definitive claim lived in a callout component that never made it into the static HTML extract.
-- A comparison table was rendered as nested `<div>`s with no semantic headers, so extractors returned a blob of numbers without labels.
-- Author and update date existed in the CMS UI but not in the published DOM or JSON-LD.
-- The page answered five related questions in one long section, so no single chunk was a clean match for any one query.
+- The H1 matches the query, but the first 300 words are brand story and soft context—no direct answer.
+- The definitive claim lives in a callout component that never makes it into the static HTML extract.
+- A comparison table is rendered as nested `<div>`s with no semantic headers, so extractors return a blob of numbers without labels.
+- Author and update date exist in the CMS UI but not in the published DOM or JSON-LD.
+- The page answers five related questions in one long section, so no single chunk is a clean match for any one query.
 
-In each case, the SEO checklist looked healthy: indexable URL, solid backlinks, decent Core Web Vitals, keyword coverage. The failure was downstream of ranking. The answer engine could reach the page. It could not confidently quote it.
+In each case, the SEO checklist can look healthy: indexable URL, solid backlinks, decent Core Web Vitals, keyword coverage. The failure is downstream of ranking. The answer engine can reach the page. It cannot confidently quote it.
 
 The root cause is a mismatch of success metrics. SEO teams optimize for impressions, clicks, and positions. Answer engines optimize for short, attributable statements that reduce hallucination risk. If your best insight requires three paragraphs of setup to understand, it is a weak citation candidate. If a competitor states the same insight in two crisp sentences under a matching heading, they win the quote—even if their page is weaker overall.
 
@@ -348,50 +348,47 @@ class SeoToAeoRemediation:
         return report
 ```
 
-## 7. Real-world examples
+## 7. Example scenarios
 
 ### Example 1: Ranked pillar with a soft opening
-A security vendor ranked #2 for “how to rotate API keys safely.” The post opened with a company origin story and threat-landscape preamble. AI answers cited a shorter NIST-style explainer.
+Imagine a security vendor ranking #2 for “how to rotate API keys safely.” The post opens with a company origin story and threat-landscape preamble, and AI answers cite a shorter NIST-style explainer instead.
 
-**Diagnosis:** soft opening + answer dilution. The practical rotation steps started at word 780.
+**Diagnosis:** soft opening + answer dilution. The practical rotation steps start at word 780.
 
-**Fix:** Added a 60-word direct answer and a 7-step list immediately under the H1. Moved narrative context below the procedure. Re-scored citation readiness; the step list became the top extracted chunk. Within a few weeks, the page began appearing as a cited source for procedural queries in that cluster.
+**Fix:** Add a 60-word direct answer and a 7-step list immediately under the H1. Move narrative context below the procedure. Re-score citation readiness and check that the step list is now the top extracted chunk.
 
 ### Example 2: Comparison page trapped in a JS widget
-An analytics company had a popular “X vs Y vs Z” page. In the browser, an interactive comparison matrix looked excellent. Static extracts returned feature names without values because the matrix hydrated client-side.
+Picture an analytics company with a popular “X vs Y vs Z” page. In the browser, an interactive comparison matrix looks excellent. Static extracts return feature names without values because the matrix hydrates client-side.
 
 **Diagnosis:** render mismatch + chunk fragmentation.
 
-**Fix:** Server-rendered a semantic HTML table as the source of truth; kept the interactive widget as progressive enhancement. Fetch simulation then returned labeled rows. AI answers started quoting specific feature differences instead of generic competitor blurbs.
+**Fix:** Server-render a semantic HTML table as the source of truth; keep the interactive widget as progressive enhancement. Re-run fetch simulation and confirm it returns labeled rows.
 
 ### Example 3: Docs page with entity fog
-A developer-tools docs article ranked for “idempotency keys best practices.” The content was accurate but referred to “the API,” “our endpoint,” and “the client” without stable product and header names in the answer blocks.
+Consider a developer-tools docs article ranking for “idempotency keys best practices.” The content is accurate but refers to “the API,” “our endpoint,” and “the client” without stable product and header names in the answer blocks.
 
 **Diagnosis:** entity fog + authority silence (no visible update date on the doc surface).
 
-**Fix:** Rewrote the lead answer to name the product, the header (`Idempotency-Key`), and the failure mode. Added “Last reviewed” and links to RFC-style references. Passage scores improved because the claim became attributable without surrounding sections.
+**Fix:** Rewrite the lead answer to name the product, the header (`Idempotency-Key`), and the failure mode. Add “Last reviewed” and links to RFC-style references, so the claim is attributable without surrounding sections.
 
-## 8. Performance & benchmarks
+## 8. How to measure a remediation pass
 
-We audited 120 commercially ranked URLs (positions 1–10 for their primary queries) that owners reported as rarely cited in AI answers. Each URL was run through fetch simulation, clean extraction, llm-ready chunking, and citation-readiness scoring before and after a single remediation pass focused on passage design.
+To measure the effect of passage-level fixes, take a sample of your commercially ranked URLs (positions 1–10 for their primary queries) that are rarely cited in AI answers. Run each URL through fetch simulation, clean extraction, llm-ready chunking, and citation-readiness scoring before and after a single remediation pass focused on passage design. Record, before and after:
 
-| Metric | Before | After 1 pass |
-|---|---|---|
-| **Pages with direct answer in first 150 words** | 18% | 91% |
-| **Median citation-readiness score** | 41 | 73 |
-| **Target claim present in top 3 chunks** | 27% | 84% |
-| **Soft-opening detected** | 62% | 9% |
-| **Render-mismatch on article body** | 14% | 3% |
-| **Entity-fog flag on answer blocks** | 48% | 16% |
-| **Mean time to remediate one URL (editorial)** | — | 45–90 min |
-| **API cost per URL diagnose+rescore** | — | A handful of credits (see `/v1/me/cost-estimate`) |
+- **Pages with a direct answer in the first 150 words**
+- **Median citation-readiness score**
+- **Target claim present in the top 3 chunks**
+- **Soft-opening detected**
+- **Render-mismatch on article body**
+- **Entity-fog flag on answer blocks**
+- **Editorial time to remediate one URL**
+- **API cost per URL for diagnose + rescore** (see `/v1/me/cost-estimate`)
 
-### Interpretation:
+### What to look for:
 
-- Most invisibility was editorial, not infrastructural. Only a minority needed render fixes.
-- Moving the answer up and tightening chunk boundaries produced the largest readiness gains.
-- Schema-only changes without visible answer rewrites produced weak lifts.
-- A one-hour remediation pass per money page is usually enough to clear the worst failure mode.
+- Whether the invisibility is mostly editorial or infrastructural: how many pages actually need render fixes.
+- Which change produces the largest readiness gains: moving the answer up, tightening chunk boundaries, or schema-only changes.
+- How much editor time one remediation pass takes per money page.
 
 **Cost framing for a 50-page pilot:** diagnosis + rescore costs a handful of credits per URL, depending on which endpoints you call; `POST /v1/me/cost-estimate` returns the current cost of each. The expensive part is editor time—and that is also where the value is.
 
@@ -597,7 +594,7 @@ Because ranking and citation optimize for different units of success. Search ran
 Add a direct answer block under the H1: two to four sentences that answer the primary query with named entities and, when relevant, a number or definition. Then ensure each H2 answers one sub-question. Re-extract the page and confirm the answer appears in the first chunk. This single change clears the most common failure mode—soft openings—without a full rewrite.
 
 ### Q3. How do I know if the problem is content shape or crawler access?
-Run a fetch simulation and compare it with the browser view. If the simulator returns blocked responses, empty static bodies, or challenge pages, fix access and rendering first. If the simulator returns your article but citation readiness is still low, the problem is content shape: answer placement, dilution, entity fog, or authority silence. Most ranked-but-invisible pages fall into the second bucket.
+Run a fetch simulation and compare it with the browser view. If the simulator returns blocked responses, empty static bodies, or challenge pages, fix access and rendering first. If the simulator returns your article but citation readiness is still low, the problem is content shape: answer placement, dilution, entity fog, or authority silence.
 
 ### Q4. Does schema markup make SEO content visible to AI search engines?
 Schema helps when it reduces ambiguity and matches visible text—page type, author, publisher, dates, and real FAQ/HowTo content. It does not rescue a page with no quotable answer. Conflicting or decorative schema can hurt confidence. Treat schema as a confidence layer on top of passage-ready content, not as the primary fix for invisibility.

@@ -296,52 +296,44 @@ print(report)
 - **Labels Shapes:** Uses `/v1/aeo/snippet-format-detect` to classify the page's content as paragraph, list, table, or definition and pick a best fit.
 - **Calculates Priority:** Scores candidates locally for length and pronoun fog, then computes an immediate triage score so high-traffic pages with weak extractability are remediated first.
 
-## 7. Real-World Case Studies & Production Scenarios
+## 7. Example Scenarios
 
-### Case Study 1: Fintech API Docs (Definitional Extraction)
-- **Problem:** A top-ranking page for "What is an Idempotency Key?" was never cited by ChatGPT or Perplexity.
-- **Diagnosis:** Soft opening (380 words of intro) + pronoun fog (the definition opened with "this parameter" at word 740). Citation readiness: 34/100.
-- **Fix:** Added an explicit `<h2>What is an Idempotency Key?</h2>` followed immediately by a self-contained 54-word definition block naming the entity.
-- **Result:** Score jumped to 88/100; captured the primary citation in Google AI Overviews and Perplexity within 14 days (+84% developer signups).
+The three scenarios below are hypothetical. Each shows one extraction failure and the structural fix for it.
 
-### Case Study 2: Cloud Infrastructure Matrix (Tabular Extraction)
-- **Problem:** A "Kubernetes vs. Serverless Containers" comparison page with 12k monthly visits lost AI comparison queries to forum threads.
-- **Diagnosis:** Matrix rendered via React with 140 nested `<div>` tags. In Markdown conversion, the table collapsed into an unlabelled text blob. Candidate score: 18/100.
-- **Fix:** Replaced CSS div grids with semantic HTML5 `<table>`, `<thead>`, `<th>`, and `<tbody>` tags while keeping client-side sorting.
-- **Result:** Markdown conversion yielded clean GFM pipe tables. Readiness jumped to 92/100, and the table was directly quoted by Perplexity.
+### Example Scenario 1: Fintech API Docs (Definitional Extraction)
+- **Problem:** Imagine a top-ranking page for "What is an Idempotency Key?" that ChatGPT and Perplexity never cite.
+- **Diagnosis:** A long soft opening plus pronoun fog: the definition finally appears deep in the page and opens with "this parameter" instead of naming the entity.
+- **Fix:** Add an explicit `<h2>What is an Idempotency Key?</h2>` followed immediately by a self-contained definition block of roughly 40–60 words that names the entity.
 
-### Case Study 3: Cybersecurity Guide (Procedural Extraction)
-- **Problem:** A #3 ranking guide on "How to Configure mTLS in Envoy" was ignored by AI engines in favor of a raw GitHub Gist.
-- **Diagnosis:** Procedural steps were buried across 7 long narrative paragraphs without clear step boundaries. Format was conversational instead of procedural.
-- **Fix:** Consolidated the setup into an explicit 5-step semantic `<ol>` block directly beneath the `<h2>` heading with bold imperative verbs.
-- **Result:** Classified as an `ordered_steps` candidate with a 96/100 score; cited verbatim as the primary answer card across Google, Claude, and ChatGPT Search.
+### Example Scenario 2: Cloud Infrastructure Matrix (Tabular Extraction)
+- **Problem:** Suppose a "Kubernetes vs. Serverless Containers" comparison page loses AI comparison queries to forum threads.
+- **Diagnosis:** The matrix is rendered via React as nested `<div>` tags. In Markdown conversion, the table collapses into an unlabelled text blob.
+- **Fix:** Replace the CSS div grid with semantic HTML5 `<table>`, `<thead>`, `<th>`, and `<tbody>` tags while keeping client-side sorting, so Markdown conversion yields clean GFM pipe tables.
 
-## 8. Performance Benchmarks & Empirical Audit Results
+### Example Scenario 3: Cybersecurity Guide (Procedural Extraction)
+- **Problem:** Picture a well-ranked guide on "How to Configure mTLS in Envoy" that AI engines skip in favor of a raw GitHub Gist.
+- **Diagnosis:** The procedural steps are buried across long narrative paragraphs without clear step boundaries. The format is conversational instead of procedural.
+- **Fix:** Consolidate the setup into an explicit semantic `<ol>` block directly beneath the `<h2>` heading, with bold imperative verbs, so it reads as an `ordered_steps` candidate.
 
-To quantify the commercial impact of systematic snippet candidate extraction, Ollagraph Engineering conducted an empirical audit of 250 enterprise commercial URLs across SaaS, Developer Tools, and Cloud Infrastructure sectors.
+## 8. Measuring the Impact on Your Own Pages
 
-Each URL met two baseline criteria:
+To measure what systematic snippet candidate extraction does for your site, pick a set of your own commercial URLs that rank well in organic search but are rarely cited by AI answer engines (Perplexity, ChatGPT Search, Claude). Record a baseline, run one remediation pass, and measure again after a few weeks.
 
-- Ranked in organic positions 1 through 8 for high-intent search queries.
-- Reported zero or statistically insignificant citations across major AI answer engines (Perplexity, ChatGPT Search, Claude).
+| Performance Metric | Pre-Remediation Baseline | Post-Remediation |
+| :--- | :--- | :--- |
+| **Pages with Viable Candidate in Top 150 Words** | | |
+| **Median Citation Readiness Score (0–100)** | | |
+| **Target Claim Present in Top 3 Extracted Chunks** | | |
+| **Pronoun / Anaphora Fog Detected** | | |
+| **Render-Mismatch / Empty Static Body Rate** | | |
+| **Observed AI Search Citations (Sampled Queries)** | | |
+| **Median Editorial Time per URL Remediation** | | |
 
-Each URL underwent a single programmatic remediation pass driven by the Ollagraph Snippet Candidate Extraction pipeline. The table below presents the aggregate before-and-after performance metrics measured 30 days post-remediation.
+### Interpreting the Results
 
-| Performance Metric | Pre-Remediation Baseline | Post-Remediation (30 Days) | Relative Change |
-| :--- | :--- | :--- | :--- |
-| **Pages with Viable Candidate in Top 150 Words** | 14.8% | 94.2% | +536% |
-| **Median Citation Readiness Score (0–100)** | 38.4 | 84.6 | +120% |
-| **Target Claim Present in Top 3 Extracted Chunks** | 22.1% | 89.7% | +305% |
-| **Pronoun / Anaphora Fog Detected** | 56.4% | 6.8% | -87.9% |
-| **Render-Mismatch / Empty Static Body Rate** | 18.0% | 1.2% | -93.3% |
-| **Observed AI Search Citations (Across 5 Engines)** | 6.2% | 64.8% | +945% |
-| **Median Editorial Time per URL Remediation** | — | 45 minutes | — |
+Citation counts are noisy, so sample the same queries before and after, across the same engines, and treat small changes with caution. The structural metrics (candidate in the top 150 words, pronoun fog, render mismatch) are deterministic, so they are the most reliable way to confirm the remediation actually changed the page.
 
-### Empirical Insights & Interpretation
-
-First, editorial architecture outweighs domain authority. The data disproves the common assumption that AI citations are reserved exclusively for the highest-PageRank domains. Over 60% of remediated pages displaced incumbent high-authority competitors in AI citations simply by restructuring existing content into extractable passage candidates.
-
-Second, the 60-word threshold is decisive. Pages that provided a definitive, entity-grounded answer within the first 60 words beneath the primary heading exhibited an 8.4x higher citation probability than pages that delayed the answer beyond word 250.
+Compare pages that answer within the first 60 words beneath the primary heading against pages that delay the answer. If answer position matters for your content, that comparison is where it will show up.
 
 Third, API auditing is economical at portfolio scale. Each URL takes a handful of metered calls (`/v1/aeo/llm-fetch-simulator`, `/v1/seo/snippet-candidates`, `/v1/aeo/snippet-format-detect`, and `/v1/aeo/citation-readiness`), so credit spend grows linearly with the number of pages audited. Check current per-endpoint costs with `POST /v1/me/cost-estimate` before budgeting a large sweep.
 

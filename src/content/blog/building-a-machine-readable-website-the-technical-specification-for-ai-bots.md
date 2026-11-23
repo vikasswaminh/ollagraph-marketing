@@ -39,7 +39,7 @@ Engineering opens DevTools. The page looks fine. Search Console looks fine. The 
 
 Because the site was built for human browsing, not for machine extraction.
 
-I have reviewed sites where:
+Common versions of this failure:
 
 - GPTBot was blocked in `robots.txt` while marketing claimed “AI visibility.”
 - The primary answer lived behind a tab component that never appeared in the initial HTML.
@@ -308,59 +308,51 @@ with open("machine-readability-report.json", "w") as f:
 
 Then gate the release in your own code on what the responses report: the page audit's 0–100 score and top issues, the status and visible-text length each AI crawler received in the fetch simulation, the rich-result types the schema validator accepts, and the citation-readiness score. Pick thresholds that fit your Tier 0 pages.
 
-## 7. Real-world examples
+## 7. Example scenarios
 
-### Example 1: Public API docs that were invisible to AI bots
-A developer-tools company blocked unknown bots at the WAF to reduce scraper abuse. The rule also challenged ClaudeBot and PerplexityBot. Humans never noticed. AI answers cited outdated third-party tutorials.
+The scenarios below are illustrative, not reports of real projects.
+
+### Example 1: Public API docs that are invisible to AI bots
+Imagine a developer-tools company that blocks unknown bots at the WAF to reduce scraper abuse. The rule also challenges ClaudeBot and PerplexityBot. Humans never notice. AI answers cite outdated third-party tutorials.
 
 **Fix:**
 - Split bot policy into “abusive scrapers” vs “named AI crawlers.”
 - Allow listed AI bots on `/docs` and `/blog` only.
-- Added `llms.txt` pointing to quickstart, auth, and limits.
-- Pre-rendered docs routes.
-- Added Ollagraph fetch simulation to CI for the top 50 docs URLs.
-
-**Result:** AI-referred docs sessions rose within weeks, and support tickets about “wrong rate-limit answers from ChatGPT” dropped because the canonical numbers became citable again.
+- Add `llms.txt` pointing to quickstart, auth, and limits.
+- Pre-render docs routes.
+- Add Ollagraph fetch simulation to CI for the top 50 docs URLs.
 
 ### Example 2: Marketing blog with schema theater
-A SaaS blog had FAQ schema on every post. Half the FAQ questions were not answered in visible text. Citation confidence stayed low on competitive queries.
+Imagine a SaaS blog with FAQ schema on every post, where many of the FAQ questions are not answered in visible text.
 
 **Fix:**
-- Removed fake FAQ blocks.
-- Rewrote introductions into direct-answer summaries.
-- Added visible authors and Last updated.
-- Validated remaining schema against on-page text.
-- Scored pages with citation readiness before republishing the top 30 posts.
-
-**Result:** fewer rich-result illusions, more actual answer citations on definitional queries.
+- Remove fake FAQ blocks.
+- Rewrite introductions into direct-answer summaries.
+- Add visible authors and Last updated.
+- Validate remaining schema against on-page text.
+- Score pages with citation readiness before republishing the top 30 posts.
 
 ### Example 3: Markdown mirror drift
-A documentation team published `/llm/*.md` mirrors for agents. After a pricing change, HTML docs were updated and mirrors were not. AI agents confidently quoted old limits from the mirror.
+Imagine a documentation team that publishes `/llm/*.md` mirrors for agents. After a pricing change, the HTML docs are updated and the mirrors are not. AI agents confidently quote old limits from the mirror.
 
 **Fix:**
-- Generated mirrors from the same MDX/source private package.
-- Added a CI check for source hash equality.
-- Removed hand-edited mirrors.
-- Listed only generated mirrors in `llms.txt`.
-
-**Result:** agent answers matched production pricing within one release cycle.
+- Generate mirrors from the same MDX/source private package.
+- Add a CI check for source hash equality.
+- Remove hand-edited mirrors.
+- List only generated mirrors in `llms.txt`.
 
 ## 8. Performance & benchmarks
 
-We audited 120 B2B content URLs across docs and blog templates using a repeatable machine-readability checklist and Ollagraph simulations. The benchmark is directional, not a universal law.
+To benchmark your own site, audit a sample of content URLs across your docs and blog templates using a repeatable machine-readability checklist and Ollagraph simulations. Group the pages by condition — for example client-rendered SPA docs, SSR/pre-rendered docs with weak structure, SSR with a direct answer and clean outline, and SSR with aligned schema and `llms.txt` curation — and record for each group:
 
-| Condition | Median extractable answer present in static HTML | Median citation-readiness score | Common failure |
-|---|---|---|---|
-| **Client-rendered SPA docs** | 18% | 41 | Empty shell / late hydration |
-| **SSR/pre-rendered docs, weak structure** | 71% | 58 | No direct answer, poor headings |
-| **SSR + direct answer + clean outline** | 89% | 74 | Thin evidence / weak freshness |
-| **SSR + answer + aligned schema + llms.txt curation** | 93% | 82 | Mostly competitive content gaps |
-| **Above + CI fetch gates on top URLs** | 96% | 86 | Residual policy/CDN edge cases |
+- The share of pages with an extractable answer present in static HTML
+- The median citation-readiness score
+- The most common failure
 
 ### Interpretation:
 
-- **Rendering strategy is the largest cliff.** If static fetch cannot see the answer, later optimization is mostly theater.
-- **Direct-answer formatting produces a bigger citation-readiness jump** than adding more schema types.
+- **Rendering strategy comes first.** If static fetch cannot see the answer, later optimization is mostly theater.
+- **Compare direct-answer formatting against added schema types** to see which moves citation readiness more on your pages.
 - **Discovery files help agents find the right URLs**, but they cannot repair empty representations.
 - **Continuous verification matters** because template regressions reintroduce failures silently.
 

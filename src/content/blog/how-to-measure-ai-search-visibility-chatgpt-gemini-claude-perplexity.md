@@ -369,7 +369,7 @@ When conducting AI Search Visibility audits, engineering teams encounter five co
 
 ### Failure Mode 2: Unparsed JavaScript Content
 - **Cause:** Client-side SPA rendering times out during the LLM crawler's fetch window.
-- **Remediation:** Run the URL through Ollagraph with JavaScript rendering enabled (`"rendered_with_js": true`). Review the returned markdown structure to verify if content hydrates properly.
+- **Remediation:** Run the URL through Ollagraph's `/v1/scrape/llm-ready`, which renders JavaScript automatically when the static HTML is too thin; `"rendered_with_js": true` in the response tells you rendering was needed. Review the returned chunks to verify the content hydrates properly.
 
 ### Failure Mode 3: Zero-Click Brand Mentions
 - **Cause:** The AI engine attributes solution capabilities to your brand by name but links to an aggregator or directory site instead of your canonical website.

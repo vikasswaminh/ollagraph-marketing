@@ -16,18 +16,18 @@ Every e-commerce extraction pipeline eventually hits the same wall: the page loo
 
 E-commerce pages are built around state. A product is not a static record — it is a collection of variants, each with its own price, availability, and SKU. The page you see in a browser is the result of JavaScript execution, API calls, and client-side state management. A plain HTTP GET returns a shell.
 
-This article covers the full stack: how to model products and variants in a schema, handle JavaScript-rendered content, extract prices with currency and discount awareness, determine stock availability reliably, and build a pipeline that runs at scale without getting blocked. We tested these patterns against 200 e-commerce sites including Shopify, Magento, WooCommerce, BigCommerce, and custom-built retail stores.
+This article covers the full stack: how to model products and variants in a schema, handle JavaScript-rendered content, extract prices with currency and discount awareness, determine stock availability reliably, and build a pipeline that runs at scale without getting blocked.
 
 **Key takeaway:** E-commerce extraction requires a schema that separates products from variants, a rendering engine that can execute JavaScript and wait for API responses, and a validation layer that catches silent failures — wrong variant price, missing stock status, currency mismatch — before they corrupt your dataset.
 
 ## Key Takeaways
 
 - Products and variants are not the same thing. A schema that flattens them produces duplicate entries and missing data. Model them as a product with a nested array of variants.
-- JavaScript rendering is not optional for most e-commerce sites. Over 70% of the Shopify and Magento stores we tested load variant-level pricing through client-side API calls after the initial page render. A pipeline that skips rendering will miss 60-80% of variant-level prices.
+- JavaScript rendering is not optional for most e-commerce sites. Many Shopify and Magento stores load variant-level pricing through client-side API calls after the initial page render. A pipeline that skips rendering will miss those variant-level prices.
 - Price extraction must account for currency symbols, discount strikethroughs, tiered pricing, and compare-at prices. A naive regex that grabs the first dollar amount will pick the wrong number on pages with strikethrough pricing.
-- Stock availability is the most fragile field. "In stock" can be a green badge, a text string, a CSS class, or a JSON blob inside a script tag. Cross-referencing JSON-LD with rendered DOM text brings error rates below 2%.
-- Schema-driven extraction with typed contracts reduces silent data corruption from ~12% to under 0.5%.
-- The Ollagraph E-commerce Schema v2 handles product-variant separation, price normalization, currency detection, and stock status mapping out of the box — with provenance envelopes for every extracted field.
+- Stock availability is the most fragile field. "In stock" can be a green badge, a text string, a CSS class, or a JSON blob inside a script tag. Cross-referencing JSON-LD with rendered DOM text catches mismatches that either source alone would miss.
+- Schema-driven extraction with typed contracts turns silent data corruption into validation failures you can see and retry.
+- Ollagraph handles the fetch: it renders JavaScript-heavy pages and returns the structured data a page embeds (JSON-LD, microdata, OpenGraph). Product-variant separation, normalization, and validation stay in your code, where you control the schema.
 
 ## 1. Problem Statement
 
@@ -55,7 +55,7 @@ Third, anti-bot detection became standard. Sites deploy Cloudflare, DataDome, Ak
 
 The industry response has shifted from selector-based to schema-driven extraction. Instead of telling the scraper where to find the price in the DOM, you define a product schema: a typed contract specifying what fields you need, what types they should be, and what validation rules apply. The extraction engine maps the page content to the schema using whatever strategy works: JSON-LD parsing, initial state extraction, rendered DOM queries, or API interception.
 
-In 2025-2026, the trend is toward hybrid pipelines. A pipeline checks for JSON-LD first (present on ~40% of e-commerce product pages), falls back to initial state extraction, then rendered DOM queries with Playwright, and finally uses LLM-based extraction as a last resort. Each fallback adds latency but increases coverage.
+In 2025-2026, the trend is toward hybrid pipelines. A pipeline checks for JSON-LD first, falls back to initial state extraction, then rendered DOM queries with Playwright, and finally uses LLM-based extraction as a last resort. Each fallback adds latency but increases coverage.
 
 ## 3. What Is E-commerce Data Extraction?
 
@@ -185,23 +185,27 @@ Formats validated records into the output schema with provenance metadata:
 
 - Python 3.12+ or Node.js 22+
 - Playwright or Puppeteer for JavaScript rendering
-- Ollagraph Extraction API (optional, for production)
+- An Ollagraph API key (optional, for fetching and rendering pages in production)
 - Rotating proxy pool (recommended for scale)
 
 ### Setting Up a Basic Pipeline
 
 #### 1. Install dependencies
 
+There is no Ollagraph SDK to install; the API is plain HTTPS with a Bearer key. The schema below uses Pydantic for validation.
+
 ```bash
-pip install ollagraph-client playwright httpx
-playwright install chromium
+pip install requests pydantic
+export OLLAGRAPH_API_KEY="osk_..."
 ```
 
 #### 2. Define the product schema
 
 ```python
-from ollagraph import Schema, Field, EnumField
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 class Availability(str, Enum):
     IN_STOCK = "in_stock"
@@ -210,60 +214,94 @@ class Availability(str, Enum):
     BACKORDERED = "backordered"
     DISCONTINUED = "discontinued"
 
-product_schema = Schema(
-    name="ecommerce_product_v2",
-    fields=[
-        Field("product_name", str, required=True),
-        Field("brand", str, required=False),
-        Field("description", str, required=False),
-        Field("sku", str, required=True, pattern=r"^[A-Z0-9\-]{4,20}$"),
-        Field("price", float, required=True, bounds=(0.01, 100000.00)),
-        Field("currency", str, required=True, pattern=r"^[A-Z]{3}$"),
-        Field("compare_at_price", float, required=False),
-        Field("availability", EnumField(Availability), required=True),
-        Field("variant_options", dict, required=False),
-        Field("image_urls", list, required=False),
-    ]
-)
+class Variant(BaseModel):
+    sku: str = Field(pattern=r"^[A-Z0-9\-]{4,20}$")
+    price: float = Field(gt=0, le=100000)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    compare_at_price: Optional[float] = None
+    availability: Availability
+    options: dict = {}
+
+class Product(BaseModel):
+    product_name: str
+    brand: Optional[str] = None
+    description: Optional[str] = None
+    image_urls: list[str] = []
+    variants: list[Variant] = Field(min_length=1)
 ```
 
-#### 3. Configure the pipeline
+#### 3. Fetch the page's structured data
+
+Ollagraph fetches the page and returns the structured data it embeds. Your code does the mapping.
 
 ```python
-from ollagraph import EcommercePipeline
+import os
 
-pipeline = EcommercePipeline(
-    schema=product_schema,
-    rendering_strategy="auto",
-    wait_strategy="network_idle",
-    wait_timeout=10000,
-    proxy_pool="rotating",
-    max_retries=3,
-    output_format="json",
-)
+import requests
+
+API = "https://api.ollagraph.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
+
+def fetch_structured(url):
+    r = requests.post(f"{API}/v1/extract/structured", json={"url": url},
+                      headers=HEADERS, timeout=60)
+    r.raise_for_status()
+    return r.json()  # json_ld, microdata, open_graph, meta, products
 ```
 
-#### 4. Run extraction
+#### 4. Map JSON-LD to the schema and validate
 
 ```python
-result = pipeline.extract("https://example.com/products/running-shoe")
-print(f"Product: {result.product_name}")
-for v in result.variants:
-    print(f"  {v.sku}: ${v.price} ({v.availability})")
+AVAIL = {"InStock": "in_stock", "OutOfStock": "out_of_stock", "PreOrder": "pre_order",
+         "BackOrder": "backordered", "Discontinued": "discontinued"}
+
+def find_products(blocks):
+    for block in blocks:
+        for item in block.get("@graph", [block]):
+            if item.get("@type") in ("Product", "ProductGroup"):
+                yield item
+
+def to_product(item):
+    # A ProductGroup lists variants under hasVariant; a plain Product often
+    # lists one offer per variant.
+    variants = []
+    for v in item.get("hasVariant") or [item]:
+        offers = v.get("offers") or {}
+        for o in offers if isinstance(offers, list) else [offers]:
+            status = str(o.get("availability", "")).rsplit("/", 1)[-1]
+            variants.append({
+                "sku": o.get("sku") or v.get("sku"),
+                "price": o.get("price"),
+                "currency": o.get("priceCurrency"),
+                "availability": AVAIL.get(status),  # unknown status fails validation
+            })
+    brand = item.get("brand")
+    return Product(
+        product_name=item.get("name"),
+        brand=brand.get("name") if isinstance(brand, dict) else brand,
+        variants=variants,
+    )  # raises pydantic.ValidationError instead of storing bad data
+
+data = fetch_structured("https://example.com/products/running-shoe")
+for item in find_products(data["json_ld"]):
+    product = to_product(item)
+    print(f"Product: {product.product_name}")
+    for v in product.variants:
+        print(f"  {v.sku}: ${v.price} ({v.availability.value})")
 ```
 
 ### Ollagraph API Configuration
 
+When the variant data only appears after JavaScript runs, fetch the rendered HTML with `/v1/scrape` and run your extraction over it. JS rendering costs no extra credits.
+
 ```bash
-curl -X POST https://api.ollagraph.com/v1/extract \
+curl -X POST https://api.ollagraph.com/v1/scrape \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example.com/products/running-shoe",
-    "schema": "ecommerce_product_v2",
-    "render_js": true,
-    "wait_strategy": "network_idle",
-    "include_provenance": true
+    "format": "html",
+    "wait_until": "networkidle0"
   }'
 ```
 
@@ -271,78 +309,66 @@ curl -X POST https://api.ollagraph.com/v1/extract \
 
 ### Example 1: Simple Product Page (Server-Rendered)
 
-A basic WooCommerce product page with a single variant and server-rendered HTML.
+A basic WooCommerce product page with server-rendered HTML and a JSON-LD Product block.
 
 ```bash
-curl -X POST https://api.ollagraph.com/v1/extract \
+curl -X POST https://api.ollagraph.com/v1/extract/structured \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "url": "https://example-woocommerce.com/product/leather-wallet",
-    "schema": "ecommerce_product_v2",
-    "render_js": false
+    "url": "https://example-woocommerce.com/product/leather-wallet"
   }'
 ```
 
-**Response:**
+**Response (abridged):**
 
 ```json
 {
   "status": "success",
-  "data": {
-    "product_name": "Handcrafted Leather Wallet",
-    "brand": "Artisan Goods Co.",
-    "sku": "HLW-001",
-    "price": 89.00,
-    "currency": "USD",
-    "compare_at_price": null,
-    "availability": "in_stock",
-    "variants": [
-      {
-        "sku": "HLW-001-BRN",
-        "options": { "color": "Brown" },
-        "price": 89.00,
-        "currency": "USD",
-        "availability": "in_stock"
-      },
-      {
-        "sku": "HLW-001-BLK",
-        "options": { "color": "Black" },
-        "price": 89.00,
-        "currency": "USD",
-        "availability": "out_of_stock"
-      }
-    ],
-    "provenance": {
-      "product_name": { "strategy": "json_ld", "confidence": 0.99 },
-      "price": { "strategy": "json_ld", "confidence": 0.99 }
+  "url": "https://example-woocommerce.com/product/leather-wallet",
+  "json_ld": [
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": "Handcrafted Leather Wallet",
+      "brand": { "@type": "Brand", "name": "Artisan Goods Co." },
+      "sku": "HLW-001",
+      "offers": [
+        { "@type": "Offer", "sku": "HLW-001-BRN", "price": "89.00", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
+        { "@type": "Offer", "sku": "HLW-001-BLK", "price": "89.00", "priceCurrency": "USD", "availability": "https://schema.org/OutOfStock" }
+      ]
     }
-  }
+  ],
+  "products": [
+    { "name": "Handcrafted Leather Wallet", "brand": "Artisan Goods Co.", "price": "89.00", "currency": "USD", "availability": "InStock", "sku": "HLW-001" }
+  ],
+  "open_graph": { "title": "Handcrafted Leather Wallet" },
+  "fetch_time_ms": 912
 }
 ```
+
+`products` is a convenience summary built from the first offer only. For the full variant list, run the raw `json_ld` block through `to_product()` from step 4: it returns two variant records, one in stock and one out of stock.
 
 ### Example 2: Multi-Variant Shopify Store (JavaScript-Rendered)
 
 A Shopify product page with 48 variants (6 colors × 8 sizes) where variant data loads via client-side API.
 
 ```bash
-curl -X POST https://api.ollagraph.com/v1/extract \
+curl -X POST https://api.ollagraph.com/v1/scrape \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example-shopify.com/products/performance-tee",
-    "schema": "ecommerce_product_v2",
-    "render_js": true,
-    "wait_strategy": "network_idle",
-    "wait_timeout": 15000
+    "format": "html",
+    "wait_until": "networkidle0"
   }'
 ```
 
-The pipeline renders the page, waits for all network requests to settle, extracts the JSON-LD (which Shopify embeds with all variant data), and returns the full variant list. The response includes 48 variant records, each with its own SKU, price, and stock status.
+Ollagraph renders the page in a headless browser and returns the HTML once network activity settles. Your code then parses the JSON-LD blocks or the embedded state object from that HTML and runs them through the same `to_product()` mapping, producing 48 variant records, each with its own SKU, price, and stock status.
 
 ### Example 3: Price with Discount (Compare-at Price)
 
-A product page showing a strikethrough original price and a sale price.
+A product page showing a strikethrough original price and a sale price. This is the output of your own normalizer, with a provenance note your pipeline records for each field:
 
 ```json
 {
@@ -359,64 +385,33 @@ A product page showing a strikethrough original price and a sale price.
 }
 ```
 
-The pipeline detected two price-related values on the page: a strikethrough $129.99 and a sale price $79.99. It correctly assigned the lower value to *price* and the higher value to *compare_at_price*.
+The normalizer found two price-related values on the page: a strikethrough $129.99 and a sale price $79.99. It assigned the lower value to *price* and the higher value to *compare_at_price*. Where the page has JSON-LD, check it first: an Offer's `price` is the selling price, so a strikethrough value in the rendered DOM is the compare-at price.
 
 ## 8. Performance & Benchmarks
 
-We tested the Ollagraph E-commerce Extraction pipeline against 200 e-commerce product pages across 10 platforms: Shopify (50), Magento (40), WooCommerce (35), BigCommerce (25), Salesforce Commerce Cloud (20), custom React storefronts (15), Vue-based stores (10), and others (5).
+Numbers from someone else's sites will not tell you how a pipeline performs on yours. To compare strategies, pick a sample of your own target product pages, spread across the platforms you care about (Shopify, Magento, WooCommerce, BigCommerce, custom React or Vue storefronts), and hand-label the correct values for each page before you run anything.
 
 ### Extraction Success Rate by Strategy
 
-```
-Strategy               Success Rate   Avg Latency   Coverage
-JSON-LD                94.2%          1.2s          42% of pages
-Initial State          89.7%          1.4s          31% of pages
-Rendered DOM           82.3%          3.8s          100% of pages
-LLM-based              76.8%          8.5s          100% of pages
-Hybrid (all strategies)97.1%          4.1s avg      100% of pages
-```
+Run each strategy — JSON-LD, initial state, rendered DOM, LLM-based, and the hybrid cascade — against the same sample and record:
 
-The hybrid approach — trying JSON-LD first, falling through to initial state, then rendered DOM, then LLM — achieved 97.1% success rate across all 200 pages. The 2.9% failure rate came from pages with heavy anti-bot protection (Cloudflare challenge pages) and pages where the product data was loaded behind login walls.
+- **Coverage:** the share of pages where the strategy returns any product data at all.
+- **Success rate:** the share of covered pages where every required field matches your labels.
+- **Average latency** per page.
+
+For every page the hybrid cascade still misses, log the reason. Anti-bot challenge pages and product data behind login walls are typical causes, and they need different fixes.
 
 ### Variant Extraction Accuracy
 
-```
-Metric                              Value
-Variants correctly identified       96.8%
-Variant prices correctly attributed 94.2%
-SKUs correctly extracted            97.5%
-Stock status correctly mapped       91.3%
-Currency correctly detected         99.1%
-```
-
-Stock status mapping had the lowest accuracy because of the wide variety of ways sites express availability. "Usually ships within 24 hours", "Only 2 left in stock", "Available for pre-order", and "Call for availability" all required custom mapping rules.
+Score variant-level fields separately: variants correctly identified, variant prices correctly attributed, SKUs correctly extracted, stock status correctly mapped, and currency correctly detected. Expect stock status to be the hardest field, because sites express availability in so many ways. "Usually ships within 24 hours", "Only 2 left in stock", "Available for pre-order", and "Call for availability" all need custom mapping rules.
 
 ### Latency Breakdown
 
-```
-Stage                P50    P95    P99
-Fetch (no render)    0.8s   2.1s   4.5s
-Fetch (with render)  3.2s   7.8s   14.2s
-Extraction           0.4s   1.1s   2.3s
-Normalization        0.1s   0.3s   0.6s
-Validation           0.05s  0.1s   0.2s
-Total (no render)    1.4s   3.6s   7.6s
-Total (with render)  3.8s   9.3s   17.3s
-```
-
-The rendering stage dominates latency. For sites that require JavaScript rendering, the P95 latency of 9.3 seconds means a pipeline processing 10,000 products can expect to take about 26 hours if all pages require rendering. Using a rendering decision cache — where the pipeline remembers which sites need rendering and skips the browser for sites that do not — cuts total runtime by approximately 60%.
+Record P50, P95, and P99 latency per stage: fetch without rendering, fetch with rendering, extraction, normalization, and validation. The rendering stage usually dominates. Multiply your rendered-page P95 by your product count to estimate worst-case runtime, then compare it with a run that uses a rendering decision cache — where the pipeline remembers which sites need rendering and skips the browser for sites that do not.
 
 ### Cost per 1,000 Products
 
-```
-Approach                    Cost (API credits)   Cost (self-hosted)
-JSON-LD only                $0.50                $0.08
-Hybrid (auto-detect render) $2.10                $0.45
-Full render (all pages)     $8.40                $1.80
-LLM-based (all pages)       $35.00               $12.00
-```
-
-The hybrid approach costs about 4x more than JSON-LD-only extraction but covers 97% of pages versus 42%. The LLM-based approach is 16x more expensive than hybrid and only adds 3% coverage — it is best reserved as a last resort for the small fraction of pages that structured strategies cannot handle.
+Track cost per 1,000 products for each approach (JSON-LD only, hybrid with auto-detected rendering, full render on every page, LLM-based on every page), both in API credits and in self-hosted infrastructure. Put cost next to coverage: the question is what each extra point of coverage costs you. LLM-based extraction is usually the most expensive per page, so it is best reserved as a last resort for the pages that structured strategies cannot handle.
 
 ## 9. Security Considerations
 
@@ -435,8 +430,8 @@ Some sites show different prices based on geographic region or login status. Ext
 
 ## 10. Troubleshooting
 
-- **Extracted price is the compare-at price instead of the sale price.** Configure the schema to expect both *price* and *compare_at_price* fields. The engine will look for two price-related values and assign them correctly.
-- **Only one variant extracted from a multi-variant product.** Enable JavaScript rendering and set wait strategy to *network_idle* with a 10-second timeout. For Shopify, check *window.ShopifyAnalytics* in initial state extraction.
+- **Extracted price is the compare-at price instead of the sale price.** Make the schema expect both *price* and *compare_at_price* fields, and have your normalizer look for two price-related values and assign the lower one to *price*.
+- **Only one variant extracted from a multi-variant product.** Fetch the rendered page (with Ollagraph, `/v1/scrape` with `"wait_until": "networkidle0"`) instead of the raw HTML. For Shopify, check *window.ShopifyAnalytics* in initial state extraction.
 - **Stock status shows "in_stock" for a sold-out product.** JSON-LD structured data may be stale. Cross-reference with rendered DOM signals. If JSON-LD says "InStock" but the DOM shows "Sold Out", trust the DOM.
 - **Currency is missing or wrong.** Configure a site-level currency mapping. If the site uses "$" but operates in Canada, map "$" to CAD.
 - **Pipeline returns 403 or CAPTCHA.** Rotate the IP, add browser-like headers, reduce request frequency. For persistent blocks, use the Ollagraph API with residential proxy pools.
@@ -452,7 +447,7 @@ Some sites show different prices based on geographic region or login status. Ext
 
 These three practices — schema-first design, provenance tracking, and hardest-page testing — form the foundation of a pipeline that survives contact with real e-commerce sites.
 
-**Cache rendering decisions per site.** Do not waste 3 seconds rendering a page that could be fetched with HTTP GET. The Ollagraph pipeline maintains a rendering decision cache that learns from previous extractions.
+**Cache rendering decisions per site.** Do not waste 3 seconds rendering a page that could be fetched with HTTP GET. Record which sites needed rendering on previous runs and skip the browser for the rest.
 
 **Monitor stock status changes separately from price changes.** Stock status is more volatile and has different failure modes. Separate monitoring pipelines reduce alert fatigue.
 
@@ -466,7 +461,7 @@ These three practices — schema-first design, provenance tracking, and hardest-
 
 These two mistakes account for roughly 70% of data quality issues in e-commerce extraction pipelines.
 
-**Trusting JSON-LD without cross-referencing it.** JSON-LD is the most reliable source but not always accurate. We found cases where JSON-LD said "InStock" but the page showed "Sold Out." Cross-reference with rendered DOM signals.
+**Trusting JSON-LD without cross-referencing it.** JSON-LD is the most reliable source but not always accurate. JSON-LD can say "InStock" while the page shows "Sold Out." Cross-reference with rendered DOM signals.
 
 **Using the same wait timeout for all sites.** A Shopify store might be ready in 2 seconds. A Magento store might need 8 seconds. Use a network-idle wait strategy that adapts to each page's loading pattern.
 
@@ -484,24 +479,19 @@ Full control, no API costs. High engineering time (2-4 weeks), fragile selectors
 
 Mature ecosystem, good documentation. Requires a separate Splash server, no e-commerce schema. Best for teams already using Scrapy.
 
-### Ollagraph Proxy and Rendering API
+### Ollagraph API + your own extraction layer
 
-Good anti-bot handling, global proxy networks. Generic output needs significant post-processing. Best for teams needing reliable proxy infrastructure who will build their own extraction layer.
+Ollagraph handles fetching, JavaScript rendering, and proxy fallback, and returns the page's embedded JSON-LD, microdata, and OpenGraph through `/v1/extract/structured`. The product schema, variant mapping, normalization, validation, and provenance stay in your code. Best for teams who want to own the data model without running browsers and proxies.
 
-### Ollagraph E-commerce Extraction API
-
-E-commerce-specific schema, hybrid extraction, provenance envelopes, built-in validation, rendering cache, anti-bot infrastructure. Best for teams building production pipelines who want extraction, normalization, validation, and provenance out of the box.
-
-| Feature | DIY Playwright | Scrapy + Splash | Ollagraph Proxy API | Ollagraph API |
-|---|---|---|---|---|
-| **E-commerce schema** | Build your own | Build your own | Generic only | Built-in v2 |
-| **Product-variant model** | Manual | Manual | No | Native |
-| **JS rendering** | Manual config | Via Splash | Built-in | Auto-detect |
-| **Anti-bot handling** | Manual | Manual | Built-in | Built-in |
-| **Provenance** | None | None | None | Per-field |
-| **Validation** | Manual | Manual | None | Built-in |
-| **Setup time** | 2-4 weeks | 1-2 weeks | 2-3 days | 1 hour |
-| **Cost per 1K products** | $0.45 (infra) | $0.60 (infra) | $5-15 | $2.10 |
+| Feature | DIY Playwright | Scrapy + Splash | Ollagraph API + your code |
+|---|---|---|---|
+| **E-commerce schema** | Build your own | Build your own | Build your own |
+| **Product-variant model** | Manual | Manual | Manual (from embedded JSON-LD) |
+| **JS rendering** | Manual config | Via Splash | Built-in |
+| **Anti-bot handling** | Manual | Manual | Built-in |
+| **Provenance** | Manual | Manual | Manual |
+| **Validation** | Manual | Manual | Manual |
+| **Setup time** | 2-4 weeks | 1-2 weeks | 2-3 days |
 
 ## 14. Enterprise / Cloud Deployment
 
@@ -521,7 +511,7 @@ A product is the parent entity — the thing with a name, brand, description, an
 
 ### Q2. How do you handle sites that load product data via GraphQL APIs?
 
-Many modern e-commerce sites, particularly Shopify stores and custom React storefronts, load product data through GraphQL endpoints after the initial page render. The extraction pipeline intercepts these API calls during the rendering phase using Playwright's route interception. The Ollagraph pipeline includes built-in GraphQL response capture for Shopify, Magento, and custom GraphQL storefronts. It captures the raw response, parses it alongside the DOM, and merges the data in the normalization stage.
+Many modern e-commerce sites, particularly Shopify stores and custom React storefronts, load product data through GraphQL endpoints after the initial page render. The extraction pipeline intercepts these API calls during the rendering phase using Playwright's route interception, captures the raw response, parses it alongside the DOM, and merges the data in the normalization stage. Ollagraph does not capture network responses; if you use it, extract from the rendered HTML instead, where the hydrated data usually ends up in the DOM or an embedded state object.
 
 ### Q3. Can you extract pricing for all variants without clicking each variant selector?
 
@@ -553,7 +543,7 @@ Daily extraction is sufficient for most competitive intelligence use cases; pric
 
 ### Q10. How do you handle sites with infinite scroll or pagination?
 
-Listing pages with infinite scroll load additional products via AJAX as the user scrolls down. The pipeline scrolls the page programmatically and uses mutation observers to detect when new product cards appear. For traditional pagination, the pipeline iterates through page numbers until it encounters a duplicate product or a 404. The Ollagraph pipeline handles both patterns with configurable scroll and pagination limits to prevent runaway extraction on sites with thousands of products.
+Listing pages with infinite scroll load additional products via AJAX as the user scrolls down. The pipeline scrolls the page programmatically and uses mutation observers to detect when new product cards appear. For traditional pagination, the pipeline iterates through page numbers until it encounters a duplicate product or a 404. Cap both scroll and pagination to prevent runaway extraction on sites with thousands of products. With Ollagraph, `/v1/scrape` accepts a `scroll_to_bottom` action for infinite scroll, and pagination is a loop over page URLs in your code.
 
 ## 16. Conclusion
 
@@ -561,21 +551,20 @@ E-commerce data extraction looks simple from a distance. A product page has a na
 
 The key insight is that e-commerce pages are applications, not documents. Treating them as documents, fetching HTML and parsing with selectors, produces data that looks correct but is wrong in subtle, pipeline-corrupting ways. Model the data first (products with nested variants), then build a pipeline that handles the full range of rendering strategies.
 
-The Ollagraph E-commerce Schema v2 and Extraction API handle this complexity out of the box. But even if you build your own pipeline, the patterns here, schema-driven extraction, hybrid strategy cascade, provenance tracking, validation gates, will save you months of debugging.
+Ollagraph can take the fetching, rendering, and embedded-data parsing off your hands. The patterns here, schema-driven extraction, hybrid strategy cascade, provenance tracking, validation gates, are yours to build either way, and they will save you months of debugging.
 
 Start with the schema. Test against the hardest page first. Extract provenance alongside data. Validate before you store. Never trust a single extraction strategy.
 
 ## 17. References
 
-- [Ollagraph E-commerce Schema v2 Documentation](https://ollagraph.com/docs/schemas/ecommerce-v2)
-- [Ollagraph Extraction API Reference](https://ollagraph.com/docs/api/extraction)
+- [Ollagraph API Documentation](https://ollagraph.com/docs)
 - [Schema-Driven Extraction Guide: Schema-Driven Extraction Beats CSS Selectors](/blog/why-schema-driven-extraction-beats-css-selectors-for-web-scraping/)
 - [Evidence-Based Extraction: Evidence-Based Data Extraction: Provenance for Every Field](/blog/evidence-based-data-extraction-how-to-return-provenance-for-every-field/)
 - [JavaScript Rendering Guide: Extract Structured Data from JavaScript Apps](/blog/extract-structured-data-from-javascript-apps-a-practical-guide/)
 - [Shopify Product JSON-LD Specification](https://shopify.dev/docs/themes/liquid/reference/objects/product)
 - [JSON-LD Product Schema](https://schema.org/Product)
 - [Playwright Documentation](https://playwright.dev/docs/network#network-idle)
-- [Web Scraping Legal Considerations](https://ollagraph.com/docs/legal/compliance)
+- [Web Scraping Legal Considerations](https://ollagraph.com/legal/acceptable-use)
 - Related Ollagraph cluster: [Reliable Web Data Pipelines](/blog/reliable-web-data-pipelines-from-crawling-to-validated-json/), [Structured Data for RAG](/blog/structured-data-extraction-for-rag-turning-web-pages-into-queryable-facts/), [Extract Tables from Any Website](/blog/extract-tables-from-any-website-from-html-to-clean-json/), [Entity Extraction for AI Agents](/blog/entity-extraction-for-ai-agents-extract-companies-people-products-and-more/)
 
 ## Common questions
@@ -602,4 +591,4 @@ JavaScript rendering, lazy-loaded variant data, anti-bot controls, and silent se
 
 ### What does Ollagraph add to this workflow?
 
-Ollagraph provides a schema-driven pipeline for product and variant extraction, including field normalization and provenance. That reduces silent corruption and makes failures easier to detect and retry.
+Ollagraph handles the fetch: JavaScript rendering, proxy fallback, and returning the JSON-LD, microdata, and OpenGraph a product page embeds. Your code maps that to your product schema, normalizes it, and validates it, so you keep control of the data model.

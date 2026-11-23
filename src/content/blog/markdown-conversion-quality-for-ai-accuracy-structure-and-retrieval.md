@@ -317,24 +317,24 @@ For a set of representative queries, measure:
 -   **Grounding Pass Rate:** did the grounding step accept the evidence and produce a correct answer?
 -   **Boundary Stability:** how often do chunk IDs change after re-conversion?
 
-### What we tested (example methodology)
+### Example test design
 
-We tested conversion quality on a fixed corpus of 120 pages across three document types:
+Test conversion quality on a fixed corpus of pages across three document types:
 
 -   policy pages (list-heavy)
 -   product specs (table-heavy)
 -   technical docs (code-heavy)
 
-For each page, we generated a query set of 4 evidence-requiring questions:
+For each page, write a query set of 4 evidence-requiring questions:
 
 -   one heading-anchored question
 -   one list-item question
 -   one table-row question
 -   one code-block question
 
-That produced 480 queries total.
+A corpus of 120 pages gives you 480 queries.
 
-We ran two pipelines while keeping embeddings, chunk size, and retrieval settings constant:
+Run two pipelines while keeping embeddings, chunk size, and retrieval settings constant:
 
 -   **Pipeline A:** baseline conversion (structure preserved visually, but lists/tables/code not strictly contracted)
 -   **Pipeline B:** structure contract conversion (deterministic mapping + validation gates + provenance + stable evidence IDs)
@@ -350,7 +350,7 @@ We ran two pipelines while keeping embeddings, chunk size, and retrieval setting
 
 ### Validation thresholds (example)
 
-To make the harness actionable, we used explicit thresholds:
+To make the harness actionable, set explicit thresholds:
 
 -   `heading_coverage_ratio >= 0.85`
 -   `list_item_integrity >= 0.90`
@@ -358,7 +358,7 @@ To make the harness actionable, we used explicit thresholds:
 -   `code_fence_integrity >= 0.98`
 -   `provenance_integrity == 1.00` (every chunk has `section_path` + `evidence_id`)
 
-Any document failing these gates was quarantined and not embedded.
+Quarantine any document that fails these gates instead of embedding it.
 
 ### Example results format
 
@@ -369,32 +369,16 @@ Report results as a table like:
 | Baseline | 0.xx | 0.xx | xx% |
 | Structure contract | 0.xx | 0.xx | xx% |
 
-### Example results (illustrative)
-
-When the contract is enforced, the biggest improvements usually show up in table-row and code-block evidence.
+Break evidence hit rate down by evidence type, so you can see which structures the contract helps most:
 
 | Evidence type | Pipeline A: naive conversion | Pipeline B: structure contract |
 | :--- | :--- | :--- |
-| Heading-anchored | 0.62 | 0.84 |
-| List-item evidence | 0.55 | 0.81 |
-| Table-row evidence | 0.48 | 0.77 |
-| Code-block evidence | 0.60 | 0.79 |
+| Heading-anchored | 0.xx | 0.xx |
+| List-item evidence | 0.xx | 0.xx |
+| Table-row evidence | 0.xx | 0.xx |
+| Code-block evidence | 0.xx | 0.xx |
 
-And at the agent level:
-
--   Grounding pass rate: 0.41 -> 0.72
--   Tool-call success rate: 0.36 -> 0.66
-
-### Measured deltas (example)
-
-Use this format in your final post once you run the harness.
-
-| Metric | Pipeline A: naive conversion | Pipeline B: structure contract | Delta |
-| :--- | :--- | :--- | :--- |
-| Evidence hit rate | 0.58 | 0.81 | +0.23 |
-| Grounding pass rate | 0.41 | 0.72 | +0.31 |
-| Tool-call success rate | 0.36 | 0.66 | +0.30 |
-| Avg chunk ID drift | 18% | 3% | -15% |
+At the agent level, also track grounding pass rate and tool-call success rate for each pipeline.
 
 ### Boundary stability artifact (example)
 
@@ -406,9 +390,9 @@ reindex_run_2: evidence_id=9f3c2a7b...e1 chunk_id=retpol_us-east_table_v3_row_2
 status: stable
 ```
 
-### What to expect
+### Where to look first
 
-In practice, teams typically see the biggest gains from:
+The structure features most worth checking in your results:
 
 -   list integrity
 -   table header preservation

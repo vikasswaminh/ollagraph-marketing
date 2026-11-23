@@ -19,9 +19,9 @@ const faqs = [
   kind="blog"
   faqs={faqs}
 >
-<p>Learn how to convert PDFs into AI-ready Markdown that preserves heading hierarchy, table semantics, reading order, and provenance anchors—so your RAG pipeline retrieves the right rows and returns answers with trustworthy citations. Includes a mini-benchmark, evaluation rubric, and CLI-style output example.</p>
+<p>Learn how to convert PDFs into AI-ready Markdown that preserves heading hierarchy, table semantics, reading order, and provenance anchors—so your RAG pipeline retrieves the right rows and returns answers with trustworthy citations. Includes a mini-benchmark setup, evaluation rubric, and CLI-style output example.</p>
 
-<p><strong>Last updated:</strong> 2026-07-23. <strong>Versions tested:</strong> layout-aware PDF extraction (text-based pages), OCR fallback with layout reconstruction (image-only pages), Markdown table normalization, heading-based chunking, and provenance anchors (page + offset).</p>
+<p><strong>Last updated:</strong> 2026-07-23. <strong>Covers:</strong> layout-aware PDF extraction (text-based pages), OCR fallback with layout reconstruction (image-only pages), Markdown table normalization, heading-based chunking, and provenance anchors (page + offset).</p>
 
 <h2>Executive Summary</h2>
 
@@ -291,24 +291,14 @@ const faqs = [
 <h2>12. Performance &amp; Benchmarks (Evaluation Harness)</h2>
 <p>You can’t improve what you can’t measure. Below is a small evaluation harness you can run on a representative PDF set.</p>
 
-<h3>What we tested (mini-benchmark)</h3>
-<p>To make this concrete, we ran a small internal benchmark on a mixed set of 12 PDFs (3 scanned, 9 text-based) that matched common Ollagraph ingestion patterns: multi-column reports, tables-heavy financial pages, and policy documents with footnotes.</p>
-<p>We compared two conversion variants:</p>
+<h3>Setting up a mini-benchmark</h3>
+<p>Pick a mixed set of PDFs that matches your real ingestion patterns, including some scanned files: multi-column reports, tables-heavy financial pages, and policy documents with footnotes.</p>
+<p>Compare two conversion variants:</p>
 <ul>
   <li>Variant A (structure-preserving): heading hierarchy + table normalization + caption/footnote adjacency + provenance anchors.</li>
   <li>Variant B (baseline): flattened tables into paragraphs and removed most block-level provenance markers.</li>
 </ul>
-<p>For each PDF, we scored the conversion with the rubric described below and then ran 16 retrieval questions that required table reasoning (row/column lookups) and section context (heading lineage).</p>
-
-<h3>Sample results (averages across the 12 PDFs)</h3>
-<ul>
-  <li>Heading fidelity: Variant A 4.6/5 vs Variant B 2.1/5</li>
-  <li>Table fidelity: Variant A 4.2/5 vs Variant B 1.7/5</li>
-  <li>Context fidelity (captions/footnotes adjacency): Variant A 4.4/5 vs Variant B 2.0/5</li>
-  <li>Citation fidelity (page mapping): Variant A 4.8/5 vs Variant B 3.0/5</li>
-  <li>Retrieval impact (answer correctness on the 16 questions): Variant A 0.81 vs Variant B 0.46</li>
-</ul>
-<p>The pattern was consistent: when tables were preserved as real Markdown tables and captions/footnotes stayed attached, retrieval returned the correct evidence more often, and citations were easier to verify.</p>
+<p>For each PDF, score the conversion with the rubric described below, then run a set of retrieval questions that require table reasoning (row/column lookups) and section context (heading lineage).</p>
 
 <h3>What to measure</h3>
 <ul>

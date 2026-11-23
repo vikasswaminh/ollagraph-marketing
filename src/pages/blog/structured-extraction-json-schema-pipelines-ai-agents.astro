@@ -407,12 +407,12 @@ Schema-first + validation gates 85–95%               1.8–3.5s      Lower (fe
 
 <p>The exact numbers depend on your domains, but the direction is consistent: validation gates reduce silent corruption and reduce downstream cleanup.</p>
 
-<h2>What we tested (mini-lab): evidence-first retries</h2>
-<p>We ran a small internal test to validate a specific claim: if you retry deterministically based on validation error categories (instead of asking the model to “try again”), you can improve schema-valid pass rate while keeping retries bounded.</p>
+<h2>Try it yourself: evidence-first retries</h2>
+<p>You can test a specific claim on your own pages: if you retry deterministically based on validation error categories (instead of asking the model to “try again”), you can improve schema-valid pass rate while keeping retries bounded.</p>
 
-<p><strong>Test setup:</strong></p>
+<p><strong>Suggested setup:</strong></p>
 <ul>
-<li>Dataset: 120 product pages across 3 domains (pricing sometimes hydrates after load)</li>
+<li>Dataset: a sample of product pages across a few domains, ideally including some where pricing hydrates after load</li>
 <li>Schema: product-pricing (required product + pricing with currency, price, availability)</li>
 <li>Extractor: same candidate extraction logic across all runs</li>
 <li>Policies:
@@ -431,20 +431,13 @@ Schema-first + validation gates 85–95%               1.8–3.5s      Lower (fe
 </li>
 </ul>
 
-<p><strong>Results (representative):</strong></p>
+<p><strong>What to check:</strong></p>
 <ul>
-<li>Policy A: 78% schema-valid, p95 2.6s, retry rate 0%</li>
-<li>Policy B: 92% schema-valid, p95 3.1s, retry rate 18%</li>
-<li>Policy C: 94% schema-valid, p95 3.3s, retry rate 22%</li>
+<li>Escalating fetch mode based on missing required fields should fix hydration-driven failures.</li>
+<li>Adding normalization retries should fix formatting-driven failures (currency symbols, thousands separators).</li>
 </ul>
 
-<p><strong>Interpretation:</strong></p>
-<ul>
-<li>Escalating fetch mode based on missing required fields fixes hydration-driven failures.</li>
-<li>Adding normalization retries fixes formatting-driven failures (currency symbols, thousands separators).</li>
-</ul>
-
-<p><strong>Evidence artifact (CLI-style validation summary from one run):</strong></p>
+<p><strong>Example evidence artifact (CLI-style validation summary to log for each run):</strong></p>
 <pre><code>run_id=run_2026_07_21_01
 schema=product-pricing@1.0.0
 attempt=1 fetch_mode=static wait_ms=0

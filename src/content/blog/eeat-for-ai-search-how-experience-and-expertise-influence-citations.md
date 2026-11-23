@@ -160,7 +160,7 @@ curl -X POST https://api.ollagraph.com/v1/aeo/freshness-signal \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com/your-page"}'
 ```
-This reconciles `dateModified`, `article:modified_time`, `HTTP Last-Modified`, visible updated text, and copyright year, then flags inconsistencies between them. Contradictory dates are a trust signal working against you.
+This collects `dateModified`, `article:modified_time`, visible "Updated" text, and the copyright year, scores how recent the newest date is, and sets `inconsistency` when the copyright year lags the newest date by two or more years. Contradictory dates are a trust signal working against you.
 
 4. **Confirm the author entity is machine-readable:**
 ```bash
@@ -206,7 +206,7 @@ def audit(url):
         "eeat_proxy_score": cr["score"],
         "grade": cr["grade"],
         "freshness_score": fresh.get("score"),
-        "date_conflicts": bool(fresh.get("inconsistencies")),
+        "date_conflicts": bool(fresh.get("inconsistency")),
         "data_points": cr["signals"]["numerical_specifics"]["count"],
         "entities": cr["signals"]["named_entities"]["count"],
         "weak_signals": weak,
@@ -228,8 +228,8 @@ for u in ["https://example.com/guide", "https://example.com/comparison"]:
 {
   "url": "https://example.com/guide",
   "eeat_proxy_score": 54,
-  "grade": "F",
-  "freshness_score": 40,
+  "grade": "D",
+  "freshness_score": 25,
   "date_conflicts": true,
   "data_points": 6,
   "entities": 31,

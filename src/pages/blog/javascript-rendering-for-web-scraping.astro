@@ -35,7 +35,7 @@ const faqs = [
   <li>wait_until is the most misunderstood rendering parameter. domcontentloaded is fast but may miss late-fetched data; networkidle is safer for SPAs but slower.</li>
   <li>Headless browsers leak automation signals. Stealth patches and realistic fingerprints are what separate a working render from a blocked one.</li>
   <li>For AI and RAG pipelines, combine rendering with clean extraction. A rendered DOM full of ads and nav bars is no better than an empty shell.</li>
-  <li>Log rendered_via and cost headers on every call. Cost spikes almost always come from a target silently switching to a JS-heavy architecture.</li>
+  <li>Log render_mode (from /v1/scrape/smart) and cost headers on every call. Cost spikes almost always come from a target silently switching to a JS-heavy architecture.</li>
   <li>Respect robots.txt, terms of service, and rate limits. Rendering does not change the ethics or legality of what you scrape.</li>
 </ul>
 
@@ -170,7 +170,7 @@ Is content present and complete?
 <p>The key decision is the escalation gate. A good pipeline does not render by default. It renders when static content is missing, incomplete, or blocked.</p>
 
 <h2>Ollagraph's rendering path</h2>
-<p>Ollagraph exposes rendering through the <em>/v1/scrape</em> family. A normal <em>/v1/scrape</em> call attempts the cheapest path first. If you set <em>wait_until</em>, the call escalates to the render backend. <em>/v1/scrape/smart</em> auto-detects whether rendering is needed. The response includes <em>rendered_via</em>, which tells you whether the page resolved on the direct path or the render backend.</p>
+<p>Ollagraph exposes rendering through the <em>/v1/scrape</em> family. <em>/v1/scrape</em> loads the page in a headless browser, and <em>wait_until</em> controls when it is captured. <em>/v1/scrape/smart</em> tries a plain HTTP fetch first and renders only when the page needs JavaScript. Its response includes <em>render_mode</em> (<em>http_only</em>, <em>headless</em> or <em>headless_fallback</em>), which tells you which path served the page.</p>
 
 <h2>Configuration: When and How to Render</h2>
 
@@ -182,7 +182,7 @@ Is content present and complete?
 3     wait_until: "load"            Page needs full resource load
 4     wait_until: "networkidle"     SPA or page that fetches data after load
 5     stealth: true                 You are being blocked as a bot
-6     proxy: "residential"          Stealth alone is not enough
+6     proxy: "&lt;your proxy URL&gt;"    Stealth alone is not enough
 7     actions or js_eval            Content requires interaction or a computed value</code></pre>
 <p>Climb one rung at a time. Stop at the first rung that returns complete content.</p>
 
@@ -227,7 +227,8 @@ Is content present and complete?
   "url": "https://example-spa.com/dashboard",
   "content": "# Dashboard\n\nWelcome back...",
   "format": "markdown",
-  "rendered_via": "render_backend",
+  "render_mode": "headless",
+  "js_detected": true,
   "time_ms": 3200
 &#125;</code></pre>
 
@@ -259,7 +260,7 @@ def scrape_rendered(url: str):
     )
     resp.raise_for_status()
     data = resp.json()
-    print("rendered_via:", data.get("rendered_via"))
+    print("status:", data.get("status"))
     print("time_ms:", data.get("time_ms"))
     print("content length:", len(data.get("content", "")))
     return data
@@ -284,7 +285,7 @@ async function scrapeRendered(url) &#123;
     &#125;),
   &#125;);
   const data = await res.json();
-  console.log("rendered_via:", data.rendered_via);
+  console.log("status:", data.status);
   console.log("time_ms:", data.time_ms);
   console.log("content length:", data.content?.length);
   return data;
@@ -293,7 +294,7 @@ async function scrapeRendered(url) &#123;
 scrapeRendered("https://example-spa.com/dashboard");</code></pre>
 
 <h3>Handle interaction with actions</h3>
-<p>Some content only appears after a click or scroll.</p>
+<p>Some content only appears after a click or scroll. Actions run once on the loaded page, in order, before it is captured; the supported actions are click, type and scroll_to_bottom.</p>
 <pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
@@ -301,9 +302,8 @@ scrapeRendered("https://example-spa.com/dashboard");</code></pre>
     "url": "https://example.com/listings",
     "wait_until": "networkidle",
     "actions": [
-      &#123; "type": "click", "selector": "#load-more" &#125;,
-      &#123; "type": "scroll", "direction": "down", "times": 3 &#125;,
-      &#123; "type": "wait", "ms": 1000 &#125;
+      &#123; "action": "click", "selector": "#load-more" &#125;,
+      &#123; "action": "scroll_to_bottom" &#125;
     ]
   &#125;'</code></pre>
 
@@ -319,13 +319,12 @@ scrapeRendered("https://example-spa.com/dashboard");</code></pre>
 <p>Use <em>js_eval</em> sparingly. It couples your scraper to the target's DOM, which changes without warning.</p>
 
 <h3>RAG-ready rendering with byte offsets</h3>
-<p>For AI pipelines, render and chunk in one call.</p>
+<p>For AI pipelines, render and chunk in one call. /v1/scrape/llm-ready renders JavaScript automatically when the static HTML is too thin, so there is no wait_until to set; rendered_with_js in the response tells you whether it did.</p>
 <pre><code>curl -X POST https://api.ollagraph.com/v1/scrape/llm-ready \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
     "url": "https://example-spa.com/docs",
-    "wait_until": "networkidle",
     "max_tokens": 512,
     "overlap_tokens": 64
   &#125;'</code></pre>
@@ -354,7 +353,7 @@ Anti-bot protected site              render + stealth + residential     5–15 s
 <p>Do not trust vendor benchmarks. Measure your own targets:</p>
 <pre><code>import os, time, statistics, requests
 
-API = "https://api.ollagraph.com/v1/scrape"
+API = "https://api.ollagraph.com/v1/scrape/smart"
 KEY = os.environ["OLLAGRAPH_API_KEY"]
 URLS = [...]  # your real targets
 
@@ -367,7 +366,7 @@ for url in URLS:
     body = r.json()
     ok = body.get("status") == "success" and len(body.get("content", "")) > 200
     successes += 1 if ok else 0
-    rendered += 1 if body.get("rendered_via") == "render_backend" else 0
+    rendered += 1 if body.get("render_mode") in ("headless", "headless_fallback") else 0
 
 n = len(URLS)
 print(f"success rate: &#123;successes/n:.1%&#125;")
@@ -394,7 +393,7 @@ print(f"p95 latency:  &#123;sorted(latencies)[int(n*0.95)-1]:.0f&#125; ms")</cod
 <p><strong>Fix:</strong> inspect the raw rendered HTML with "format": "html". Look for the container that holds the content. If the content requires interaction, use actions.</p>
 <h3>Content is partial or cut off</h3>
 <p><strong>Cause:</strong> wait_until fired too early. The page had not finished fetching its data.</p>
-<p><strong>Fix:</strong> switch from domcontentloaded to load or networkidle. If the page uses long-polling that never goes quiet, set an explicit timeout and use domcontentloaded with a fixed wait action.</p>
+<p><strong>Fix:</strong> switch from domcontentloaded to load or networkidle. If the page uses long-polling that never goes quiet, set an explicit timeout and use domcontentloaded or load instead.</p>
 <h3>Rendering is slow or times out</h3>
 <p><strong>Cause:</strong> the page is heavy, chatty, or waiting on a slow resource.</p>
 <p><strong>Fix:</strong> block unnecessary resources, set a timeout, and use domcontentloaded if networkidle never fires. For SPAs, identify the API call that carries the content and consider fetching it directly instead of rendering.</p>
@@ -403,13 +402,13 @@ print(f"p95 latency:  &#123;sorted(latencies)[int(n*0.95)-1]:.0f&#125; ms")</cod
 <p><strong>Fix:</strong> enable stealth. If still blocked, add a proxy. Some sites use advanced fingerprinting that requires a residential IP or a specific user agent.</p>
 <h3>Costs spike suddenly</h3>
 <p><strong>Cause:</strong> a target switched to a JS-heavy architecture, so pages that used to resolve statically now require rendering.</p>
-<p><strong>Fix:</strong> group your logs by domain and rendered_via. The offender will be obvious. Decide whether the domain is still worth the new cost.</p>
+<p><strong>Fix:</strong> group your logs by domain and render_mode. The offender will be obvious. Decide whether the domain is still worth the new cost.</p>
 
 <h2>Best Practices</h2>
 <ul>
   <li>Start with a static fetch. Only escalate when content is missing.</li>
   <li>Use /v1/scrape/smart for mixed URL lists. Let the API decide.</li>
-  <li>Log rendered_via and cost headers on every call. They are your observability.</li>
+  <li>Log render_mode and cost headers on every call. They are your observability.</li>
   <li>Choose the minimal wait_until that works. Do not default to networkidle.</li>
   <li>Block unnecessary resources. Disable images, fonts, and analytics unless needed.</li>
   <li>Set explicit timeouts. Fail fast rather than waiting forever.</li>
@@ -424,7 +423,7 @@ print(f"p95 latency:  &#123;sorted(latencies)[int(n*0.95)-1]:.0f&#125; ms")</cod
 <ul>
   <li><strong>Mistake:</strong> Rendering every URL by default. <strong>Why it hurts:</strong> 5–30× cost increase for no benefit. <strong>Do this instead:</strong> Start static, escalate on evidence.</li>
   <li><strong>Mistake:</strong> Using networkidle for static pages. <strong>Why it hurts:</strong> Adds seconds of latency. <strong>Do this instead:</strong> Use domcontentloaded or no wait.</li>
-  <li><strong>Mistake:</strong> Ignoring rendered_via. <strong>Why it hurts:</strong> Cannot explain cost spikes. <strong>Do this instead:</strong> Log and alert on it.</li>
+  <li><strong>Mistake:</strong> Ignoring render_mode. <strong>Why it hurts:</strong> Cannot explain cost spikes. <strong>Do this instead:</strong> Log and alert on it.</li>
   <li><strong>Mistake:</strong> Rendering without extraction. <strong>Why it hurts:</strong> Returns noisy full DOM. <strong>Do this instead:</strong> Use content extraction or format: markdown.</li>
   <li><strong>Mistake:</strong> Hard-coding DOM selectors in js_eval. <strong>Why it hurts:</strong> Breaks when the site redesigns. <strong>Do this instead:</strong> Prefer structured extraction.</li>
   <li><strong>Mistake:</strong> No timeout on rendered calls. <strong>Why it hurts:</strong> Hung pages block workers. <strong>Do this instead:</strong> Set a production timeout.</li>
@@ -468,7 +467,7 @@ print(f"p95 latency:  &#123;sorted(latencies)[int(n*0.95)-1]:.0f&#125; ms")</cod
 <h3>Cost governance.</h3>
 <p>Stream x-credits-cost and x-credits-charged into your metrics system. Alert on render-rate spikes. The most common surprise bill is a batch of targets that started requiring rendering.</p>
 <h3>Observability.</h3>
-<p>Log URL, rendered_via, latency, content length, and cost per call. Group by domain. This makes debugging a five-minute query instead of a day-long hunt.</p>
+<p>Log URL, render_mode, latency, content length, and cost per call. Group by domain. This makes debugging a five-minute query instead of a day-long hunt.</p>
 <h3>Cloud patterns.</h3>
 <ul>
   <li><strong>Serverless fan-out:</strong> queue URLs, call /v1/scrape per message, write results to storage.</li>
@@ -490,7 +489,7 @@ print(f"p95 latency:  &#123;sorted(latencies)[int(n*0.95)-1]:.0f&#125; ms")</cod
 <p>No. Most blogs, documentation sites, and traditional news publishers still serve content as static or server-rendered HTML. You only need rendering when the content is missing from the initial response, requires interaction, or the site blocks non-browser clients. The best practice is to try a static fetch first and escalate only when it fails. Defaulting to rendering on every URL is expensive and unnecessary.</p>
 
 <h2>4. How do I know if a page needs rendering?</h2>
-<p>The fastest way is to use an endpoint like /v1/scrape/smart, which tries the static path first and escalates to a browser only when needed. You can also inspect the raw HTML for empty root containers, loading spinners, or JSON blobs that the page later hydrates. Another signal is a low content-length or a high ratio of script tags to visible text. Logging rendered_via on every call tells you exactly which path each URL took.</p>
+<p>The fastest way is to use an endpoint like /v1/scrape/smart, which tries the static path first and escalates to a browser only when needed. You can also inspect the raw HTML for empty root containers, loading spinners, or JSON blobs that the page later hydrates. Another signal is a low content-length or a high ratio of script tags to visible text. Logging its render_mode on every call tells you exactly which path each URL took.</p>
 
 <h2>5. What is wait_until?</h2>
 <p>wait_until tells the renderer when to consider the page ready for extraction. domcontentloaded fires once the HTML is parsed, which is fast but may miss late-fetched data. load waits for all initial resources, and networkidle waits for network traffic to quiet down, which is safest for SPAs. Choosing the wrong value is the most common cause of partial or slow renders.</p>
@@ -502,17 +501,17 @@ print(f"p95 latency:  &#123;sorted(latencies)[int(n*0.95)-1]:.0f&#125; ms")</cod
 <p>Sometimes, by reverse-engineering the internal API calls the SPA makes and fetching that JSON directly. This can be faster and cheaper, but it is fragile because private APIs change without notice and may require authentication or anti-bot handling. A headless browser is more resilient because it behaves like a real user. Use direct API calls only when the API is stable and documented.</p>
 
 <h2>8. What about infinite scroll and clicks?</h2>
-<p>Content hidden behind clicks, tabs, or infinite scroll requires scripted interaction before extraction. Use the actions parameter to click buttons, scroll down, or wait for elements to appear. This is more reliable than js_eval because it does not hard-code DOM selectors. Always follow interactions with the right wait_until so the new content has time to load.</p>
+<p>Content hidden behind clicks, tabs, or infinite scroll requires scripted interaction before extraction. Use the actions parameter to click buttons, type into fields, or scroll to the bottom of the page. This is more reliable than js_eval because it does not hard-code DOM selectors. Always follow interactions with the right wait_until so the new content has time to load.</p>
 
 <h2>9. Does rendering help with anti-bot systems?</h2>
 <p>It can, because a real browser has a JavaScript engine, consistent fingerprint, and cookie behavior that static clients lack. However, advanced anti-bot systems also detect headless Chromium through automation signals. When stealth alone is not enough, you may need residential proxies, realistic user agents, and fingerprint randomization. Rendering is one layer of the anti-bot stack, not a complete bypass.</p>
 
 <h2>10. How do I keep rendering costs down?</h2>
-<p>Start every scrape with a static fetch and only escalate when content is missing. Use smart detection endpoints, choose the minimal wait_until that works, and block unnecessary resources like images and fonts. Cache rendered output by content hash to avoid re-rendering unchanged pages. Finally, log rendered_via and cost headers so you can spot when a target suddenly starts requiring rendering.</p>
+<p>Start every scrape with a static fetch and only escalate when content is missing. Use smart detection endpoints, choose the minimal wait_until that works, and block unnecessary resources like images and fonts. Cache rendered output by content hash to avoid re-rendering unchanged pages. Finally, log render_mode and cost headers so you can spot when a target suddenly starts requiring rendering.</p>
 
 <h2>Conclusion</h2>
 <p>JavaScript rendering is not a feature you turn on for every URL. It is an escalation you use when the modern web leaves you no cheaper alternative. The discipline that separates an efficient pipeline from an expensive one is simple: start cheap, detect the failure, render only when the content demands it, and measure every step.</p>
-<p>The Ollagraph API wraps that discipline in a single request shape. /v1/scrape/smart decides whether rendering is needed. /v1/scrape with wait_until gives you explicit control. /v1/scrape/llm-ready collapses rendering, cleaning, and chunking into one call for AI pipelines. And rendered_via tells you exactly what happened, so you can optimize instead of guess.</p>
+<p>The Ollagraph API wraps that discipline in a single request shape. /v1/scrape/smart decides whether rendering is needed. /v1/scrape with wait_until gives you explicit control. /v1/scrape/llm-ready collapses rendering, cleaning, and chunking into one call for AI pipelines. And render_mode on /v1/scrape/smart tells you which path served each page, so you can optimize instead of guess.</p>
 <p>If you are building a RAG system, an agent, or a data pipeline that touches the live web, audit your current approach. Count how many URLs are being rendered unnecessarily. Check how many empty shells slipped through your static fetcher. Fix those two things and you will likely cut your scraping cost and improve your data quality at the same time.</p>
 <p>The web is dynamic. Your scraping strategy should be selective.</p>
 

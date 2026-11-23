@@ -342,14 +342,14 @@ const faqs = [
   <li>Retrieval sanity: hit rate on a curated query set</li>
 </ul>
 
-<h3>A practical benchmark method (what we tested)</h3>
-<p>In a controlled run on a docs-like site, we used:</p>
+<h3>A practical benchmark method</h3>
+<p>Run a controlled test on a docs-like site using:</p>
 <ul>
   <li>static fetch for all pages</li>
   <li>rendered escalation only when validation rejected due to low extracted text length</li>
   <li>section-first chunking with overlap</li>
 </ul>
-<p>We tracked:</p>
+<p>Track:</p>
 <ul>
   <li>acceptance rate by fetch mode</li>
   <li>average extracted text length</li>
@@ -374,18 +374,6 @@ Chunk size (chars) | 1,200–2,000 | Balances recall and precision
 Chunk overlap (chars) | 150–300 | Preserves context across boundaries
 Retrieval sanity (hit rate@10) | 60–85% | Measures end-to-end usefulness</code></pre>
 <p>If you can’t hit these targets, don’t immediately change embeddings. First inspect evidence packets for the failing gate.</p>
-
-<h3>Measured results (example run)</h3>
-<p>To make this concrete, here’s an example of what a “good” run looks like when you enforce validation gates and only escalate to rendered fetch on failure.</p>
-<pre><code>Metric | Static fetch | Rendered fetch | Notes
-Pages crawled | 1,240 | 180 | Same URL set; rendered only for failures
-Acceptance rate | 82.4% | 93.9% | Acceptance = passed validation gates
-Avg extracted chars/page | 4,860 | 6,120 | After boilerplate removal
-Avg chunks/page | 7.6 | 9.1 | Section-first chunking
-Boilerplate rejection rate | 6.8% | 3.1% | Lower after rendered + tighter profile
-Citation coverage | 99.6% | 99.8% | Canonical URL + section_path enforced
-Retrieval sanity (hit@10) | 71% | 78% | Measured on 30 known-answer queries</code></pre>
-<p>The important part isn’t the exact numbers—it’s the pattern: validation gates prevent garbage embeddings, and escalation recovers content without turning the pipeline into a scraper.</p>
 
 <h2>11. Security Considerations</h2>
 <p>Even ingestion pipelines have security boundaries.</p>

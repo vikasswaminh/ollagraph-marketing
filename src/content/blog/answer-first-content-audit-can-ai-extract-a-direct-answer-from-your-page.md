@@ -41,7 +41,7 @@ Consider a page that has ranked second for a high-intent comparison query for el
 
 Nothing about the ranking changed. What changed is that a second selection process now sits above the first, and it selects on different criteria.
 
-The failure is usually visible in about ninety seconds once you look at the page the way a retriever does. In the pattern I see most often, the answer to the query does exist. It sits in the second-to-last section, under a heading like "Putting It All Together," and it opens with a sentence along these lines:
+The failure is usually visible in about ninety seconds once you look at the page the way a retriever does. In a common version of this pattern, the answer to the query does exist. It sits in the second-to-last section, under a heading like "Putting It All Together," and it opens with a sentence along these lines:
 
 > *As we've seen, the second option is usually the stronger choice for teams in this position.*
 
@@ -260,7 +260,7 @@ What none of this published work isolates is the mechanism — whether answer po
 
 ### Your benchmark protocol
 
-Run this against your own corpus. Do not borrow anyone's averages, including ours; the point of an original benchmark is that it is yours.
+Run this against your own corpus. Do not borrow anyone's averages; the point of an original benchmark is that it is yours.
 
 - **Sample frame:** every URL in the sitemap with at least 100 organic sessions in the trailing 90 days, stratified by template type. Defects cluster by template.
 - **Queries per page:** three, from Search Console's top queries for that URL, tagged by intent class.

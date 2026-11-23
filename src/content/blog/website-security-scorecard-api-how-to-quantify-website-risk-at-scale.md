@@ -161,33 +161,33 @@ def score_domain(domain: str) -> dict:
     deductions, cap, findings = 0.0, 100, []
 
     # 1. TLS / SSL (30 pts)
-    if not ssl_d.get("valid", False):
+    if not ssl_d.get("is_valid", False):
         deductions += 30; cap = min(cap, 30)
         findings.append("CRITICAL: Invalid SSL certificate (-30)")
     elif ssl_d.get("days_remaining", 90) < 7:
         deductions += 15; findings.append("HIGH: SSL expires < 7 days (-15)")
 
     # 2. HTTP Headers (25 pts)
-    hdrs = {k.lower(): v for k, v in hdr_d.get("headers", {}).items()}
+    hdrs = {k.lower(): v for k, v in hdr_d.get("headers", [])}  # list of [name, value]
     if "strict-transport-security" not in hdrs:
         deductions += 12; findings.append("HIGH: Missing HSTS (-12)")
     if "content-security-policy" not in hdrs:
         deductions += 10; findings.append("HIGH: Missing CSP (-10)")
 
     # 3. DNSSEC (15 pts)
-    if not dns_d.get("dnssec_enabled", False):
+    if not dns_d.get("signed", False):
         deductions += 8; findings.append("MEDIUM: DNSSEC disabled (-8)")
 
     # 4. Client-Side SRI (15 pts)
-    unhashed = len(sri_d.get("unprotected_external_scripts", []))
+    unhashed = sri_d.get("external_without_sri", 0)
     if unhashed > 0:
         pts = min(15.0, unhashed * 3.5); deductions += pts
-        findings.append(f"HIGH: {unhashed} scripts lack SRI (-{pts})")
+        findings.append(f"HIGH: {unhashed} external resources lack SRI (-{pts})")
 
     # 5. Cookie Hardening (10 pts)
-    if any("Secure" in c.get("missing_flags", []) for c in cook_d.get("insecure_cookies", [])):
+    if cook_d.get("flags", {}).get("any_insecure"):
         deductions += 5; cap = min(cap, 60)
-        findings.append("HIGH: Session cookie missing Secure flag (-5)")
+        findings.append("HIGH: Cookie missing Secure flag (-5)")
 
     final = min(max(0, int(round(100 - deductions))), cap)
     grade = "A" if final >= 90 else "B" if final >= 80 else "C" if final >= 70 else "D" if final >= 50 else "F"
@@ -202,61 +202,31 @@ if __name__ == "__main__":
 
 ### How It Works
 
-- **Multi-Vector Probe:** Concurrently calls Ollagraph’s `/v1/intel/ssl`, `/v1/intel/headers`, `/v1/intel/dnssec`, `/v1/intel/sri-audit`, and `/v1/intel/cookies` endpoints in real time.
+- **Multi-Vector Probe:** Calls Ollagraph’s `/v1/intel/ssl`, `/v1/intel/headers`, `/v1/intel/dnssec`, `/v1/intel/sri-audit`, and `/v1/intel/cookies` endpoints in real time.
 - **Critical Risk Caps:** Restricts maximum score to 30 (Grade F) for missing/invalid SSL and 60 (Grade D) for cleartext session cookies, preventing high-risk gaps from hiding behind minor passing checks.
 - **Deterministic Output:** Yields an instant, auditable 0–100 numerical score and A–F grade ready for CI/CD gates or SIEM pipelines.
 
-## 7. Real-World Case Studies
+## 7. How to Benchmark Scorecard Approaches
 
-### Case Study A: Global FinTech Core API Ecosystem (500+ Endpoints)
+To quantify the operational difference between approaches, run each one against a sample portfolio of your own web domains and record the same metrics for each:
 
-**The Challenge:** A European Tier-1 payment institution operated over 500 public-facing microservices and merchant-facing API gateways. While internal source code audits were mandatory, external configurations were managed by independent cloud infrastructure squads. A quarterly manual penetration test failed to detect that an ephemeral billing callback subdomain (`pay-callback-stage4.fintechcorp.internal.eu`) was deployed without HSTS and permitted TLS 1.0 fallbacks.
+- **Audit execution time (total):** wall-clock time to assess the whole portfolio.
+- **Average latency per domain:** engineer-hours for manual work, or response time for API probes.
+- **Data freshness:** how old the evidence is at the moment you read the result.
+- **Deterministic replicability:** whether re-running the assessment on an unchanged domain gives the same score.
+- **Diagnostic evidence provided:** whether you get the raw headers, certificate chains, and DNS records behind each finding.
+- **False positive dispute time:** how long it takes to get a wrong finding corrected after a fix.
+- **Cost per 1,000 domain audits:** staff time, licence fees, or API credits.
 
-**The Solution:** The AppSec team built an automated continuous verification job running Ollagraph's scorecard engine on a daily cron schedule. The script ingested the corporate Certificate Transparency log via `/v1/intel/cert-transparency-history`, discovered 42 unmonitored shadow subdomains, and evaluated each endpoint.
+### What to Look For
 
-**The Result:** The ephemeral subdomain immediately generated a score of 48/100 (Grade F) due to legacy TLS protocol negotiation. The finding triggered an automated webhook into the platform engineering team's Slack channel with the exact cURL replication string. The defect was resolved in under 20 minutes by updating the cloud ingress controller, preventing a critical compliance penalty during their subsequent PCI-DSS 4.0 assessment.
+The comparison usually comes down to clear trade-offs:
 
-### Case Study B: B2B SaaS Enterprise Vendor Risk Assessment Automation
-
-**The Challenge:** An enterprise procurement team onboarded approximately 40 new third-party software vendors each month. The existing process required security analysts to review 80-page vendor self-attestation questionnaires, creating a 3-week backlog for software approvals.
-
-**The Solution:** Procurement integrated Ollagraph's Scorecard API into their vendor management portal. When a vendor submitted their application, an asynchronous job probed the vendor's primary portal and API hostnames.
-
-**The Result:** 70% of vendors with verified Grade A scorecards (>90/100) were routed through an accelerated "fast-track" approval lane. The remaining 30% exhibiting missing security headers, absent SPF/DMARC policies, or unhashed CDN dependencies were flagged for technical clarification. The vendor review cycle dropped from 21 business days to under 48 hours, while simultaneously eliminating human bias from technical evaluations.
-
-### Case Study C: E-Commerce Retailer Client-Side Supply Chain Defense
-
-**The Challenge:** A multi-national e-commerce platform processing $800M annually fell victim to a subtle Magecart digital skimming campaign. Attackers did not breach the core web servers; instead, they compromised an external marketing attribution CDN, injecting a 12-line credit card scraper into an unhashed JavaScript file loaded on the checkout page.
-
-**The Solution:** Following incident recovery, the retailer instituted a zero-tolerance client-side security policy enforced by Ollagraph's `/v1/intel/sri-audit` and `/v1/intel/headers` APIs.
-
-**The Result:** Continuous hourly scorecards verified that 100% of external scripts included cryptographic SHA-384 integrity hashes and enforced a strict script-src Content-Security-Policy. When a third-party personalization vendor subsequently updated their script without prior notification, the scorecard score plummeted from 96/100 to 74/100 (Grade C) within 60 minutes, alerting site reliability engineers before any customer payment data could be exfiltrated.
-
-## 8. Performance & Benchmarks
-
-To quantify the operational efficiency gained by adopting a programmatic Website Security Scorecard API, we conducted an empirical benchmark comparing three standard methodologies across a sample portfolio of 250 enterprise web domains.
-
-### Comparative Methodology Benchmark (250 Web Domains)
-
-| Evaluation Metric | Manual Pentest<br/>Inspection | Legacy GRC Vendor<br/>Questionnaire | Legacy Rating<br/>Platform<br/>(BitSight / SecurityScorecard) | Ollagraph Programmatic<br/>Scorecard API |
-| :--- | :--- | :--- | :--- | :--- |
-| **Audit Execution Time (Total)** | 14–21 Business Days | 30–45 Business Days | 24–72 Hours (Batch Async) | 2.8 Minutes (Concurrent API) |
-| **Average Latency per Domain** | ~4 Hours / Engineer | ~12 Hours / Vendor Staff | N/A (Cached database scrape) | 650 ms – 1.8 s (Live Handshake) |
-| **Data Freshness** | Point-in-time snapshot | Static self-attestation | Often 7–14 days stale | Live Wire Telemetry (0 sec lag) |
-| **Deterministic Replicability** | Low (Varies by tester) | None (Subjective text) | Low (Proprietary algorithm) | 100% Deterministic & Verifiable |
-| **Full Diagnostic Evidence Provided** | Selective in final PDF | None (Word/Excel answers) | High-level summary | Complete Raw JSON Handshake Data |
-| **False Positive Dispute Time** | N/A (Manual consult) | N/A (Manual debate) | 14–30 Days via support | Instant (Re-run API on fix) |
-| **Cost per 1,000 Domain Audits** | $50,000 – $150,000 | High operational overhead | $25,000 – $60,000 / year | 8,000 Credits ($8.00 – $12.00 flat) |
-
-### Telemetry Performance Analysis
-
-The benchmark demonstrates clear trade-offs:
-
-- **Speed and Agility:** Ollagraph executes concurrent, headless protocol handshakes across 250 domains in under three minutes, allowing engineering teams to run full-estate security audits multiple times daily.
+- **Speed and Agility:** Time a full-estate audit using concurrent API calls. If it completes in minutes, engineering teams can run it multiple times daily instead of quarterly.
 - **Deterministic Trust:** Because Ollagraph returns raw HTTP headers, cryptographic certificate chains, and DNS records alongside the numerical score, developers do not waste time disputing arbitrary grades. The evidence is cryptographically incontrovertible.
 - **Economic Scalability:** Proprietary vendor rating platforms charge steep annual enterprise licensing fees that restrict scan frequency. Ollagraph's flat-rate credit consumption model allows organizations to scale external security scanning horizontally across thousands of internal microservices and external suppliers for pennies per domain.
 
-## 9. Security, Ethics, and Non-Intrusive Assessment Standards
+## 8. Security, Ethics, and Non-Intrusive Assessment Standards
 
 When designing and deploying automated security scorecards, organizations must strictly adhere to non-intrusive reconnaissance principles to avoid triggering legal liabilities or disrupting target infrastructure.
 
@@ -288,7 +258,7 @@ Because programmatic scorecard assessments utilize standard, unauthenticated bro
 - **ISO/IEC 27001:2022:** Control A.8.20 (Network Security) and Control A.8.26 (Application Security Requirements).
 - **PCI-DSS v4.0:** Requirement 6.4.3 (Managing all payment page scripts) and Requirement 11.3 (External vulnerability assessments).
 
-## 10. Troubleshooting & Diagnostic Matrix
+## 9. Troubleshooting & Diagnostic Matrix
 
 When deploying security scorecards across diverse cloud architectures, engineers frequently encounter edge cases caused by content delivery networks, geolocation routing, or unusual web server behaviors. Use this diagnostic matrix to resolve scoring discrepancies.
 
@@ -301,7 +271,7 @@ When deploying security scorecards across diverse cloud architectures, engineers
 | **API returns HTTP 403 / 429 during large batch evaluations.** | Corporate WAF or cloud anti-bot shield interpreting concurrent probes as a Layer-7 scrape. | Check response headers via `/v1/intel/waf`; identify active security vendor (Akamai, Cloudflare). | Leverage Ollagraph's residential proxy routing (`use_residential_proxy=True`) or throttle batch concurrency. |
 | **security.txt reported missing despite existing in web root.** | File served at `/security.txt` instead of standardized RFC 9116 `/.well-known/security.txt` path. | Verify HTTP status for `/.well-known/security.txt`; ensure redirects return `Content-Type: text/plain`. | Implement an HTTP 301 permanent redirect from `/security.txt` to `/.well-known/security.txt`. |
 
-## 11. Best Practices for DevSecOps and Vendor Risk Teams
+## 10. Best Practices for DevSecOps and Vendor Risk Teams
 
 Building an enduring, reliable security scorecard program requires organizational discipline and sound engineering patterns.
 
@@ -333,7 +303,7 @@ A certificate that is valid today but expires in 72 hours represents a critical 
 
 Use Certificate Transparency enumeration endpoints (`/v1/intel/subdomain-enumerate`) to discover shadow IT assets. When an engineer spins up an undocumented marketing landing page or test API cluster on an external domain, the scorecard engine should automatically ingest the new FQDN into the daily evaluation queue.
 
-## 12. Common Anti-Patterns and Scoring Mistakes
+## 11. Common Anti-Patterns and Scoring Mistakes
 
 When engineering in-house security scorecard pipelines, avoid these five common design traps:
 
@@ -357,7 +327,7 @@ Running a security scorecard once a quarter produces a false sense of security. 
 
 Distributing 50-page PDF documents to engineering teams guarantees that findings will be ignored. Developers work in tickets, pull requests, and terminal environments. High-performing security teams configure scorecard engines to emit machine-readable JSON payloads that automatically open Linear or Jira issues containing reproduction code snippets.
 
-## 13. Comparative Analysis: Ollagraph vs. Legacy Rating Platforms
+## 12. Comparative Analysis: Ollagraph vs. Legacy Rating Platforms
 
 Organizations evaluating security scorecard solutions typically weigh four competing approaches. The table below outlines their architectural and financial trade-offs:
 
@@ -366,7 +336,7 @@ Organizations evaluating security scorecard solutions typically weigh four compe
 | **Underlying Architecture** | Proprietary closed-box infrastructure | Self-hosted CLI engines | Fragile ad-hoc bash/python code | Cloud-native, 228-endpoint unified API |
 | **Algorithm Transparency** | Opaque; proprietary weighting algorithms | Transparent rules; no native unified score | Fully custom; high maintenance overhead | Deterministic, customizable, code-level logic |
 | **Raw Telemetry Access** | Restricted; high-level summaries only | Full raw terminal output | Full raw output; unformatted | Structured, typed JSON with full evidence |
-| **API Integration & Developer Ergonomics** | Secondary thought; heavy enterprise portals | Requires building custom wrapping microservices | High maintenance cost; breaks on CDN updates | First-class REST API + Python/Node SDKs |
+| **API Integration & Developer Ergonomics** | Secondary thought; heavy enterprise portals | Requires building custom wrapping microservices | High maintenance cost; breaks on CDN updates | First-class REST API |
 | **Third-Party Script & SRI Analysis** | Weak or absent | Manual plugin configuration required | Extremely difficult to parse DOM & CDNs reliably | Native dedicated endpoint (`/v1/intel/sri-audit`) |
 | **Certificate Transparency Monitoring** | Delayed ingestion (days/weeks) | Requires external crt.sh scraping scripts | Requires manual CT log API parsers | Native dedicated endpoint (`/v1/intel/cert-transparency-history`) |
 | **Pricing Model** | Expensive annual seat licenses ($20k–$80k+) | "Free" open-source, but heavy compute/staff cost | Hidden developer maintenance payroll cost | Predictable, flat-rate credits (~1 credit per probe) |
@@ -381,7 +351,7 @@ Ollagraph approaches website security from an engineering-first perspective:
 - **Zero Stale Caching:** When you call `/v1/intel/ssl` or `/v1/intel/headers`, Ollagraph executes a live, real-time probe against the target asset. The moment an engineer fixes an HSTS header and deploys, re-calling the API reflects the remediation instantly.
 - **Radical Cost Transparency:** Instead of locking organizations into multi-year enterprise contracts with restricted domain limits, Ollagraph operates on a transparent, credit-based economy. Whether you audit 10 domains or 100,000 subdomains, you pay only for the exact network probes you consume.
 
-## 14. Enterprise Deployment: CI/CD, SIEM, and Continuous Governance
+## 13. Enterprise Deployment: CI/CD, SIEM, and Continuous Governance
 
 To satisfy SOC 2, ISO 27001, and continuous compliance standards, embed the scorecard engine directly into your deployment pipeline. This blocks misconfigured web assets (e.g., missing HSTS, expired certificates, or unhashed CDN scripts) before pull requests merge into production.
 
@@ -418,7 +388,7 @@ jobs:
           fi
 ```
 
-## 15. Cloud, Hybrid, and Multi-Account Scaling Strategies
+## 14. Cloud, Hybrid, and Multi-Account Scaling Strategies
 
 When evaluating web estates comprising tens of thousands of domains, synchronous single-threaded scripts become a bottleneck. To scan 10,000 subdomains within an hour, implement an asynchronous worker pool pattern.
 
@@ -458,7 +428,7 @@ To maximize cost efficiency across large portfolios:
   - **Tier 3 (Dormant / Archive Subdomains):** Scan monthly.
 - **Event-Driven Webhook Audits:** Trigger scans immediately following deployment events or DNS modification commits, eliminating the need to poll unchanged assets continuously.
 
-## 16. Frequently Asked Questions (FAQs)
+## 15. Frequently Asked Questions (FAQs)
 
 ### Q1. How does a Website Security Scorecard API differ from an internal vulnerability scanner?
 
@@ -488,7 +458,7 @@ RFC 9116 defines a standardized text file hosted at `/.well-known/security.txt` 
 
 When cloud infrastructure (such as an AWS S3 bucket, Azure Traffic Manager, or GitHub Pages instance) is decommissioned, engineers often forget to delete the corresponding CNAME record in DNS. Attackers scan public Certificate Transparency logs via endpoints like `/v1/intel/subdomain-enumerate` to discover these orphaned hostnames, register the abandoned cloud bucket name, and take complete control of the subdomain. Continuous CT log monitoring alerts security teams to newly issued certificates and dangling assets immediately.
 
-## 17. Conclusion & Next Steps
+## 16. Conclusion & Next Steps
 
 Subjective compliance spreadsheets and sporadic annual penetration tests no longer provide defensible security assurance in an era of continuous deployment and expanding cloud attack surfaces. Modern DevSecOps teams require an objective, programmatic ground truth: an automated mechanism to quantify website risk continuously, deterministically, and at scale.
 
@@ -496,7 +466,7 @@ A modern Website Security Scorecard API achieves this by replacing guesswork wit
 
 By consolidating over 228 intelligence, scraping, and audit endpoints under a single API key, Ollagraph eliminates the infrastructure burden of maintaining custom web reconnaissance tooling. Security engineers can build, customize, and deploy enterprise-grade attack surface scorecards in minutes using lightweight, reproducible code.
 
-## 18. References & Authoritative Standards
+## 17. References & Authoritative Standards
 
 - **Ollagraph Intelligence Documentation:** [Ollagraph API Reference](https://ollagraph.com/docs/)
 - **Ollagraph Intelligence Endpoints:**

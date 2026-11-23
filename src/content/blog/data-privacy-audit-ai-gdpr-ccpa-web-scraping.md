@@ -16,7 +16,7 @@ Engineering teams building foundational models, fine-tuning task-specific LLMs, 
 
 A complete Data Privacy Audit for an AI web scraping pipeline evaluates every stage of the data lifecycle: seed URL discovery, crawler network identity, DOM parsing, structured content extraction, inline Personally Identifiable Information (PII) redaction, document chunking, vector database ingestion, and Data Subject Request (DSR) deletion orchestration. Without deterministic controls and [website security and compliance audits](/blog/website-security-audit-api-scan-at-scale/), engineering pipelines expose organizations to statutory administrative fines reaching €20 million or 4% of global annual turnover under GDPR, statutory damages of $7,500 per intentional violation under CCPA, and Federal Trade Commission (FTC) enforcement orders mandating the algorithmic disgorgement—the total deletion—of models and vector stores trained on unlawfully scraped data.
 
-This guide provides an end-to-end engineering and compliance blueprint for auditing and hardening your [reliable web data pipelines](/blog/reliable-web-data-pipelines-from-crawling-to-validated-json/). We examine the exact intersection between statutory privacy law and crawler architecture, analyze why traditional web scrapers fail modern compliance audits, provide production-ready Python pipelines combining Ollagraph’s extraction APIs with localized PII redaction engines, establish empirical benchmarks for latency and token economics, and outline an actionable governance framework designed to maximize both legal defensibility and AI visibility.
+This guide provides an end-to-end engineering and compliance blueprint for auditing and hardening your [reliable web data pipelines](/blog/reliable-web-data-pipelines-from-crawling-to-validated-json/). We examine the exact intersection between statutory privacy law and crawler architecture, analyze why traditional web scrapers fail modern compliance audits, provide production-ready Python pipelines combining Ollagraph’s extraction APIs with localized PII redaction engines, show how to benchmark latency and token economics on your own pipeline, and outline an actionable governance framework designed to maximize both legal defensibility and AI visibility.
 
 ---
 
@@ -25,7 +25,7 @@ This guide provides an end-to-end engineering and compliance blueprint for audit
 - **Public Availability Does Not Equal Legal Consent:** Neither GDPR nor CCPA treats publicly accessible web data as public domain. Scraping personal data requires an explicit lawful basis under GDPR Article 6 and triggers mandatory consumer opt-out protections under CCPA § 1798.120.
 - **The "Legitimate Interest" Tightrope:** For AI training and RAG ingestion, Article 6(1)(f) Legitimate Interests is typically the only viable GDPR ground. Relying on it requires a documented, three-part Legitimate Interests Assessment (LIA) and aggressive data minimization before crawling begins.
 - **The Irreversible Vector Entanglement Hazard:** When raw PII enters a vector embedding store without cryptographic [field-level document provenance](/blog/evidence-based-data-extraction-how-to-return-provenance-for-every-field/), satisfying a GDPR Article 17 "Right to Erasure" or CCPA deletion request becomes an architectural impossibility. Inline sanitization before chunking is the only scalable technical defense.
-- **DOM Boilerplate as a Regulatory and Cost Liability:** Raw web pages are saturated with author sidebars, comment threads, user tracking tokens, and corporate footer metadata. Ingesting this boilerplate inflates token costs by over 30% while expanding your regulatory attack surface.
+- **DOM Boilerplate as a Regulatory and Cost Liability:** Raw web pages are saturated with author sidebars, comment threads, user tracking tokens, and corporate footer metadata. Ingesting this boilerplate inflates token costs while expanding your regulatory attack surface.
 - **The Article 14 Notification Challenge:** GDPR Article 14 mandates direct notification of individuals whose data is obtained indirectly. While Article 14(5)(b) allows a "disproportionate effort" exemption, invoking it legally requires public disclosure notices, transparent crawler identities, and verifiable technical opt-outs.
 - **Ollagraph Compliance Acceleration:** Utilizing Ollagraph’s managed extraction endpoints (`/v1/scrape`, `/v1/extract/clean`, `/v1/scrape/llm-ready`) eliminates hidden DOM noise, honors `robots.txt` by default, enforces transparent headers, and standardizes web content into clean semantic Markdown before it hits your classification and embedding layers.
 - **Deterministic Provenance as an Audit Prerequisite:** Every stored vector must map back to an immutable Document UUID in an isolated provenance registry. If an author requests data deletion, you must be able to purge the specific vectors in milliseconds without rebuilding your entire index.
@@ -104,7 +104,7 @@ A privacy audit is not a policy questionnaire; it is a code- and infrastructure-
 | :--- | :--- | :--- | :--- |
 | **1. Groundless Processing** | Scraping personal data without a documented Legitimate Interests Assessment (LIA) or consent mechanism. | GDPR Article 6; CCPA § 1798.100. | Invalidation of the dataset; immediate regulatory stop-work orders. |
 | **2. Transparency Silence** | Running headless crawlers with spoofed User-Agents and no machine-readable compliance contact. | GDPR Article 14; CNIL Crawler Guidelines. | Inability to claim the "disproportionate effort" notice exemption. |
-| **3. Boilerplate Ingestion** | Concatenating raw DOM trees (author bios, comment sections, social metadata) directly into LLM text blocks. | GDPR Article 5(1)(c) Data Minimization. | Unnecessary ingestion of sensitive personal data; 30%+ token waste. |
+| **3. Boilerplate Ingestion** | Concatenating raw DOM trees (author bios, comment sections, social metadata) directly into LLM text blocks. | GDPR Article 5(1)(c) Data Minimization. | Unnecessary ingestion of sensitive personal data; wasted tokens. |
 | **4. PII Vector Bleed** | Generating embeddings directly over unredacted personal names, phone numbers, and email addresses. | GDPR Articles 5(1)(f), 17; CCPA § 1798.105. | High-dimensional data leakage; model output regurgitation of private data. |
 | **5. Lineage Severing** | Storing vectors with arbitrary auto-incrementing IDs without an immutable link back to source URLs. | GDPR Article 17 Right to Erasure; CCPA Deletion. | Inability to honor Data Subject Requests without full index rebuilding. |
 | **6. Secret Harvesting** | Ingesting exposed API keys, internal credentials, or session tokens left on public web forums or docs. | CFAA / Information Security Negligence. | Severe corporate security breach; third-party liability. |
@@ -170,7 +170,7 @@ Here is the operational workflow for auditing and executing a compliant web scra
 ### Stage 2: Ollagraph Scrape API (Controlled Fetch & DOM Normalization)
 - **Action:** Fetches approved pages cleanly via `/v1/scrape` or `/v1/extract/clean`.
 - **What It Does:** Strips ads, layout chrome, author sidebars, and comment trees, converting only the core text into clean Markdown.
-- **Why It Matters:** Removes surface personal data at the source and cuts downstream AI token costs by over 30%.
+- **Why It Matters:** Removes surface personal data at the source and cuts downstream AI token costs.
 
 ### Stage 3: PII Sanitization Engine (Inline Anonymization)
 - **Action:** Runs the text through local redaction tools (e.g., Presidio).
@@ -250,7 +250,7 @@ class CompliantPipeline:
             json={"url": url, "format": "markdown", "stealth": False},
             timeout=30
         )
-        return res.json().get("markdown", "")
+        return res.json().get("content", "")
 
     def sanitize(self, text: str) -> str:
         """Replaces names, emails, phones, and IPs with surrogate tokens."""
@@ -302,29 +302,29 @@ vector_db.delete(filter={"document_id": {"$in": affected_doc_ids}})
 
 ## 8. Performance & Benchmarks
 
-A common engineering misconception is that inline privacy auditing and PII filtering impose unacceptable compute overhead. In production testing, the compute overhead of inline sanitization is far outweighed by downstream token and storage savings.
+A common engineering concern is that inline privacy auditing and PII filtering impose unacceptable compute overhead. Measure it on your own pipeline before deciding: time each stage separately, and weigh the sanitization overhead against the downstream token and storage savings.
 
 ### Ingestion Latency Benchmarks
 
-We evaluated the latency of a compliant ingestion pipeline across 5,000 diverse technical web pages (average length: 1,800 words):
+Run a sample of your own target pages through the full compliant pipeline and record per-document latency (median and p95) for each stage:
 
-| Pipeline Stage | Technology | Latency per Document | Latency |
-| :--- | :--- | :--- | :--- |
-| **HTTP Fetch & JS Render** | Ollagraph `/v1/scrape` | 920 ms | 1,450 ms |
-| **DOM Stripping & Markdown Normalize** | Ollagraph `/v1/extract/clean` | 45 ms | 85 ms |
-| **Regex Scans (Emails, Phones, Keys)** | Python `re` Module | 8 ms | 15 ms |
-| **Contextual NER Analysis** | Presidio + spaCy `en_core_web_sm` | 135 ms | 210 ms |
-| **Provenance Ledger Transaction** | SQLite / Local Embedded DB | 6 ms | 12 ms |
-| **Total Ingestion Processing Time** | Integrated Compliant Pipeline | 1,114 ms | 1,772 ms |
+| Pipeline Stage | Technology |
+| :--- | :--- |
+| **HTTP Fetch & JS Render** | Ollagraph `/v1/scrape` |
+| **DOM Stripping & Markdown Normalize** | Ollagraph `/v1/extract/clean` |
+| **Regex Scans (Emails, Phones, Keys)** | Python `re` Module |
+| **Contextual NER Analysis** | Presidio + spaCy `en_core_web_sm` |
+| **Provenance Ledger Transaction** | SQLite / Local Embedded DB |
+| **Total Ingestion Processing Time** | Integrated Compliant Pipeline |
 
-**Analysis:** Inline PII sanitization and provenance logging add approximately 150 ms to 240 ms per document—representing less than 15% of total document processing time, the vast majority of which is network transit and browser rendering.
+**Analysis:** Compare the time spent on regex scans, NER analysis, and the provenance ledger with the time spent on fetching and rendering. That ratio tells you what inline sanitization actually costs you.
 
 ### Token Economics in Downstream AI Workflows
 
-Extracting clean Markdown via Ollagraph and scrubbing non-substantive boilerplate produces massive downstream efficiencies:
+Extracting clean Markdown via Ollagraph and scrubbing non-substantive boilerplate produces downstream efficiencies:
 
-- **Token Volume Reduction:** Stripping layout wrappers, navigation bars, author sidebars, and comment blocks reduces total ingested token volume by an average of 34.2%.
-- **Embedding Cost Savings:** For a corpus of 10 million web pages, a 34.2% token reduction eliminates over 4.1 billion tokens from embedding model inference calls.
+- **Token Volume Reduction:** Stripping layout wrappers, navigation bars, author sidebars, and comment blocks reduces total ingested token volume. Count tokens on a sample of pages before and after stripping to get the reduction for your corpus.
+- **Embedding Cost Savings:** Multiply that per-page token reduction by your corpus size to estimate how many tokens you remove from embedding model inference calls.
 - **Vector Database Footprint:** Vector index memory and disk usage shrink proportionally, directly reducing infrastructure costs in services like Pinecone, Qdrant, or Weaviate.
 - **RAG Retrieval Quality:** By preventing author bios and comment noise from polluting vector chunks, retrieval precision improves significantly, reducing model hallucination and saving input context window tokens on every query.
 

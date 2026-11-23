@@ -14,7 +14,7 @@ tags: ['guides']
 
 Every web scraping pipeline faces the same fork: send a plain HTTP request and parse the HTML, or launch a full headless browser that renders JavaScript. Pick static fetch and you get speed — sub-second responses, minimal infrastructure cost, simple code. Pick a headless browser and you get fidelity — the page looks exactly as it would in Chrome, with all dynamic content, event handlers, and post-load mutations intact. Pick wrong and you either ingest empty DOM shells or burn 50x more compute than necessary.
 
-This article gives you a repeatable decision framework backed by real benchmarks across 200+ sites. You will learn exactly when static fetch suffices, when it catastrophically fails, and how to build a hybrid strategy that escalates intelligently. We also cover Ollagraph's `/v1/scrape/smart` endpoint, which automates this decision so you do not have to maintain two separate pipelines.
+This article gives you a repeatable decision framework and a way to benchmark both approaches on your own target sites. You will learn exactly when static fetch suffices, when it catastrophically fails, and how to build a hybrid strategy that escalates intelligently. We also cover Ollagraph's `/v1/scrape/smart` endpoint, which automates this decision so you do not have to maintain two separate pipelines.
 
 ## Key Takeaways
 
@@ -27,9 +27,9 @@ This article gives you a repeatable decision framework backed by real benchmarks
 
 ## 1. Problem Statement
 
-A few months ago, a team building an AI agent for competitive analysis came to us with a strange complaint. Their pipeline was scraping product pages from fifty e-commerce sites, and about a third of them returned pages with no prices, no descriptions, and no images. The HTML was there — titles, navigation bars, footer links — but the actual product data was missing. They had checked their selectors twice. They had rotated proxies. They had added retry logic. Nothing helped.
+For example, imagine a team building an AI agent for competitive analysis. Their pipeline scrapes product pages from dozens of e-commerce sites, and some of them return pages with no prices, no descriptions, and no images. The HTML is there — titles, navigation bars, footer links — but the actual product data is missing. They check their selectors twice. They rotate proxies. They add retry logic. Nothing helps.
 
-The problem was not their parsing code. It was their fetch strategy. Every one of those failing sites was a single-page application — React, Next.js, or Vue — that ships an almost empty HTML shell and populates the DOM with JavaScript after the page loads. A static HTTP GET returns the shell. A headless browser returns the real page.
+The problem is not their parsing code. It is their fetch strategy. Every one of those failing sites is a single-page application — React, Next.js, or Vue — that ships an almost empty HTML shell and populates the DOM with JavaScript after the page loads. A static HTTP GET returns the shell. A headless browser returns the real page.
 
 This is the central tension in modern web scraping. The web of 2026 is not the web of 2016. Over 60% of sites now use client-side rendering for at least some content. JavaScript frameworks have become the default, not the exception. And the gap between what a static fetch retrieves and what a browser renders is wider than ever.
 
@@ -155,7 +155,7 @@ A complete fetch-and-extract pipeline has five components regardless of strategy
 
 ## 6. The Decision Framework
 
-Here is the decision tree we use internally at Ollagraph. It handles roughly 95% of real-world cases:
+Here is a decision tree that handles most cases:
 
 1. **Is the page a known API endpoint (JSON/XML)?**
    - *Yes* → Static fetch. Always.
@@ -192,38 +192,21 @@ Here is the decision tree we use internally at Ollagraph. It handles roughly 95%
 
 ## 7. Performance & Benchmarks
 
-We ran a benchmark across 200 sites spanning five categories. Each site was fetched 10 times with each method. Results are medians.
+To compare the two methods, pick a sample of your own target sites across categories (server-rendered blogs, documentation, SSR e-commerce, React/Next.js SPAs, Vue/Nuxt SPAs). Fetch each site several times with each method and record medians.
 
 ### Latency
 
-| Site Category | Static Fetch (p50) | Headless Browser (p50) | Multiplier |
-|---|---|---|---|
-| **Static blogs (WordPress)** | 340 ms | 2,100 ms | 6.2× |
-| **Documentation (Docusaurus)** | 280 ms | 1,800 ms | 6.4× |
-| **E-commerce (Shopify SSR)** | 420 ms | 2,400 ms | 5.7× |
-| **SPA (React/Next.js)** | 380 ms (empty shell) | 3,200 ms | 8.4× |
-| **SPA (Vue/Nuxt)** | 410 ms (empty shell) | 3,600 ms | 8.8× |
+Record p50 latency per site category for static fetch and for a headless browser, plus the multiplier between them. Note when the static response is an empty shell, because a fast response with no content is not a win.
 
-*The static fetch times are consistent across categories because they all measure the same thing: network round trip plus server processing time. The headless browser times vary because JavaScript execution time differs dramatically between a simple blog and a complex SPA.*
+*Expect static fetch times to be fairly consistent across categories, because they measure the same thing: network round trip plus server processing time. Headless browser times vary because JavaScript execution time differs dramatically between a simple blog and a complex SPA.*
 
 ### Cost Per 1 Million Requests
 
-| Strategy | Compute Cost | Bandwidth Cost | Total |
-|---|---|---|---|
-| **Static fetch (serverless)** | $18 | $4 | $22 |
-| **Headless browser (warm pool)** | $1,200 | $12 | $1,212 |
-| **Headless browser (cold start)** | $4,800 | $12 | $4,812 |
-| **Hybrid (80% static, 20% headless)** | $260 | $6 | $266 |
-
-*The hybrid approach assumes 80% of pages can be served by static fetch and 20% require a headless browser — a realistic ratio for general-purpose crawling. The cost savings versus all-headless are roughly 5–18×.*
+Price each strategy from your own compute and bandwidth rates: static fetch, headless browser with a warm pool, and headless browser with cold starts. For a hybrid pipeline, the cost is (share of pages served by static fetch × static cost) + (share needing a browser × headless cost). Measure the share from your actual traffic mix rather than assuming it.
 
 ### Success Rate
 
-| Strategy | Static Sites | SPAs | Anti-bot Protected |
-|---|---|---|---|
-| **Static fetch** | 98% | 12% | 8% |
-| **Headless browser** | 99% | 96% | 72% |
-| **Hybrid smart fetch** | 98% | 96% | 72% |
+Record the share of fetches that return the target fields, by strategy, for server-rendered sites, SPAs, and anti-bot protected sites. Expect headless browsers to struggle on anti-bot protected sites too: sophisticated bot detection can still identify headless Chrome via WebDriver flags, missing navigator properties, and inconsistent fingerprint attributes.
 
 ### Memory and CPU
 A single headless browser instance uses 200–600 MB of RAM at rest and spikes to 1–2 GB during complex page loads. A static fetch uses effectively zero persistent memory — the connection is ephemeral and the response is streamed. At 50 concurrent requests, a static pipeline runs comfortably on a 2-CPU server. A headless browser pipeline at the same concurrency requires 16–32 CPUs and 32–64 GB of RAM.
@@ -272,7 +255,7 @@ Staging environments often use a small set of hand-picked test sites that happen
 
 ## 10. Best Practices
 
-- **Default to static, escalate to headless.** Start every request with a lightweight HTTP fetch. Only launch a browser when the static response shows clear signs of JS dependency. This single rule cuts infrastructure costs by 60–80% for most pipelines.
+- **Default to static, escalate to headless.** Start every request with a lightweight HTTP fetch. Only launch a browser when the static response shows clear signs of JS dependency. This single rule keeps most requests on the cheap path.
 - **Classify at the domain level, not the page level.** If a domain uses React, every page on that domain almost certainly uses React. Cache the classification result per domain with a TTL of 24–48 hours.
 - **Set aggressive timeouts on static fetches.** If a server has not responded in 5 seconds, fail fast and move on. For headless browsers, set a 30-second hard cap on page load and a 10-second cap on script execution.
 - **Reuse browser contexts, but isolate sessions.** Launch a browser once and reuse it for multiple requests, but create a new browser context (incognito-like isolated session) for each request.
@@ -310,8 +293,8 @@ Staging environments often use a small set of hand-picked test sites that happen
 ## 13. Enterprise / Cloud Deployment
 
 ### Scaling a Hybrid Pipeline
-- **Static fetch tier:** A pool of lightweight workers (2 CPU, 4 GB RAM) behind a load balancer. Each worker handles hundreds of concurrent requests using async HTTP clients. Handles 80%+ of traffic.
-- **Headless browser tier:** A pool of browser-hosting instances (8 CPU, 32 GB RAM) running Playwright in a containerized environment. Handles the 20% of traffic that requires JS rendering.
+- **Static fetch tier:** A pool of lightweight workers (2 CPU, 4 GB RAM) behind a load balancer. Each worker handles hundreds of concurrent requests using async HTTP clients. Handles most traffic.
+- **Headless browser tier:** A pool of browser-hosting instances (8 CPU, 32 GB RAM) running Playwright in a containerized environment. Handles the share of traffic that requires JS rendering.
 - **Classifier tier:** A lightweight service that inspects static responses and routes requests to the appropriate tier.
 
 ### Observability
@@ -319,7 +302,7 @@ Track these metrics in production:
 - **Static-to-headless ratio:** The percentage of requests that escalate.
 - **Browser launch latency:** P50 and P95 time to acquire a warm browser context.
 - **Extraction success rate by strategy:** Investigate if headless success drops below 90%.
-- **Cost per successful extraction:** A hybrid pipeline should cost 5–10× less per successful extraction than an all-headless pipeline.
+- **Cost per successful extraction:** A hybrid pipeline should cost substantially less per successful extraction than an all-headless pipeline.
 
 ### Multi-Tenant Isolation
 If your pipeline serves multiple teams or clients, isolate browser contexts at the tenant level. Use separate browser pools or at minimum separate browser contexts with distinct cookie jars and localStorage.
@@ -366,7 +349,7 @@ Use a hybrid approach with domain-level classification caching. Fetch each domai
 
 The static fetch vs headless browser decision is not a one-time architectural choice. It is a per-request optimization that directly impacts your pipeline's speed, cost, and reliability. Static fetch is fast and cheap but fails on the 60% of the web that relies on JavaScript rendering. Headless browsers are comprehensive but expensive — 50–250× the cost per request.
 
-The winning strategy for most teams is hybrid: default to static, detect when it is insufficient, and escalate to a headless browser only when the signals say so. This approach captures the best of both worlds and typically saves 60–80% on infrastructure costs compared to an all-headless pipeline.
+The winning strategy for most teams is hybrid: default to static, detect when it is insufficient, and escalate to a headless browser only when the signals say so. This approach captures the best of both worlds at a fraction of the cost of an all-headless pipeline.
 
 If you do not want to build and maintain a hybrid classifier yourself, Ollagraph's `/v1/scrape/smart` endpoint handles the decision automatically. One API call, one response, always the right strategy.
 
@@ -379,7 +362,7 @@ If you do not want to build and maintain a hybrid classifier yourself, Ollagraph
 
 - [Playwright Documentation — Navigations & Network Idle](https://playwright.dev/docs/navigations)
 - [Puppeteer Documentation — Headless Chrome](https://pptr.dev/)
-- [Ollagraph Smart Fetch API Documentation](https://docs.ollagraph.com)
+- [Ollagraph Smart Fetch API Documentation](https://ollagraph.com/docs)
 - [HTTP Archive — Web Almanac JavaScript Rendering](https://almanac.httparchive.org/)
 - [W3Techs — Client-Side Programming Language Usage](https://w3techs.com/technologies/overview/client_side_language)
 - [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)

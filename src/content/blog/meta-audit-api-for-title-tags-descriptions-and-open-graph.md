@@ -12,7 +12,7 @@ tags: ['seo', 'guides']
 
 ## Executive Summary
 
-Title tags, meta descriptions, and Open Graph tags are the three most impactful HTML elements for search and social visibility — and they are also the most commonly broken at scale. A missing `og:image` tag means your link posts as a plain URL on LinkedIn. A truncated title tag means Google rewrites your snippet. In our audit of 5,000 pages across 20 enterprise domains, 73% had at least one critical meta tag issue — and 41% had Open Graph tags that rendered incorrectly on at least one major platform.
+Title tags, meta descriptions, and Open Graph tags are the three most impactful HTML elements for search and social visibility — and they are also the most commonly broken at scale. A missing `og:image` tag means your link posts as a plain URL on LinkedIn. A truncated title tag means Google rewrites your snippet.
 
 A Meta Audit API solves this by programmatically fetching pages, extracting all meta tags, validating them against platform-specific rules, and returning a structured report with pass/fail status for every tag on every page.
 
@@ -20,10 +20,10 @@ A Meta Audit API solves this by programmatically fetching pages, extracting all 
 
 ## Key Takeaways
 
-- Title tags, meta descriptions, and Open Graph tags fail at alarming rates. Our audit of 5,000 pages found 73% had at least one critical meta issue.
+- Title tags, meta descriptions, and Open Graph tags break easily at scale, especially after template changes and CMS migrations.
 - Each platform enforces different rules. Google truncates titles past ~580 pixels (not characters). Facebook requires `og:image` at least 200×200 pixels. LinkedIn ignores OG tags if `article:published_time` is missing.
-- A Meta Audit API can check 1,000 pages in under 90 seconds. A manual audit of the same volume takes 4–8 hours.
-- The most common failures: missing `og:image` (34% of pages), title tags under 30 characters (22%), and meta descriptions that duplicate the H1 (18%).
+- A Meta Audit API replaces manual, tab-by-tab checks with a scripted job you can rerun on every deploy.
+- Common failures include a missing `og:image`, title tags under 30 characters, and meta descriptions that duplicate the H1.
 - Integrating meta tag validation into CI/CD—alongside automated [broken link checks](/blog/broken-links-checker-api-detect-and-fix-404s-at-scale/)—catches issues before they reach production.
 - Ollagraph's `POST /v1/seo/meta-audit` endpoint (part of our [full website SEO audit API](/blog/website-seo-audit-how-to-run-a-full-audit-in-one-api-call/)) grades one URL per call — title, meta description, H1, canonical, core Open Graph tags, viewport, and robots — and returns a 0–100 score, an A–F grade, and a list of issues. Platform-specific checks (pixel width, image dimensions, duplicates) are a few lines of your own code on top.
 
@@ -445,7 +445,7 @@ Run a full-site meta audit before making any changes. Track the pass rate over t
 If 300 of your 5,000 product pages have the same broken OG image, the problem is the template that generates them. Fix the template, and all 300 pages are fixed in one deploy. Grouping your audit results by page type makes template-level issues obvious because they cluster.
 
 ### 3. Validate in Staging, Block in Production
-Integrate the Meta Audit API into your staging environment's deploy pipeline. If a staging deploy introduces a critical meta tag failure, block the production deploy until it is fixed. We have seen teams eliminate 90% of meta tag regressions within two weeks of adding this gate.
+Integrate the Meta Audit API into your staging environment's deploy pipeline. If a staging deploy introduces a critical meta tag failure, block the production deploy until it is fixed.
 
 ### 4. Monitor Platform Changes
 Social platforms update their meta tag requirements without announcement. Facebook changed its minimum OG image size from 200×200 to 600×315 for link ads in 2024, then quietly reverted it. LinkedIn started requiring `article:published_time` for article-type pages in early 2026. Re-check platform documentation periodically and update your own thresholds.
@@ -604,7 +604,7 @@ Open Graph tags (`og:`) are the standard protocol used by Facebook, LinkedIn, Sl
 
 ## 16. Conclusion
 
-Title tags, meta descriptions, and Open Graph tags are the most visible HTML elements your site produces. They appear in search results, social feeds, messaging apps, and increasingly in AI-generated answers. And they break more often than most teams realize — our audit of 5,000 pages found 73% with at least one critical issue.
+Title tags, meta descriptions, and Open Graph tags are the most visible HTML elements your site produces. They appear in search results, social feeds, messaging apps, and increasingly in AI-generated answers. And they break more often than most teams realize.
 
 A Meta Audit API solves this by automating the extraction and validation process across every platform that consumes your meta tags. It checks pixel width instead of character count. It downloads and inspects OG images. It resolves relative URLs the way each platform's crawler does. It catches issues in minutes that a manual audit would miss for weeks.
 

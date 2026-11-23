@@ -342,11 +342,7 @@ This file helps AI agents find accurate, current information about RiverDB.
 
 <p>Third, it signals professionalism. Publishing an llms.txt file tells AI companies, partners, and customers that you are thinking about the AI ecosystem deliberately. That matters for trust.</p>
 
-<p>At Ollagraph, we measure AEO success using a metric we call Citation Salience. It is the ratio of brand mentions that cite your primary sources versus brand mentions that cite anything else. Sites with clean llms.txt files, accessible Markdown versions, and clear policy sections tend to score higher on this metric.</p>
-
-<p>In internal tests across a sample of B2B SaaS sites, we observed that brands with well-structured llms.txt files and Markdown-first documentation were cited more accurately in ChatGPT and Perplexity responses for navigational and comparison queries. The effect was strongest for technical topics where source quality matters most.</p>
-
-<p>These numbers are directional, not guarantees. But they match what common sense predicts: if you make it easier for AI agents to find good information about you, they will use it.</p>
+<p>One way to measure the effect is a metric you could call Citation Salience: the ratio of brand mentions in AI answers that cite your primary sources versus brand mentions that cite anything else. To check whether llms.txt helps on your own site, record this ratio for a fixed set of navigational and comparison queries before you publish the file, then re-run the same queries a few weeks after.</p>
 
 <h2>11. Security, Privacy, and Policy Considerations</h2>
 
@@ -377,7 +373,7 @@ This file helps AI agents find accurate, current information about RiverDB.
 
 <h2>12. Troubleshooting Common Issues</h2>
 
-<p>Even a simple file can go wrong. Here are the most common problems we see when auditing llms.txt files.</p>
+<p>Even a simple file can go wrong. Here are the most common problems to check for.</p>
 
 <p><strong>The File Returns 404</strong></p>
 
@@ -408,7 +404,7 @@ curl -I https://example.com/llms.txt</code></pre>
 
 <h2>13. Best Practices for 2026</h2>
 
-<p>Based on what we have learned from auditing hundreds of sites, here are the practices that produce the best results.</p>
+<p>Here are the practices to follow.</p>
 
 <ol>
 <li>Keep the main file short. Aim for under 10,000 words. Use llms-full.txt for depth.</li>
@@ -481,24 +477,26 @@ curl -I https://example.com/llms.txt</code></pre>
 <p>Manually maintaining llms.txt across many sites is unsustainable. Use Ollagraph's API to:</p>
 
 <ul>
-<li>Discover all subdomains and language variants</li>
-<li>Generate draft llms.txt files from site structure</li>
+<li>Discover subdomains, so you know which hosts need a file</li>
 <li>Validate structure against community conventions</li>
 <li>Detect broken links and agent-cloaking</li>
-<li>Schedule recurring audits</li>
 </ul>
+
+<p>Run these calls from your own scheduler or CI to make the audits recurring.</p>
 
 <p>Here is an example workflow using Ollagraph:</p>
 
 <pre><code># Audit a single domain
 curl -X POST https://api.ollagraph.com/v1/aeo/llms-txt-audit \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
   -d '&#123;"domain": "example.com"&#125;'
 
-# Simulate how GPTBot sees the file
+# See what GPTBot, ClaudeBot, PerplexityBot and other AI crawlers receive
 curl -X POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
-  -d '&#123;"url": "https://example.com/.well-known/llms.txt", "agent": "GPTBot"&#125;'</code></pre>
+  -H "Content-Type: application/json" \
+  -d '&#123;"url": "https://example.com/.well-known/llms.txt"&#125;'</code></pre>
 
 <p>For enterprises, we recommend integrating these checks into your CI/CD pipeline. Every deployment should verify that llms.txt is present, valid, and accessible to major AI crawlers.</p>
 

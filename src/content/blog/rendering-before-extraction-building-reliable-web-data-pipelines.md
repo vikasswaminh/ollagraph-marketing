@@ -297,24 +297,31 @@ async def render_with_scroll(ctx, url, scroll_count=3, scroll_delay=2000):
 
 ### Example 3: Ollagraph API Integration
 
+Ollagraph's `/v1/render` takes just a `url` and returns the post-JavaScript HTML. It does not score quality or capture evidence, so the quality gate runs in your own code.
+
 ```python
+import re
 import httpx
 
-async def render_via_ollagraph(url: str, api_key: str):
-    async with httpx.AsyncClient() as client:
+async def render_via_ollagraph(url: str, api_key: str, min_text_bytes: int = 2048):
+    async with httpx.AsyncClient(timeout=90) as client:
         response = await client.post(
             "https://api.ollagraph.com/v1/render",
-            json={
-                "url": url,
-                "render_mode": "smart",
-                "readiness": {"strategy": "auto", "timeout_ms": 20000},
-                "quality": {"min_text_bytes": 2048},
-                "evidence": {"capture_dom": True, "capture_console": True}
-            },
+            json={"url": url},
             headers={"Authorization": f"Bearer {api_key}"}
         )
-        return response.json()
-# Returns: rendered_html, quality_score, evidence, render_metadata
+        data = response.json()
+    if data.get("status") != "success":
+        raise RuntimeError(f"Render failed: {data.get('error')}")
+
+    # Your own quality gate: fail closed if the rendered page is too thin
+    html = data["html"]
+    text = re.sub(r"(?s)<(script|style)[^>]*>.*?</\1>|<[^>]+>", " ", html)
+    text = " ".join(text.split())
+    if len(text.encode()) < min_text_bytes:
+        raise RuntimeError(f"Low-quality render: {len(text)} chars of text")
+    return {"html": html, "final_url": data["final_url"], "text_length": len(text)}
+# /v1/render returns: status, url, final_url, html, tier_used, status_code
 ```
 
 ## 11. Performance & Benchmarks
@@ -400,7 +407,7 @@ Benchmarked across 500 pages from diverse sites (e-commerce SPAs, news, document
 |---|---|---|---|---|
 | **Playwright** | Manual | `networkidle`, selector, custom JS | Manual | Manual |
 | **Puppeteer** | Manual | `networkidle`, selector | Manual | Manual |
-| **Ollagraph Render API** | Built-in | Auto, selector, custom JS | Built-in scoring | Built-in |
+| **Ollagraph `/v1/render` + `/v1/scrape`** | Managed | `wait_until` (on `/v1/scrape`) | Your code | Your code |
 | **Managed browser service** | Built-in | `networkidle`, selector | Limited | Limited |
 
 - **Build your own** if you have the engineering capacity, need full control over browser configuration, and want to avoid per-render costs. Expect 4–8 weeks to build a production-grade render layer with pooling, readiness detection, and quality analysis.
@@ -464,7 +471,7 @@ The fix requires treating rendering as a first-class pipeline stage with its own
 - [Playwright Documentation: Auto-waiting and Network Events](https://playwright.dev/docs/network)
 - [Chrome DevTools Protocol: Page Events and Lifecycle](https://chromedevtools.github.io/devtools-protocol/tot/Page/)
 - [React Hydration Documentation](https://react.dev/reference/react-dom/client/hydrateRoot)
-- [Ollagraph Render API Documentation](https://docs.ollagraph.com)
+- [Ollagraph Render API Documentation](https://ollagraph.com/docs)
 - [Headless Chrome as a Service: Build vs Buy](/blog/headless-chrome-as-a-service-when-to-build-vs-buy-browser-infrastructure/)
 - [Browser Automation Observability at Scale](/blog/browser-automation-observability-monitoring-headless-chrome-at-scale/)
 - [LLM-Powered Browser Automation](/blog/llm-powered-browser-automation-how-ai-agents-control-the-web/)

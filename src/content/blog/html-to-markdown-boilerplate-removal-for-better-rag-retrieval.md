@@ -416,7 +416,7 @@ citation_correct(c,q)=1[overlap(e(c),g(q))>0]
 
 This catches right words, wrong section failures.
 
-### 9.5 We tested this evidence packet (run-ready structure)
+### 9.5 Evidence packet template (run-ready structure)
 
 Use this structure when you claim measured improvement. Replace placeholders with your real run outputs.
 
@@ -446,11 +446,11 @@ Use this structure when you claim measured improvement. Replace placeholders wit
 
 ```
 Metric                    Baseline (A)   Improved (B)   Delta
-Avg boilerplate_ratio     0.42           0.18           -0.24
-Precision@5               0.61           0.74           +0.13
-Precision@10              0.68           0.79           +0.11
-Citation correctness      0.58           0.71           +0.13
-Token savings (retrieved set)  -         -              -22%
+Avg boilerplate_ratio     <A>            <B>            <B - A>
+Precision@5               <A>            <B>            <B - A>
+Precision@10              <A>            <B>            <B - A>
+Citation correctness      <A>            <B>            <B - A>
+Token savings (retrieved set)  -         -              <percent>
 ```
 
 **Failure breakdown (optional but recommended)**

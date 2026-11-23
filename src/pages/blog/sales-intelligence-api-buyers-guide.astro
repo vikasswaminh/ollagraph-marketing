@@ -78,7 +78,7 @@ const faqs = [
 
   <p><strong>TheirStack</strong> is one of the newer entrants. They emphasize job-posting-based detection, which catches technologies before they show up in front-end signatures. For early-stage signals on infrastructure adoption, this is a real differentiator.</p>
 
-  <p><strong>Ollagraph</strong> is where we live. We combine technographic detection with DNS, WHOIS, SSL, contact extraction, and email verification in a single API. Our specific edge is breadth-per-call: one request returns the technology stack, the mail provider, the SSL posture, the WHOIS history, and the social and contact footprint, all in clean JSON. Teams who would otherwise pay BuiltWith for technographic, Hunter.io for email, and Clearbit for enrichment often replace all three with us at a fraction of the combined cost.</p>
+  <p><strong>Ollagraph</strong> is where we live. We combine technographic detection with DNS, WHOIS, SSL, contact extraction, and email verification in a single API. Our specific edge is breadth-per-call: one request returns the technology stack, the mail provider, the SSL posture, the WHOIS history, and the social and contact footprint, all in clean JSON. If you would otherwise pay BuiltWith for technographic, Hunter.io for email, and Clearbit for enrichment, that breadth is the reason to include us in your evaluation.</p>
 
   <h2>How to choose</h2>
   <p>The decision usually breaks along four axes.</p>
@@ -94,7 +94,7 @@ const faqs = [
   <h2>What changes when intelligence lives next to scraping</h2>
   <p>One pattern that has emerged in 2026 is teams co-locating their technographic enrichment with their scraping infrastructure. The reason is that the data you want for sales targeting is increasingly the same data you want for competitive monitoring, content extraction, and SEO analysis. Running these through separate vendors means stitching identifiers across systems, reconciling timestamps, and maintaining multiple API integrations.</p>
 
-  <p>Ollagraph's hypothesis when we built the intelligence layer was that this stitching tax was the largest hidden cost in the category. Our customers tell us we were right. The teams who have collapsed three vendors into one report saving 40 to 60 percent of integration engineering time and a similar fraction of vendor spend. That is the specific outcome we optimize for; if your team's costs do not look like that, the consolidation will not move the needle for you.</p>
+  <p>Ollagraph's hypothesis when we built the intelligence layer was that this stitching tax was the largest hidden cost in the category. Test that against your own costs: add up the engineering time your team spends stitching identifiers and maintaining separate integrations. If that number is small, the consolidation will not move the needle for you.</p>
 
   <h2>How to evaluate a vendor</h2>
   <p>Whichever vendor you are looking at, run the same evaluation. Pick 25 to 50 target accounts representative of your real ICP. Run each through every vendor's API. For each account, score on three axes:</p>
@@ -126,16 +126,16 @@ const faqs = [
 
 <pre><code>export OLLAGRAPH_API_KEY="osk_xxxxxxxxxxxx"</code></pre>
 
-  <p>A single enrichment call against a domain returns the company picture in one shot:</p>
+  <p>A single <code>/v1/dns/intelligence</code> call against a domain returns the domain picture in one shot:</p>
 
-<pre><code>curl -X POST https://api.ollagraph.com/v1/enrich/company \
+<pre><code>curl -X POST https://api.ollagraph.com/v1/dns/intelligence \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
     "domain": "anthropic.com"
   &#125;'</code></pre>
 
-  <p>When we ran this on a recent test, the response returned the email provider (Google Workspace), the nameserver provider (Cloudflare), SPF and DMARC presence (both true), the inferred technology footprint (SPF, Google Search Console, Microsoft 365, Stripe, Atlassian), and the full DNS record set — A, MX, TXT, NS — in 21 milliseconds. A second pass against <code>/v1/intel/ssl</code> and <code>/v1/intel/whois</code> returned the SSL certificate (Let's Encrypt, 51 days remaining, subject alternative names covering <code>console.anthropic.com</code> and a staging environment) and the WHOIS data (registered with MarkMonitor in 2001, expires in 2033), while <code>/v1/intel/page</code> filled in the page-level intelligence (AWS plus Cloudflare in the tech stack, three logo variants, no public RSS feeds).</p>
+  <p>The response covers the email provider, the nameserver provider, SPF and DMARC presence, the inferred technology footprint, and the full DNS record set — A, MX, TXT, NS. A second pass against <code>/v1/intel/ssl</code> and <code>/v1/intel/whois</code> adds the SSL certificate (issuer, days remaining, subject alternative names) and the WHOIS data (registrar, creation and expiry dates), while <code>/v1/intel/page</code> fills in the page-level intelligence (tech stack, logo variants, RSS feeds).</p>
 
   <p>That is six separate pieces of information that would have required three different vendors and a non-trivial integration to assemble five years ago. In 2026 it is one API key and a couple of calls. That is the shape the category is moving toward, regardless of which vendor you pick. You can see the full request and response shapes in the <a href="/docs">docs</a>.</p>
 

@@ -95,18 +95,19 @@ const faqs = [
   J --&gt; K[Retrieval]
   K --&gt; L[Citation UI (chunk provenance→original page)]</code></pre>
 
-<h3>“We tested this” benchmark (link + provenance quality)</h3>
-<p>In a small internal evaluation, we tested two ingestion modes across 200 URLs (docs, blogs, and marketing pages):</p>
+<h3>Benchmark it yourself (link + provenance quality)</h3>
+<p>To see what provenance generation adds, run two ingestion modes on a sample of your own URLs (for example, docs, blogs, and marketing pages):</p>
 <ul>
   <li>Mode A: structure-preserving Markdown only (no provenance generation)</li>
   <li>Mode B: structure + link preservation + provenance generation during conversion</li>
 </ul>
-<p>We then measured link preservation and provenance coverage on the accepted outputs (after validation gates).</p>
-<pre><code>Metric                                Mode A (no provenance)   Mode B (with provenance)
-Link preservation rate                0.86                    0.91
-Provenance coverage rate              0.00                    0.93
-Validation pass rate                  0.78                    0.84
-Retry rate (failed attribution invariants) 0.22              0.16</code></pre>
+<p>Then measure these on the accepted outputs (after validation gates), per mode:</p>
+<ul>
+  <li>Link preservation rate</li>
+  <li>Provenance coverage rate</li>
+  <li>Validation pass rate</li>
+  <li>Retry rate (failed attribution invariants)</li>
+</ul>
 <p>The key takeaway is not that Mode B is “better looking.” It’s that it makes citations auditable: retrieved chunks carry enough provenance to map back to the original page and the specific link objects present in that chunk.</p>
 
 <h2>5. Components &amp; Workflow</h2>
@@ -317,7 +318,7 @@ Requests are limited to 60/minute per API key.</code></pre>
   <li>Rejected if provenance confidence is below threshold OR if unresolved relative URLs remain when absolute_urls is enabled</li>
 </ul>
 <p>Then compute the delta between modes on the accepted set only.</p>
-<p>In our internal testing pattern, the biggest wins come from:</p>
+<p>The levers most worth testing first are:</p>
 <ul>
   <li>Enabling absolute URL rewriting</li>
   <li>Preserving anchor text + destination together</li>

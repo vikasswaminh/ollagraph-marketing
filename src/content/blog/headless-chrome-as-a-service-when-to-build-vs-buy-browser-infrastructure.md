@@ -18,27 +18,27 @@ Six months later, the same team is debugging why 3% of renders produce empty pag
 
 This article is not another cost calculator. The cost-modeling blog in this cluster already covers TCO, break-even points, and capacity planning. This article covers what the spreadsheet misses: the organizational decision. Who runs the fleet. What happens when it breaks. How you evaluate vendors beyond their pricing page. When to migrate between models. And how to structure a hybrid approach that gives you the best of both without the worst of either.
 
-We built browser fleets on three cloud providers. We ran a managed browser API at production scale. We talked to teams that migrated in both directions. The answer to "build vs buy" is not a number. It is a function of your team structure, your tolerance for operational risk, and whether browser infrastructure is core to your product or just a utility you need to work.
+The answer to "build vs buy" is not a number. It is a function of your team structure, your tolerance for operational risk, and whether browser infrastructure is core to your product or just a utility you need to work.
 
 ## Key Takeaways
 
 - **The build-vs-buy decision for headless Chrome is primarily organizational, not financial.** The cost difference between self-hosted and managed narrows to within 20–30% at most scales once you account for engineering time. The real differentiator is who owns reliability.
 - **Self-hosting a browser fleet requires at minimum two engineers** who understand CDP protocol internals, Linux sandboxing, and anti-bot detection. These people are hard to hire and harder to retain because the work is high-stress and low-glamour.
 - **Managed browser APIs are not just "someone else's servers."** They are a reliability contract. The best ones include stealth maintenance, proxy rotation, CAPTCHA handling, and rendering quality guarantees that would take a team months to build internally.
-- **A team of five engineers running a self-hosted Playwright fleet spent 40% of their sprint cycles on infrastructure maintenance** — not extraction logic, not data quality, not product features. Infrastructure. When they migrated to a managed API, that number dropped to under 5%.
+- **A self-hosted Playwright fleet pulls sprint time into infrastructure maintenance** — not extraction logic, not data quality, not product features. Infrastructure. Measure that share for your own team before you decide.
 - **The hybrid model** — self-hosted for stable, high-volume targets and managed for anti-bot-heavy or JavaScript-complex sites — is the most common architecture above 50,000 pages per day. It is also the hardest to operationalize well.
 - **Vendor evaluation for browser-as-a-service is fundamentally different** from evaluating a typical SaaS product. You are buying a browser fleet you will never touch, and the evaluation must focus on reliability signals, not feature checklists.
 - **The migration cost between build and buy is real and often underestimated.** Moving 200,000 pages per day from self-hosted to managed is a 4–8 week engineering project, not a weekend API-key swap.
 
 ## 1. Problem Statement
 
-In March 2025, a data engineering team at a mid-size financial analytics company sat down to plan their Q2 roadmap. They processed roughly 80,000 pages per day through a self-hosted Playwright fleet — product pages, SEC filings, news articles, regulatory databases. The fleet ran on eight c6i.4xlarge instances, managed by a custom orchestrator with a Redis-backed job queue.
+Imagine a data engineering team at a mid-size financial analytics company sitting down to plan its Q2 roadmap. It processes roughly 80,000 pages per day through a self-hosted Playwright fleet — product pages, SEC filings, news articles, regulatory databases. The fleet runs on eight c6i.4xlarge instances, managed by a custom orchestrator with a Redis-backed job queue.
 
-The system worked. Mostly. Every few days, a subset of renders came back with missing data. The on-call engineer would SSH into the instances, find a memory-leaked Chromium process, kill it, and restart the pool. The team had built a monitoring dashboard tracking render success rates, latency percentiles, and memory pressure. They knew exactly when things went wrong. They just could not prevent it.
+The system works. Mostly. Every few days, a subset of renders comes back with missing data. The on-call engineer SSHes into the instances, finds a memory-leaked Chromium process, kills it, and restarts the pool. The team has built a monitoring dashboard tracking render success rates, latency percentiles, and memory pressure. They know exactly when things go wrong. They just cannot prevent it.
 
-The engineering manager proposed migrating to a managed browser API. The CTO pushed back: *"We already built this. It works. Why would we pay someone else for something we already have?"*
+The engineering manager proposes migrating to a managed browser API. The CTO pushes back: *"We already built this. It works. Why would we pay someone else for something we already have?"*
 
-That question — *"why pay for something we already built?"* — is the most dangerous sentence in infrastructure decision-making. It assumes the thing you built is the same as the thing you would buy. It is not. The thing you built requires two senior engineers to maintain, breaks in ways that are hard to diagnose, and consumes 40% of your team's cognitive overhead. The thing you would buy is a reliability contract with an SLA, a support team, and an engineering organization whose entire existence depends on keeping headless Chrome running at scale.
+That question — *"why pay for something we already built?"* — is the most dangerous sentence in infrastructure decision-making. It assumes the thing you built is the same as the thing you would buy. It is not. The thing you built requires two senior engineers to maintain, breaks in ways that are hard to diagnose, and consumes a large share of your team's attention. The thing you would buy is a reliability contract with an SLA, a support team, and an engineering organization whose entire existence depends on keeping headless Chrome running at scale.
 
 This article is for the engineering manager who needs to make the case. For the CTO who asked the question. For the team lead who knows the spreadsheet is wrong but cannot articulate why. And for the engineer who is tired of debugging Chromium memory leaks at 2 AM.
 
@@ -69,7 +69,7 @@ This is distinct from browser testing platforms (BrowserStack, Sauce Labs), whic
 The market has split into three tiers:
 
 - **Tier 1 — Pure-play browser APIs:** Pure-play browser APIs, including Browserless and similar services, do one thing: run headless Chrome and return rendered pages. They compete on rendering quality, stealth effectiveness, and throughput.
-- **Tier 2 — Integrated extraction platforms:** Integrated extraction platforms combine browser rendering with structured data extraction. You send a URL and get back JSON, not HTML. Ollagraph sits in this tier — the browser is a component of a larger pipeline that includes rendering, extraction, quality scoring, and evidence collection.
+- **Tier 2 — Integrated extraction platforms:** Integrated extraction platforms combine browser rendering with structured data extraction. You send a URL and get back JSON, not HTML. Ollagraph sits in this tier — the browser is one component of an API that also covers scraping, crawling, and extraction.
 - **Tier 3 — Full-stack web data platforms:** Full-stack web data platforms offer end-to-end solutions: managed browsers, extraction, scheduling, storage, and delivery.
 
 The tier you evaluate depends on what you need beyond the browser. If you have a mature extraction pipeline and only need reliable rendering, Tier 1 is sufficient. If you want rendering and extraction as a single reliability contract, Tier 2 is the better fit. If you want to outsource your entire web data operation, Tier 3 is the answer — but you will pay for it.
@@ -89,7 +89,7 @@ Is browser infrastructure core to your product, or is it context — something y
 ### Dimension 2: Team Structure and Hiring Reality
 Running a production browser fleet requires CDP protocol knowledge, Linux sandboxing, memory management for long-running processes, anti-bot detection and evasion, proxy network management, and distributed systems debugging. These skills are expensive and concentrated in a small number of engineers who can choose where they work. A company whose core product is not browser automation will struggle to attract and retain these engineers because maintaining a browser fleet is not what most senior infrastructure engineers want to do with their careers.
 
-We have seen this pattern repeatedly: a team builds a browser fleet, the two engineers who built it leave within 18 months, and the remaining team cannot maintain it because the knowledge was never documented. The fleet degrades. Success rates drop. Eventually, the team migrates to a managed API — but only after six months of degraded service.
+A common failure pattern: a team builds a browser fleet, the two engineers who built it leave, and the remaining team cannot maintain it because the knowledge was never documented. The fleet degrades. Success rates drop. Eventually, the team migrates to a managed API — but only after months of degraded service.
 
 ### Dimension 3: Failure Mode Tolerance
 Self-hosted browser fleets fail in ways that managed APIs do not. When a self-hosted fleet fails, the failure is yours to diagnose. A render returns empty HTML. Is it a memory leak? A proxy issue? A site update that broke your stealth configuration? A kernel update that changed sandbox behavior? You will spend hours finding out.
@@ -117,7 +117,7 @@ That is three people minimum. In practice, most teams that self-host at scale ha
 ### The 2 AM Anti-Bot Problem
 Browser fleets break at inconvenient times. Anti-bot systems update their detection heuristics during business hours in their timezone — which may be the middle of your night. Memory leaks accumulate gradually and trigger OOM kills during peak traffic.
 
-A team we worked with in London had a self-hosted fleet processing US e-commerce sites. The fleet consistently failed between 2 AM and 4 AM GMT — 6 PM to 8 PM Pacific, exactly when US retailers pushed daily price updates and anti-bot systems were most aggressive. The on-call engineer was getting paged three nights a week. He left after four months. Managed APIs absorb this problem. The provider's team handles the anti-bot escalation. Your team sleeps. This is not a cost line item — it is a retention line item.
+For example, imagine a team in London running a self-hosted fleet that processes US e-commerce sites. The fleet keeps failing between 2 AM and 4 AM GMT — 6 PM to 8 PM Pacific, when US retailers push daily price updates and anti-bot systems are most aggressive. The on-call engineer gets paged several nights a week, and few people stay on a rotation like that for long. Managed APIs absorb this problem. The provider's team handles the anti-bot escalation. Your team sleeps. This is not a cost line item — it is a retention line item.
 
 ### The Bus Factor Problem
 Browser infrastructure knowledge concentrates in one or two people. They become the only ones who understand the stealth configuration, the proxy routing logic, the memory recycling thresholds, and the fifteen workarounds that keep the fleet running. When those people leave — and they will — the knowledge leaves with them. Documentation helps, but the anti-bot landscape changes weekly. Workarounds that worked last month stop working. Documentation captures the system as it was, not as it needs to be. Managed APIs solve this by making it someone else's problem.
@@ -147,7 +147,7 @@ Evaluating a Headless Chrome as a Service provider is different from evaluating 
 - [x] API documentation that includes error codes, not just success examples
 - [x] Migration support or dedicated onboarding engineering contact
 
-We built Ollagraph's browser rendering infrastructure to meet these criteria because we ran self-hosted fleets before building the managed version. The rendering engine uses a hybrid strategy: lightweight pre-rendering for server-rendered pages, full Chromium for JavaScript-heavy sites, and automatic strategy selection based on page classification. Quality signals are computed for every render and exposed via the API. Evidence packets capture the rendered DOM, console output, and network activity.
+No provider is right for every team. Evaluate every provider against these criteria, including Ollagraph.
 
 ## 7. The Migration Playbook
 
@@ -192,28 +192,25 @@ import asyncio
 
 async def render_with_ollagraph(url: str, api_key: str) -> dict:
     """Render a page using Ollagraph's managed browser API."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
             "https://api.ollagraph.com/v1/render",
-            json={
-                "url": url,
-                "render_mode": "smart",
-                "readiness": {"strategy": "auto", "timeout_ms": 20000},
-                "quality": {"min_text_bytes": 2048, "min_dom_nodes": 500},
-                "evidence": {
-                    "capture_dom": True,
-                    "capture_console": True,
-                    "capture_network": False
-                }
-            },
+            json={"url": url},
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json"
             }
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()  # status, url, final_url, status_code, html, tier_used
+
+        # Quality thresholds are yours to apply to the rendered HTML.
+        if len(data.get("html") or "") < 2048:
+            raise ValueError(f"thin render for {url}")
+        return data
 ```
+
+`/v1/render` takes only a URL and returns the post-JavaScript HTML. Checks on what came back, like the length threshold above, run in your own code.
 
 ### Self-Hosted Reference Implementation
 
@@ -272,41 +269,19 @@ The self-hosted implementation is 50 lines. It works for simple pages. It does n
 
 ## 10. Performance & Reliability Benchmarks
 
-We benchmarked three configurations against 500 pages from diverse sites: e-commerce SPAs, news sites, documentation portals, financial dashboards, and anti-bot-protected pages.
+Don't rely on anyone's published success rates, including a vendor's. Benchmark the configurations you are considering against a sample of your own target pages, grouped by type: simple server-rendered pages, JavaScript-heavy SPAs, and anti-bot-protected pages, plus news sites, documentation portals, or financial dashboards if those are in your mix.
 
 ### Render Success Rate
 
-| Configuration | Simple Pages | JS-Heavy Pages | Anti-Bot Pages | Overall |
-|---|---|---|---|---|
-| **Self-hosted Playwright (basic)** | 98% | 82% | 41% | 74% |
-| **Self-hosted Playwright (stealth-configured)** | 98% | 91% | 72% | 87% |
-| **Ollagraph Managed API** | 99% | 97% | 94% | 97% |
-
-*The gap is narrowest on simple pages and widest on anti-bot-protected pages. Anti-bot evasion is the hardest part of browser infrastructure, and managed APIs invest disproportionately in it.*
+For each configuration — for example a basic self-hosted Playwright pool, a stealth-configured self-hosted pool, and one or more managed APIs — measure the share of requests that return a DOM with meaningful content, broken down by page type. Expect the gap between configurations to be narrowest on simple pages and widest on anti-bot-protected pages, because anti-bot evasion is the hardest part of browser infrastructure.
 
 ### Latency Distribution
 
-| Configuration | p50 | p95 | p99 |
-|---|---|---|---|
-| **Self-hosted (warm pool, no proxy)** | 2.1s | 5.8s | 9.2s |
-| **Self-hosted (warm pool, residential proxy)** | 3.4s | 8.9s | 14.1s |
-| **Ollagraph Managed API** | 2.4s | 6.5s | 10.8s |
-
-The managed API adds roughly 300 ms at the median compared to a warm self-hosted pool without proxies. At p99, the managed API is faster than self-hosted with residential proxies because Ollagraph's proxy infrastructure is more optimized.
+Record p50, p95, and p99 latency for each configuration, and test self-hosted pools both with and without residential proxies. Proxies usually add latency, so comparing a proxy-free self-hosted pool with a managed API that routes through proxies is not a like-for-like test.
 
 ### Engineering Time Allocation
 
-This is the benchmark that matters most. We surveyed five teams that migrated from self-hosted to managed:
-
-| Activity | Self-Hosted (% of sprint) | Managed (% of sprint) |
-|---|---|---|
-| **Infrastructure maintenance** | 35–45% | 3–5% |
-| **Stealth updates** | 10–15% | 0% |
-| **Extraction logic** | 25–30% | 40–50% |
-| **Data quality / validation** | 15–20% | 25–30% |
-| **New features** | 5–10% | 20–25% |
-
-Teams that migrated reclaimed 30–40% of their engineering capacity for work that directly improves their product. One team lead told us: *"We did not realize how much of our time was going to infrastructure until we stopped doing it."*
+This is the measurement that matters most, and only you can take it. Run the two-week time audit described in section 12: track what share of each sprint goes to infrastructure maintenance, stealth updates, extraction logic, data quality and validation, and new features. If you pilot a managed API, repeat the audit afterwards and compare.
 
 ## 11. Security & Compliance
 
@@ -321,11 +296,11 @@ When you self-host, data residency is straightforward: your browsers run in your
 If your application accepts user-supplied URLs and passes them to a browser, you have an SSRF risk. Mitigate by:
 - Validating URLs against a domain allowlist
 - Blocking private IP ranges at the network level
-- Using the managed API's domain filtering if available (Ollagraph supports domain allowlisting at the API key level)
+- Using the managed API's domain filtering if available
 - Setting a maximum redirect limit of 5–10
 
 ### Authenticated Sessions
-For authenticated rendering, use session-based rendering with pre-authenticated contexts. Authenticate once, capture the session state, and reuse it. This minimizes credential transmission. Ollagraph's session management API supports persistent browser contexts with encrypted credential storage.
+For authenticated rendering, use session-based rendering with pre-authenticated contexts. Authenticate once, capture the session state, and reuse it. This minimizes credential transmission.
 
 ## 12. Troubleshooting the Decision
 
@@ -365,7 +340,7 @@ For authenticated rendering, use session-based rendering with pre-authenticated 
 
 - **Self-hosted** is right when browser infrastructure is core to your product, you have a dedicated team with browser expertise, and your scale justifies the operational investment.
 - **Managed Browser API (Tier 1)** is right when you have a mature extraction pipeline and only need reliable rendering.
-- **Integrated Extraction Platform (Tier 2)** is right when you want rendering and extraction as a single reliability contract with quality signals and evidence capture.
+- **Integrated Extraction Platform (Tier 2)** is right when you want rendering and extraction as a single reliability contract.
 - **Hybrid** is right at high scale with diverse target sites — and wrong when your team is too small to operate two rendering pipelines effectively.
 
 ## 16. Enterprise Deployment Patterns
@@ -384,7 +359,7 @@ It is a cloud API that runs headless Chromium browsers on your behalf. You send 
 A web scraping API may or may not use real browsers. Many use HTTP clients with lightweight JavaScript execution. HCaaS specifically guarantees a real Chromium rendering context: the page executes in an actual browser, JavaScript runs, APIs are called, and the DOM is fully hydrated before the response is returned.
 
 ### Q3. At what scale does self-hosting become cheaper than a managed API?
-The crossover depends on your proxy mix, engineering costs, and the managed API's pricing tier. On pure infrastructure cost, self-hosting becomes cheaper around 30,000–50,000 pages per day. When you include engineering time — two engineers spending 40% of their time on browser infrastructure — the crossover moves to 80,000–120,000 pages per day.
+The crossover depends on your proxy mix, engineering costs, and the managed API's pricing tier. On pure infrastructure cost, self-hosting becomes cheaper around 30,000–50,000 pages per day. When you include engineering time — two engineers spending a meaningful share of their time on browser infrastructure — the crossover moves considerably higher.
 
 ### Q4. Can I use a managed API for sites behind Cloudflare or DataDome?
 Yes, if the provider invests in stealth. Not all providers do. Ask specifically about success rates on Cloudflare-protected and DataDome-protected sites. Request a benchmark against your target domains during evaluation.
@@ -408,7 +383,7 @@ CDP protocol knowledge, Linux system administration (sandboxing, memory manageme
 Yes. Public pricing pages are for self-serve customers. At any meaningful volume — typically above 50,000 pages per day — providers will negotiate per-request pricing, commit discounts, and custom SLA terms.
 
 ### Q11. What is the difference between Tier 1, Tier 2, and Tier 3 HCaaS providers?
-Tier 1 providers give you a browser — you send a URL, you get HTML back. Tier 2 providers, such as Ollagraph, combine rendering with structured extraction — you send a URL, you get JSON back, with quality signals and evidence capture included. Tier 3 providers handle everything — rendering, extraction, scheduling, storage, and delivery.
+Tier 1 providers give you a browser — you send a URL, you get HTML back. Tier 2 providers, such as Ollagraph, combine rendering with structured extraction — you send a URL, you get JSON back. Tier 3 providers handle everything — rendering, extraction, scheduling, storage, and delivery.
 
 ### Q12. How do I test a managed API before committing?
 Run a structured pilot. Select 100–500 URLs representing your production traffic — include easy pages, hard pages, anti-bot-protected pages, and pages in your target geographies. Send them through the managed API. Measure rendering success rate, data completeness, latency distribution, and cost per successful render.
@@ -423,7 +398,7 @@ The teams that self-host successfully are the ones where browser infrastructure 
 
 ## 19. References
 
-- [Ollagraph Browser Rendering API Documentation](https://docs.ollagraph.com)
+- [Ollagraph Browser Rendering API Documentation](https://ollagraph.com/docs)
 - [Ollagraph Headless Browser API: The Complete Guide](/blog/headless-browser-api-the-complete-guide-to-automating-chrome-at-scale/)
 - [Ollagraph Browser Automation Observability](/blog/browser-automation-observability-monitoring-headless-chrome-at-scale/)
 - [Playwright Documentation](https://playwright.dev)

@@ -101,21 +101,19 @@ flowchart TD
   K --> L[Citation UI: chunk provenance→original page]
 ```
 
-### "We tested this" benchmark (link + provenance quality)
+### Benchmark it yourself (link + provenance quality)
 
-In a small internal evaluation, we tested two ingestion modes across 200 URLs (docs, blogs, and marketing pages):
+To see what provenance generation adds, run two ingestion modes on a sample of your own URLs (for example, docs, blogs, and marketing pages):
 
 -   **Mode A:** structure-preserving Markdown only (no provenance generation)
 -   **Mode B:** structure + link preservation + provenance generation during conversion
 
-We then measured link preservation and provenance coverage on the accepted outputs (after validation gates).
+Then measure these on the accepted outputs (after validation gates), per mode:
 
-| Metric | Mode A (no provenance) | Mode B (with provenance) |
-| :--- | :--- | :--- |
-| Link preservation rate | 0.86 | 0.91 |
-| Provenance coverage rate | 0.00 | 0.93 |
-| Validation pass rate | 0.78 | 0.84 |
-| Retry rate (failed attribution invariants) | 0.22 | 0.16 |
+-   Link preservation rate
+-   Provenance coverage rate
+-   Validation pass rate
+-   Retry rate (failed attribution invariants)
 
 The key takeaway is not that Mode B is "better looking." It's that it makes citations auditable: retrieved chunks carry enough provenance to map back to the original page and the specific link objects present in that chunk.
 

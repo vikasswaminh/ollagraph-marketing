@@ -27,7 +27,7 @@ This guide breaks down the underlying retrieval mechanics of Position Zero, deta
 - **Featured Snippet Opportunity API drives deterministic capture:** Position Zero is not determined by general domain authority; it is won at the passage layer through structural purity, concise phrasing, and entity clarity.
 - **The Top-5 Filter is an absolute constraint:** Search engines run passage extraction algorithms exclusively on the highest-ranking documents. If your page ranks below position five, snippet optimization will fail until core rankings improve.
 - **Competitor snippets fail predictably:** Incumbent snippets lose their Position-Zero status due to six quantifiable vulnerabilities: answer dilution, soft openings, non-semantic HTML layouts, entity ambiguity, temporal decay, and truncation.
-- **Tables and lists yield the highest win rates:** Data comparisons formatted as native semantic `<table>` elements achieve an 81% capture rate when replacing text-only snippets, making structured data the highest-ROI optimization format.
+- **Tables and lists are the formats to test first:** When the current snippet is text-only, a data comparison formatted as a native semantic `<table>` is a strong candidate to replace it, which makes structured data a high-ROI format to try first.
 - **Snippet readiness mirrors AI search visibility:** The passage criteria required to win Google Featured Snippets are identical to the extraction and retrieval signals used by Perplexity, Gemini, and ChatGPT Search. Optimizing for snippets simultaneously solves your [Answer Engine Optimization (AEO)](/blog/answer-first-content-audit-can-ai-extract-a-direct-answer-from-your-page/) strategy.
 - **Ollagraph replaces fragmented SEO stacks:** Instead of combining multiple expensive SaaS tools, proxy providers, and custom scrapers, search engineering teams can check Google rankings, inspect competitor passages, and score Position-Zero opportunities using Ollagraph's REST API, adding SERP-feature data from their rank tracker.
 
@@ -216,30 +216,29 @@ def audit_snippet(query, domain, snippet_holder_url, api_key):
 }
 ```
 
-## 7. Real-World Case Studies
+## 7. Example Scenarios
 
-To understand how passage-level engineering captures Position Zero, consider three real-world case studies across different content formats and business models.
+To understand how passage-level engineering targets Position Zero, consider two hypothetical scenarios across different content formats. They illustrate the technique; they are not client results.
 
-### Case Study 1: FinTech SaaS Capturing a High-Volume Comparison Table Snippet
+### Example Scenario 1: A FinTech SaaS Page Targeting a Comparison Table Snippet
 
 - **Target Search Query:** "payment gateway transaction fees comparison"
-- **Monthly Search Volume:** 18,200
 - **Baseline Organic Position:** Position #3 (Behind Stripe and a prominent aggregator)
 - **Incumbent Snippet Holder:** A legacy software directory site
 
 #### The Initial Problem
 
-A SERP check showed that Google rendered a table snippet comparing provider fees. However, an extraction audit of the incumbent’s URL using `/v1/extract/clean` revealed several critical vulnerabilities:
+A SERP check shows that Google renders a table snippet comparing provider fees. However, an extraction audit of the incumbent’s URL using `/v1/extract/clean` reveals several vulnerabilities:
 
-- The aggregator rendered the table using client-side JavaScript (`<div class="pricing-matrix-react">`) with nested `<div>` tags rather than semantic HTML table elements.
-- The extracted text merged fee numbers without clear column association.
-- The pricing data was anchored to 2024 numbers.
+- The aggregator renders the table using client-side JavaScript (`<div class="pricing-matrix-react">`) with nested `<div>` tags rather than semantic HTML table elements.
+- The extracted text merges fee numbers without clear column association.
+- The pricing data is anchored to 2024 numbers.
 
-Our client’s page occupied position three. They had published an exhaustive 3,500-word analysis, but their pricing data was scattered across six separate narrative headings, making automated extraction impossible.
+Your page sits at position three. It is an exhaustive 3,500-word analysis, but its pricing data is scattered across six separate narrative headings, making automated extraction impossible.
 
 #### The Technical Remediation
 
-The client deployed a native, server-side rendered HTML `<table>` immediately beneath an H2 heading matching the query intent:
+Deploy a native, server-side rendered HTML `<table>` immediately beneath an H2 heading matching the query intent:
 
 ```html
 <table>
@@ -255,31 +254,24 @@ The client deployed a native, server-side rendered HTML `<table>` immediately be
 </table>
 ```
 
-#### The Business Impact
-
-- **Time to Capture:** 6 days after Google re-indexed the URL.
-- **SERP Outcome:** The client bypassed positions one and two to capture Position Zero.
-- **Traffic Growth:** Monthly organic visits to the URL grew from 3,410 to 6,615 (a 94% increase) without acquiring any new backlinks.
-
-### Case Study 2: Developer Platform Winning a 7-Step Procedural Snippet
+### Example Scenario 2: A Developer Platform Targeting a 7-Step Procedural Snippet
 
 - **Target Search Query:** "how to configure wireguard mesh network ubuntu"
-- **Monthly Search Volume:** 9,800
 - **Baseline Organic Position:** Position #4
 - **Incumbent Snippet Holder:** A generalist Linux blog
 
 #### The Initial Problem
 
-Google displayed a numbered list snippet. Analyzing the incumbent snippet with Ollagraph revealed two flaws:
+Google displays a numbered list snippet. Analyzing the incumbent snippet with Ollagraph reveals two flaws:
 
-- **Truncation:** Three of the six steps exceeded 135 characters, causing Google to truncate the steps with ellipses (...).
-- **Missing Prerequisite:** The incumbent skipped firewall and IP forwarding steps, resulting in a low completeness score during passage evaluation.
+- **Truncation:** Three of the six steps exceed 135 characters, causing Google to truncate the steps with ellipses (...).
+- **Missing Prerequisite:** The incumbent skips firewall and IP forwarding steps, resulting in a low completeness score during passage evaluation.
 
-Our client’s page ranked at position four with a thorough guide, but their instructions used long paragraphs under separate H3 tags, which prevented automated chunking.
+Your page ranks at position four with a thorough guide, but its instructions use long paragraphs under separate H3 tags, which prevents automated chunking.
 
 #### The Technical Remediation
 
-We injected a dedicated procedural answer block directly under the H1 introduction:
+Add a dedicated procedural answer block directly under the H1 introduction:
 
 ```html
 <h2>Quick Setup: Configure WireGuard Mesh on Ubuntu in 7 Steps</h2>
@@ -295,34 +287,26 @@ We injected a dedicated procedural answer block directly under the H1 introducti
 </ol>
 ```
 
-#### The Business Impact
-
-- **Time to Capture:** 9 days.
-- **SERP Outcome:** Won Position Zero while maintaining organic position #4 below.
-- **Click-Through Rate:** CTR jumped from 3.8% to 19.4%, capturing the majority of developer search traffic for that query cluster.
-
 ## 8. Performance & Benchmarks
 
-To quantify the operational and traffic impact of programmatic snippet capture, we analyzed 450 enterprise search terms across B2B SaaS, FinTech, and developer infrastructure over a six-month evaluation cycle.
+To measure the impact of programmatic snippet work, pick a fixed cohort of your own keywords that rank in positions 1–5 and record a baseline before you change any content. Then re-measure after each remediation pass.
 
-### The 450-Keyword Remediation Benchmark
+### What to Track
 
-| Performance Metric | Pre-Remediation Baseline | Post-First Pass Remediation | Net Lift / Improvement |
-| :--- | :--- | :--- | :--- |
-| Tracked Keywords in Positions 1–5 | 450 | 450 | Baseline Cohort |
-| Active Snippets on Target SERPs | 388 (86.2%) | 388 (86.2%) | SERP Availability Rate |
-| Snippets Owned by Client Domains | 42 (10.8%) | 247 (63.7%) | +488% Snippet Growth |
-| Median Citation Readiness Score | 44 / 100 | 82 / 100 | +86.3% Extractability Lift |
-| Average Organic CTR Across Portfolio | 6.2% | 17.8% | +187% CTR Lift |
-| Average Time to Snippet Capture | — | 8.4 Days | Fast Algorithmic Feedback |
-| Capture Success Rate: Tables | — | 81.2% (104 of 128) | Highest Structural Confidence |
-| Capture Success Rate: Lists | — | 67.4% (89 of 132) | High Procedural Confidence |
-| Capture Success Rate: Paragraphs | — | 56.1% (54 of 96) | Sensitive to Word Count Boundaries |
+| Metric | How to Measure |
+| :--- | :--- |
+| Tracked keywords in positions 1–5 | Your fixed cohort; keep it constant between measurements |
+| Active snippets on target SERPs | Share of cohort queries whose SERP shows a featured snippet (from your rank tracker) |
+| Snippets owned by your domain | Count before and after remediation |
+| Median citation readiness score | `/v1/aeo/citation-readiness` on each target page, before and after |
+| Average organic CTR | Google Search Console, same queries and comparable date ranges |
+| Time to snippet capture | Days from re-index to the snippet switching to your page |
+| Capture rate by format | Split outcomes by tables, lists, and paragraphs |
 
-### Analysis and Insights
+### What to Look For
 
-- **Tables Have the Highest Win Rate (81.2%):** Search engines strongly prefer structured data. When an existing snippet is text-only and a top-5 ranking page introduces a clean, semantic HTML `<table>`, the search algorithm quickly switches to the table format because it offers higher information density.
-- **Paragraph Snippets Require Precision:** Paragraph snippets exhibited the lowest capture rate (56.1%) because competitors frequently update text. Winning paragraph snippets requires strict adherence to the 42–58 word envelope and complete elimination of relative pronouns.
+- **Tables are the format to try first:** When an existing snippet is text-only and a top-5 ranking page introduces a clean, semantic HTML `<table>`, the search engine may switch to the table format because it offers higher information density. Compare capture rates by format in your own cohort before generalizing.
+- **Paragraph Snippets Require Precision:** Competitors update paragraph text often, so paragraph snippets are harder to win and hold. Keep answers within the 42–58 word envelope and remove relative pronouns.
 
 ## 9. Security, Crawl Hygiene & Compliance Considerations
 
@@ -458,7 +442,7 @@ To minimize API consumption across enterprise portfolios:
 ## 16. Frequently Asked Questions (FAQs)
 
 ### Q1. Can our page capture a featured snippet if it currently ranks at position #7?
-In rare cases (under 5% of observed SERPs), Google extracts a snippet from a page ranking between positions 6 and 8. However, the probability is low. The search engine’s retrieval pipeline restricts passage extraction candidates primarily to the top five ranked documents. The recommended strategy is to apply standard on-page SEO to reach position #4 or #5 first, and then apply snippet passage refactoring to win Position Zero.
+In rare cases, Google extracts a snippet from a page ranking between positions 6 and 8. However, the probability is low. The search engine’s retrieval pipeline restricts passage extraction candidates primarily to the top five ranked documents. The recommended strategy is to apply standard on-page SEO to reach position #4 or #5 first, and then apply snippet passage refactoring to win Position Zero.
 
 ### Q2. How long does it take for a snippet to update after deploying optimized content?
 If the URL has high crawl priority, Google typically re-indexes the page within 48 to 72 hours. Snippet changes frequently take effect immediately upon re-indexing. For lower-tier pages, the cycle can take 7 to 14 days. You can accelerate re-indexing by submitting the updated URL via Google Search Console or updating your XML sitemap's `<lastmod>` tag.

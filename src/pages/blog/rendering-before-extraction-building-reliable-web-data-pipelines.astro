@@ -255,22 +255,29 @@ result = await orchestrator.render(url, readiness_selector="[data-product-price]
     return await page.content()</code></pre>
 
 <h3>Example 3: Ollagraph API Integration</h3>
-<pre><code>import httpx
-async def render_via_ollagraph(url):
-    async with httpx.AsyncClient() as client:
+<p>Ollagraph's <em>/v1/render</em> takes just a <em>url</em> and returns the post-JavaScript HTML. It does not score quality or capture evidence, so the quality gate runs in your own code.</p>
+<pre><code>import re
+import httpx
+
+async def render_via_ollagraph(url, min_text_bytes=2048):
+    async with httpx.AsyncClient(timeout=90) as client:
         response = await client.post(
             "https://api.ollagraph.com/v1/render",
-            json=&#123;
-                "url": url,
-                "render_mode": "smart",
-                "readiness": &#123;"strategy": "auto", "timeout_ms": 20000&#125;,
-                "quality": &#123;"min_text_bytes": 2048&#125;,
-                "evidence": &#123;"capture_dom": True, "capture_console": True&#125;
-            &#125;,
+            json=&#123;"url": url&#125;,
             headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;
         )
-        return response.json()
-# Returns: rendered_html, quality_score, evidence, render_metadata</code></pre>
+        data = response.json()
+    if data.get("status") != "success":
+        raise RuntimeError(f"Render failed: &#123;data.get('error')&#125;")
+
+    # Your own quality gate: fail closed if the rendered page is too thin
+    html = data["html"]
+    text = re.sub(r"(?s)&lt;(script|style)[^&gt;]*&gt;.*?&lt;/\1&gt;|&lt;[^&gt;]+&gt;", " ", html)
+    text = " ".join(text.split())
+    if len(text.encode()) &lt; min_text_bytes:
+        raise RuntimeError(f"Low-quality render: &#123;len(text)&#125; chars of text")
+    return &#123;"html": html, "final_url": data["final_url"], "text_length": len(text)&#125;
+# /v1/render returns: status, url, final_url, html, tier_used, status_code</code></pre>
 
 <h2>11. Performance &amp; Benchmarks</h2>
 <p>Benchmarked across 500 pages from diverse sites (e-commerce SPAs, news, documentation, dashboards).</p>
@@ -387,7 +394,7 @@ Managed render API          Very High      $$$     Very Low      Teams without b
 <pre><code>Tool                     Pooling   Readiness Options                 Quality Signals      Evidence
 Playwright               Manual    networkidle, selector, custom JS  Manual               Manual
 Puppeteer                Manual    networkidle, selector             Manual               Manual
-Ollagraph Render API     Built-in  Auto, selector, custom JS         Built-in scoring     Built-in
+Ollagraph /v1/render     Managed   wait_until (on /v1/scrape)        Your code            Your code
 Managed browser service  Built-in  networkidle, selector             Limited              Limited</code></pre>
 
 <p>Build your own if you have the engineering capacity, need full control over browser configuration, and want to avoid per-render costs. Expect 4–8 weeks to build a production-grade render layer with pooling, readiness detection, and quality analysis.</p>
@@ -459,7 +466,7 @@ Managed browser service  Built-in  networkidle, selector             Limited    
 
 <p>The fix requires treating rendering as a first-class pipeline stage with its own infrastructure, quality signals, and failure modes. Define readiness per pipeline, not per browser. Collect evidence for every render. Fail closed on low quality. Pool browsers but isolate contexts. Never assume that because a page loaded, it rendered completely.</p>
 
-<p>At Ollagraph, we built these patterns into our rendering engine because we saw too many teams waste weeks debugging pipelines that "mostly worked." The render layer is the difference between a pipeline you trust and a pipeline you hope works.</p>
+<p>Ollagraph's /v1/render runs the managed browser step for you; the readiness thresholds, quality gate, and evidence capture stay in your pipeline, where your definition of "ready" lives. The render layer is the difference between a pipeline you trust and a pipeline you hope works.</p>
 
 <p>Ready to build a reliable render layer? Try Ollagraph's render API →</p>
 
@@ -469,9 +476,9 @@ Managed browser service  Built-in  networkidle, selector             Limited    
   <li>Playwright Documentation: Auto-waiting and Network Events. https://playwright.dev/docs/network</li>
   <li>Chrome DevTools Protocol: Page Events and Lifecycle. https://chromedevtools.github.io/devtools-protocol/tot/Page/</li>
   <li>React Hydration Documentation. https://react.dev/reference/react-dom/client/hydrateRoot</li>
-  <li>Ollagraph Render API Documentation. https://ollagraph.com/docs/render-api</li>
-  <li>Static Fetch vs Headless Browser. https://ollagraph.com/blog/static-fetch-vs-headless-browser-web-scraping-strategy</li>
-  <li>JavaScript Rendering to Deterministic Markdown. https://ollagraph.com/blog/javascript-rendering-to-markdown-for-ai-ready-content</li>
+  <li>Ollagraph Render API Documentation. https://ollagraph.com/docs</li>
+  <li>Static Fetch vs Headless Browser. https://ollagraph.com/blog/static-fetch-vs-headless-browser-choosing-the-right-web-scraping-strategy</li>
+  <li>JavaScript Rendering to Deterministic Markdown. https://ollagraph.com/blog/markdown-conversion-for-dynamic-websites-javascript-rendering-for-ai-ready</li>
   <li>Web Scraping at Scale. https://ollagraph.com/blog/web-scraping-at-scale</li>
 </ul>
 </Article>

@@ -14,14 +14,14 @@ tags: ['ai-search', 'rag', 'guides', 'seo']
 
 An AI agent that can't tell the difference between "Apple the company" and "apple the fruit" isn't ready for production. Entity extraction — pulling typed, named entities like companies, people, products, and organizations out of unstructured text — is the layer that turns vague web content into actionable data for agents. Without it, your agent is reading paragraphs. With it, your agent is reading facts.
 
-This article covers the full stack: how to extract entities from web pages, how to resolve ambiguous names against known knowledge bases, how to score confidence so your agent knows when to ask for clarification, and how to structure the output so downstream tools — vector stores, knowledge graphs, MCP servers — can consume it directly. We tested these approaches against real-world pages: Y Combinator startup directories, Crunchbase competitor lists, SaaS pricing pages, and news articles with multiple people and organizations. The patterns hold across all of them.
+This article covers the full stack: how to extract entities from web pages, how to resolve ambiguous names against known knowledge bases, how to score confidence so your agent knows when to ask for clarification, and how to structure the output so downstream tools — vector stores, knowledge graphs, MCP servers — can consume it directly.
 
 ## Key Takeaways
 
 - Entity extraction for AI agents requires typed output (company, person, product, organization) with confidence scores, not just raw text spans.
-- Off-the-shelf NER models miss 30–50% of domain-specific entities like product names, startup names, and industry-specific organizations.
-- Entity resolution — linking extracted names to canonical knowledge bases — cuts ambiguity errors by 60–80% in production agent systems.
-- The three-stage pipeline (extract → resolve → structure) consistently outperforms single-pass LLM extraction on both recall and precision for multi-entity pages.
+- Off-the-shelf NER models often miss domain-specific entities like product names, startup names, and industry-specific organizations.
+- Entity resolution — linking extracted names to canonical knowledge bases — is what removes ambiguity errors before they reach an agent.
+- The three-stage pipeline (extract → resolve → structure) gives each stage one job, so recall and precision problems on multi-entity pages are easier to find and fix than in a single LLM pass.
 - Confidence scoring lets agents decide when to act vs. when to ask for clarification, reducing hallucinated actions from bad entity data.
 - Schema-driven extraction with typed entity contracts produces output that vector stores, graph databases, and MCP tools can consume without post-processing.
 - Ollagraph supplies the fetch layer for this pipeline — clean page text, the Organization, Person and Product records a page already publishes as JSON-LD, and contact details — while NER and resolution run in your own code.
@@ -32,11 +32,11 @@ You've built an AI agent that monitors competitor pricing. It scrapes five SaaS 
 
 This is the core problem. Web pages don't come pre-labeled with entity boundaries. A single page can mention fifteen companies, thirty people, and forty product names — many of them ambiguous. "Salesforce" might refer to the company, the CRM platform, or a specific product module. "Michael" might be a CEO, a support rep, or a reviewer on G2. An agent that can't resolve these ambiguities will make wrong decisions.
 
-The consequences aren't theoretical. We've seen agent pipelines that:
+The consequences are concrete. Without typing and resolution, an agent pipeline can:
 
-- Flagged a competitor's job posting as a new product launch because the NER model tagged "Senior Product Manager" as a product entity.
-- Mixed up two companies with similar names during a market research crawl, producing a competitive analysis that compared the wrong companies.
-- Extracted "John Smith" from a byline and "John Smith" from a customer testimonial on the same page, treated them as the same person, and attributed the testimonial to the journalist.
+- Flag a competitor's job posting as a new product launch because the NER model tagged "Senior Product Manager" as a product entity.
+- Mix up two companies with similar names during a market research crawl, producing a competitive analysis that compares the wrong companies.
+- Extract "John Smith" from a byline and "John Smith" from a customer testimonial on the same page, treat them as the same person, and attribute the testimonial to the journalist.
 
 Each of these errors traces back to the same root cause: the extraction layer treated all text spans equally, without entity typing, resolution, or disambiguation.
 
@@ -82,7 +82,7 @@ The extraction stage takes raw HTML or Markdown and produces a list of entity me
 ]
 ```
 
-The extraction model needs to handle entity types that matter for agents, not just the standard four. In our testing, the most frequently needed types for agent workflows are:
+The extraction model needs to handle entity types that matter for agents, not just the standard four. The types agent workflows most often need are:
 
 - **company** — Example: "Stripe", "Acme Corp" — Why agents need it: Competitor monitoring, lead enrichment, vendor research
 - **person** — Example: "Satya Nadella", "Jane Doe" — Why agents need it: Author attribution, executive tracking, testimonial verification
@@ -365,57 +365,25 @@ Your normalization step should distinguish sale prices from compare-at prices an
 
 ## 8. Performance & Benchmarks
 
-We compared three common extraction approaches: spaCy (en_core_web_lg), GLiNER (zero-shot), and GPT-4o (prompt-based extraction). The test set included 200 web pages across five categories: news articles, SaaS pricing pages, startup directories, job listings, and product documentation.
+Extraction quality depends heavily on page type and entity type, so measure it on the pages your agent actually reads. To compare approaches — for example spaCy (en_core_web_lg), GLiNER (zero-shot), and an LLM with prompt-based extraction — build a test set from your own page categories (news articles, SaaS pricing pages, startup directories, job listings, product documentation) and hand-label the entities on each page.
 
 ### Recall by Entity Type
 
-```
-Entity Type    spaCy   GLiNER  GPT-4o
-Company        62%     71%     88%
-Person         78%     74%     91%
-Product        34%     58%     82%
-Organization   71%     69%     85%
-Location       83%     76%     90%
-Event          41%     52%     79%
-Job Title      28%     61%     84%
-Email/Phone    12%     44%     76%
-```
-
-spaCy's low product recall (34%) is expected — its training data (OntoNotes 5.0) barely covers product entities. GLiNER does better with zero-shot prompting but struggles with email and phone patterns; a deterministic extractor such as Ollagraph's `/v1/extract/contacts` is a better fit for those. GPT-4o shows strong recall across the board but at 10–20x the latency and cost.
+For each system, measure recall per entity type: company, person, product, organization, location, event, job title, and email/phone. Expect spaCy to struggle with products, because its training data (OntoNotes 5.0) barely covers product entities. Zero-shot models like GLiNER can struggle with email and phone patterns; a deterministic extractor such as Ollagraph's `/v1/extract/contacts` is a better fit for those. If you include an LLM, check whether any extra recall is worth its higher latency and cost.
 
 ### Precision (Accuracy of Extracted Entities)
 
-```
-Entity Type    spaCy   GLiNER  GPT-4o
-Company        84%     76%     91%
-Person         91%     82%     93%
-Product        72%     68%     87%
-Organization   86%     74%     89%
-```
+Measure precision per entity type as well: the share of extracted entities that are real, correctly typed entities in the source text. A system with high recall and low precision floods your agent with false positives.
 
 ### Latency per Page
 
-```
-System      Avg Latency   P95 Latency   Cost per 1K Pages
-spaCy       180ms         320ms         $0.00 (local)
-GLiNER      420ms         680ms         $0.00 (local)
-GPT-4o      4.2s          7.8s          ~$15.00
-```
+Record average and P95 latency per page, and cost per 1,000 pages, for each system. Local models like spaCy and GLiNER cost only your own compute; hosted LLMs bill per token.
 
 These figures cover the extraction step only. Fetching and cleaning the page adds its own latency, which depends mostly on the target site.
 
 ### Resolution Accuracy
 
-The resolution stage was tested on 500 ambiguous entity mentions (e.g., "Amazon" in e-commerce vs. cloud vs. geography contexts).
-
-```
-System                          Resolution Accuracy
-No resolution (raw NER)         58%
-Wikidata exact match            72%
-Wikidata + context scoring      84%
-```
-
-Adding context scoring to Wikidata matching gives the biggest jump. The remaining errors typically involve very obscure entities with minimal context — a startup mentioned once in a press release with no Wikidata entry and no Crunchbase profile.
+Test the resolution stage separately, on a labeled set of ambiguous entity mentions (e.g., "Amazon" in e-commerce vs. cloud vs. geography contexts). Compare raw NER with no resolution, Wikidata exact match, and Wikidata plus context scoring. Expect the remaining errors to cluster around very obscure entities with minimal context — a startup mentioned once in a press release with no Wikidata entry and no Crunchbase profile.
 
 ## 9. Security Considerations
 
@@ -453,11 +421,11 @@ If "Acme Corp" appears in the header, the body, and the footer, a naive pipeline
 
 ## 11. Best Practices
 
-Set confidence thresholds per entity type. A 0.7 threshold might work for companies but miss too many products. In our testing, product entities need a lower threshold (0.5) because product names are more varied and less standardized than company names. Person names can use a higher threshold (0.8) because false positives — tagging "Summer Sale" as a person — are more damaging.
+Set confidence thresholds per entity type. A 0.7 threshold might work for companies but miss too many products. Product entities usually need a lower threshold (try 0.5) because product names are more varied and less standardized than company names. Person names can use a higher threshold (0.8) because false positives — tagging "Summer Sale" as a person — are more damaging.
 
 Always run resolution for production agents. Raw NER without resolution produces entity mentions, not entity records. A mention of "Microsoft" is useful for search indexing. A resolved record linking to Wikidata Q2283 with ticker MSFT is useful for an agent that needs to look up the stock price. The difference determines whether your agent can act or just display.
 
-Cache resolved entities. If you're processing the same URLs daily (competitor pricing pages, news sources, job boards), cache the resolved entity records and only re-extract when the page content changes. This cuts costs by 80–90% for recurring crawls.
+Cache resolved entities. If you're processing the same URLs daily (competitor pricing pages, news sources, job boards), cache the resolved entity records and only re-extract when the page content changes. On recurring crawls, that means you stop paying to re-process pages that haven't changed.
 
 These three practices — per-type thresholds, resolution, and caching — form the foundation of a production entity extraction pipeline. The next two are about making the output actually usable by your agent.
 
@@ -473,7 +441,7 @@ Flattening the product-variant relationship into a single record type. A product
 
 These two mistakes account for roughly 70% of data quality issues in e-commerce extraction pipelines.
 
-Trusting JSON-LD without cross-referencing it. JSON-LD is the most reliable source but not always accurate. We found cases where JSON-LD said "InStock" but the page showed "Sold Out." Cross-reference with rendered DOM signals.
+Trusting JSON-LD without cross-referencing it. JSON-LD is the most reliable source but not always accurate. JSON-LD can say "InStock" while the page shows "Sold Out." Cross-reference with rendered DOM signals.
 
 Using the same wait timeout for all sites. A Shopify store might be ready in 2 seconds. A Magento store might need 8 seconds. Use network-idle wait strategy that adapts to each page's loading pattern.
 
@@ -540,7 +508,7 @@ Return them as unresolved entities, with a flag and a confidence score based sol
 
 ### Q5. Is entity extraction accurate enough for automated decision-making?
 
-At the 84% resolution accuracy we measured for Wikidata plus context scoring, it depends on your risk tolerance. For competitive intelligence (flagging price changes), that is workable—errors show up as occasional false flags that a human can catch in review. For automated trading or compliance decisions, it isn't enough—you'd want human-in-the-loop validation for low-confidence entities. We've seen teams set different confidence thresholds per action type: auto-approve above 0.95, flag for review between 0.7 and 0.95, and discard below 0.7.
+It depends on the resolution accuracy you measure on your own pages and on your risk tolerance. For competitive intelligence (flagging price changes), imperfect accuracy can be workable—errors show up as occasional false flags that a human can catch in review. For automated trading or compliance decisions, you'd want human-in-the-loop validation for low-confidence entities. One common pattern is to set different confidence thresholds per action type: auto-approve above 0.95, flag for review between 0.7 and 0.95, and discard below 0.7.
 
 ### Q6. How does the pipeline handle entities in tables?
 

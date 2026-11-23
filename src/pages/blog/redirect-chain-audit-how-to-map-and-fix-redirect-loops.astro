@@ -19,7 +19,7 @@ const faqs = [
   kind="blog"
   faqs={faqs}
 >
-<p><strong>Meta Description:</strong> Learn how to audit redirect chains, detect redirect loops, and fix them before they destroy your crawl budget and rankings. Includes mapping techniques, CLI tools, API automation, and real chain data from a 200K-page audit.</p>
+<p><strong>Meta Description:</strong> Learn how to audit redirect chains, detect redirect loops, and fix them before they destroy your crawl budget and rankings. Includes mapping techniques, CLI tools, API automation, and example chains for the most common patterns.</p>
 <p><strong>Primary Keyword:</strong> redirect chain audit</p>
 <p><strong>Secondary Keywords:</strong> redirect loop detection, map redirect chains, fix redirect loops, redirect chain checker API, HTTP redirect tracing</p>
 <p><strong>Pillar Page:</strong> Technical SEO Audit API</p>
@@ -28,23 +28,22 @@ const faqs = [
 <p><strong>Versions Tested:</strong> Ollagraph /v1/seo/redirect-chain-map (API v1), curl 8.x, Chrome 126, Screaming Frog 21.0</p>
 
 <h2>Executive Summary</h2>
-<p>A redirect chain audit traces every HTTP redirect path on a website — from initial URL to final destination — and identifies chains that are too long, looping, broken, or leaking link equity. Left unchecked, redirect chains silently erode page rank, waste crawl budget, and create indexation failures invisible to most monitoring tools. This article covers how to map redirect chains using curl, Python, Screaming Frog, and the Ollagraph Redirect Chain Map API. It includes a decision framework for prioritizing fixes, real chain data from a 200,000-page e-commerce audit, and a production checklist. The core takeaway: any chain longer than three hops should be collapsed, and any loop must be treated as a critical incident.</p>
+<p>A redirect chain audit traces every HTTP redirect path on a website — from initial URL to final destination — and identifies chains that are too long, looping, broken, or leaking link equity. Left unchecked, redirect chains silently erode page rank, waste crawl budget, and create indexation failures invisible to most monitoring tools. This article covers how to map redirect chains using curl, Python, Screaming Frog, and the Ollagraph Redirect Chain Map API. It includes a decision framework for prioritizing fixes, example chains for the most common patterns, and a production checklist. The core takeaway: any chain longer than three hops should be collapsed, and any loop must be treated as a critical incident.</p>
 
 <h2>Key Takeaways</h2>
 <ul>
-  <li>A redirect chain longer than three hops dilutes 10–15% of link equity per hop and adds 100–200ms of latency per hop.</li>
+  <li>A redirect chain longer than three hops adds a full request round trip per hop and raises the chance a crawler stops before the final URL.</li>
   <li>Redirect loops are a crawl budget catastrophe — a single loop can consume an entire site's daily crawl allocation in under an hour.</li>
   <li>The most common loop causes are CMS plugin conflicts, CDN misconfigurations, HTTPS redirect wars, and trailing-slash normalization loops.</li>
   <li>Mapping redirect chains manually with <code>curl -IL</code> works for spot checks but does not scale beyond a handful of URLs.</li>
   <li>The Ollagraph <code>/v1/seo/redirect-chain-map</code> API returns hop-by-hop JSON with the URL, status code and Location header of every redirect in the chain, plus total time, a 0-100 score and flagged issues.</li>
-  <li>Collapsing a five-hop chain to a single 301 redirect recovers roughly 40–60% of lost PageRank flow and cuts page load time by 300–600ms.</li>
+  <li>Collapsing a five-hop chain to a single 301 redirect removes four round trips from every request and gives crawlers a direct path to the final URL.</li>
   <li>Automated redirect chain audits should run weekly on any site with more than 10,000 pages or frequent CMS changes.</li>
 </ul>
 
 <h2>1. Problem Statement</h2>
 <p>You deploy a site migration. URLs change. You set up 301 redirects. Six months later, organic traffic is down 22% and you cannot figure out why. Google Search Console shows no manual actions. Core Web Vitals are fine. But crawl stats tell a different story: Googlebot is crawling 80% fewer pages per day, and the "Crawled — currently not indexed" count is climbing.</p>
 <p>You run <code>curl -IL</code> on a few old URLs and find the problem. <code>/blog/2024/q3-report</code> redirects to <code>/blog/2024/q3-report/</code> (trailing slash added), which redirects to <code>/blog/2024/q3-report</code> (trailing slash removed by a different rule), which redirects to <code>/insights/2024/q3-report</code> (category restructure), which redirects to <code>/insights/2024/q3-report/</code> (another trailing slash rule), which finally lands on <code>/insights/2024/q3-report</code>. Five hops. Googlebot hit that chain, spent its crawl budget, and moved on.</p>
-<p>This is not a hypothetical. We audited a 200,000-page e-commerce site in early 2026 and found 1,847 redirect chains longer than three hops, 92 chains longer than eight hops, and 14 redirect loops that had been running for over a year. The loops alone consumed an estimated 340,000 crawl requests — roughly 17% of the site's monthly crawl budget — returning nothing but 302s in an infinite circle.</p>
 <p>The problem is that redirect chains are invisible to most monitoring tools. Page speed tests check the final URL. Uptime monitors check the landing page. SEO dashboards report the canonical URL. Nobody looks at the path the request took to get there.</p>
 <p>This article is for technical SEOs, site reliability engineers, and engineering leads who manage sites at scale. If you have ever deployed a redirect and wondered whether it actually works the way you intended, or spent a Friday afternoon tracing a URL through five hops with <code>curl -I</code> and a spreadsheet, this is for you.</p>
 
@@ -52,7 +51,7 @@ const faqs = [
 <p>Redirect chains have existed as long as HTTP has. The 301 status code was defined in RFC 2616 back in 1999, and the mechanics have not changed much since. But the consequences have.</p>
 <p>In the early 2000s, a three-hop redirect chain added maybe 200ms of latency. Users on dial-up did not notice. Googlebot had generous crawl budgets. A redirect loop might waste a few dozen requests before the crawler gave up.</p>
 <p>Three things changed between 2020 and 2026 that made redirect chain hygiene critical.</p>
-<p>First, Google's crawl budget became the binding constraint for large sites. A single redirect loop can burn through a site's daily cap in under an hour. We have seen it happen: a misconfigured CDN rule created a <code>/en</code> → <code>/en/</code> → <code>/en</code> loop that consumed 1.2 million crawl requests in a single day.</p>
+<p>First, Google's crawl budget became the binding constraint for large sites. A single redirect loop can burn through a site's daily cap in under an hour.</p>
 <p>Second, the shift to HTTPS introduced a new class of redirect loops. An HSTS redirect from <code>http://</code> to <code>https://</code> combined with a CMS that generates <code>http://</code> canonical URLs creates a loop: the CMS says the canonical is HTTP, the server redirects to HTTPS, but the canonical tag points back to HTTP.</p>
 <p>Third, the proliferation of CMS plugins, CDN rules, reverse proxy configurations, and edge workers created a combinatorial explosion of redirect sources. A typical enterprise site in 2026 has redirect rules in at least four places: the CMS, the CDN, the web server, and the application framework. These layers do not coordinate. A rule added in one layer can conflict with a rule in another, producing chains that no single engineer intended.</p>
 <p>The old approach — set up a redirect, test it once in a browser, and forget about it — no longer works.</p>
@@ -102,7 +101,7 @@ const faqs = [
 </ul>
 
 <h3>How Loops Form</h3>
-<p>A redirect loop occurs when a chain contains a cycle: URL A redirects to B, B redirects to C, and C redirects back to A. Common loop patterns we have seen in production:</p>
+<p>A redirect loop occurs when a chain contains a cycle: URL A redirects to B, B redirects to C, and C redirects back to A. Common loop patterns:</p>
 <ul>
   <li><strong>Trailing slash wars:</strong> CMS adds trailing slash. CDN removes trailing slash. CMS adds it back. Loop.</li>
   <li><strong>WWW vs. non-WWW with HTTPS:</strong> http://example.com → https://www.example.com → http://example.com (canonical tag points to non-www HTTP). Loop.</li>
@@ -113,17 +112,6 @@ const faqs = [
 
 <h3>Link Equity Dilution Per Hop</h3>
 <p>Every redirect hop passes only a fraction of the original page's link equity to the next URL. Google has confirmed that 301 redirects pass full PageRank, but the practical reality is more nuanced. Each hop increases the probability of the crawler giving up before reaching the final URL.</p>
-
-<p>Industry benchmarks and our own testing suggest this dilution pattern:</p>
-<pre><code>Hops   Estimated PageRank Flow   Crawl Completion Rate
-1      100%                      ~99%
-2      90–95%                    ~95%
-3      80–90%                    ~88%
-4      65–80%                    ~75%
-5      50–65%                    ~60%
-6+     &lt;50%                      ~40%</code></pre>
-
-<p>These numbers are derived from observed crawl behavior across hundreds of sites we have audited. Beyond three hops, the probability of full PageRank transfer drops significantly.</p>
 
 <h2>5. Components &amp; Workflow of a Redirect Chain Audit</h2>
 
@@ -295,9 +283,9 @@ print(json.dumps(result, indent=2))</code></pre>
     -d "&#123;\"url\": \"$url\"&#125;" | jq -c '&#123;starting_url, final_url, hop_count, issues, error&#125;'
 done &lt; urls.txt</code></pre>
 
-<h2>7. Examples: Real-World Redirect Chain Data</h2>
+<h2>7. Examples: Common Redirect Chain Patterns</h2>
 
-<p>Here are three real chains we found during a February 2026 audit of a 200,000-page e-commerce site. The names and URLs are anonymized, but the chain structures are exact.</p>
+<p>Here are three example chains that show the patterns a redirect audit most often turns up. The URLs are illustrative.</p>
 
 <h3>Example 1: The Trailing Slash War (3 Hops, Loop Risk)</h3>
 
@@ -307,7 +295,7 @@ done &lt; urls.txt</code></pre>
   Hop 3:  301 → https://store.example.com/category/shoes/   (CDN adds it back)
   Final:  200  https://store.example.com/category/shoes/</code></pre>
 
-<p>This chain contains a latent loop. The CDN adds a trailing slash. The CMS removes it. The CDN adds it back. If the CMS rule fires before the CDN rule on a different request path, the chain becomes infinite. We found 340 URLs in this pattern. The fix: disable the CMS trailing slash rule and let the CDN handle it exclusively.</p>
+<p>This chain contains a latent loop. The CDN adds a trailing slash. The CMS removes it. The CDN adds it back. If the CMS rule fires before the CDN rule on a different request path, the chain becomes infinite. The fix: disable the CMS trailing slash rule and let the CDN handle it exclusively.</p>
 
 <h3>Example 2: The HTTPS Migration Ghost (5 Hops)</h3>
 
@@ -319,7 +307,7 @@ done &lt; urls.txt</code></pre>
   Hop 5:  301 → https://www.blog.example.com/insights/post-title/ (CDN trailing slash)
   Final:  200  https://www.blog.example.com/insights/post-title/</code></pre>
 
-<p>Five hops. Each was added by a different team at a different time. No single person knew the full chain existed. The fix: update the original redirect rule to point directly to the final URL, collapsing five hops into one.</p>
+<p>Five hops. Chains like this build up when each hop is added by a different team at a different time, so no single person knows the full chain exists. The fix: update the original redirect rule to point directly to the final URL, collapsing five hops into one.</p>
 
 <h3>Example 3: The Affiliate Tracking Loop (Loop, Critical)</h3>
 
@@ -329,48 +317,29 @@ done &lt; urls.txt</code></pre>
   Hop 3:  302 → https://store.example.com/product/xyz?ref=affiliate123&amp;track=1
   ...infinite...</code></pre>
 
-<p>An affiliate tracking plugin added a track=1 parameter. A URL normalization rule stripped unknown parameters. The plugin re-added it. Googlebot hit this loop and spent 47,000 requests in a single day on this one URL. The fix: add track to the parameter allowlist.</p>
+<p>An affiliate tracking plugin added a track=1 parameter. A URL normalization rule stripped unknown parameters. The plugin re-added it. Every crawler request to this URL goes round the loop until the crawler gives up. The fix: add track to the parameter allowlist.</p>
 
 <h2>8. Performance &amp; Benchmarks</h2>
 
-<p>We ran a controlled benchmark to measure the real-world impact of redirect chains on page load time. The test environment: an Nginx server on a c6i.large AWS instance with CloudFront CDN, serving a 200 KB HTML page.</p>
+<p>To see what redirect chains cost on your own stack, benchmark them directly. Set up test URLs on your real server and CDN that redirect 1, 2, 3 and up to 8 times before landing on the same page.</p>
 
 <h3>Test Methodology</h3>
 
 <ul>
-  <li>Location: Single AWS us-east-1 region</li>
+  <li>Location: Run from a single region so network distance stays constant across chain lengths</li>
   <li>Client: curl with -w "%&#123;time_total&#125;" for timing, plus Chrome DevTools</li>
   <li>Sample: 100 requests per chain length, cold cache</li>
 </ul>
 
-<h3>Results</h3>
+<h3>What to Record</h3>
 
-<pre><code>Chain Length    Avg TTFB (ms)    Avg Total Load (ms)    Crawl Budget Cost
-1 (direct)      210              890                    1 request
-2 hops          380              1,120                  2
-3 hops          540              1,350                  3
-4 hops          710              1,590                  4
-5 hops          890              1,840                  5
-6 hops          1,080            2,110                  6
-7 hops          1,280            2,390                  7
-8 hops          1,490            2,680                  8</code></pre>
+<ul>
+  <li><strong>Avg TTFB:</strong> curl -w "%&#123;time_starttransfer&#125;" against the first URL in the chain</li>
+  <li><strong>Avg total load:</strong> curl -w "%&#123;time_total&#125;", or the DevTools load event for a browser view</li>
+  <li><strong>Crawl budget cost:</strong> one crawler request per hop, plus the final 200</li>
+</ul>
 
-<p>Each additional hop added 170–200ms to TTFB. An 8-hop chain took 3x longer to load than a direct URL.</p>
-
-<h3>Link Equity Simulation</h3>
-
-<p>We modeled PageRank flow through chains of varying lengths on a 50,000-page graph with a damping factor of 0.85.</p>
-
-<pre><code>Chain Length    Simulated PageRank Flow to Final URL
-1 hop           100%
-2 hops          92%
-3 hops          84%
-4 hops          72%
-5 hops          58%
-6 hops          44%
-7 hops          31%
-8 hops          20%</code></pre>
-<p>Beyond 3 hops, the PageRank loss accelerates. A 5-hop chain passes barely half the original equity.</p>
+<p>Plot TTFB against chain length. The slope is the latency each extra hop costs on your stack, and it is the number to put in front of whoever owns the redirect rules.</p>
 
 <h2>9. Security Considerations</h2>
 <p>Redirect chains are not just an SEO problem. They are a security surface that attackers exploit.</p>
@@ -421,9 +390,6 @@ done &lt; urls.txt</code></pre>
   <li><strong>Use 301 for permanent moves, 302 for temporary ones.</strong> Search engines treat 301 as a permanent signal and transfer link equity. A 302 does not transfer equity.</li>
   <li><strong>Test every redirect with the Googlebot user-agent.</strong> CDN rules and WAF policies often treat bots differently. A redirect that works in Chrome may loop when accessed by Googlebot.</li>
   <li><strong>Run automated audits weekly.</strong> Redirect chains accumulate silently. A weekly audit catches new chains before they cause measurable damage.</li>
-</ul>
-<p>The pattern across every site we have audited is the same: redirect chains grow during migrations, CMS updates, and CDN configuration changes. A weekly audit catches them before they compound.</p>
-<ul>
   <li><strong>Document every redirect rule.</strong> Maintain a single source of truth for all redirect rules across all layers.</li>
   <li><strong>Set cache TTLs on redirect responses.</strong> A 301 with a 3600-second TTL tells the browser and CDN to cache the redirect for an hour. During migrations, use shorter TTLs (300 seconds).</li>
 </ul>
@@ -497,19 +463,19 @@ Ollagraph API            Yes                Loop per URL  Yes               Yes 
 <p>A redirect chain eventually reaches a final, non-redirect response. A redirect loop never terminates — it cycles through the same URLs indefinitely. Chains are a performance problem. Loops are a critical infrastructure failure.</p>
 
 <h3>Q2. How many redirect hops are too many?</h3>
-<p>Three hops is the maximum acceptable threshold. Chains of 4–5 hops should be collapsed. Chains of 6+ hops cause measurable damage to crawl efficiency and link equity. Googlebot follows up to 10 redirects, but the practical limit for preserving equity is much lower. We use a simple rule internally: if a chain needs more than three hops, it needs a rewrite.</p>
+<p>Three hops is the maximum acceptable threshold. Chains of 4–5 hops should be collapsed. Chains of 6+ hops cause measurable damage to crawl efficiency and link equity. Googlebot follows up to 10 redirects, but the practical limit for preserving equity is much lower. A simple rule: if a chain needs more than three hops, it needs a rewrite.</p>
 
 <h3>Q3. Do 302 redirects pass PageRank?</h3>
 <p>No. Google has stated that 302 redirects do not pass PageRank. If a 302 remains in place long enough, Google may treat it as permanent, but that is an exception, not a rule. Use 301 for permanent moves and 302 only for temporary situations like A/B testing or maintenance pages.</p>
 
 <h3>Q4. Can a redirect chain hurt my site's ranking directly?</h3>
-<p>Yes, through three mechanisms. Long chains dilute link equity. Chains consume crawl budget, so Googlebot indexes fewer pages. Chains increase page load time, which is a ranking factor. A 5-hop chain adds 500–800ms to load time.</p>
+<p>Yes, through three mechanisms. Long chains dilute link equity. Chains consume crawl budget, so Googlebot indexes fewer pages. Chains increase page load time, which is a ranking factor.</p>
 
 <h3>Q5. How do I find all redirect chains on my site without crawling every page?</h3>
 <p>Combine Google Search Console (export indexed URLs), your XML sitemap, and your CMS database (export URL aliases). Deduplicate and run through a bulk redirect chain checker. Ollagraph's /v1/seo/redirect-chain-map traces one URL per call (1 credit), so loop over the list with modest concurrency to get hop-by-hop data for every chain.</p>
 
 <h3>Q6. What causes a redirect loop?</h3>
-<p>Conflicting rules between layers (CMS vs. CDN vs. server), trailing slash normalization wars, WWW vs. non-WWW canonicalization with HSTS, language detection plugins, and affiliate tracking parameters that trigger re-adding and re-stripping cycles. The most common pattern we see is a CDN rule and a CMS rule fighting over the same URL.</p>
+<p>Conflicting rules between layers (CMS vs. CDN vs. server), trailing slash normalization wars, WWW vs. non-WWW canonicalization with HSTS, language detection plugins, and affiliate tracking parameters that trigger re-adding and re-stripping cycles. The most common pattern is a CDN rule and a CMS rule fighting over the same URL.</p>
 
 <h3>Q7. How do I fix a redirect loop?</h3>
 <p>Identify the conflicting rules and disable one. Standardize URL handling at a single layer — typically the CDN — and disable URL normalization rules in the CMS and web server. For parameter-based loops, add the conflicting parameter to an allowlist. Test with curl after every change.</p>
@@ -518,13 +484,13 @@ Ollagraph API            Yes                Loop per URL  Yes               Yes 
 <p>Use 302. A 302 tells search engines the redirect is temporary and the original URL should remain in the index. A 301 would cause the test variant to replace the original in search results, which is not what you want during a test.</p>
 
 <h3>Q9. How often should I run a redirect chain audit?</h3>
-<p>For sites with more than 10,000 pages or frequent CMS changes, run a full audit weekly. For smaller sites, monthly is sufficient. Also audit after every major deploy, CMS update, or CDN configuration change. We run ours every Sunday night and review results Monday morning.</p>
+<p>For sites with more than 10,000 pages or frequent CMS changes, run a full audit weekly. For smaller sites, monthly is sufficient. Also audit after every major deploy, CMS update, or CDN configuration change.</p>
 
 <h3>Q10. Does the Ollagraph API handle JavaScript redirects?</h3>
 <p>No. /v1/seo/redirect-chain-map traces HTTP-level redirects (3xx responses with a Location header) and does not execute JavaScript. For pages using window.location or meta refresh redirects, fetch the page with /v1/render, which loads it in a headless browser, and check where it ended up. HTTP-level tools miss these redirects entirely.</p>
 
 <h3>Q11. What is the cost of not fixing redirect chains?</h3>
-<p>The cost compounds. A single 5-hop chain on a page with 100 backlinks can leak 40–50% of link equity. Multiply by thousands of chains and the traffic loss is substantial. We have seen sites recover 15–30% of organic traffic within 60 days of collapsing all chains longer than 3 hops.</p>
+<p>The cost compounds. Every extra hop adds latency to each request and another chance for a crawler to stop before the final URL. Multiply by thousands of chains and the waste is substantial.</p>
 
 <h3>Q12. Can redirect chains cause security vulnerabilities?</h3>
 <p>Yes. Open redirect chains enable phishing. SSRF via redirect chains can expose internal infrastructure. Cache poisoning via redirect loops serves stale responses. Every redirect chain audit should include a security review.</p>

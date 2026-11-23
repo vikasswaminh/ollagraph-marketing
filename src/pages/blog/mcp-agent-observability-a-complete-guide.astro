@@ -432,16 +432,16 @@ Evidence Packet: /evidence/01J6.../9f2a... (stored)</code></pre>
 </ul>
 <p>If evidence packets are missing for failures, your debugging system will fail exactly when you need it.</p>
 
-<h3>What we tested (EEAT evidence)</h3>
-<p>In our lab setup, we instrumented an MCP tool server behind a local reverse proxy and ran four scenarios against the same tool:</p>
+<h3>A failure-injection test for your instrumentation</h3>
+<p>To check that your instrumentation works, put an MCP tool server behind a local reverse proxy and run four scenarios against the same tool:</p>
 <ul>
   <li>success path (valid schema)</li>
   <li>schema failure (missing required field)</li>
   <li>transport timeout (forced delay)</li>
   <li>completeness failure (simulated dropped client request)</li>
 </ul>
-<p>We measured: (1) whether the tool_call_id appeared in both client and server spans, (2) whether evidence packets were written for each failure class, and (3) whether the retry layer stopped deterministically for schema/policy failures.</p>
-<p>Result: with the decision tree + completeness checks enabled, we could classify incidents correctly from a single trace without re-running the tool. The biggest operational win was eliminating “retry storms” caused by treating schema failures as transient.</p>
+<p>Check: (1) whether the tool_call_id appears in both client and server spans, (2) whether evidence packets are written for each failure class, and (3) whether the retry layer stops deterministically for schema/policy failures.</p>
+<p>With the decision tree and completeness checks enabled, you should be able to classify each incident from a single trace without re-running the tool, and schema failures should never trigger a retry. Treating schema failures as transient is what causes “retry storms.”</p>
 
 <h2>9. Security Considerations</h2>
 <p>Observability systems can leak sensitive data if you treat logs as “free.”</p>
@@ -849,7 +849,6 @@ Tracing + evidence (recommended) | Timeline + replayable artifacts | More implem
   <li>Model Context Protocol (MCP) documentation (official): protocol overview, tool calling, and transport details.</li>
   <li>OpenTelemetry documentation (official): traces, spans, and context propagation concepts.</li>
   <li>OpenTelemetry semantic conventions (official): recommended attribute naming for consistent dashboards and queries.</li>
-  <li>Evidence-driven debugging patterns for agent pipelines (Ollagraph internal): evidence packets, validation gates, and retry decision trees.</li>
   <li>Incident response playbooks for distributed systems (general): failure classification, ownership routing, and evidence-first debugging.</li>
 </ul>
 

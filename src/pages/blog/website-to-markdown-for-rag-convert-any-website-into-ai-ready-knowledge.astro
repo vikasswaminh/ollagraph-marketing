@@ -399,7 +399,7 @@ https://example.com/knowledge-base/security	H2: Security &gt; H3: Data retention
 
 <h3>How to run the harness (procedure)</h3>
 
-<p>This section is intentionally procedural so you can reproduce results and paste them back into the blog.</p>
+<p>This section is intentionally procedural so you can reproduce results on your own pages.</p>
 
 <ol>
   <li>Create a dataset file (JSONL) with one record per URL, including <strong>expected_section_path</strong> and 3–5 queries.</li>
@@ -419,7 +419,7 @@ https://example.com/knowledge-base/security	H2: Security &gt; H3: Data retention
   <li>Generate a conversion diff for at least 3 pages (one success, one partial extraction, one table-heavy page).</li>
 </ol>
 
-<p>If you paste the resulting JSONL summary and diffs into the “Evidence-driven result” section, the post becomes fully evidence-backed.</p>
+<p>Compare the baseline and control summaries side by side. Together with the diffs, they are your evidence for whether a conversion change actually helped retrieval.</p>
 
 <h3>Expected output format (what your harness should emit)</h3>
 
@@ -437,24 +437,6 @@ https://example.com/knowledge-base/security	H2: Security &gt; H3: Data retention
     "expected_section_path": "H2: Pricing &gt; H3: Plans"
   &#125;
 &#125;</code></pre>
-
-<h3>Evidence-driven result (example)</h3>
-
-<p>In our internal test set of 120 pages across docs, blogs, and knowledge bases:</p>
-
-<ul>
-  <li>Deterministic Markdown + validation gate improved <strong>retrieval_proxy</strong> top-3 hit rate by 18–26% compared to “strip tags then chunk.”</li>
-  <li>Pages that failed validation (low evidence coverage) were skipped, which reduced “wrong citation” incidents by ~40%.</li>
-</ul>
-
-<h3>Mini benchmark table (example)</h3>
-
-<pre><code>Metric	Strip-tags + chunk	Deterministic Markdown + validation
-Main content ratio (avg)	0.41	0.73
-Structure score (avg)	0.62	0.88
-Evidence coverage pass rate	0.74	0.93
-Retrieval provenance top-3 match	0.56	0.72
-Wrong-citation incidents (per 100 answers)	7.8	4.6</code></pre>
 
 <h3>Before/after Markdown snippet (what changed)</h3>
 

@@ -12,7 +12,7 @@ tags: ['seo', 'aeo', 'robots-txt']
 
 ## Executive Summary
 
-Traditional technical SEO audits were built for Googlebot — a crawler that indexes pages and ranks them. AI crawlers work differently: they fetch pages, render them in headless browsers, extract specific passages, and synthesize answers with citations. An audit built for Googlebot misses most of what matters to GPTBot, ClaudeBot, and PerplexityBot (start by auditing [robots.txt for AI crawlers without blocking search](/blog/how-to-audit-robots-txt-for-ai-crawlers-without-blocking-search-engines/)). This article presents a unified audit framework covering both traditional SEO signals and AI-specific requirements (such as [structured data for AI Overviews](/blog/structured-data-for-ai-overviews-which-schema-signals-matter-most/)) (fetch simulation, passage extraction quality, [citation readiness scoring](/blog/citation-readiness-score-how-to-build-reliable-scoring-model/), llms.txt, per-user-agent behavior). You'll get a repeatable methodology, real benchmarks from testing 200+ pages, and a prioritized remediation workflow.
+Traditional technical SEO audits were built for Googlebot — a crawler that indexes pages and ranks them. AI crawlers work differently: they fetch pages, render them in headless browsers, extract specific passages, and synthesize answers with citations. An audit built for Googlebot misses most of what matters to GPTBot, ClaudeBot, and PerplexityBot (start by auditing [robots.txt for AI crawlers without blocking search](/blog/how-to-audit-robots-txt-for-ai-crawlers-without-blocking-search-engines/)). This article presents a unified audit framework covering both traditional SEO signals and AI-specific requirements (such as [structured data for AI Overviews](/blog/structured-data-for-ai-overviews-which-schema-signals-matter-most/)) (fetch simulation, passage extraction quality, [citation readiness scoring](/blog/citation-readiness-score-how-to-build-reliable-scoring-model/), llms.txt, per-user-agent behavior). You'll get a repeatable methodology, a way to benchmark your own pages, and a prioritized remediation workflow.
 
 ---
 
@@ -20,7 +20,7 @@ Traditional technical SEO audits were built for Googlebot — a crawler that ind
 
 - AI crawlers and Googlebot have fundamentally different fetch, render, and extraction behaviors. An audit that only checks Googlebot readiness misses critical AI failure modes.
 - The unified audit framework has six layers: discovery & policy, HTTP & transport, rendering & DOM, extraction & passage quality, citation & trust signals, and monitoring & regression.
-- In our benchmark of 200 pages, 68% passed traditional SEO checks but failed at least one AI-specific check — the most common being JavaScript-rendered content that AI crawlers couldn't extract.
+- A page can pass traditional SEO checks and still fail AI-specific ones. A common failure is JavaScript-rendered content that AI crawlers can't extract.
 - robots.txt is necessary but insufficient. Many AI crawler failures happen after the crawler is allowed — at the WAF, the CDN, the renderer, or the extraction layer.
 - A good AI crawler audit produces a prioritized remediation list sorted by impact on citation probability, not just a score. Fix extraction failures before you optimize schema.
 - [Ollagraph](https://ollagraph.com)'s composite page-audit endpoint (`/v1/aeo/page-audit`) runs nine checks across the first five layers in a single API call and returns a 0–100 score with a ranked fix list. You can integrate it into your CI/CD pipeline or run it as a weekly scheduled sweep.
@@ -29,9 +29,9 @@ Traditional technical SEO audits were built for Googlebot — a crawler that ind
 
 ## 1. The Problem: Your SEO Audit Is Missing Half the Picture
 
-Six months ago, a client came to us with a confusing situation. Their site ranked on page one for seventeen high-value keywords. Googlebot crawled them daily. Their traditional SEO audit — run through a well-known tool — returned a 92/100 score. Yet when we asked ChatGPT a straightforward question about their product category, it cited a competitor. Every time.
+Example scenario: imagine a site that ranks on page one for its high-value keywords. Googlebot crawls it daily. Its traditional SEO audit returns a high score. Yet when you ask ChatGPT a straightforward question about its product category, it cites a competitor.
 
-We ran an AI crawler fetch simulation on their homepage. The result was immediate: GPTBot received a 200 status code, but the response body was a loading spinner HTML shell. The actual product content was rendered by client-side JavaScript that took 4.2 seconds to execute. Googlebot waited. GPTBot did not. The crawler extracted the spinner, found nothing useful, and moved on.
+An AI crawler fetch simulation on the homepage explains why: GPTBot receives a 200 status code, but the response body is a loading spinner HTML shell. The actual product content is rendered by client-side JavaScript that takes seconds to execute. Googlebot waits. GPTBot does not. The crawler extracts the spinner, finds nothing useful, and moves on.
 
 This is not an edge case. It's the new normal.
 
@@ -125,7 +125,7 @@ HTTP status codes, redirect chains (aim for zero), canonical tags, and hreflang 
 ### AI-Specific Checks
 
 #### Check 2.1: Per-user-agent response comparison
-Fetch the same URL with different user agents and compare responses. This is the single most revealing check in the framework. We've seen Googlebot get a 200 with full content while GPTBot gets a 302 to a login page and ClaudeBot gets a 403 from a WAF rule.
+Fetch the same URL with different user agents and compare responses. This is the single most revealing check in the framework. Googlebot can get a 200 with full content while GPTBot gets a 302 to a login page and ClaudeBot gets a 403 from a WAF rule.
 
 ```bash
 # Fetch with Googlebot
@@ -161,15 +161,13 @@ Mobile-friendliness, Core Web Vitals (LCP under 2.5s, FID under 100ms, CLS under
 #### Check 3.1: JavaScript-rendered content audit
 Load your page in a headless browser with JavaScript disabled. What content remains? If your main article body, product descriptions, or key data is rendered by client-side JavaScript, AI crawlers may not see it.
 
-We tested 200 pages across 50 sites for this article. 68% passed traditional SEO checks but failed at least one AI-specific check. Of those failures, 73% were JavaScript-rendered content that AI crawlers couldn't extract.
-
 The fix is server-side rendering (SSR) or static site generation (SSG) for critical content. At minimum, ensure core content is in the initial HTML payload, not loaded via a second API call.
 
 #### Check 3.2: DOM extraction test
-Render the page in a headless browser and extract text content. Compare extracted text length to total page size. A low ratio means heavy boilerplate or rendering failures. We've seen documentation sites where the extracted text was 12% of the total page size — the rest was navigation menus, breadcrumb trails, and sidebar tables of contents that pushed the actual article content below the crawler's extraction window.
+Render the page in a headless browser and extract text content. Compare extracted text length to total page size. A low ratio means heavy boilerplate or rendering failures. On documentation sites, navigation menus, breadcrumb trails, and sidebar tables of contents can push the actual article content below the crawler's extraction window.
 
 #### Check 3.3: Timeout simulation
-AI crawlers have different timeout thresholds — GPTBot typically waits 5-10 seconds. Simulate a 5-second cutoff and check what content is available. If your page depends on a slow third-party script, the crawler may leave before your content loads. One team we worked with had a 6-second analytics script that blocked rendering; switching it to async fixed their AI crawler visibility overnight.
+AI crawlers have different timeout thresholds — GPTBot typically waits 5-10 seconds. Simulate a 5-second cutoff and check what content is available. If your page depends on a slow third-party script, the crawler may leave before your content loads. A slow analytics script that blocks rendering is a common culprit; loading it async removes the block.
 
 ### Remediation Priority
 Fix JavaScript-rendered content first — highest impact for AI crawler visibility. Fix DOM extraction ratio second. Fix timeout issues third.
@@ -186,7 +184,7 @@ Meta descriptions, heading structure (one H1, logical hierarchy), and image alt 
 #### Check 4.1: Passage extraction quality
 AI crawlers extract passages — contiguous text blocks that can stand alone as answers. Well-structured content produces clean passages. Fragmented content with excessive inline links or mixed formatting produces noise.
 
-Run your page through an AI fetch simulator and review the output. Are passages coherent? Do they start and end at logical boundaries? Is boilerplate bleeding into the article text? In our testing, pages with clear `<article>` tags and proper heading hierarchy produced passages that were 3x more likely to be extracted cleanly than pages without semantic structure.
+Run your page through an AI fetch simulator and review the output. Are passages coherent? Do they start and end at logical boundaries? Is boilerplate bleeding into the article text? Clear `<article>` tags and a proper heading hierarchy give the extractor clean boundaries to work with.
 
 #### Check 4.2: Boilerplate ratio
 Calculate the ratio of boilerplate (navigation, footer, sidebar, ads) to meaningful content. Above 40% is problematic. AI crawlers extract the first $N$ bytes and move on — if the first 2KB is navigation, they may never reach your article.
@@ -224,13 +222,13 @@ A composite score measuring how likely an AI crawler is to cite your page. Facto
 A score below 60/100 means your page is unlikely to be cited regardless of traditional search rankings.
 
 #### Check 5.2: Freshness signal audit
-AI crawlers prefer fresh content. Check that pages have visible publication and last-updated dates, and that structured data dates match visible dates. Mismatched dates are a common reason crawlers downgrade citation confidence. We found one site where the JSON-LD said "2026-06-15" but the visible byline said "2024" — the structured data was auto-generated from the CMS and never updated when the article was revised.
+AI crawlers prefer fresh content. Check that pages have visible publication and last-updated dates, and that structured data dates match visible dates. Mismatched dates are a common reason crawlers downgrade citation confidence. A typical cause is JSON-LD auto-generated by the CMS that never gets updated when the article is revised, so it disagrees with the visible byline.
 
 #### Check 5.3: Schema-to-content alignment
 AI crawlers cross-reference structured data with visible content. If your JSON-LD says "cloud computing" but the visible text discusses "serverless functions," the crawler detects a mismatch and may not cite the page.
 
 #### Check 5.4: Factual density scan
-AI crawlers prefer specific claims over general statements. *"Our solution reduced processing time by 37% across 1,200 test runs"* beats *"our solution improves efficiency."* Scan for vague language and replace with specifics. We run a simple heuristic: if a sentence contains no number, named entity, or concrete reference, flag it for rewriting. This alone improved citation readiness scores by an average of 12 points across the pages we tested.
+AI crawlers prefer specific claims over general statements. *"Our solution reduced processing time by 37% across 1,200 test runs"* beats *"our solution improves efficiency."* Scan for vague language and replace with specifics. A simple heuristic: if a sentence contains no number, named entity, or concrete reference, flag it for rewriting.
 
 ### Remediation Priority
 1. Fix citation readiness score first — strongest predictor of AI citation probability.
@@ -263,35 +261,37 @@ Track your composite AI crawler audit score over time. A sudden drop usually mea
 
 ---
 
-## 10. Benchmarks: What We Found Auditing 200 Pages
+## 10. Benchmarking Your Own Pages
 
-We ran the six-layer framework against 200 pages across 50 sites in June 2026. The sites included documentation portals (30%), SaaS product pages (25%), e-commerce product pages (20%), blog posts (15%), and enterprise landing pages (10%).
+To see where your site stands, run the six-layer framework against a sample of your own pages. Mix page types: documentation, product pages, blog posts, and landing pages fail in different ways.
 
 ### Overall Results
 
-| Metric | Value |
-| :--- | :--- |
-| **Pages passing traditional SEO checks** | 82% |
-| **Pages passing all six AI crawler audit layers** | 26% |
-| **Pages passing traditional SEO but failing AI-specific checks** | 68% |
-| **Average traditional SEO score** | 84/100 |
-| **Average AI crawler audit score** | 47/100 |
+Record these for the sample:
+
+- Pages passing traditional SEO checks
+- Pages passing all six AI crawler audit layers
+- Pages passing traditional SEO but failing AI-specific checks
+- Average traditional SEO score
+- Average AI crawler audit score
 
 ### Layer-by-Layer Failure Rates
 
-| Layer | Failure Rate | Most Common Failure |
-| :--- | :--- | :--- |
-| **1. Discovery & Policy** | 34% | Missing or incomplete per-agent robots.txt directives |
-| **2. HTTP & Transport** | 28% | User-agent discrimination (different status codes per agent) |
-| **3. Rendering & DOM** | 73% | JavaScript-rendered content not available to AI crawlers |
-| **4. Extraction & Passage** | 61% | High boilerplate ratio (>40%) or missing content landmarks |
-| **5. Citation & Trust** | 55% | Missing publication date or mismatched schema-to-content dates |
-| **6. Monitoring & Regression** | 89% | No per-agent fetch simulation or score tracking in place |
+Then record the failure rate per layer, and check for the typical failure in each:
 
-### Key Insight
-The most surprising finding was layer 2: 28% of pages returned different HTTP status codes or response bodies to different AI crawler user agents. In most cases, this was unintentional — a WAF rule that matched "GPTBot" in the user agent string, or a CDN configuration that treated unknown agents differently. The fix was usually a single config change.
+| Layer | Typical Failure |
+| :--- | :--- |
+| **1. Discovery & Policy** | Missing or incomplete per-agent robots.txt directives |
+| **2. HTTP & Transport** | User-agent discrimination (different status codes per agent) |
+| **3. Rendering & DOM** | JavaScript-rendered content not available to AI crawlers |
+| **4. Extraction & Passage** | High boilerplate ratio (>40%) or missing content landmarks |
+| **5. Citation & Trust** | Missing publication date or mismatched schema-to-content dates |
+| **6. Monitoring & Regression** | No per-agent fetch simulation or score tracking in place |
 
-Layer 3 was the most common failure mode and the hardest to fix. 73% of pages had content only available after JavaScript execution — searchable tables of contents on documentation sites, product descriptions injected by frameworks on e-commerce sites.
+### What to Look For
+Pay close attention to layer 2. Pages that return different HTTP status codes or response bodies to different AI crawler user agents are usually doing it unintentionally — a WAF rule that matches "GPTBot" in the user agent string, or a CDN configuration that treats unknown agents differently. The fix is often a single config change.
+
+Layer 3 failures tend to be the hardest to fix: content only available after JavaScript execution, such as searchable tables of contents on documentation sites or product descriptions injected by frameworks on e-commerce sites.
 
 ---
 
@@ -432,7 +432,7 @@ Lightweight audit (layers 1-3) weekly on top pages. Full audit (layers 1-6) mont
 No. Google Search Console shows Googlebot activity only. Some AI crawlers appear in server logs under their user agent strings, but there's no centralized dashboard. You need a separate monitoring workflow.
 
 ### Q5. What's the single most impactful change for AI crawler visibility?
-Server-side render your critical content. In our benchmark, 73% of pages that failed AI crawler checks did so because content was only available after JavaScript execution. Moving that content to the initial HTML payload is the highest-impact change you can make.
+Server-side render your critical content. Content that is only available after JavaScript execution is a common reason pages fail AI crawler checks. Moving that content to the initial HTML payload is the highest-impact change you can make.
 
 ### Q6. How do I know if an AI crawler is citing my pages?
 There's no "AI Search Console" yet. Monitor citations by searching for your brand in AI answer engines, checking referral traffic from AI platforms, and using AI-specific audit tools that track citation probability. Some teams run automated queries against AI APIs weekly to check whether their content appears in answers.
@@ -463,7 +463,7 @@ Traditional technical SEO audits were built for a world with one dominant crawle
 
 The six-layer framework — Discovery & Policy, HTTP & Transport, Rendering & DOM, Extraction & Passage Quality, Citation & Trust Signals, and Monitoring & Regression — covers the traditional signals that still matter and adds the AI-specific checks most teams are missing.
 
-The data is clear: 68% of pages that pass traditional SEO checks fail at least one AI-specific check. The most common failure is JavaScript-rendered content that AI crawlers can't extract. The fix is not complicated — server-side render critical content, add semantic HTML landmarks, run per-user-agent fetch simulations — but it requires a shift in how you think about audits.
+Passing traditional SEO checks does not mean a page passes AI-specific ones. A common failure is JavaScript-rendered content that AI crawlers can't extract. The fix is not complicated — server-side render critical content, add semantic HTML landmarks, run per-user-agent fetch simulations — but it requires a shift in how you think about audits.
 
 Start with layer 1 this week. Add `llms.txt`, check your per-agent `robots.txt` directives, and run a per-user-agent fetch simulation on your top 10 pages. Next week, add layer 3. By the end of the month, you'll have a complete AI crawler audit workflow that runs on a schedule and catches regressions before they impact your citations.
 

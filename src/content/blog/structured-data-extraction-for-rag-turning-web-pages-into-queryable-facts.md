@@ -16,9 +16,7 @@ Standard RAG pipelines retrieve chunks of text — paragraphs, sections, or page
 
 Structured data extraction for RAG solves this by pulling entities, attributes, and relationships out of web pages and into queryable structures — typed records, knowledge graphs, or hybrid vector-graph indexes — before the retrieval step ever runs. Instead of searching for chunks that might contain the answer, the system queries facts directly.
 
-In production testing across 1,200 e-commerce product pages, 850 SaaS documentation pages, and 400 financial filings, a structured extraction + hybrid retrieval pipeline improved exact-answer precision from 67% (standard chunk-based RAG) to 94%, reduced hallucination rates by 62%, and cut per-query latency by 40% because the retrieval step became a deterministic lookup instead of a fuzzy vector search.
-
-This guide covers the architecture, the extraction pipeline, the query layer, and the trade-offs — with working code, benchmarks, and a decision framework for when structured extraction makes sense and when it does not.
+This guide covers the architecture, the extraction pipeline, the query layer, and the trade-offs — with working code, a benchmark method you can run on your own corpus, and a decision framework for when structured extraction makes sense and when it does not.
 
 ## Definition: Structured Data Extraction for RAG
 
@@ -47,13 +45,13 @@ Let me walk through exactly where it breaks.
 
 This is the fundamental limitation of chunk-based RAG: it retrieves containers of text, not facts. Chunks are opaque bags of tokens. The retrieval system can tell you which chunks are semantically similar to the query, but it cannot tell you whether a specific fact exists in any chunk, whether two facts in different chunks refer to the same entity, or whether a numeric constraint like "under $50" is satisfied by any product in the corpus.
 
-The consequences are measurable. In our benchmark of 500 factual questions across e-commerce, documentation, and financial domains, standard chunk-based RAG (OpenAI text-embedding-3-large, top-5 chunks, GPT-4o) achieved:
+The consequences are measurable. Take a set of factual questions from your own domain, run them through your chunk-based pipeline, and score three things:
 
-- **Exact-answer precision:** 67% — one in three answers contained an incorrect fact.
-- **Hallucination rate:** 31% — nearly a third of answers included information not present in any source chunk.
-- **Citation accuracy:** 54% — when the system cited a source, the cited chunk actually contained the claimed fact only about half the time.
+- **Exact-answer precision:** does the answer contain the correct fact?
+- **Hallucination rate:** does the answer include information not present in any source chunk?
+- **Citation accuracy:** when the system cites a source, does the cited chunk actually contain the claimed fact?
 
-These numbers are not acceptable for any production system where factual accuracy matters — customer support, financial analysis, medical information, or legal research. And they are not a model problem. They are a retrieval problem. The model can only answer correctly if the retrieval system hands it the right facts in a form the model can use.
+Any meaningful failure rate on these checks is not acceptable for a production system where factual accuracy matters — customer support, financial analysis, medical information, or legal research. And it is usually not a model problem. It is a retrieval problem. The model can only answer correctly if the retrieval system hands it the right facts in a form the model can use.
 
 Structured data extraction for RAG exists to fix this. Instead of retrieving chunks and hoping the facts are in there somewhere, you extract the facts explicitly, store them in queryable structures, and retrieve them with deterministic precision. The rest of this guide shows you exactly how.
 
@@ -375,35 +373,25 @@ $ psql -h localhost -d fact_store -At -c "
 }
 ```
 
-## 11. Performance Benchmarks: Structured vs. Chunk-Based RAG
+## 11. How to Benchmark Structured vs. Chunk-Based RAG
 
-We ran a controlled benchmark comparing standard chunk-based RAG against structured extraction + hybrid retrieval across three domains. Here are the results.
+To decide whether structured extraction is worth it for your domain, run both approaches against the same question set and compare them on the same metrics.
 
 ### Benchmark Setup
 
-- **Test set:** 1,200 questions across e-commerce (400), SaaS documentation (400), and financial filings (400)
+- **Test set:** a few hundred real questions per domain, drawn from your query logs where possible
 - **Question types:** factual (single entity), compositional (multiple constraints), multi-hop (relationship traversal), and exploratory (open-ended)
-- **Chunk-based RAG:** OpenAI text-embedding-3-large, top-5 chunks, GPT-4o for answer generation
-- **Structured RAG:** Ollagraph Extraction API + PostgreSQL with pgvector + NL2SQL (GPT-4o), same answer generation model
-- **Metric:** Exact-answer precision (does the answer contain the correct fact?), hallucination rate (does the answer include information not in any source?), citation accuracy (does the cited source actually contain the claimed fact?), and end-to-end latency
+- **Chunk-based RAG:** your current embedding model, top-k chunks, and answer-generation model
+- **Structured RAG:** extraction pipeline + PostgreSQL with pgvector + NL2SQL, same answer generation model
+- **Metric:** Exact-answer precision (does the answer contain the correct fact?), hallucination rate (does the answer include information not in any source?), citation accuracy (does the cited source actually contain the claimed fact?), end-to-end latency (p50 and p95), ingestion cost per page, and query cost per question
 
-### Results
+Break the results down by question type. The aggregate number hides the pattern that matters: where each approach wins.
 
-| Metric | Chunk-Based RAG | Structured RAG | Improvement |
-|---|---|---|---|
-| **Exact-answer precision** | 67% | 94% | +27 points |
-| **Hallucination rate** | 31% | 12% | -62% |
-| **Citation accuracy** | 54% | 97% | +43 points |
-| **End-to-end latency (p50)** | 1,200ms | 720ms | -40% |
-| **End-to-end latency (p95)** | 2,800ms | 1,400ms | -50% |
-| **Ingestion cost per page** | $0.002 | $0.015 | +7.5x |
-| **Query cost per question** | $0.008 | $0.005 | -37% |
+### What to Look For
 
-### Analysis
+Structured extraction shifts cost from query time to ingestion time. You pay more per page at ingestion (extraction API calls, validation, storage), and each query can get cheaper because retrieval is a deterministic database lookup instead of a fuzzy vector search plus context window fill.
 
-Structured extraction shifts cost from query time to ingestion time. You pay 7.5x more per page at ingestion (extraction API calls, validation, storage), but you save 37% per query because retrieval is a deterministic database lookup instead of a fuzzy vector search plus context window fill.
-
-The real win is not cost — it is accuracy. A 94% exact-answer precision rate means the system is trustworthy enough for production use cases where factual accuracy is non-negotiable. The 12% hallucination rate (down from 31%) comes almost entirely from the structured layer's inability to answer questions outside its schema — the system correctly says "I don't have that information" instead of guessing.
+The real win to look for is not cost — it is accuracy on factual and compositional questions. Also check where the structured system's remaining errors come from: questions outside its schema should produce "I don't have that information" instead of a guess.
 
 ### When Structured Extraction Does Not Help
 
@@ -411,36 +399,7 @@ Structured extraction underperforms on exploratory questions. "Tell me about the
 
 The lesson: use structured extraction for the questions that need precision, and chunk-based retrieval for the questions that need exploration. A hybrid system that routes queries appropriately gets the best of both worlds.
 
-## 12. Case Study: Finova Financial — From Chunk Hallucination to Structured Precision
-
-Finova Financial runs a customer-facing RAG assistant that answers questions about their loan products, interest rates, eligibility criteria, and branch locations. Their first implementation was standard chunk-based RAG: scrape 2,400 pages from their website, embed with text-embedding-3-large, store in Qdrant, retrieve top-5 chunks per query, and feed them to GPT-4o.
-
-It worked great in the demo. In production, it failed on the questions that mattered most.
-
-### The problem
-
-A user asked: "What is the minimum credit score for a 15-year fixed mortgage at 6.5% APR in Texas?" The system retrieved a chunk from a general mortgage guide page that mentioned credit scores, a chunk from a Texas-specific page that mentioned APR ranges, and a chunk from a product page that mentioned 15-year terms. None of these chunks contained the complete answer. The LLM composed a response that sounded correct — it cited a 620 minimum, which was the general requirement — but the actual Texas-specific requirement for that product was 660. The user applied, was denied, and escalated.
-
-This happened repeatedly. Finova tracked 47 similar incidents over three months. Every one was the same pattern: the retrieved chunks contained fragments of the answer, the LLM stitched them together plausibly but incorrectly, and the user got burned.
-
-### The migration
-
-Finova defined four entity schemas — LoanProduct, EligibilityCriterion, BranchLocation, and RateCard — and ran their 2,400 pages through an extraction pipeline: Ollagraph fetched each page and its embedded structured data, and an LLM with structured output mapped the text onto the four schemas. The pipeline produced 18,000 validated facts with provenance envelopes. They stored the facts in PostgreSQL with pgvector for hybrid retrieval and built an NL2SQL layer using GPT-4o-mini for query routing.
-
-### The results after 8 weeks in production
-
-| Metric | Before (Chunk-Based) | After (Structured) |
-|---|---|---|
-| **Exact-answer precision** | 63% | 96% |
-| **Escalations from incorrect answers** | 47 in 3 months | 3 in 2 months |
-| **Average query latency** | 1,400ms | 680ms |
-| **User satisfaction score** | 3.2/5 | 4.7/5 |
-
-The three remaining escalations were all cases where the user's question referenced a fact outside the schema — a new loan product that had not been extracted yet. The system correctly said "I don't have that information" instead of guessing, but the users interpreted that as a failure. Finova solved this by adding a daily re-extraction cadence and a fallback message: "I don't have that information yet — I'll check and get back to you."
-
-The engineering lead told us: *"The chunk-based system felt like a black box that sometimes worked. The structured system feels like a database that I can query and trust. When a user asks a question, I know the answer is either correct or the system will say it doesn't know. That predictability is worth ten times the extra ingestion cost."*
-
-## 13. Security and Governance for Fact Extraction
+## 12. Security and Governance for Fact Extraction
 
 Structured extraction introduces security considerations that chunk-based RAG does not face, because you are storing explicit facts rather than opaque chunks.
 
@@ -468,7 +427,7 @@ A fact that was true at extraction time may be false at query time. A price of $
 
 Every fact in a structured extraction system has a complete audit trail: who extracted it (which API key), when, from which URL, using which schema version, and with what confidence. This is essential for regulated industries (finance, healthcare, legal) where data provenance is a compliance requirement.
 
-## 14. Troubleshooting Common Fact Extraction Failures
+## 13. Troubleshooting Common Fact Extraction Failures
 
 | Failure | Symptom | Most Likely Cause | Quick Fix |
 |---|---|---|---|
@@ -479,7 +438,7 @@ Every fact in a structured extraction system has a complete audit trail: who ext
 
 Root cause pattern: 80% of extraction failures trace back to either the page not rendering fully (JS timeout) or the schema not matching the page's actual structure (wrong selectors, missing enum values). Fix those two and you fix most of your pipeline.
 
-## 15. Best Practices for Production Fact Pipelines
+## 14. Best Practices for Production Fact Pipelines
 
 - Design schemas iteratively — start with 5-10 fields, add more based on real query logs, not assumptions
 - Always include provenance — source URL, timestamp, raw text, confidence. Without it you can't debug, audit, or cite
@@ -488,7 +447,7 @@ Root cause pattern: 80% of extraction failures trace back to either the page not
 - Version your schemas — old facts don't auto-conform when you add a field. Keep a schema version in every record and run migration scripts
 - Test with real pages — synthetic tests never capture the messiness of the live web. Build a 50-100 page test corpus
 
-## 16. Common Mistakes and Anti-Patterns
+## 15. Common Mistakes and Anti-Patterns
 
 | # | Mistake | Why It Hurts | Fix |
 |---|---|---|---|
@@ -502,12 +461,12 @@ Root cause pattern: 80% of extraction failures trace back to either the page not
 
 The one that costs the most: Mistake 4. Teams hear "AI extraction" and assume every field needs an LLM call. The 80/20 split (deterministic extraction for structure, LLM for semantics) is the difference between a pipeline that scales and one that burns money.
 
-## 17. Alternatives and When to Use Each
+## 16. Alternatives and When to Use Each
 
 | Approach | Best For | Key Trade-off |
 |---|---|---|
-| **Chunk-based RAG** | Exploratory questions, narrative content | Cheap to ingest, 31% hallucination rate on facts |
-| **Structured + SQL** | Factual questions with numeric constraints | High ingestion cost, 94% precision |
+| **Chunk-based RAG** | Exploratory questions, narrative content | Cheap to ingest, prone to hallucinating facts |
+| **Structured + SQL** | Factual questions with numeric constraints | High ingestion cost, precise fact lookups |
 | **Structured + Graph DB** | Multi-hop relationship queries | Overkill for simple attribute lookups |
 | **GraphRAG (Microsoft)** | Community detection, thematic summaries | Expensive, imprecise for individual facts |
 | **Hybrid (structured + vector)** | General-purpose QA | Most complex, best overall accuracy |
@@ -517,9 +476,9 @@ Choose structured extraction when: users ask constraint-heavy questions ("under 
 
 Skip it when: users ask open-ended questions, content is primarily narrative, entities are poorly defined, or your ingestion budget is extremely tight.
 
-Cost-breakeven rule of thumb: Structured extraction is cheaper than chunk-based RAG when your monthly page count exceeds ~23% of your monthly query count. At 10,000 queries/month, breakeven is 2,300 pages. At 100,000 queries, it's 23,000 pages. The hidden variable is accuracy cost — if each hallucination costs your business $10, a 31% hallucination rate on 10,000 queries is $31,000/month in bad answers.
+Cost-breakeven rule of thumb: Structured extraction is cheaper than chunk-based RAG when the extra ingestion cost per page, multiplied by your monthly page count, is less than the query-cost saving per question, multiplied by your monthly query count. Plug in your own measured costs. The hidden variable is accuracy cost — if each hallucination costs your business $10, a 10% hallucination rate on 10,000 queries is $10,000/month in bad answers.
 
-## 18. Enterprise Deployment Patterns
+## 17. Enterprise Deployment Patterns
 
 | Pattern | When to Use | Key Consideration |
 |---|---|---|
@@ -535,7 +494,7 @@ Five observability metrics you need:
 - Query coverage (% answered from fact store vs. chunk fallback)
 - Cost per fact — the one that surprises everyone who hasn't run structured extraction at scale
 
-## 19. Frequently Asked Questions
+## 18. Frequently Asked Questions
 
 ### Q1. How is structured data extraction for RAG different from regular web scraping?
 Regular web scraping dumps raw HTML or text into a storage bucket. Structured data extraction applies a typed schema, validates every field, tracks provenance, and stores the result in a queryable index. The difference is the difference between saving a PDF to a folder and entering the PDF's data into a spreadsheet with column types, validation rules, and cell-level source notes.
@@ -568,21 +527,21 @@ The structured layer handles the constraint ("under $500") deterministically. Th
 At 100,000 pages and 10,000 queries per day: chunk-based RAG costs approximately $200/month for ingestion (embedding API calls) and $2,400/month for query (LLM context fill). Structured RAG costs approximately $1,500/month for ingestion (extraction API calls) and $1,500/month for query (fewer tokens per query, cheaper NL2SQL calls). The structured approach breaks even around 50,000 pages and becomes cheaper beyond that, while delivering significantly higher accuracy.
 
 ### Q11. How do I handle multi-language web pages in a structured extraction pipeline?
-Set the language parameter on the extraction request to the expected language, or leave it unset for auto-detection. The extraction API handles most major languages (English, Spanish, French, German, Japanese, Chinese, Arabic) for entity extraction. Numeric fields like prices and dates are language-agnostic. For text fields like product names and descriptions, the extracted values are returned in the source language — your NL2SQL layer should query in that same language, or you can add a translation step between extraction and storage. We have seen teams run extraction in 14 languages with consistent 92%+ field completion rates across all of them.
+Set the language parameter on the extraction request to the expected language, or leave it unset for auto-detection. The extraction API handles most major languages (English, Spanish, French, German, Japanese, Chinese, Arabic) for entity extraction. Numeric fields like prices and dates are language-agnostic. For text fields like product names and descriptions, the extracted values are returned in the source language — your NL2SQL layer should query in that same language, or you can add a translation step between extraction and storage.
 
-## 20. Conclusion
+## 19. Conclusion
 
 Structured data extraction for RAG is not a replacement for chunk-based retrieval. It is a complement — one that fills the gap where chunk-based RAG has always been weakest: factual, compositional, constraint-heavy questions that require precise answers with verifiable sources.
 
 The architecture is straightforward: define a schema, extract entities and relationships from web pages, validate and deduplicate the results, store them in a queryable index, and let users ask questions in natural language that get translated into deterministic database queries. Every fact carries a provenance chain back to its source. Every answer can be cited. Every claim can be verified.
 
-The benchmarks are clear: 94% exact-answer precision, 62% fewer hallucinations, 40% lower latency. The trade-off is higher ingestion cost — you pay more upfront to extract and validate facts, but you save at query time and, more importantly, you ship a system that users can trust.
+The trade-off is higher ingestion cost — you pay more upfront to extract and validate facts, but you save at query time and, more importantly, you ship a system that users can trust.
 
 Not every RAG system needs structured extraction. If your users ask exploratory questions and you can tolerate occasional hallucinations, chunk-based RAG is simpler and cheaper. But if your users need facts — prices, specifications, stock levels, dates, relationships — and they need those facts to be correct, structured extraction is the difference between a demo and a production system.
 
 Start small. Pick the three most important entity types in your domain. Define a schema. Extract facts from your top 100 pages. Build a single NL2SQL query. Measure the precision improvement. Then expand from there.
 
-## 21. References
+## 20. References
 
 - [Lewis et al. (2020) — "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks"](https://arxiv.org/abs/2005.11401)
 - [Edge et al. (2024) — "From Local to Global: A Graph RAG Approach to Query-Focused Summarization"](https://arxiv.org/abs/2404.16130)

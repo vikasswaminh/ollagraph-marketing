@@ -14,7 +14,7 @@ tags: ['guides', 'rag', 'ai-search', 'seo']
 
 HTML tables are everywhere — pricing grids, financial reports, sports standings, product specs, comparison charts, government data, and scientific datasets. But extracting them into clean, usable JSON is harder than it looks. A single colspan or rowspan attribute can collapse a naive parser. A table built with div-based CSS grids won't even register as a `<table>` element. And when you need to extract tables from hundreds or thousands of pages, the edge cases compound fast.
 
-This guide covers the full landscape: how HTML tables are structured, why most DIY parsers fail on real-world pages, the difference between semantic tables and visual tables, and how to build — or buy — a reliable table extraction pipeline. You'll see working code in Python and Node.js, benchmark data across 1,000 real pages, and a decision framework for choosing between a custom parser and a dedicated table extraction API.
+This guide covers the full landscape: how HTML tables are structured, why most DIY parsers fail on real-world pages, the difference between semantic tables and visual tables, and how to build — or buy — a reliable table extraction pipeline. You'll see working code in Python and Node.js, a method for benchmarking parsers on your own pages, and a decision framework for choosing between a custom parser and a dedicated table extraction API.
 
 **Key takeaway:** If you need to extract tables from fewer than 50 pages with consistent markup, a DIY parser works fine. Beyond that — or if the pages use complex layouts, merged cells, or CSS-based tables — a purpose-built table extraction API will save you weeks of debugging and deliver cleaner data.
 
@@ -22,7 +22,7 @@ This guide covers the full landscape: how HTML tables are structured, why most D
 
 - HTML tables are semantically rich but inconsistently implemented — colspan, rowspan, nested tables, and missing headers are the norm, not the exception.
 - CSS-based "visual tables" built with div grids and flexbox won't appear in a `<table>` query — you need rendered DOM analysis to catch them.
-- DIY table extraction with BeautifulSoup or Cheerio works for simple pages but fails on ~30% of real-world sites due to layout complexity.
+- DIY table extraction with BeautifulSoup or Cheerio works for simple pages but fails on many real-world sites due to layout complexity.
 - A table extraction API removes the parsing work; pair it with a fetch layer that handles rendering and anti-bot, and validate the output in your own code.
 - The Ollagraph `/v1/extract/tables` endpoint takes HTML you supply and returns every `<table>` as JSON — caption, headers, and rows — with colspan and rowspan expanded. Fetch the page first with `/v1/scrape`.
 - Test any parser, ours included, on a sample of your own pages before trusting it at scale.
@@ -34,7 +34,7 @@ You have a list of URLs. Each URL contains a table — maybe a pricing grid on a
 
 So you write a quick script. Fetch the HTML, find the `<table>` elements, loop through `<tr>` and `<td>` tags, and dump the results into a list of lists. It works on the first page. Then you run it on page two and the columns are misaligned. Page three has a table nested inside a table cell. Page four uses colspan="3" and your parser didn't account for it. Page five doesn't use `<table>` at all — it's a CSS grid that looks like a table in the browser but has zero `<table>` tags in the source.
 
-This is the reality of web table extraction. The HTML specification for tables is robust — it supports headers, captions, column groups, merged cells, and accessibility attributes. But real-world websites use a tiny fraction of that spec consistently, and the ones that do use it often use it badly. A 2025 survey of the top 10,000 websites found that 43% of pages with tabular data used non-semantic markup — div-based layouts styled to look like tables — and another 22% had at least one malformed table element (missing closing tags, mismatched column counts, or unclosed row groups).
+This is the reality of web table extraction. The HTML specification for tables is robust — it supports headers, captions, column groups, merged cells, and accessibility attributes. But real-world websites use a tiny fraction of that spec consistently, and the ones that do use it often use it badly.
 
 The consequences of getting table extraction wrong range from annoying to catastrophic. A misaligned column in a pricing table means you're comparing the wrong products. A missing row in a financial dataset means your totals don't balance. A silently dropped header row means your analytics pipeline labels every column as "undefined." And when these errors happen at scale — across thousands of pages — manual cleanup is not an option.
 
@@ -326,15 +326,9 @@ Handles JavaScript rendering but still misses colspan/rowspan and CSS visual tab
 
 ### The DIY Reality Check
 
-We tested these approaches against 1,000 randomly sampled pages from the top 10,000 websites:
+To see how these approaches compare on your own targets, run each one against the same sample of pages and record how many tables it finds, how many it parses correctly, and how faithfully it preserves structure (headers, merged cells, row and column alignment) compared with a hand-checked version.
 
-| Approach | Tables Found | Correctly Parsed | Structural Fidelity |
-|---|---|---|---|
-| **Simple BeautifulSoup** | 1,847 | 1,258 (68.1%) | 62.3% |
-| **Colspan-aware BS4** | 1,847 | 1,512 (81.9%) | 78.1% |
-| **Puppeteer (rendered)** | 2,341 | 1,803 (77.0%) | 74.2% |
-
-Puppeteer found more tables (because it executed JavaScript) but had lower structural fidelity because it didn't handle colspan/rowspan or visual tables. Combining a rendered fetch with a merged-cell-aware parser addresses both gaps; visual (div-based) tables still need their own handling.
+Expect Puppeteer to find more tables than a static parser (because it executes JavaScript) while still losing structure, because it doesn't handle colspan/rowspan or visual tables. Combining a rendered fetch with a merged-cell-aware parser addresses both gaps; visual (div-based) tables still need their own handling.
 
 ## 8. Using the Ollagraph Table Extraction API
 
@@ -432,19 +426,16 @@ for table in result["tables"]:
 
 ## 9. Performance & Benchmarks
 
-Methodology: 1,000 URLs from the top 10,000 websites (Tranco list), filtered to pages with at least one table. Ground truth: manual annotation of 200 pages by two independent reviewers (Cohen's κ = 0.91). Hardware: AWS c6i.4xlarge.
+To benchmark parsers, sample pages from your own target sites, filtered to pages with at least one table, and hand-annotate the correct structure for a subset — ideally with two independent reviewers, so you can check how well they agree. Then measure each approach on structural fidelity against the annotations, table discovery rate, and average extraction time per page. The capability differences to expect:
 
-| Metric | Simple BS4 | Colspan-Aware BS4 | Puppeteer |
+| Capability | Simple BS4 | Colspan-Aware BS4 | Puppeteer |
 |---|---|---|---|
-| **Structural fidelity** | 62.3% | 78.1% | 74.2% |
-| **Table discovery rate** | 68.4% | 68.4% | 86.7% |
-| **Avg extraction time** | 0.4s | 0.5s | 4.2s |
 | **Colspan/rowspan** | ❌ | ✅ | ❌ |
 | **JS rendering** | ❌ | ❌ | ✅ |
 | **Visual table detection** | ❌ | ❌ | ❌ |
 | **Anti-bot handling** | ❌ | ❌ | Manual |
 
-**Key findings:** Simple parsers miss a third of tables entirely. Rendering alone isn't enough — Puppeteer found more tables (86.7%) but had lower structural fidelity (74.2%). Anti-bot handling is the hidden cost — DIY approaches hit Cloudflare or DataDome on 23% of commercial pages.
+**What to look for:** Static parsers miss tables that are built client-side. Rendering alone isn't enough — a rendered fetch finds more tables but does nothing for merged-cell handling. Anti-bot handling is the hidden cost — log how often DIY fetches hit Cloudflare or DataDome challenge pages on commercial sites.
 
 We have not published a fidelity benchmark for `/v1/extract/tables`. To evaluate it, run the same comparison on a hand-annotated sample of your own pages: fetch each page once, feed the identical HTML to each parser, and score the outputs against your annotations.
 
@@ -488,7 +479,7 @@ We have not published a fidelity benchmark for `/v1/extract/tables`. To evaluate
 
 **Assuming all tables use semantic HTML.** You write a parser that queries `<table>` elements, test it on five pages where it works perfectly, then deploy and miss 30% of your target tables.
 
-**Ignoring colspan and rowspan.** A single `colspan="3"` on a header cell causes every subsequent row to be misaligned unless the parser explicitly expands it. We've seen production pipelines where one colspan caused six months of misaligned pricing data.
+**Ignoring colspan and rowspan.** A single `colspan="3"` on a header cell causes every subsequent row to be misaligned unless the parser explicitly expands it. One unexpanded colspan can leave months of pricing data misaligned before anyone notices.
 
 **Not rendering JavaScript.** You fetch the HTML, find no tables, and conclude the page has no data. Quick test: disable JavaScript in your browser and see if the table still appears.
 
@@ -569,7 +560,7 @@ Yes. The API extracts every `<table>` it finds and returns them as an array in p
 The API parses with a forgiving HTML parser, so missing closing tags and similar malformations usually still parse, and short rows are padded so each table is rectangular. If the HTML cannot be parsed at all, the response has `"status": "error"`. Validate column counts and header names in your code to catch tables that parsed but look wrong.
 
 ### Q12. How does the API compare to using an LLM for table extraction?
-LLMs can extract tables from raw HTML or rendered page screenshots, but they're slower, more expensive, and less reliable than a purpose-built table extraction API. In our tests, GPT-4 took an average of 12 seconds and $0.15 per table extraction, with 82% structural fidelity. A deterministic parser returns the same output for the same HTML every time. LLMs are better suited for understanding table semantics (what the data means) rather than extracting table structure (where the data lives).
+LLMs can extract tables from raw HTML or rendered page screenshots, but they're slower, more expensive, and less reliable than a purpose-built table extraction API. A deterministic parser returns the same output for the same HTML every time. LLMs are better suited for understanding table semantics (what the data means) rather than extracting table structure (where the data lives).
 
 ## 17. Conclusion
 

@@ -18,8 +18,6 @@ Yet, over 80% of the world’s web data remains trapped inside unstructured web 
 
 Document-to-JSON extraction bridges this gap, operating alongside a [structured data extraction API](/blog/structured-data-extraction-api-from-web-pages-to-validated-json/). By establishing formal domain type contracts (using Pydantic models, Zod schemas, or JSON Schema specifications), document-to-JSON extraction engines ingest raw web documents, parse visual and semantic hierarchies, normalize data representations (like [extracting tables from HTML into clean JSON](/blog/extract-tables-from-any-website-from-html-to-clean-json/)), and validate candidate outputs against strict type boundaries before emitting clean JSON artifacts.
 
-In production evaluation across 4,000 heterogeneous web documents (covering SEC filings, SaaS documentation, medical research papers, product specs, and technical blogs), typed document-to-JSON extraction achieved a 99.6% record validity rate, eliminated silent type errors, and reduced engineering pipeline debugging time by 84%.
-
 ## Definition: Document-to-JSON Extraction
 
 The automated process of ingesting unstructured or semi-structured web documents (HTML pages, rendered DOM trees, PDFs, markdown files) and translating their semantic contents into strongly typed, schema-validated JSON records that strictly comply with predefined domain type specifications.
@@ -435,65 +433,53 @@ if __name__ == "__main__":
 
 The API's job here is the fetch: it loads the page (with proxy routing) and returns the structured data embedded in it, such as JSON-LD, Microdata and OpenGraph. Mapping those values onto `JobPostingRecord`, normalizing them, validating, and writing the evidence packet all happen in your code. If a page carries no `JobPosting` markup, call `/v1/scrape` (`format: "html"` or `"markdown"`) for the page content instead, run your own selectors or an LLM with structured outputs over it, and send the result through the same gate.
 
-## 7. Empirical benchmarks: 4,000 heterogeneous web documents
+## 7. How to benchmark extraction pipelines on your own documents
 
-To measure extraction accuracy, type validity, and operational maintenance requirements, we conducted a benchmark across 4,000 heterogeneous production web documents over a 30-day evaluation window (June 27, 2026 – July 27, 2026).
+To compare extraction accuracy, type validity, and operational maintenance requirements, run each pipeline over the same sample of your own production documents for a fixed evaluation window.
 
 ### Benchmark Dataset Breakdown
 
-**Document Datasets:** SEC Form 10-K filings (1,000 documents), SaaS API Documentation (1,000 documents), E-Commerce Catalogs (1,000 documents), Real Estate Deeds & Listings (1,000 documents).
+**Document Datasets:** Sample an equal number of documents from each document type you ingest — for example SEC Form 10-K filings, SaaS API documentation, e-commerce catalogs, and real estate listings.
 
-**Pipelines Evaluated:**
+**Pipelines to Compare:**
 
 -   **Regex + BeautifulSoup (Untyped Selector Scraper):** Traditional CSS/regex parsing logic with silent try-except fallbacks.
 -   **Raw Unconstrained LLM Extraction (GPT-4o / Claude 3.5 Sonnet):** Passing raw HTML text to an LLM with prompt instructions ("Return JSON").
 -   **Typed Document-to-JSON Pipeline:** Pydantic contract + validation gate + automated evidence logging + deterministic retries.
 
-### Key Benchmark Metrics
+### Metrics to Record for Each Pipeline
 
-| Evaluation Metric | Untyped Selector Scraper | Unconstrained LLM Extraction | Typed Document-to-JSON Pipeline |
-| :--- | :--- | :--- | :--- |
-| First-Pass Record Validity Rate | 71.2% | 83.4% | 95.2% |
-| Final Pass Rate (After Retries) | 73.8% | 88.1% | 99.6% |
-| Silent Type Corruption Rate | 18.6% | 6.4% | 0.0% (Zero Corruption) |
-| Numeric Coercion Error Rate | 14.2% | 4.1% | 0.1% |
-| Mean Time to Detection (MTTD) | 42.1 hours | 14.8 hours | 0.0 hours (Instant Gate) |
-| Mean Time to Resolution (MTTR) | 4.8 hours | 2.2 hours | 0.3 hours (18 mins) |
-| Weekly Engineering Maintenance Time | 22.0 hours | 8.5 hours | 1.2 hours |
+-   First-pass record validity rate
+-   Final pass rate (after retries)
+-   Silent type corruption rate (for example, strings like "N/A" saved into float fields, or string dates stored as unparseable text)
+-   Numeric coercion error rate
+-   Mean time to detection (MTTD)
+-   Mean time to resolution (MTTR)
+-   Weekly engineering maintenance time
 
-**Silent Type Corruption Rate Comparison:**
+### What to Look For
 
-```
-Untyped Selectors:  ██████████████████ 18.6%
-Unconstrained LLM:  ██████ 6.4%
-Typed Pipeline:     ▏ 0.0% (Zero Corrupt Database Writes)
-```
+-   **Silent Type Corruption:** Measure how many records each pipeline writes with wrong types. A validation gate should reject these before they are written instead of letting them through.
+-   **LLM Schema Drift:** Unconstrained LLMs can hallucinate missing keys or alter property names (e.g., returning annual_revenue when the prompt asked for revenue). Schema contract enforcement halts schema drift at the ingestion boundary.
+-   **Engineering Time:** Track the hours each approach needs per week to keep extraction pipelines running.
 
-### Insights from Benchmark Data
-
--   **Zero Silent Type Corruption:** Untyped scrapers caused silent type errors in 18.6% of ingested records (saving strings like "N/A" into float fields or storing string dates as unparseable text). The typed validation gate eliminated corrupt writes entirely (0.0%).
--   **LLM Hallucination Reduction:** Unconstrained LLMs occasionally hallucinate missing keys or alter property names (e.g., returning annual_revenue when the prompt asked for revenue). Schema contract enforcement halts schema drift at the ingestion boundary.
--   **Engineering Time Reduction:** Engineering teams running the typed pipeline spent 1.2 hours per week maintaining extraction pipelines, compared to 22 hours per week for teams maintaining custom selector scripts.
-
-## 8. Case studies: fintech SEC filings & e-commerce competitive intelligence
-
-### Case Study 1: FinPulse Financial Analytics Platform
+## 8. Example scenario: fintech SEC filings
 
 ### Background
 
-FinPulse Analytics operates an automated platform that processes quarterly earnings releases and SEC Form 10-K filings for over 3,000 publicly traded enterprise companies.
+Imagine a financial analytics platform that processes quarterly earnings releases and SEC Form 10-K filings for thousands of publicly traded companies.
 
 ### The Problem
 
-Previously, FinPulse relied on a hybrid pipeline of regular expressions and DOM scrapers to parse financial tables. In Q1 2026, several major SEC filing portals updated their HTML layout standards from monolithic tables to inline flexbox containers with dynamic CSS classes.
+The platform relies on a hybrid pipeline of regular expressions and DOM scrapers to parse financial tables. Then a filing portal changes its HTML layout from monolithic tables to inline flexbox containers with dynamic CSS classes.
 
--   **The Outage:** FinPulse's parser executed without raising HTTP errors, but failed to extract numeric balance sheet items.
--   **Silent Corruption:** Millions of financial data points were ingested as 0.0 or null. Automated stock screening algorithms emitted false anomaly alerts, damaging enterprise client trust.
--   **MTTR Spike:** Data engineers spent 5 days writing custom regex fixes for each individual company format.
+-   **The Outage:** The parser runs without raising HTTP errors, but fails to extract numeric balance sheet items.
+-   **Silent Corruption:** Financial data points are ingested as 0.0 or null, and automated stock screening algorithms emit false anomaly alerts.
+-   **MTTR Spike:** Data engineers have to write custom regex fixes for each individual company format.
 
 ### The Solution with Typed Document-to-JSON Extraction
 
-FinPulse migrated its ingestion infrastructure to a typed document-to-JSON pipeline, enforcing a strict Pydantic financial model:
+The fix is a typed document-to-JSON pipeline that enforces a strict Pydantic financial model:
 
 ```python
 class BalanceSheetModel(BaseModel):
@@ -505,11 +491,10 @@ class BalanceSheetModel(BaseModel):
     net_income: float
 ```
 
-### Results
+### What the Gate Does
 
--   **Instant Fault Detection:** When SEC portals updated layouts in Q2 2026, the schema gate flagged invalid payloads in 85 milliseconds, preventing corrupt records from entering production databases.
--   **Automated Fetch Escalation:** The retry tree detected missing required balance sheet fields in static HTML and automatically escalated execution to headless DOM rendering with shadow tree traversal.
--   **100% Data Integrity:** FinPulse achieved zero database corruptions across 12,000 filings processed over the following two quarters.
+-   **Fault Detection:** When a portal changes its layout, the schema gate flags invalid payloads before corrupt records enter production databases.
+-   **Fetch Escalation:** A retry tree can detect missing required balance sheet fields in static HTML and escalate to headless DOM rendering.
 
 ## 9. Enterprise security, PII redaction & OpenTelemetry observability
 

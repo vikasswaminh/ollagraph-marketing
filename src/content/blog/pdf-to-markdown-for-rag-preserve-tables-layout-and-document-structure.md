@@ -193,19 +193,13 @@ Once you have AI-ready Markdown, chunking should respect the structure you prese
 
 ## 12. Performance & Benchmarks (Evaluation Harness)
 
-### What we tested (mini-benchmark)
+### Setting up a mini-benchmark
 
-We ran an internal benchmark on a mixed set of 12 PDFs (3 scanned, 9 text-based):
+Pick a mixed set of PDFs that matches your real ingestion mix, including some scanned files, and compare two conversion variants:
 -   **Variant A (structure-preserving):** heading hierarchy + table normalization + caption/footnote adjacency + provenance anchors.
 -   **Variant B (baseline):** flattened tables into paragraphs and removed block-level provenance markers.
 
-### Sample results (averages across the 12 PDFs)
-
--   **Heading fidelity:** Variant A `4.6/5` vs Variant B `2.1/5`
--   **Table fidelity:** Variant A `4.2/5` vs Variant B `1.7/5`
--   **Context fidelity:** Variant A `4.4/5` vs Variant B `2.0/5`
--   **Citation fidelity:** Variant A `4.8/5` vs Variant B `3.0/5`
--   **Retrieval impact (answer correctness on 16 questions):** Variant A `0.81` vs Variant B `0.46`
+Score each conversion for heading, table, context, and citation fidelity, then measure answer correctness on a set of retrieval questions that require table reasoning and section context.
 
 ### Table fidelity checks (automatable)
 

@@ -289,10 +289,10 @@ Definition(term, definition) (optional but powerful)</code></pre>
 <h3>Example results template</h3>
 <p>Below is a results table format you can fill with your own numbers.</p>
 <pre><code>Variant         Recall@5  Recall@10  MRR   Citation accuracy
-A (human)       0.42      0.58       0.31  0.39
-B (retrieval)   0.55      0.71       0.42  0.52
-C (validated)   0.60      0.76       0.46  0.58</code></pre>
-<p>Why these improvements are plausible:</p>
+A (human)       ...       ...        ...   ...
+B (retrieval)   ...       ...        ...   ...
+C (validated)   ...       ...        ...   ...</code></pre>
+<p>Why the structured variants should score higher:</p>
 <ul>
   <li>Structure-preserving Markdown improves chunk alignment.</li>
   <li>Deterministic templates reduce representation variance.</li>
@@ -311,8 +311,8 @@ C (validated)   0.60      0.76       0.46  0.58</code></pre>
 <p>Then compare retrieval metrics.</p>
 <p>This gives you an evidence-backed answer to a common question: “Is formatting worth the effort?”</p>
 
-<h3>Lab-tested example: what we observed when formatting regressed</h3>
-<p>In our internal ingestion tests, we ran the same source set through three formatting variants and measured retrieval outcomes on a labeled query set.</p>
+<h3>What to look for when formatting regresses</h3>
+<p>Run the same source set through the three formatting variants and measure retrieval outcomes on a labeled query set. Hold the rest of the pipeline constant.</p>
 <p>Environment (example):</p>
 <ul>
   <li>Formatting templates: format_version = 1.2.0</li>
@@ -320,60 +320,22 @@ C (validated)   0.60      0.76       0.46  0.58</code></pre>
   <li>Indexing: embeddings stored with section_path metadata</li>
   <li>Retriever: top-k semantic search with metadata-aware citation mapping</li>
 </ul>
-<p><strong>Evidence note:</strong> These results are presented in the same format you should publish from your own harness run (Recall@k, MRR, and citation accuracy). If you swap in your measured values, the narrative and interpretation remain valid.</p>
-<p><strong>Observed failure modes (repeatable):</strong></p>
+<p><strong>Failure modes to look for:</strong></p>
 
-<p>When headings were degraded into bold paragraphs, Recall@5 dropped because chunk boundaries no longer aligned to sections.</p>
-<p>When lists were flattened, queries targeting a single capability (e.g., “rate limiting”) matched broader context and missed the intended item.</p>
-<p>When tables lost headers, table-style questions returned partial or incorrect values because the retriever couldn’t associate headers with cells.</p>
-<p>When code fences were removed, technical queries matched surrounding prose instead of the code tokens.</p>
+<p>When headings are degraded into bold paragraphs, expect Recall@5 to drop, because chunk boundaries no longer align to sections.</p>
+<p>When lists are flattened, queries targeting a single capability (e.g., “rate limiting”) can match broader context and miss the intended item.</p>
+<p>When tables lose headers, table-style questions can return partial or incorrect values, because the retriever can’t associate headers with cells.</p>
+<p>When code fences are removed, technical queries can match surrounding prose instead of the code tokens.</p>
 <p><strong>Why this matters:</strong> these regressions are not “embedding problems.” They are representation geometry problems. The retriever is doing the best it can with the token stream and chunk boundaries you give it.</p>
 
-<h3>Example benchmark results (formatting variants)</h3>
-<p><strong>Columns:</strong> Variant; Recall@5; Recall@10; MRR; Citation accuracy; Query set size.</p>
-<ul>
-  <li><strong>A: human Markdown (degraded)</strong>
-    <ul>
-      <li>Recall@5: 0.42</li>
-      <li>Recall@10: 0.58</li>
-      <li>MRR: 0.31</li>
-      <li>Citation accuracy: 0.39</li>
-      <li>Query set size: 100</li>
-    </ul>
-  </li>
-  <li><strong>B: retrieval Markdown (structured)</strong>
-    <ul>
-      <li>Recall@5: 0.55</li>
-      <li>Recall@10: 0.71</li>
-      <li>MRR: 0.42</li>
-      <li>Citation accuracy: 0.52</li>
-      <li>Query set size: 100</li>
-    </ul>
-  </li>
-  <li><strong>C: retrieval Markdown + validation gate</strong>
-    <ul>
-      <li>Recall@5: 0.60</li>
-      <li>Recall@10: 0.76</li>
-      <li>MRR: 0.46</li>
-      <li>Citation accuracy: 0.58</li>
-      <li>Query set size: 100</li>
-    </ul>
-  </li>
-</ul>
-
-<h3>Example CLI output (formatting harness)</h3>
+<h3>Example harness invocation</h3>
 <pre><code>+$ rag-format-harness run \
 +  --dataset queries_100.jsonl \
 +  --index namespace=rag_md_format_v1 \
 +  --variants A,B,C \
 +  --chunking policy=structure_aware \
-+  --metrics recall_at_k,mrr,citation_accuracy
-+
-+Variant A: Recall@5=0.42 Recall@10=0.58 MRR=0.31 CitationAcc=0.39
-+Variant B: Recall@5=0.55 Recall@10=0.71 MRR=0.42 CitationAcc=0.52
-+Variant C: Recall@5=0.60 Recall@10=0.76 MRR=0.46 CitationAcc=0.58
-+
-+Summary: +0.18 Recall@10 from A→C; +0.19 CitationAcc from A→C</code></pre>
++  --metrics recall_at_k,mrr,citation_accuracy</code></pre>
+<p>Have the harness print Recall@5, Recall@10, MRR, and citation accuracy for each variant, plus the change from A to C, and record them in the results template above.</p>
 
 <h3>Formatting regression checklist (publishable)</h3>
 <p>Use this checklist to decide whether a formatting change is safe to roll out.</p>

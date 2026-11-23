@@ -134,7 +134,7 @@ const faqs = [
 </ol>
 
 <h2>6. API Contract Specification</h2>
-<p>Below is a practical contract you can implement (or use) for HTML→Markdown conversion.</p>
+<p>Below is a practical contract you can implement in your own conversion service for HTML→Markdown conversion. It is a design target, not the request shape of any one API: Ollagraph's converter, for example, covers the conversion step and leaves the metadata to your pipeline (see Example 1).</p>
 
 <h3>Request</h3>
 <ul>
@@ -220,25 +220,32 @@ metadata.warnings[]	array	Present; includes table/code/render issues	Makes failu
 
 <h2>8. Examples</h2>
 
-<h3>Example 1: Convert an Article Page (API Contract Usage)</h3>
+<h3>Example 1: Convert an Article Page with Ollagraph</h3>
+<p>Ollagraph's <code>/v1/convert/html-to-markdown</code> takes HTML, not a URL. If the page needs JavaScript, get the post-render HTML from <code>/v1/render</code> first:</p>
+<pre><code>curl -X POST https://api.ollagraph.com/v1/render \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '&#123; "url": "https://example.com/docs/ai-ingestion" &#125;'
+# -&gt; &#123; "status": "success", "final_url": "...", "html": "&lt;!doctype html&gt;...", ... &#125;</code></pre>
+<p>Then pass that HTML to the converter:</p>
 <pre><code>curl -X POST https://api.ollagraph.com/v1/convert/html-to-markdown \
+  -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://example.com/docs/ai-ingestion",
-    "render": true,
-    "max_output_tokens": 6000,
-    "content_policy": "documentation_mode",
-    "table_mode": "markdown_table",
-    "code_mode": "fenced",
-    "evidence": true
+    "html": "&lt;article&gt;&lt;h1&gt;AI ingestion&lt;/h1&gt;...&lt;/article&gt;",
+    "heading_style": "ATX",
+    "strip_tags": ["nav", "footer", "aside"],
+    "include_links": true,
+    "include_images": false
   &#125;'</code></pre>
 <p>Expected behavior:</p>
 <ul>
   <li>Markdown includes headings and lists in order.</li>
   <li>Tables are converted to Markdown tables when possible.</li>
   <li>Code blocks are fenced.</li>
-  <li>Metadata includes token estimate, boilerplate ratio, and evidence spans.</li>
+  <li><code>script</code> and <code>style</code> are always dropped; <code>strip_tags</code> drops the extra boilerplate tags you name.</li>
 </ul>
+<p>The response is <code>markdown</code> plus <code>byte_count</code> and <code>word_count</code>. The rest of the contract metadata (token estimate, boilerplate ratio, extraction confidence, sections with evidence spans, warnings) is computed by your pipeline; <code>/v1/tokens/count</code> can supply the token estimate.</p>
 
 <h3>Example 2: Pipeline Decision (Accept vs Retry)</h3>
 <p>If your pipeline sees:</p>
@@ -310,15 +317,9 @@ Any render_timeout warning	present	Retry once with safer policy</code></pre>
   <li>downstream retrieval impact (Top-5 recall)</li>
 </ul>
 
-<h3>Example Results (Sample Run)</h3>
-<p>To make the contract measurable, we ran a sample evaluation on a small golden set of 40 pages (docs, blogs, changelogs, and Q&amp;A). The goal was not to claim universal numbers, but to show the shape of the metrics you should expect when the contract is enforced.</p>
-<pre><code>Metric	Raw HTML baseline	Contract-driven Markdown	What it tells you
-Output token estimate (median)	9,800	3,400	Boilerplate control is working
-Boilerplate ratio (median)	0.42	0.18	Main content detection is stable
-Table parse success rate	61%	92%	Table representation policy is effective
-Evidence coverage (sections with spans)	74%	97%	Citations can be verified
-Retrieval impact (Top-5 recall)	0.58	0.79	Conversion quality correlates with retrieval</code></pre>
-<p>If your numbers don’t move in the same direction, treat it as a regression signal—not a “maybe it’s fine” situation.</p>
+<h3>Reading the Results</h3>
+<p>Run the benchmark twice on the same pages — once on a raw HTML baseline and once on contract-driven Markdown — and compare each metric. When the contract is enforced, the direction of change should be clear: a lower output token estimate (boilerplate control is working), a lower boilerplate ratio (main content detection is stable), a higher table parse success rate (the table representation policy is effective), higher evidence coverage (citations can be verified), and better Top-5 recall (conversion quality is helping retrieval).</p>
+<p>If your numbers don’t move in that direction, treat it as a regression signal—not a “maybe it’s fine” situation.</p>
 
 <h3>A Simple Evaluation Harness</h3>
 <p>Run conversion, then score it with a deterministic checklist:</p>
@@ -382,23 +383,23 @@ retrieval:
   &#125;
 &#125;</code></pre>
 
-<h3>Golden-Set Micro Case Study (Before/After)</h3>
-<p>One of the fastest ways to validate an ingestion contract is to pick a small set of pages where structure matters (tables, code, and headings). Here’s a micro case study pattern you can replicate.</p>
+<h3>Golden-Set Example Scenario (Before/After)</h3>
+<p>One of the fastest ways to validate an ingestion contract is to pick a small set of pages where structure matters (tables, code, and headings). Here’s an example scenario you can replicate.</p>
 
 <p><strong>Input page type</strong></p>
 <p>A documentation page with a “Parameters” table and a “Example request” code block.</p>
 
-<p><strong>What changed with the contract</strong></p>
+<p><strong>What changes with the contract</strong></p>
 <ul>
-  <li>The table was emitted as a Markdown table with a header row.</li>
-  <li>The code block was emitted as a fenced block with a language hint.</li>
-  <li>Evidence spans were attached per section so citations could be verified.</li>
+  <li>The table is emitted as a Markdown table with a header row.</li>
+  <li>The code block is emitted as a fenced block with a language hint.</li>
+  <li>Evidence spans are attached per section so citations can be verified.</li>
 </ul>
 
-<p><strong>What improved downstream</strong></p>
+<p><strong>What to check downstream</strong></p>
 <ul>
-  <li>Retrieval stopped returning navigation fragments and started returning the “Parameters” section.</li>
-  <li>The answer generator stopped paraphrasing table rows incorrectly because the row/column structure was preserved.</li>
+  <li>Retrieval should stop returning navigation fragments and start returning the “Parameters” section.</li>
+  <li>The answer generator should stop paraphrasing table rows incorrectly, because the row/column structure is preserved.</li>
 </ul>
 <p>This is the practical reason to treat conversion as a contract: it changes the shape of the context your model sees.</p>
 

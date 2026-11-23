@@ -5,7 +5,7 @@ const faqs = [
   { q: "What does a Meta Audit API validate?", a: "It fetches each page, extracts metadata from the head, and checks titles, descriptions, and Open Graph fields against defined rules. It returns pass/fail results and clear reasons when a tag is missing, duplicated, malformed, or likely to render poorly." },
   { q: "Why audit metadata programmatically instead of manually?", a: "Manual checks do not scale and they miss template-level regressions. An API makes it practical to test thousands of URLs consistently after deployments, migrations, or CMS changes." },
   { q: "How does Ollagraph validate Open Graph metadata?", a: "Ollagraph's /v1/seo/meta-audit checks that og:title, og:description, and og:image are present and returns their values alongside the title, description, canonical, and robots grades. Checks such as image dimensions and absolute HTTPS image URLs are a few lines of your own code on top of the returned values." },
-  { q: "Can this be added to CI/CD?", a: "Yes. Teams use it to run metadata checks on builds, release branches, or template updates and fail the pipeline when critical issues appear. That prevents broken tags from reaching production." },
+  { q: "Can this be added to CI/CD?", a: "Yes. You can run metadata checks on builds, release branches, or template updates and fail the pipeline when critical issues appear. That prevents broken tags from reaching production." },
   { q: "What are the most common failures it finds?", a: "The most common issues are missing images, duplicated titles, short or boilerplate descriptions, and metadata that exceeds display limits. It also catches relative URLs, blocked assets, and head tags that differ from crawler-visible output." },
   { q: "How fast can it audit large sites?", a: "Ollagraph audits one URL per call, so a site-wide run is a loop with a small client-side worker pool. Runtime depends mostly on how fast the target pages respond and how much concurrency you use." },
 ];
@@ -38,21 +38,21 @@ const faqs = [
 
 <p><strong>Last updated:</strong> 2026-07-31</p>
 
-<p><strong>Versions tested:</strong> Ollagraph POST /v1/seo/meta-audit, Screaming Frog SEO Spider 20.1, Ahrefs Site Audit 2026, Google Rich Results Test (internal), Facebook Sharing Debugger, LinkedIn Post Inspector, X (Twitter) Card Validator, Slack link unfurl engine (observed behavior)</p>
+<p><strong>Versions covered:</strong> Ollagraph POST /v1/seo/meta-audit, Screaming Frog SEO Spider 20.1, Ahrefs Site Audit 2026, Google Rich Results Test (internal), Facebook Sharing Debugger, LinkedIn Post Inspector, X (Twitter) Card Validator, Slack link unfurl engine (observed behavior)</p>
 
 <h2>Executive Summary</h2>
 
-<p>Title tags, meta descriptions, and Open Graph tags are the three most impactful HTML elements for search and social visibility — and they are also the most commonly broken at scale. A missing OG:image tag means your link posts as a plain URL on LinkedIn. A truncated title tag means Google rewrites your snippet. In our audit of 5,000 pages across 20 enterprise domains, 73% had at least one critical meta tag issue — and 41% had Open Graph tags that rendered incorrectly on at least one major platform.</p>
+<p>Title tags, meta descriptions, and Open Graph tags are the three most impactful HTML elements for search and social visibility — and they are also the most commonly broken at scale. A missing OG:image tag means your link posts as a plain URL on LinkedIn. A truncated title tag means Google rewrites your snippet.</p>
 
 <p>A Meta Audit API solves this by programmatically fetching pages, extracting all meta tags, validating them against platform-specific rules, and returning a structured report with pass/fail status for every tag on every page.</p>
 
 <h2>Key Takeaways</h2>
 
 <ul>
-  <li>Title tags, meta descriptions, and Open Graph tags fail at alarming rates. Our audit of 5,000 pages found 73% had at least one critical meta issue.</li>
+  <li>Title tags, meta descriptions, and Open Graph tags break easily at scale, especially after template changes and CMS migrations.</li>
   <li>Each platform enforces different rules. Google truncates titles past ~580 pixels (not characters). Facebook requires OG:image at least 200×200 pixels. LinkedIn ignores OG tags if article:published_time is missing.</li>
-  <li>A Meta Audit API can check 1,000 pages in under 90 seconds. A manual audit of the same volume takes 4–8 hours.</li>
-  <li>The most common failures: missing OG:image (34% of pages), title tags under 30 characters (22%), and meta descriptions that duplicate the H1 (18%).</li>
+  <li>A Meta Audit API replaces manual, tab-by-tab checks with a scripted job you can rerun on every deploy.</li>
+  <li>Common failures include a missing OG:image, title tags under 30 characters, and meta descriptions that duplicate the H1.</li>
   <li>Integrating meta tag validation into CI/CD catches issues before they reach production.</li>
   <li>Ollagraph's <code>POST /v1/seo/meta-audit</code> endpoint grades one URL per call — title, meta description, H1, canonical, core Open Graph tags, viewport, and robots — and returns a 0–100 score, an A–F grade, and a list of issues. Platform-specific checks (pixel width, image dimensions, duplicates) are a few lines of your own code on top.</li>
 </ul>
@@ -465,7 +465,7 @@ main().catch((err) =&gt; &#123; console.error(err); process.exit(1); &#125;);</c
   </li>
   <li>
     <p><strong>Validate in Staging, Block in Production</strong></p>
-    <p>Integrate the Meta Audit API into your staging environment's deploy pipeline. If a staging deploy introduces a critical meta tag failure, block the production deploy until it is fixed. We have seen teams eliminate 90% of meta tag regressions within two weeks of adding this gate.</p>
+    <p>Integrate the Meta Audit API into your staging environment's deploy pipeline. If a staging deploy introduces a critical meta tag failure, block the production deploy until it is fixed.</p>
   </li>
   <li>
     <p><strong>Monitor Platform Changes</strong></p>
@@ -612,7 +612,7 @@ API for automation               REST (no SDK)                                 N
 <p>Open Graph tags (og:) are the standard protocol used by Facebook, LinkedIn, Slack, and Discord. Twitter Cards (twitter:) are X/Twitter's own protocol. Twitter falls back to OG tags when Twitter-specific tags are absent, but the fallback behavior is not always reliable. Ollagraph's meta audit grades the og: tags; <code>POST /v1/intel/social-tags</code> returns both the Open Graph and Twitter Card tags for a page so you can check each.</p>
 
 <h2>16. Conclusion</h2>
-<p>Title tags, meta descriptions, and Open Graph tags are the most visible HTML elements your site produces. They appear in search results, social feeds, messaging apps, and increasingly in AI-generated answers. And they break more often than most teams realize — our audit of 5,000 pages found 73% with at least one critical issue.</p>
+<p>Title tags, meta descriptions, and Open Graph tags are the most visible HTML elements your site produces. They appear in search results, social feeds, messaging apps, and increasingly in AI-generated answers. And they break more often than most teams realize.</p>
 <p>A Meta Audit API solves this by automating the extraction and validation process across every platform that consumes your meta tags. It checks pixel width instead of character count. It downloads and inspects OG images. It resolves relative URLs the way each platform's crawler does. It catches issues in minutes that a manual audit would miss for weeks.</p>
 <p>The teams that get this right treat meta tag auditing as a continuous process, not a one-time project. They integrate validation into their CI/CD pipeline. They run weekly scheduled audits. They fix templates instead of individual pages. And they monitor platform changes so their validation rules stay current.</p>
 <p>Ollagraph's <code>POST /v1/seo/meta-audit</code> gives you the core of this as one HTTPS call per URL — a score, a grade, the extracted tags, and a plain-English issue list — and the examples above show the loop, duplicate checks, and CI gate around it. Sign up at ollagraph.com and run it against your sitemap.</p>

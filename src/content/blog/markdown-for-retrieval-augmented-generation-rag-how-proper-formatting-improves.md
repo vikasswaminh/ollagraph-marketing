@@ -200,17 +200,17 @@ curl -X POST https://api.example.com/v1/auth
 
 ## 8. Performance & Benchmarks
 
-### Lab-tested example: what we observed when formatting regressed
+### How to benchmark formatting variants
 
-In our internal ingestion tests, we ran the same source set through three formatting variants on a labeled query set of 100 questions:
+Run the same source set through three formatting variants and measure retrieval outcomes on a labeled query set (around 100 questions is a practical starting size). Record the same metrics for each variant:
 
 | Variant | Recall@5 | Recall@10 | MRR | Citation Accuracy | Query Set Size |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **A: Human Markdown (Degraded)** | 0.42 | 0.58 | 0.31 | 0.39 | 100 |
-| **B: Retrieval Markdown (Structured)** | 0.55 | 0.71 | 0.42 | 0.52 | 100 |
-| **C: Retrieval Markdown + Validation Gate** | 0.60 | 0.76 | 0.46 | 0.58 | 100 |
+| **A: Human Markdown (Degraded)** | your result | your result | your result | your result | your set |
+| **B: Retrieval Markdown (Structured)** | your result | your result | your result | your result | your set |
+| **C: Retrieval Markdown + Validation Gate** | your result | your result | your result | your result | your set |
 
-### Example CLI output (formatting harness)
+### Example harness invocation
 
 ```bash
 $ rag-format-harness run \
@@ -219,13 +219,9 @@ $ rag-format-harness run \
   --variants A,B,C \
   --chunking policy=structure_aware \
   --metrics recall_at_k,mrr,citation_accuracy
-
-Variant A: Recall@5=0.42 Recall@10=0.58 MRR=0.31 CitationAcc=0.39
-Variant B: Recall@5=0.55 Recall@10=0.71 MRR=0.42 CitationAcc=0.52
-Variant C: Recall@5=0.60 Recall@10=0.76 MRR=0.46 CitationAcc=0.58
-
-Summary: +0.18 Recall@10 from A→C; +0.19 CitationAcc from A→C
 ```
+
+Have the harness print each metric per variant, plus the change from A to C, so a formatting regression shows up as a number rather than a hunch.
 
 ### Formatting-to-retrieval causal map
 

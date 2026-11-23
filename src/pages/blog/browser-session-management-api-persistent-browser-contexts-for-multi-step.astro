@@ -37,14 +37,14 @@ const faqs = [
 <h2>Executive Summary</h2>
 <p>A Browser Session Management API opens a persistent browser context, runs multiple commands against it — navigate, click, extract, screenshot — and keeps the state alive between calls. Cookies stay. localStorage persists. The login from step two is still valid in step seven. The browser does not cold-start for every request.</p>
 <p>This matters because the web was not designed for stateless extraction. A product listing requires search, filter, scroll, and detail clicks. An AI agent booking a flight needs six to twelve sequential steps, each dependent on the previous one. Stateless render APIs break on step three every time.</p>
-<p>Session management changes the cost structure too. A persistent browser context eliminates the 2-4 second cold-start penalty per request. At 10,000 multi-step workflows per day, that saving cuts compute costs by 30-50%.</p>
+<p>Session management changes the cost structure too. A persistent browser context eliminates the 2-4 second cold-start penalty per request. At 10,000 multi-step workflows per day, that overhead adds up quickly.</p>
 <p>The short version: If your automation needs more than one page load, you need a session. If it needs more than three, a session-based API is cheaper, faster, and more reliable than stitching together stateless renders.</p>
 <p><strong>A note on Ollagraph:</strong> Ollagraph's browser endpoints are stateless — every call is a fresh browser and nothing persists between calls. Ollagraph does not offer persistent sessions, logins, or cookies across calls. In this guide, the stateful steps are shown in your own Playwright code, and Ollagraph appears only for the single-page steps it actually handles: /v1/render, /v1/scrape (with actions, js_eval, wait_until), /v1/screenshot, and batch/async scraping.</p>
 
 <h2>Key Takeaways</h2>
 <ul>
   <li>A persistent browser context maintains cookies, localStorage, sessionStorage, IndexedDB, and service worker state across API calls. Stateless APIs lose all of this between requests.</li>
-  <li>Session-based automation is 30-50% cheaper for multi-step workflows because browser startup, TLS negotiation, and proxy connection costs are paid once per session instead of once per step.</li>
+  <li>Session-based automation is cheaper for multi-step workflows because browser startup, TLS negotiation, and proxy connection costs are paid once per session instead of once per step.</li>
   <li>Browser context isolation is critical for concurrent workloads. Each session must run in an isolated context — or sessions leak authentication tokens into each other.</li>
   <li>The idle timeout is the single most important configuration parameter. The sweet spot is 60-120 seconds for most workloads.</li>
   <li>CDP's Storage domain gives you programmatic control over cookies, localStorage, and cache. You can snapshot and restore browser state for checkpoint-and-retry patterns.</li>
@@ -57,8 +57,7 @@ const faqs = [
 <p>A stateless render API cannot do this. No cookies carry over. No JavaScript state persists. You would need to re-authenticate for every single step, sending credentials over the wire six times instead of once.</p>
 <p>So you reach for Playwright. You write a script that launches a browser, runs all six steps, and returns the result. It works on your laptop. Then you need to run it a thousand times a day. Now you are managing a browser farm, dealing with memory leaks, patching stealth detection, and wondering why you cannot just call an API.</p>
 <p>This is the gap that a Browser Session Management API fills. The persistence of a local Playwright script with the operational simplicity of an HTTP API. You open a session. You send commands. The state stays intact. You do not manage a single browser process.</p>
-<p>I maintained a fleet of 200 browser processes on Kubernetes for a price monitoring startup. Every Cloudflare update broke our stealth patches. We spent more time fixing browsers than extracting data. A session API would have saved us two engineering months per quarter.</p>
-<p>The consequences of getting this wrong are measurable. A team we worked with sent twelve stateless API requests per product — each paying the 3-second cold-start penalty. Their monthly bill was $4,200. When they switched to a session-based approach, their bill dropped to $1,800. Same data. Same quality. Different architecture.</p>
+<p>For example, imagine a team that sends twelve stateless API requests per product, each paying the cold-start penalty. With one session per product, that penalty is paid once instead of twelve times. Same data. Same quality. Different architecture.</p>
 
 <h2>2. History &amp; Context</h2>
 <p>Browser automation started with single-shot interactions. Selenium opened a browser, ran your test, closed it. Puppeteer and Playwright improved the developer experience but kept the same pattern: launch, work, close. Sessions were implicit — they lived for the browser process lifetime and died when the script ended.</p>
@@ -143,7 +142,7 @@ print(len(state["cookies"]), "cookies")
 for origin in state["origins"]:
     print(origin["origin"], len(origin["localStorage"]), "localStorage entries")</code></pre>
 
-<p>The cookie count tells you whether a login actually stuck, and the localStorage entries per origin show what client-side state the page has written. Track the browser's memory too. We have seen sessions start at 120 MB and grow to 450 MB after 200 commands — a sign the page has a memory leak, not the browser.</p>
+<p>The cookie count tells you whether a login actually stuck, and the localStorage entries per origin show what client-side state the page has written. Track the browser's memory too. Memory that keeps climbing across commands is a sign the page has a memory leak, not the browser.</p>
 
 <h2>5. Session Lifecycle: Create, Use, Keep Alive, Destroy</h2>
 
@@ -382,19 +381,19 @@ await context.close();
 await browser.close();</code></pre>
 
 <h2>10. Performance &amp; Benchmarks</h2>
-<p>We ran a benchmark comparing stateless render calls against session-based renders for a 6-step e-commerce extraction workflow (login, navigate dashboard, search, extract listing, open detail page, screenshot). Sample size: 100 runs per approach using self-hosted Playwright (a fresh browser per step vs one persistent context) against a mid-sized e-commerce React SPA with Cloudflare protection.</p>
+<p>To compare the two approaches, run the same multi-step workflow both ways — for example a 6-step e-commerce extraction (login, navigate dashboard, search, extract listing, open detail page, screenshot) — using self-hosted Playwright with a fresh browser per step vs one persistent context. Run each approach enough times against a site you actually target to get stable percentiles, and measure:</p>
 
-<pre><code>Metric                         Stateless (6 renders)            Session-Based (1 session, 6 commands)    Improvement
-Total time (p50)               18.4s                            7.2s                                     61% faster
-Total time (p95)               24.1s                            9.8s                                     59% faster
-Cold-start cost                2.1s × 6 = 12.6s                2.1s × 1 = 2.1s                         83% less
-Success rate                   78%                              94%                                      +16 points
-Cost per workflow              $0.042                           $0.018                                   57% cheaper
-Data transferred               ~2.1 MB                          ~0.8 MB                                  62% less</code></pre>
+<ul>
+  <li>Total time (p50 and p95)</li>
+  <li>Cold-start cost (startup time × number of browser launches)</li>
+  <li>Success rate</li>
+  <li>Cost per workflow</li>
+  <li>Data transferred</li>
+</ul>
 
-<p>The stateless approach paid the cold-start penalty six times — 12.6 seconds of pure overhead. The session approach paid it once. Stateless renders failed most often on step 4 because the site's anti-bot system detected rapid requests from different browser instances. The session approach used a single browser with consistent fingerprints, triggering fewer anti-bot alerts.</p>
+<p>The stateless approach pays the cold-start penalty once per step; the session approach pays it once. Note which step stateless runs fail on: an anti-bot system may flag rapid requests from different browser instances, while a single browser keeps a consistent fingerprint.</p>
 
-<p>One data point that surprised us: the p95 gap was smaller than the p50 gap. The slowest session runs were also slow, just for different reasons — a slow proxy or memory-heavy page could take 9-10 seconds even with the warm browser advantage. Session-based automation eliminates cold-start variance but does not eliminate network variance. You still need timeouts and retries.</p>
+<p>Compare p95 as well as p50. Session-based automation removes cold-start variance but not network variance — a slow proxy or memory-heavy page is still slow with a warm browser. You still need timeouts and retries.</p>
 
 <p><strong>When sessions do not help:</strong> For single-page extractions, a stateless render is simpler and equally fast. The session overhead adds 50-100ms that a stateless call does not have. For anything involving two or more sequential steps, use a session.</p>
 
@@ -456,8 +455,6 @@ Data transferred               ~2.1 MB                          ~0.8 MB         
   <li>Setting idle TTL too low for slow pages. A page taking 45 seconds to load will trigger the timeout if your TTL is 30 seconds. The timeout counts from the last command received, not completed. Set TTL to at least 2x your expected maximum page load time.</li>
 </ul>
 
-<p>These three mistakes account for roughly 70% of session-related failures we see in production support tickets.</p>
-
 <ul>
   <li>Not handling session creation failures. Session creation can fail due to rate limits or capacity. Implement retry logic with exponential backoff.</li>
   <li>Using sessions for single-page extractions. Sessions add overhead. For one page load, use a stateless render API.</li>
@@ -507,7 +504,7 @@ Engineering overhead     None                      Minimal                     H
 <h3>Q7. Can I run multiple tabs inside a single session?</h3>
 <p>Most session APIs support a single tab per session. For multiple tabs, create multiple sessions. Each session gets its own browser context with full isolation.</p>
 <h3>Q8. Is session-based automation more expensive than stateless?</h3>
-<p>For single-page extractions, stateless is cheaper. For multi-step workflows (3+ steps), session-based is 30-50% cheaper because the cold-start cost is amortized across multiple commands.</p>
+<p>For single-page extractions, stateless is cheaper. For multi-step workflows (3+ steps), session-based is usually cheaper because the cold-start cost is amortized across multiple commands.</p>
 <h3>Q9. How do I debug what is happening inside a session?</h3>
 <p>Use the screenshot endpoint to capture the current page state. Use the script endpoint to inspect cookies (document.cookie) and localStorage (Object.keys(localStorage)). Some providers offer a live debugging URL.</p>
 <h3>Q10. Can I inject cookies into an existing session?</h3>
@@ -519,7 +516,7 @@ Engineering overhead     None                      Minimal                     H
 
 <h2>18. Conclusion</h2>
 <p>Browser session management is the architectural pattern that makes multi-step automation practical at scale. Stateless render APIs work for single-page extractions, but the moment your workflow needs to log in, paginate, or maintain state across multiple interactions, you need a persistent session.</p>
-<p>The economics are clear. A session-based approach cuts cold-start overhead by 83%, improves success rates by 10-16 points, and reduces per-workflow costs by 30-50%. The engineering overhead is minimal: create a session, send commands, close it. The provider handles browser management, stealth patches, proxy routing, and context isolation.</p>
+<p>The economics follow from the architecture: a session-based approach pays the cold-start cost once per workflow instead of once per step. The engineering overhead is minimal: create a session, send commands, close it. The provider handles browser management, stealth patches, proxy routing, and context isolation.</p>
 <p>The hard part is not keeping the session alive. It is designing your workflow to handle the cases where the session dies, and recovering gracefully when it does. Implement checkpoint-and-retry. Set appropriate idle TTLs. Close sessions explicitly. Monitor session health. These practices separate a production-grade pipeline from a script that works on your laptop.</p>
 <p>If you are building multi-step browser automations today, start with a session-based API. The warm browser advantage alone will save you more in time and cost than managing your own browser farm.</p>
 

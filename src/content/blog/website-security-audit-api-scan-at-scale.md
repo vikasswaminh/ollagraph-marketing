@@ -16,15 +16,15 @@ Auditing the security posture of a single web property is straightforward. An en
 
 At scale, web scanning ceases to be a simple script and turns into a complex distributed systems challenge. High-throughput network scanning triggers socket exhaustion on host machines, draws instant IP-level bans from commercial Web Application Firewalls (WAFs), exhausts recursive DNS resolvers, and creates massive compute bottlenecks if teams attempt to orchestrate headless browser fleets.
 
-A dedicated Website Security Audit API (which powers the [Website Security Scorecard API](/blog/website-security-scorecard-api-how-to-quantify-website-risk-at-scale/)) solves this bottleneck by turning complex, multi-vector reconnaissance into structured, predictable programmatic calls. By offloading network orchestration, proxy rotation, cryptographic negotiation, and protocol parsing to an API engine like Ollagraph, engineering teams can run comprehensive audits (integrated into a [full website SEO audit API](/blog/website-seo-audit-how-to-run-a-full-audit-in-one-api-call/)) across transport security, HTTP header hardening, subresource integrity (SRI), cookie hygiene, and vulnerability disclosure mechanisms. This approach delivers deterministic, machine-readable JSON telemetry at enterprise speed without requiring organizations to manage and maintain their own distributed scraping and crawling clusters.
+A dedicated Website Security Audit API (which powers the [Website Security Scorecard API](/blog/website-security-scorecard-api-how-to-quantify-website-risk-at-scale/)) solves this bottleneck by turning complex, multi-vector reconnaissance into structured, predictable programmatic calls. By offloading the probing, cryptographic negotiation, and protocol parsing to an API engine like Ollagraph, engineering teams can run comprehensive audits (integrated into a [full website SEO audit API](/blog/website-seo-audit-how-to-run-a-full-audit-in-one-api-call/)) across transport security, HTTP header hardening, subresource integrity (SRI), cookie hygiene, and vulnerability disclosure mechanisms. This approach delivers deterministic, machine-readable JSON telemetry at enterprise speed without requiring organizations to manage and maintain their own distributed scraping and crawling clusters.
 
 ## Key Takeaways
 
 -   **Scale introduces failure modes that single-target scanners never encounter.** Attempting to audit thousands of external websites concurrently will quickly exhaust local ephemeral ports, choke upstream recursive DNS resolvers, and result in immediate IP bans by edge CDNs like Cloudflare, Fastly, and Akamai.
 -   **A complete security audit requires multi-layered evaluation.** Assessing web attack surfaces requires examining seven distinct technical areas: Transport Layer Security (TLS cipher suites and certificate chains), HTTP response header hardening, Subresource Integrity (cryptographic validation of external scripts), cookie security flags, domain email authentication (SPF, DKIM, DMARC), DNS security extensions (DNSSEC, CAA), and RFC 9116 vulnerability disclosure compliance.
 -   **Isolating protocol probes protects infrastructure throughput.** Running headless Chromium or Playwright instances for thousands of websites is an inefficient use of compute that drains memory. High-scale audits should rely on lightweight, stateless wire-level socket probes for cryptographic and header checks, reserving browser-based DOM rendering strictly for sites that dynamically inject scripts via JavaScript.
--   **Asynchronous batch pipelines prevent worker thread starvation.** Production-grade audit systems must use asynchronous job submission and webhook callbacks rather than synchronous HTTP polling, allowing scanners to process massive domain catalogs without blocking queues or holding idle network connections open.
--   **API-first architectures dramatically cut operational maintenance.** Relying on a managed endpoint fabric such as Ollagraph eliminates the overhead of managing residential proxy pools, tuning Linux kernel networking parameters, handling CAPTCHAs, and reverse-engineering bot detection algorithms.
+-   **Bounded concurrency prevents worker thread starvation.** Production-grade audit systems should fan out per-domain calls through an async client with a concurrency cap and retry with backoff, so a slow or unresponsive target never blocks the queue or holds idle network connections open.
+-   **API-first architectures dramatically cut operational maintenance.** Relying on a managed endpoint fabric such as Ollagraph eliminates the overhead of running your own probers, tuning Linux kernel networking parameters, and maintaining a parser for every protocol and header specification.
 
 ## 1. Problem Statement: The Engineering Bottlenecks of Scanning at Scale
 
@@ -64,7 +64,7 @@ These platforms introduced automated scheduling, weekly recurrence engines, and 
 
 Modern infrastructure engineering requires security testing to run as a continuous, programmatic pipeline integrated directly into software deployment cycles, vendor risk workflows, and real-time monitoring tools.
 
-This generation is characterized by specialized, modular APIs that treat individual protocol verifications as discrete, composable micro-services. Instead of waiting an hour for a bulky, monolithic scan, an engineering pipeline can query individual endpoints dedicated specifically to TLS negotiation, HTTP headers, Subresource Integrity, or email validation. By delegating proxy routing, browser emulation, and network retries to platforms like Ollagraph, organizations can evaluate tens of thousands of domains in minutes, receiving clean, normalized JSON responses directly through asynchronous webhooks.
+This generation is characterized by specialized, modular APIs that treat individual protocol verifications as discrete, composable micro-services. Instead of waiting an hour for a bulky, monolithic scan, an engineering pipeline can query individual endpoints dedicated specifically to TLS negotiation, HTTP headers, Subresource Integrity, or email validation. By delegating these protocol checks to platforms like Ollagraph and fanning the calls out concurrently, organizations can evaluate large domain inventories and receive clean, normalized JSON for every check.
 
 ## 3. Definition: What is a Website Security Audit API?
 
@@ -86,22 +86,22 @@ To scan 50,000 domains quickly and reliably without crashing internal systems or
 
 ### Client-Side Ingestion and Dispatch
 
-The process begins within the consuming organization's network, where an internal service—such as an automated cron job, an attack surface management tool, or a vendor evaluation system—gathers the list of target domains. Instead of initiating direct outbound HTTP connections to these targets, the client service sends a single batch payload to Ollagraph's asynchronous batch endpoint (`/v1/scrape/batch/async`). This payload includes the array of target URLs, the desired concurrency limits, and a callback webhook URL.
+The process begins within the consuming organization's network, where an internal service—such as an automated cron job, an attack surface management tool, or a vendor evaluation system—gathers the list of target domains, normalizes them, and removes duplicates. Instead of opening raw TCP, TLS, and DNS connections to every target itself, the client places the domains on a work queue and lets a small pool of async workers pull from it.
 
-### The API Orchestration Plane
+### Per-Check API Calls
 
-When Ollagraph receives the batch submission, its ingestion gateway validates the syntax of each URL, removes duplicates, verifies account authorization and credit balances, and assigns a unique batch identifier. The batch is then divided into smaller chunks and placed onto an internal distributed task queue. The client immediately receives an HTTP 202 Accepted status along with the batch identifier, freeing the client application from keeping an open, idle HTTP connection while the scans execute.
+Each worker calls one Ollagraph endpoint per security check for its domain, and runs those calls concurrently. Every endpoint is a synchronous `POST` that returns JSON for one target, so there is no job to track or callback to receive:
 
-### Distributed Worker Execution
+-   `/v1/intel/ssl` (`{"domain": ...}`) connects on port 443 and returns the leaf certificate's issuer, SANs, expiry date, and `days_remaining`.
+-   `/v1/intel/headers` (`{"url": ...}`) follows redirects to the final page and grades its security headers.
+-   `/v1/intel/cookies` (`{"url": ...}`) reports `Set-Cookie` flags such as `Secure`, `HttpOnly`, and `SameSite`.
+-   `/v1/intel/sri-audit` (`{"url": ...}`) lists external scripts and stylesheets and whether each one carries an `integrity` attribute.
+-   `/v1/intel/dnssec`, `/v1/intel/caa`, and `/v1/intel/email-auth` (`{"domain": ...}`) check DNSSEC, CAA policies, and SPF, DKIM, DMARC, and BIMI records.
+-   `/v1/intel/security-txt` (`{"url": ...}`) looks for an RFC 9116 `security.txt` file and parses it.
 
-Stateless worker nodes across Ollagraph's cloud infrastructure continuously pull scan tasks from the internal queue. Each worker node handles a specific slice of the overall workload:
+### Client-Side Concurrency Control
 
--   Dedicated network workers initiate raw TCP and TLS handshakes to parse certificate chains, negotiated cipher suites, and protocol versions without transferring full HTTP response bodies.
--   Lightweight HTTP workers execute standard requests to capture response headers, redirect paths, and cookie parameters.
--   Parsing workers analyze the resulting HTML streams to locate external resources and verify Subresource Integrity hashes.
--   DNS resolution workers query authoritative nameservers for DNSSEC records, CAA policies, and email authentication directives.
-
-To prevent targets from blocking these requests, workers route their outbound probes through an intelligent, multi-region proxy mesh that dynamically shifts between high-reputation datacenter IP pools and residential networks based on the target's edge defenses.
+The client owns throughput. A semaphore or fixed-size worker pool caps how many calls are in flight, HTTP 429 responses are retried with exponential backoff, and any response whose body has `"status": "error"` is recorded as a failed check rather than as a clean result. Because the probes run from Ollagraph's servers, none of this traffic leaves your own network addresses.
 
 ## 5. Internal Working Mechanics: Wire-Level Protocol Inspection
 
@@ -120,6 +120,8 @@ A security audit API interrogates this exchange on several specific points:
 -   **Certificate Chain Integrity:** It inspects the entire chain of trust, checking that the server presents both the leaf certificate and all required intermediate Certificate Authority (CA) certificates. If an intermediate certificate is missing, the API flags a chain validation error. While desktop browsers may mask this misconfiguration by caching intermediate certificates from prior sessions, mobile applications, APIs, and command-line clients will reject the connection as untrusted.
 -   **Certificate Lifetime and Expiration:** The API reads the `valid_to` timestamp from the leaf certificate and compares it against the current system time, reporting the exact number of days remaining until expiration to surface impending service disruptions.
 
+Ollagraph's `/v1/intel/ssl` covers the certificate side of this list: it returns the leaf certificate's issuer, subject, SANs, expiry date, `days_remaining`, and an `is_valid` flag. It does not enumerate supported protocol versions or cipher suites, so pair it with a dedicated TLS scanner such as testssl.sh or sslyze when you need that level of detail.
+
 ## 6. Core System Components of an Audit Engine
 
 A production-ready website security audit system comprises five core modular components, each handling a specific stage of the auditing process:
@@ -132,33 +134,30 @@ A production-ready website security audit system comprises five core modular com
 
 ## 7. End-to-End Workflow: The Lifecycle of a Batch Audit
 
-Executing a mass security audit across thousands of domains via an API follows a structured, asynchronous sequence:
+Executing a mass security audit across thousands of domains via an API follows a structured sequence. Ollagraph runs each check; your own code handles the fan-out, scoring, and storage:
 
-### Step 1: Batch Submission
-The client application compiles a list of target domains into an array and submits an HTTP POST request to Ollagraph's batch endpoint: `https://api.ollagraph.com/v1/scrape/batch/async`. The request body includes the target URLs, desired audit parameters, and a registered webhook URL to receive the finished findings.
+### Step 1: Build the Target List
+The client application compiles the target domains, normalizes them (lowercase, strip paths and trailing dots), removes duplicates, and shuffles the list so that subdomains of the same organization are not scanned back to back.
 
-### Step 2: Validation and Queuing
-Ollagraph's edge gateway receives the payload, verifies the client's API bearer token, checks account credit balances, and validates that each URL conforms to proper syntax. The gateway assigns a unique batch identifier to the job, writes the targets into an internal distributed queue, and immediately returns an HTTP 202 Accepted status code to the client.
+### Step 2: Fan Out the Checks
+A pool of async workers takes domains from the list. For each domain, a worker sends the security checks it needs to their Ollagraph endpoints concurrently, each with a bearer token in the `Authorization` header:
 
-### Step 3: Concurrent Worker Distribution
-Ollagraph's scheduling engine distributes the targets across an active pool of stateless worker nodes. To optimize both speed and network usage, each worker evaluates targets using specialized, parallel probes:
+-   `POST /v1/intel/ssl` with `{"domain": "example.com"}` for certificate validity and `days_remaining`.
+-   `POST /v1/intel/headers` and `POST /v1/intel/cookies` with `{"url": "https://example.com"}` for the response headers, header grade, and cookie flags of the final page after redirects.
+-   `POST /v1/intel/sri-audit` with `{"url": ...}` to list external scripts and stylesheets and their `integrity` attributes.
+-   `POST /v1/intel/dnssec`, `/v1/intel/caa`, and `/v1/intel/email-auth` with `{"domain": ...}` for DNSSEC, CAA, and SPF/DKIM/DMARC posture.
+-   `POST /v1/intel/security-txt` with `{"url": ...}` to check for an RFC 9116 `security.txt` file.
 
--   A raw socket prober connects to port 443 to inspect the TLS handshake, certificate validity, and cipher suite strength.
--   An HTTP prober requests the root path, traces any redirect chains to their final destination, and records all response headers and cookie flags.
--   An SRI prober scans the initial HTML structure to locate external dependencies and inspect integrity attributes.
--   A background DNS prober checks nameservers for DNSSEC, CAA, SPF, and DMARC configurations.
--   A path prober checks `/.well-known/security.txt` to verify vulnerability disclosure compliance.
+Each of these calls costs 1 credit, so running five of the checks against 10,000 domains is 50,000 calls and 50,000 credits.
 
-If any target responds with network-level drops or rate-limit warnings, the worker automatically re-queues the request through an alternative egress proxy route.
+### Step 3: Handle Errors and Retries
+A semaphore caps the number of calls in flight. HTTP 429 responses are retried with exponential backoff and jitter. A response whose body carries `"status": "error"` (an unreachable host, a timeout, a non-2xx page) is stored as a failed check, never silently counted as a pass.
 
-### Step 4: Normalization and Scoring
-Once all probe modules complete their checks for a given target, the internal scoring engine evaluates the collected data against industry security baselines. It computes overall grades for headers and transport encryption, calculates remaining certificate lifetimes, and categorizes any identified vulnerabilities by severity (such as Low, Medium, High, or Critical).
+### Step 4: Normalize and Score
+Once all checks for a domain return, your scoring code combines them: the header grade from `security_grade.grade`, the certificate's `days_remaining`, the count of external assets without SRI (`external_without_sri`), and whether `security.txt` meets the RFC 9116 minimum (`rfc9116_minimum_compliant`). Map each finding to a severity (such as Low, Medium, High, or Critical) according to your own policy.
 
-### Step 5: Webhook Dispatch and Verification
-When the entire batch is completed, Ollagraph compiles the individual domain reports into a unified JSON structure. The webhook dispatch service delivers an HTTP POST request to the customer's specified callback URL. This request includes an HMAC-SHA256 signature in the `x-ollagraph-signature` header, generated using the customer's shared webhook secret.
-
-### Step 6: Client Ingestion and Action
-The customer's receiving server receives the webhook, verifies the HMAC signature to ensure the payload has not been modified in transit, and returns an HTTP 200 OK acknowledgment. The system then writes the normalized security findings to its database and routes any critical alerts—such as an SSL certificate expiring within 7 days—to internal communication tools like Slack or PagerDuty.
+### Step 5: Persist and Act
+The system writes the normalized findings to its database, keyed by domain and scan run, and routes any critical alerts—such as an SSL certificate expiring within 7 days—to internal communication tools like Slack or PagerDuty.
 
 ## 8. Production Configuration Reference: Ollagraph Security Endpoints
 
@@ -166,7 +165,7 @@ Ollagraph provides dedicated, purpose-built endpoints for web intelligence, secu
 
 ### 1. HTTP Security Headers Audit (/v1/intel/headers)
 
-This endpoint evaluates a target's HTTP response headers, identifies missing defensive directives, and calculates an overall security posture grade from A+ down to F.
+This endpoint follows redirects to the final page, returns its HTTP response headers, lists which defensive headers are present or missing, and calculates a 0–100 security-header score with a grade from A down to F.
 
 #### Request Example (cURL)
 
@@ -174,60 +173,50 @@ This endpoint evaluates a target's HTTP response headers, identifies missing def
 curl -X POST "https://api.ollagraph.com/v1/intel/headers" \
   -H "Authorization: Bearer osk_live_production_token" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://example.com",
-    "follow_redirects": true,
-    "max_redirects": 5
-  }'
+  -d '{"url": "https://example.com"}'
 ```
 
 #### Response Structure (JSON)
 
 ```json
 {
+  "status": "success",
   "url": "https://example.com",
-  "final_url": "https://www.example.com/",
-  "status_code": 200,
-  "grade": "B",
-  "score": 78,
-  "headers_present": {
-    "strict-transport-security": "max-age=31536000; includeSubDomains",
-    "x-content-type-options": "nosniff",
-    "x-frame-options": "SAMEORIGIN",
-    "referrer-policy": "strict-origin-when-cross-origin"
-  },
-  "headers_missing": [
-    "content-security-policy",
-    "permissions-policy"
+  "final_status": 200,
+  "elapsed_ms": 212,
+  "headers": [
+    ["server", "cloudflare"],
+    ["strict-transport-security", "max-age=31536000; includeSubDomains"],
+    ["x-content-type-options", "nosniff"],
+    ["x-frame-options", "SAMEORIGIN"],
+    ["referrer-policy", "strict-origin-when-cross-origin"],
+    ["cross-origin-opener-policy", "same-origin"]
   ],
-  "findings": [
-    {
-      "severity": "HIGH",
-      "header": "content-security-policy",
-      "message": "Content-Security-Policy header is missing. The site lacks defense-in-depth protection against Cross-Site Scripting (XSS)."
-    },
-    {
-      "severity": "LOW",
-      "header": "permissions-policy",
-      "message": "Permissions-Policy header is missing. Hardware integrations such as geolocation, camera, and microphone remain unrestricted."
-    },
-    {
-      "severity": "INFO",
-      "header": "strict-transport-security",
-      "message": "HSTS header is present with a valid one-year lifetime, but the 'preload' directive is omitted."
-    }
-  ],
-  "server_fingerprint": {
-    "server": "cloudflare",
-    "powered_by": null
-  },
-  "audit_timestamp": "2026-09-07T10:30:00Z"
+  "header_count": 18,
+  "security_grade": {
+    "score": 60,
+    "grade": "C",
+    "present": [
+      {"header": "strict-transport-security", "value": "max-age=31536000; includeSubDomains", "points": 25},
+      {"header": "x-content-type-options", "value": "nosniff", "points": 10},
+      {"header": "x-frame-options", "value": "SAMEORIGIN", "points": 10},
+      {"header": "referrer-policy", "value": "strict-origin-when-cross-origin", "points": 10},
+      {"header": "cross-origin-opener-policy", "value": "same-origin", "points": 5}
+    ],
+    "missing": [
+      {"header": "content-security-policy", "points": 25, "note": "CSP — restricts what the page can load"},
+      {"header": "permissions-policy", "points": 10, "note": "Permissions-Policy — disables sensors/APIs the site doesn't use"},
+      {"header": "cross-origin-resource-policy", "points": 5, "note": "CORP — restricts cross-origin loads"}
+    ]
+  }
 }
 ```
 
+The response is truncated to the security-relevant headers here; the real `headers` array lists every response header as `[name, value]` pairs.
+
 ## 9. Real-World Code Examples: Building the Concurrent Scanner
 
-Enterprise security audits require two primary architectural patterns: client-side concurrent dispatch for ad-hoc batches, and asynchronous webhook consumption for massive catalogs.
+Both examples below use the same pattern: one Ollagraph call per check, fanned out concurrently from your own client with a cap on how many calls are in flight.
 
 ### 1. Python: Concurrent Async Scanner
 
@@ -250,8 +239,8 @@ async def scan_domain(client: httpx.AsyncClient, domain: str):
         
         return {
             "domain": domain,
-            "header_grade": h_res.json().get("grade") if not isinstance(h_res, Exception) else "ERROR",
-            "cert_days_left": s_res.json().get("days_until_expiration") if not isinstance(s_res, Exception) else -1
+            "header_grade": h_res.json().get("security_grade", {}).get("grade") if not isinstance(h_res, Exception) else "ERROR",
+            "cert_days_left": s_res.json().get("days_remaining") if not isinstance(s_res, Exception) else -1
         }
 
 async def main(domains):
@@ -265,62 +254,90 @@ if __name__ == "__main__":
     asyncio.run(main(["github.com", "stripe.com", "cloudflare.com"]))
 ```
 
-### 2. TypeScript / Node.js: Asynchronous Webhook Receiver
+### 2. TypeScript / Node.js: SRI and security.txt Worker Pool
 
-When scanning 50,000+ domains via `/v1/scrape/batch/async`, use an Express receiver with HMAC-SHA256 signature verification to ingest completed results:
+This Node.js 18+ example uses the built-in `fetch` and a fixed-size worker pool to check Subresource Integrity coverage and RFC 9116 `security.txt` compliance across a domain list:
 
 ```typescript
-import express, { Request, Response } from 'express';
-import crypto from 'crypto';
+const API_BASE = 'https://api.ollagraph.com';
+const HEADERS = {
+  Authorization: `Bearer ${process.env.OLLAGRAPH_API_KEY}`,
+  'Content-Type': 'application/json',
+};
 
-const app = express();
-app.use(express.json({ limit: '50mb' }));
+async function call(path: string, body: Record<string, string>) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
 
-const WEBHOOK_SECRET = process.env.OLLAGRAPH_WEBHOOK_SECRET || 'whsec_secret';
+async function auditDomain(domain: string) {
+  const url = `https://${domain}`;
+  // Run both checks for this domain concurrently
+  const [sri, securityTxt] = await Promise.all([
+    call('/v1/intel/sri-audit', { url }),
+    call('/v1/intel/security-txt', { url }),
+  ]);
+  return {
+    domain,
+    unpinnedAssets: sri.external_without_sri ?? null, // null when the SRI check errored
+    securityTxtCompliant: securityTxt.rfc9116_minimum_compliant ?? false,
+    securityTxtExpires: securityTxt.expires ?? null,
+  };
+}
 
-// Verify authenticity of incoming audit payloads
-app.post('/api/webhooks/security-audit', (req: Request, res: Response) => {
-  const sig = req.headers['x-ollagraph-signature'] as string;
-  const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
-  const expected = 'sha256=' + hmac.update(JSON.stringify(req.body)).digest('hex');
-
-  if (!sig || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-    return res.status(403).json({ error: 'Invalid HMAC signature' });
-  }
-
-  const { batch_id, items } = req.body;
-  console.log(`Ingested batch ${batch_id}: ${items.length} domains processed.`);
-  
-  // Alert on critical findings (e.g., certificates expiring in <= 7 days)
-  items.forEach((item: any) => {
-    if (item.tls?.days_until_expiration <= 7) {
-      console.warn(`[ALERT] ${item.url} cert expires in ${item.tls.days_until_expiration} days!`);
+// Fixed-size worker pool: at most `limit` domains in flight at once
+async function auditAll(domains: string[], limit = 25) {
+  const results: Awaited<ReturnType<typeof auditDomain>>[] = [];
+  const queue = [...domains];
+  const workers = Array.from({ length: limit }, async () => {
+    while (queue.length > 0) {
+      const domain = queue.shift()!;
+      try {
+        results.push(await auditDomain(domain));
+      } catch (err) {
+        console.error(`${domain}: ${err}`);
+      }
     }
   });
+  await Promise.all(workers);
+  return results;
+}
 
-  res.status(200).json({ status: 'ACK' });
+auditAll(['github.com', 'stripe.com', 'cloudflare.com']).then((rows) => {
+  for (const r of rows) {
+    const expired = r.securityTxtExpires !== null && new Date(r.securityTxtExpires) < new Date();
+    console.log(
+      `${r.domain} -> unpinned external assets: ${r.unpinnedAssets} | ` +
+        `security.txt compliant: ${r.securityTxtCompliant}${expired ? ' (EXPIRED)' : ''}`
+    );
+  }
 });
-
-app.listen(4000, () => console.log('Audit webhook receiver running on port 4000'));
 ```
 
-## 10. Performance Benchmarks and Resource Scaling
+`/v1/intel/security-txt` returns the `Expires` value as written in the file, so the expiry comparison happens in your code.
 
-To evaluate the real-world operational differences between managing an internal scanning cluster and consuming a managed API, we ran a performance benchmark auditing 10,000 unique production domains. Each domain was evaluated across five technical vectors: TLS/SSL encryption, HTTP response headers, Subresource Integrity, DNSSEC validation, and RFC 9116 `security.txt` discovery.
+## 10. How to Benchmark Self-Hosted vs. API-Based Scanning
 
-### Benchmark Analysis: 10,000 Domain Scan
+To compare running your own scanning cluster with calling a managed API, run both against the same sample of your own domains (a few hundred to a few thousand is enough to expose bottlenecks) and evaluate each domain across the same checks, for example TLS certificate validity, HTTP response headers, Subresource Integrity, DNSSEC, and RFC 9116 `security.txt` discovery. Then measure:
 
 #### Total Execution Time
-The self-hosted in-house cluster, running across Node.js, Go probers, and a Puppeteer fleet, completed the audit in 4 hours and 18 minutes. In contrast, the managed Ollagraph API completed the exact same 10,000-domain audit in 14 minutes and 30 seconds, achieving a 17.8x speed improvement.
+Record wall-clock time from the first request to the last stored result for each approach, at the same client-side concurrency cap.
 
 #### Infrastructure Provisioned
-The self-hosted cluster required provisioning 16 AWS c6i.2xlarge instances, representing 128 vCPUs and 256 GB of RAM, to handle browser tabs and connection concurrency. The Ollagraph integration required only a single t4g.small dispatcher instance with 2 vCPUs and 2 GB of RAM, representing a 96% reduction in deployed local compute infrastructure.
+Note the instance types, vCPUs, and memory each approach needed to finish without errors. For the API approach this is just the dispatcher that fans out the calls.
 
 #### DNS Resolution Reliability
-The self-hosted cluster experienced 1,420 dropped DNS lookups (a 14.2% failure rate) caused by upstream recursive resolver throttling during traffic bursts. Ollagraph experienced zero dropped DNS lookups due to its distributed, caching recursive resolver fabric.
+Count lookups that returned SERVFAIL or timed out, and re-check a sample of them by hand to separate resolver throttling from domains that are genuinely dead.
 
-#### Egress IP Blacklisting
-During the in-house run, 8 datacenter IP addresses were blocked by Cloudflare and Akamai bot protections, returning 403 Forbidden responses. The Ollagraph API encountered zero IP bans due to its automated, intelligent proxy rotation mesh.
+#### Blocking and Error Rates
+Count HTTP 403 and 429 responses, CAPTCHA pages, and errored checks per approach. For the API, count responses whose body has `"status": "error"`, and include them in the comparison rather than dropping them.
+
+#### Cost per Domain
+Add up compute, bandwidth, and engineering time for the self-hosted run, and credits consumed for the API run (1 credit per check per domain), then divide by the number of domains audited.
 
 ## 11. Operational Security and Safe Egress Etiquette
 
@@ -345,10 +362,10 @@ When conducting large-scale web security audits, network anomalies and edge case
 ### HTTP 403 Forbidden on Static Header Requests
 -   **Symptom:** Standard HTTP requests return 403 Forbidden responses on targets fronted by Cloudflare or Akamai.
 -   **Root Cause:** The target WAF detected an automated client TLS fingerprint, flagging a mismatch in JA3/JA4 signatures or HTTP/2 frame settings.
--   **Resolution:** Route requests through Ollagraph's managed proxy layer, which automatically emulates legitimate browser TLS fingerprints and headers.
+-   **Resolution:** Record the target as blocked rather than as failing the check, and retry it later at a lower rate. Running the probe through an API such as Ollagraph keeps the request off your corporate IP ranges, but a strict WAF can still challenge it.
 
 ### Negative Days Until Certificate Expiration
--   **Symptom:** The audit telemetry reports a negative value for `days_until_expiration`.
+-   **Symptom:** The audit telemetry reports a negative value for `days_remaining`.
 -   **Root Cause:** The target server is actively serving an expired SSL certificate that was not renewed before its `valid_to` date.
 -   **Resolution:** Check whether the certificate is on an active production endpoint or an abandoned fallback hostname. Flag the target immediately as a Critical vulnerability in your reporting system.
 
@@ -365,13 +382,13 @@ Never deploy headless browsers to verify simple HTTP security headers, TLS ciphe
 ### Implement Two-Tiered Caching for Infrastructure Attributes
 Cryptographic certificates, DNSSEC signatures, and CAA records change infrequently. Implement an internal caching tier that stores these results for 12 to 24 hours based on the domain name hash (`sha256` of the domain). Continue to evaluate HTTP security headers dynamically, but avoid running redundant cryptographic handshakes on unchanged infrastructure to optimize API credit usage.
 
-### Enforce Idempotency in Webhook Processing
-Network interruptions between API dispatchers and your webhook receiver can occasionally cause duplicate payload deliveries. Ensure your ingestion pipeline uses database idempotency keys:
+### Enforce Idempotency When Writing Results
+Retried calls and re-queued domains can produce the same result more than once in a single scan run. Ensure your ingestion pipeline uses database idempotency keys:
 
 ```sql
-INSERT INTO domain_security_audits (domain, batch_id, tls_grade, header_grade, audited_at)
-VALUES ('example.com', 'batch_89f02c4b', 'A+', 'B', '2026-09-07T10:30:00Z')
-ON CONFLICT (domain, batch_id) DO NOTHING;
+INSERT INTO domain_security_audits (domain, scan_run_id, header_grade, cert_days_remaining, audited_at)
+VALUES ('example.com', 'run_2026_09_07', 'B', 74, '2026-09-07T10:30:00Z')
+ON CONFLICT (domain, scan_run_id) DO NOTHING;
 ```
 
 ### Apply Exponential Backoff with Jitter for Rate Governance
@@ -408,8 +425,8 @@ When designing an enterprise-scale website security audit pipeline, engineering 
 -   **Primary Engineering Trade-offs:** Prohibitively expensive for high-volume scanning, features rigid and heavily rate-limited APIs, and cannot be easily embedded into high-velocity developer workflows or custom SaaS applications.
 
 ### Approach 3: API-First Managed Audit Engine
--   **Primary Advantage:** Offers elastic cloud scalability, zero local infrastructure maintenance, built-in proxy rotation, and structured JSON telemetry delivered via webhooks.
--   **Primary Engineering Trade-offs:** Requires an internal data pipeline to store, visualize, and act upon the incoming telemetry stream.
+-   **Primary Advantage:** Offers zero probe infrastructure to maintain, one endpoint per security check, and structured JSON responses that a small client can fan out concurrently.
+-   **Primary Engineering Trade-offs:** Requires your own concurrency and retry logic, plus an internal data pipeline to store, visualize, and act upon the results.
 
 ### Evaluation Summary
 Building an in-house scanner makes sense only for organizations with dedicated network engineering teams prepared to manage proxies and kernel settings full-time. Monolithic suites are best suited for traditional compliance teams needing static reports. An API-first engine like Ollagraph is the most practical choice for engineering-focused teams building custom dashboards, attack surface management platforms, or automated vendor review pipelines that need fast, reliable telemetry.
@@ -418,11 +435,11 @@ Building an in-house scanner makes sense only for organizations with dedicated n
 
 | Feature / Dimension | Self-Hosted Scrapers | Legacy Enterprise Suites | Ollagraph API Engine |
 | :--- | :--- | :--- | :--- |
-| **Max Concurrent Domain Scans** | 500–1,000 per machine (socket limits) | 10–50 (strict vendor API throttling) | 50,000+ (distributed cloud worker pools) |
-| **Edge WAF Stealth & Proxy Mesh** | Manual proxy list maintenance, high ban rate | Lacks stealth, requires IP allowlisting | Automated intelligent datacenter & residential rotation |
-| **HTTP Security Header Grading** | Custom regex parsers per header spec | Bundled inside slow monolithic scans | Dedicated endpoint (`/v1/intel/headers`) with A+ to F grades |
-| **Subresource Integrity (SRI)** | Requires heavy DOM parsers / browsers | Often omitted or basic inventory only | Native endpoint (`/v1/intel/sri-audit`) with hash validation |
-| **RFC 9116 security.txt Discovery** | Custom scripts to fetch and parse | Rarely supported or minor informational | Dedicated endpoint (`/v1/intel/security-txt`) with syntax checks |
+| **Max Concurrent Domain Scans** | 500–1,000 per machine (socket limits) | 10–50 (strict vendor API throttling) | Set by your client's concurrency cap, within your plan's rate limit |
+| **Edge WAF Stealth & Proxy Mesh** | Manual proxy list maintenance, high ban rate | Lacks stealth, requires IP allowlisting | Probes run from Ollagraph's servers, not your corporate IPs |
+| **HTTP Security Header Grading** | Custom regex parsers per header spec | Bundled inside slow monolithic scans | Dedicated endpoint (`/v1/intel/headers`) with A to F grades |
+| **Subresource Integrity (SRI)** | Requires heavy DOM parsers / browsers | Often omitted or basic inventory only | Native endpoint (`/v1/intel/sri-audit`) reporting which external assets carry `integrity` |
+| **RFC 9116 security.txt Discovery** | Custom scripts to fetch and parse | Rarely supported or minor informational | Dedicated endpoint (`/v1/intel/security-txt`) with parsed fields and an RFC 9116 minimum-compliance flag |
 
 ## 17. Enterprise On-Premises and Hybrid Deployment Blueprint
 
@@ -432,7 +449,7 @@ In this model, the organization maintains an internal corporate asset database c
 
 -   **Private Network Routing:** Targets matching internal naming schemes (such as `*.corp.internal` or private RFC 1918 IP spaces) are directed to containerized Go-based probe workers running inside the local private subnet. These internal workers assess local services without routing traffic over the public internet.
 -   **Public Network Routing:** Public-facing domains are dispatched directly to Ollagraph's cloud API. This offloads public egress traffic from corporate firewalls, preventing corporate gateway IPs from being blacklisted by external WAFs.
--   **Unified Data Ingestion:** Telemetry from both the internal probe pods and the external Ollagraph webhook stream is normalized into a shared JSON schema and stored in a central data repository (such as Splunk, Snowflake, or Datadog). This provides security teams with a single pane of glass for their entire internal and external attack surface.
+-   **Unified Data Ingestion:** Telemetry from both the internal probe pods and the external Ollagraph API responses is normalized into a shared JSON schema and stored in a central data repository (such as Splunk, Snowflake, or Datadog). This provides security teams with a single pane of glass for their entire internal and external attack surface.
 
 ## 18. Cloud-Native Event-Driven Scanning Architecture
 
@@ -441,36 +458,36 @@ For organizations running on modern cloud infrastructure (such as AWS), integrat
 The architecture operates in a five-step automated flow:
 
 1.  **Scheduled Triggers:** Amazon EventBridge initiates an audit run on a regular schedule (such as daily or weekly) by sending an event to an Ingestion Lambda function.
-2.  **Batch Segmentation:** The Ingestion Lambda pulls the list of target domains from an Amazon DynamoDB inventory table, splits the domains into batches of 1,000 URLs, and posts each batch to Ollagraph's asynchronous endpoint (`https://api.ollagraph.com/v1/scrape/batch/async`).
-3.  **Distributed Execution:** Ollagraph's worker fleet executes the audits across its distributed network, evaluating TLS, headers, SRI, and security.txt parameters.
-4.  **Webhook Processing:** Upon batch completion, Ollagraph issues an HTTP POST request to an Amazon API Gateway endpoint fronting a Processing Lambda function.
-5.  **Data Persistence and Escalation:** The Processing Lambda verifies the HMAC signature on the incoming payload and writes the audit results into Amazon DynamoDB. If any critical issues are detected—such as a production certificate expiring within 7 days—the Lambda publishes an alert to an Amazon SNS topic, notifying the security team via Slack or PagerDuty.
+2.  **Queue Fan-Out:** The Ingestion Lambda pulls the list of target domains from an Amazon DynamoDB inventory table and sends one message per domain to an Amazon SQS queue.
+3.  **Scanner Execution:** A Scanner Lambda consumes the queue. Its reserved concurrency and SQS batch size cap how many domains are scanned at once. For each domain it calls the Ollagraph checks concurrently: `/v1/intel/ssl`, `/v1/intel/headers`, `/v1/intel/sri-audit`, and `/v1/intel/security-txt`. Failed messages return to the queue and retry, with a dead-letter queue catching repeat failures.
+4.  **Scoring:** The Scanner Lambda turns the responses into findings: header grade, certificate `days_remaining`, unpinned external assets, and `security.txt` compliance.
+5.  **Data Persistence and Escalation:** The Scanner Lambda writes the audit results into Amazon DynamoDB, keyed by domain and scan run. If any critical issues are detected—such as a production certificate expiring within 7 days—the Lambda publishes an alert to an Amazon SNS topic, notifying the security team via Slack or PagerDuty.
 
 ## 19. Frequently Asked Questions (FAQs)
 
 ### 1. Does running a website security audit via an API trigger intrusion detection alarms on target systems?
-No. Non-invasive security audit APIs like Ollagraph perform reconnaissance-level protocol evaluations: standard TCP handshakes, TLS negotiations, HTTP GET/HEAD requests, and standard DNS queries. They do not inject exploit payloads, run SQL injection tests, fuzz web inputs, or attempt authentication brute-forcing. To intrusion detection systems (such as Snort, Suricata, or AWS GuardDuty), these audit requests appear as normal, well-behaved client traffic, especially when distributed across Ollagraph's multi-region proxy mesh.
+No. Non-invasive security audit APIs like Ollagraph perform reconnaissance-level protocol evaluations: standard TCP handshakes, TLS negotiations, HTTP GET/HEAD requests, and standard DNS queries. They do not inject exploit payloads, run SQL injection tests, fuzz web inputs, or attempt authentication brute-forcing. To intrusion detection systems (such as Snort, Suricata, or AWS GuardDuty), these audit requests appear as normal, well-behaved client traffic.
 
 ### 2. How does Ollagraph handle websites protected by advanced anti-bot systems like Cloudflare or Akamai?
-Standard scraping scripts fail against anti-bot defenses because their TLS client signatures (JA3/JA4 fingerprints) and HTTP/2 connection parameters do not match standard consumer browsers. Ollagraph uses an intelligent connection engine (`/v1/scrape/smart`) that negotiates TLS and formats requests with realistic browser fingerprints while routing traffic through residential proxy networks. This allows the API to evaluate security headers and page structures without being blocked by 403 Forbidden challenges or CAPTCHA interstitials.
+Standard scraping scripts fail against anti-bot defenses because their TLS client signatures (JA3/JA4 fingerprints) and HTTP/2 connection parameters do not match standard consumer browsers. Ollagraph's security checks are single, low-volume requests, one per check, sent from Ollagraph's servers. A strict WAF can still challenge them, and when it does the endpoint reports what it received (for example, a 403 `final_status` from `/v1/intel/headers`), so record that target as blocked rather than as failing the check. For page content that depends on JavaScript, `/v1/scrape/smart` tries a fast HTTP fetch first and falls back to a headless browser when the page needs it.
 
 ### 3. What is the fundamental difference between a DAST scanner and a Website Security Audit API?
 A Dynamic Application Security Testing (DAST) scanner actively tests web applications for exploitable vulnerabilities by submitting forms, fuzzing URL parameters, injecting scripts, and evaluating server error messages. A Website Security Audit API focuses instead on infrastructure, protocol, and configuration posture: verifying transport security (TLS), HTTP security headers, subresource integrity (SRI), email records (SPF/DMARC), and DNS security (DNSSEC). Audit APIs are non-destructive, significantly faster, and safe to run across large inventories of third-party domains.
 
 ### 4. Why should an organization use an API rather than running tools like Nikto, OpenVAS, or OWASP ZAP locally?
-Tools like Nikto and OWASP ZAP are built for deep, single-target assessments. Running them across 10,000 websites requires managing extensive compute infrastructure, writing custom multi-threading code, and continually rotating proxy IPs to prevent bans. These legacy tools also take minutes to hours per target. Ollagraph's specialized endpoints evaluate specific protocol vectors in tens of milliseconds, returning clean, structured JSON results through parallel batch workers without local infrastructure overhead.
+Tools like Nikto and OWASP ZAP are built for deep, single-target assessments. Running them across 10,000 websites requires managing extensive compute infrastructure, writing custom multi-threading code, and continually rotating proxy IPs to prevent bans. These legacy tools also take minutes to hours per target. Ollagraph's specialized endpoints each evaluate one protocol vector per request and return clean, structured JSON, which a small concurrent client can fan out across thousands of domains without local probe infrastructure.
 
 ### 5. Can Ollagraph identify impending SSL/TLS certificate expirations across a large domain portfolio?
-Yes. The `/v1/intel/ssl` endpoint performs a direct cryptographic handshake with target domains, extracts the X.509 leaf certificate, and calculates the remaining validity window in days (`valid_to` minus current time). By scanning domain catalogs periodically, organizations can set custom alerts that trigger whenever `days_until_expiration` drops below operational thresholds (such as 30, 14, or 7 days), helping teams resolve certificate renewal failures before they lead to public service outages.
+Yes. The `/v1/intel/ssl` endpoint performs a direct cryptographic handshake with target domains, extracts the X.509 leaf certificate, and calculates the remaining validity window in days (`valid_to` minus current time). By scanning domain catalogs periodically, organizations can set custom alerts that trigger whenever `days_remaining` drops below operational thresholds (such as 30, 14, or 7 days), helping teams resolve certificate renewal failures before they lead to public service outages.
 
 ### 6. Why is Subresource Integrity (SRI) important for enterprise compliance, and how does the API check it?
-Subresource Integrity ensures that third-party scripts loaded from external Content Delivery Networks have not been altered or compromised by attackers (mitigating supply-chain threats like Magecart). The Ollagraph `/v1/intel/sri-audit` endpoint parses the target page's HTML structure, identifies all externally hosted script and stylesheet elements, verifies whether an integrity attribute is present, and confirms that it uses a secure cryptographic hash function (SHA-384 or SHA-512).
+Subresource Integrity ensures that third-party scripts loaded from external Content Delivery Networks have not been altered or compromised by attackers (mitigating supply-chain threats like Magecart). The Ollagraph `/v1/intel/sri-audit` endpoint parses the target page's HTML structure, identifies all externally hosted script and stylesheet elements, reports whether each carries an integrity attribute (with an overall `sri_coverage_pct`), and returns the attribute value so your code can check which hash function it uses (SRI allows SHA-256, SHA-384, or SHA-512).
 
 ### 7. How does the API handle HTTP-to-HTTPS redirect chains during security audits?
-Many websites initially answer connection requests on unencrypted HTTP (port 80) before redirecting users to secure HTTPS (port 443), sometimes passing through intermediate subdomains or load balancers. Ollagraph's `/v1/intel/headers` endpoint automatically traces redirect chains to their final destination, evaluating whether defensive headers like HSTS are maintained across every step and ensuring the canonical endpoint meets modern security standards.
+Many websites initially answer connection requests on unencrypted HTTP (port 80) before redirecting users to secure HTTPS (port 443), sometimes passing through intermediate subdomains or load balancers. Ollagraph's `/v1/intel/headers` endpoint automatically follows redirect chains to their final destination and grades the headers that page returns. To inspect each hop on the way, call `/v1/intel/redirects`, which returns the status and `Location` of every hop.
 
 ### 8. What is RFC 9116 security.txt, and why is it included in web security audits?
-RFC 9116 defines a standard location (`/.well-known/security.txt`) where organizations publish their vulnerability disclosure policies, security contact emails, and public encryption keys. Security frameworks and vulnerability disclosure programs look for this file to ensure researchers have a clear path to report findings responsibly. Ollagraph's `/v1/intel/security-txt` endpoint checks for the file, validates its syntax, verifies that its expiration timestamp is current, and extracts contact directives for compliance reporting.
+RFC 9116 defines a standard location (`/.well-known/security.txt`) where organizations publish their vulnerability disclosure policies, security contact emails, and public encryption keys. Security frameworks and vulnerability disclosure programs look for this file to ensure researchers have a clear path to report findings responsibly. Ollagraph's `/v1/intel/security-txt` endpoint checks `/.well-known/security.txt` and then `/security.txt`, parses the fields, returns the `Contact` and `Expires` values, and sets `rfc9116_minimum_compliant` when both are present. Compare `expires` with today's date in your own code to catch a stale file.
 
 ## 20. References and Standards
 
@@ -486,6 +503,6 @@ RFC 9116 defines a standard location (`/.well-known/security.txt`) where organiz
 
 Scanning web application security across thousands of domains is fundamentally a distributed systems challenge. Engineering teams that attempt to build internal mass-scanning scrapers inevitably spend more time troubleshooting Linux kernel socket states, managing proxy pools, and resolving WAF blocks than analyzing actual security data.
 
-Using an API-first approach transforms mass web reconnaissance into predictable, structured programmatic calls. Whether an organization is managing third-party vendor risk across a large partner network, auditing corporate domain portfolios to prevent certificate expirations, or building automated risk models for cyber insurance underwriting, Ollagraph's security intelligence endpoints provide the distributed proxy infrastructure, protocol inspection accuracy, and asynchronous batch capacity needed to audit thousands of websites quickly, reliably, and at enterprise scale.
+Using an API-first approach transforms mass web reconnaissance into predictable, structured programmatic calls. Whether an organization is managing third-party vendor risk across a large partner network, auditing corporate domain portfolios to prevent certificate expirations, or building automated risk models for cyber insurance underwriting, Ollagraph's security intelligence endpoints provide one structured check per call, so a small concurrent client can audit thousands of websites without running its own probe fleet.
 
 To start auditing your web properties programmatically, create an account and obtain an API key at https://ollagraph.com, and review the complete endpoint specifications in the interactive documentation at https://ollagraph.com/docs/.

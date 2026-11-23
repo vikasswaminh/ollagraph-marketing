@@ -24,7 +24,7 @@ const faqs = [
   },
   {
     q: "Do I need a headless browser to scrape Amazon?",
-    a: "Sometimes. Static product fields are often available without rendering, but search results, some price widgets, and buy-box variations are JavaScript-rendered. Ollagraph auto-detects when a page needs rendering and escalates transparently — the same request works whether or not the page needs a browser, and the response tells you which path served it.",
+    a: "Sometimes. Static product fields are often available without rendering, but search results, some price widgets, and buy-box variations are JavaScript-rendered. Ollagraph's scrape endpoint renders JavaScript as part of the fetch at no extra credit cost, so the same request works whether or not the page needs a browser.",
   },
 ];
 ---
@@ -82,23 +82,35 @@ const faqs = [
   &#125;'</code></pre>
 
 <pre><code>&#123;
-  "title": "Echo Dot (4th Gen)",
-  "price": 49.99,
-  "currency": "USD",
-  "availability": "In Stock",
-  "rating": 4.7,
-  "review_count": 318241
+  "status": "success",
+  "url": "https://www.amazon.com/dp/B08N5WRWNW",
+  "products": [
+    &#123;
+      "name": "Echo Dot (4th Gen)",
+      "price": "49.99",
+      "currency": "USD",
+      "availability": "InStock",
+      "rating": "4.7",
+      "review_count": "318241"
+    &#125;
+  ],
+  "json_ld": [...],
+  "microdata": [...],
+  "open_graph": &#123;...&#125;,
+  "meta": &#123;...&#125;
 &#125;</code></pre>
+  <p>The <code>products</code> array is flattened from the page's Product markup. Values come through as the page publishes them, so cast prices and counts to numbers in your own code. If a page publishes no Product markup, <code>products</code> is empty.</p>
 
   <h3>Step 3. Pull Amazon search-results (SERP) data</h3>
-  <p>To track share of search and keyword rank, fetch the search-results page. Search is JavaScript-rendered, so let the managed engine render it and return the HTML; then extract each result card (ASIN, title, price, rating, sponsored flag, position). The same request works whether or not rendering is needed — the response's <code>rendered_via</code> field tells you which path served it.</p>
+  <p>To track share of search and keyword rank, fetch the search-results page. Search is JavaScript-rendered, so let the managed engine render it and return the HTML in <code>content</code>; then extract each result card (ASIN, title, price, rating, sponsored flag, position) in your own code. JavaScript rendering costs no extra credits.</p>
 
 <pre><code>curl -X POST https://api.ollagraph.com/v1/scrape \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
     "url": "https://www.amazon.com/s?k=wireless+earbuds",
-    "render": "auto"
+    "format": "html",
+    "wait_until": "networkidle0"
   &#125;'</code></pre>
 
   <p>Parse the result cards for organic versus sponsored placement and store position by keyword and date. That time series is your Amazon SERP dataset — the basis for share-of-search and rank-tracking reports.</p>
@@ -115,7 +127,7 @@ const faqs = [
       "https://www.amazon.com/dp/B09B8V1LZ3",
       "https://www.amazon.com/dp/B0BDHWDR12"
     ],
-    "format": "json",
+    "format": "html",
     "concurrency": 10
   &#125;'</code></pre>
 

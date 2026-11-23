@@ -18,8 +18,6 @@ CSS selectors bind your pipeline directly to the visual markup and layout choice
 
 Schema-driven extraction flips this architecture upside down. Instead of telling your scraper where to look in the DOM (`div.main > span.price`), you declare what data structure your business domain requires (a JSON Schema contract specifying fields, types, regex patterns, and invariant bounds). The extraction engine is responsible for mapping target content to your contract, validating every record before ingestion, emitting structured evidence packets on failures, and making deterministic retry decisions.
 
-In our production testing across 5,000 real-world target URLs (covering e-commerce, SaaS pricing, real estate, and financial news), schema-driven extraction reduced silent data corruption from 14.2% down to 0.1% and cut engineering debug time by 82%.
-
 ## Definition: Schema-Driven Extraction
 
 An architectural pattern for web data extraction where a strongly typed schema contract (such as JSON Schema or Pydantic) serves as the primary control plane. The system extracts data candidates, normalizes values, and evaluates strict correctness constraints before emitting valid payloads or triggering targeted recovery workflows.
@@ -220,7 +218,7 @@ flowchart TD
 
 ## 7. Concrete code walkthrough: selector script vs schema-driven pipeline
 
-Let's compare the traditional selector-based implementation with a production-grade schema-driven pipeline using Python, Pydantic, and the Ollagraph Extraction API.
+Let's compare the traditional selector-based implementation with a production-grade schema-driven pipeline using Python, Pydantic, and Ollagraph's `/v1/extract/structured` endpoint for fetching.
 
 ### Approach 1: Brittle Selector Script (The Status Quo)
 
@@ -257,11 +255,13 @@ def scrape_product_card(url: str):
 
 ```python
 # schema_driven_scraper.py
-import requests
-from typing import Optional, List
-from pydantic import BaseModel, Field, field_validator, ValidationError
 import json
 import logging
+import os
+from typing import List
+
+import requests
+from pydantic import BaseModel, Field, field_validator, ValidationError
 
 # Step 1: Define the strict Domain Schema Contract
 class ProductSchema(BaseModel):
@@ -283,41 +283,54 @@ class ProductSchema(BaseModel):
                 return float(cleaned)
         raise ValueError(f"Cannot normalize '{value}' into valid float price")
 
-# Step 2: Extraction Executor with Validation Gate
-def extract_with_schema(url: str, schema_model: BaseModel):
-    # Using Ollagraph Structured Extraction API
-    api_url = "https://api.ollagraph.com/v1/extract"
-    payload = {
-        "url": url,
-        "response_schema": schema_model.model_json_schema(),
-        "fetch_mode": "auto" # Automatically escalates static -> browser
+# Step 2: Candidate generation from the page's embedded structured data
+API_URL = "https://api.ollagraph.com/v1/extract/structured"
+HEADERS = {"Authorization": f"Bearer {os.environ['OLLAGRAPH_API_KEY']}"}
+
+def build_candidates(structured: dict) -> dict:
+    # Ollagraph returns the page's JSON-LD, microdata, OpenGraph and meta tags.
+    # Mapping them onto your contract is your code's job.
+    product = (structured.get("products") or [{}])[0]
+    crumbs = [
+        item.get("name")
+        for block in structured.get("json_ld", [])
+        if block.get("@type") == "BreadcrumbList"
+        for item in block.get("itemListElement", [])
+    ]
+    return {
+        "product_id": product.get("sku"),
+        "title": product.get("name") or structured.get("open_graph", {}).get("title"),
+        "price": product.get("price"),
+        "in_stock": product.get("availability") == "InStock",
+        "categories": crumbs,
     }
 
-    headers = {"Authorization": "Bearer OG_SECRET_KEY", "Content-Type": "application/json"}
-    response = requests.post(api_url, json=payload, timeout=30)
-
+def extract_with_schema(url: str, schema_model: type[BaseModel]):
+    response = requests.post(API_URL, json={"url": url}, headers=HEADERS, timeout=60)
     if response.status_code != 200:
         raise RuntimeError(f"Ollagraph API HTTP {response.status_code}: {response.text}")
 
-    res_data = response.json()
-    extracted_raw = res_data.get("data")
+    structured = response.json()
+    candidates = build_candidates(structured)
 
     # Step 3: Enforce Schema Contract Gate
     try:
-        validated_record = schema_model.model_validate(extracted_raw)
+        validated_record = schema_model.model_validate(candidates)
         print("Schema Contract Satisfied!")
         return validated_record.model_dump()
 
     except ValidationError as ve:
-        # Step 4: Capture Evidence Packet on Failure
+        # Step 4: Build an Evidence Packet on Failure
         evidence_packet = {
             "url": url,
-            "raw_extracted": extracted_raw,
-            "errors": ve.errors(),
-            "evidence": res_data.get("evidence_packet")
+            "candidates": candidates,
+            "errors": ve.errors(include_url=False),
+            "json_ld_types": [b.get("@type") for b in structured.get("json_ld", [])],
+            "open_graph": structured.get("open_graph"),
         }
-        logging.error(f"SCHEMA VALIDATION REJECTION: {json.dumps(evidence_packet, indent=2)}")
-        raise ve
+        logging.error("SCHEMA VALIDATION REJECTION: %s",
+                      json.dumps(evidence_packet, indent=2, default=str))
+        raise
 
 # Execution
 if __name__ == "__main__":
@@ -326,70 +339,62 @@ if __name__ == "__main__":
     print("Ingesting Clean Payload:", data)
 ```
 
-## 8. Empirical benchmarks: 5,000 real-world target URLs
+Ollagraph fetches the page, with proxy fallback, and returns the structured data embedded in it. It does not take your schema or run LLM extraction: candidate generation, the validation gate, and the evidence packet are your code. For fields that exist only in the rendered DOM, fetch the post-JavaScript HTML with `/v1/render` and run your own candidate extractors over it.
 
-To evaluate the operational differences between selector-only scrapers and schema-driven extraction, we conducted an empirical benchmark across 5,000 active production URLs over a 30-day testing window (June 27, 2026 – July 27, 2026).
+## 8. How to benchmark selector vs schema-driven pipelines
+
+To evaluate the operational differences between selector-only scrapers and schema-driven extraction on your own targets, run the pipelines side by side against the same set of active production URLs over a fixed window (30 days is long enough to catch several front-end deployments).
 
 ### Benchmark Environment & Dataset Breakdown
 
--   **Target URL Categories:** E-Commerce Product Listings (2,000 URLs), SaaS Pricing Tables (1,000 URLs), Financial Reports & News (1,000 URLs), Real Estate Listings (1,000 URLs).
--   **DOM Stability Profile:** High-churn targets (front-end deployments occurring at least weekly).
+-   **Target URL Categories:** a mix of the page types you actually scrape, such as e-commerce product listings, SaaS pricing tables, financial reports & news, and real estate listings.
+-   **DOM Stability Profile:** include high-churn targets (front-end deployments occurring at least weekly).
 -   **Pipelines Evaluated:**
     -   **Selector-Only (BeautifulSoup/Cheerio):** Static CSS selector parsing with try-except fallback defaults.
     -   **Selector + Heuristic Fallbacks:** Primary CSS selectors with backup XPath selectors.
-    -   **Ollagraph Schema-Driven Pipeline:** JSON Schema contract + Ollagraph API + automated evidence logging + deterministic retries.
+    -   **Schema-Driven Pipeline:** JSON Schema contract + validation gate + automated evidence logging + deterministic retries, with pages fetched through the Ollagraph API.
 
 ### Key Benchmark Metrics
 
-| Evaluation Metric | Selector-Only Pipeline | Selector + Heuristics | Ollagraph Schema-Driven |
-| :--- | :--- | :--- | :--- |
-| First-Pass Success Rate | 76.4% | 84.1% | 94.8% |
-| Final Pass Rate (After Retries) | 78.2% | 86.5% | 99.4% |
-| Silent Data Corruption Rate | 14.2% | 7.8% | 0.1% |
-| Mean Time to Detection (MTTD) | 38.4 hours | 19.2 hours | 0.0 hours (Instant) |
-| Mean Time to Resolution (MTTR) | 4.2 hours | 3.1 hours | 0.4 hours |
-| Engineering Time Spent Maintenance/Wk | 18.5 hours | 12.0 hours | 1.5 hours |
+-   **First-Pass Success Rate:** records that pass on the first attempt.
+-   **Final Pass Rate (After Retries):** records that pass after the retry policy runs.
+-   **Silent Data Corruption Rate:** records written with wrong values (missing prices saved as zero, truncated category arrays, swapped title/description fields). Measure it by spot-checking stored records against the live pages.
+-   **Mean Time to Detection (MTTD):** time from a layout change to someone noticing.
+-   **Mean Time to Resolution (MTTR):** time from detection to a fix in production.
+-   **Engineering Time Spent on Maintenance per Week.**
 
-**Silent Data Corruption Rate Comparison:**
+### What to Look For
 
-```
-Selector-Only:        ██████████████ 14.2%
-Selector + Heuristic: ███████ 7.8%
-Schema-Driven:        ▎ 0.1% (Near-Zero Corruption)
-```
+-   **Silent Corruption:** Selector-only pipelines write bad records without raising errors. A schema gate should reject those records at ingestion time instead, so compare corrupt writes, not just pass rates.
+-   **Mean Time to Resolution (MTTR):** When a selector pipeline fails, engineers have to recreate local browser states and update selector definitions. Check whether evidence packets that pinpoint the exact validation error shorten that loop.
+-   **Infrastructure Cost:** Schema extraction adds candidate evaluation, but targeted retries can remove redundant, blind browser re-renders. Compare total pipeline compute, not per-call cost.
 
-### Key Analysis Findings
-
--   **Silent Corruption Reduction:** In selector-only pipelines, 14.2% of all parsed records contained silent data corruption (missing prices saved as zero, truncated category arrays, swapped title/description fields). Schema-driven extraction rejected these records at ingestion time, reducing corrupt writes to 0.1%.
--   **Mean Time to Resolution (MTTR):** When a selector pipeline failed, engineers spent an average of 4.2 hours recreating local browser states and updating selector definitions. With schema-driven extraction, evidence packets pinpointed the exact validation error immediately, dropping MTTR to 24 minutes (0.4 hours).
--   **Infrastructure Cost Offset:** While schema extraction requires candidate evaluation, total pipeline compute costs dropped 34% overall because targeted retries eliminated redundant, blind browser re-renders.
-
-## 9. Case study: how DOM drift broke an e-commerce data pipeline
+## 9. Example scenario: how DOM drift can break an e-commerce data pipeline
 
 ### Background
 
-A global market intelligence agency tracks pricing and stock levels across 45 enterprise e-commerce platforms. Their core data engine scraped over 250,000 product pages daily using a massive library of BeautifulSoup and Playwright CSS selectors.
+Imagine a market intelligence agency that tracks pricing and stock levels across dozens of e-commerce platforms. Its core data engine scrapes product pages daily using a large library of BeautifulSoup and Playwright CSS selectors.
 
 ### The Incident
 
-On a Tuesday evening, one of the largest retail targets deployed a major front-end refactor:
+One evening, one of the largest retail targets deploys a major front-end refactor:
 
--   Replaced monolithic server-rendered HTML with a Next.js React client layout.
--   Migrated traditional class names (`.product-price`) to dynamic CSS module hashes (`.styles_priceValue__x7Y2a`).
--   Moved stock availability behind a secondary `fetch()` call initialized on user scroll.
+-   Replaces monolithic server-rendered HTML with a Next.js React client layout.
+-   Migrates traditional class names (`.product-price`) to dynamic CSS module hashes (`.styles_priceValue__x7Y2a`).
+-   Moves stock availability behind a secondary `fetch()` call initialized on user scroll.
 
 ### The Impact on Legacy Selectors
 
-The company's scraper suite did not throw a single error. The HTTP fetch returned status code 200 OK. However:
+The scraper suite does not throw a single error. The HTTP fetch returns status code 200 OK. However:
 
--   The title selector extracted None and substituted an empty string.
--   The price selector failed, triggering a default fallback logic that set `price = 0.0`.
--   Over 180,000 product records with $0.00 prices were ingested into their analytical database.
--   Automated client reports alerted enterprise customers of false "100% price drops," leading to severe SLA breaches and loss of client trust.
+-   The title selector extracts None and substitutes an empty string.
+-   The price selector fails, triggering a default fallback logic that sets `price = 0.0`.
+-   Product records with $0.00 prices are ingested into the analytical database.
+-   Automated client reports alert customers to false "100% price drops."
 
 ### The Resolution with Schema-Driven Extraction
 
-The engineering team replaced the legacy scraper scripts with Ollagraph Schema-Driven Extraction.
+Now suppose the team puts a schema contract in front of ingestion:
 
 ```json
 {
@@ -406,12 +411,12 @@ The engineering team replaced the legacy scraper scripts with Ollagraph Schema-D
 }
 ```
 
-When the retail target updated its layout again three weeks later:
+When the retail target changes its layout again:
 
--   The schema gate rejected the first payload within 120 milliseconds due to missing price and currency.
--   The retry decision tree detected `required_field_missing` and automatically escalated the fetch mode to `browser_rendered` with an interaction scroll trigger.
--   The pipeline self-healed, extracted valid product data, and emitted clean JSON.
--   Zero corrupt records entered the database.
+-   The schema gate rejects the first payload due to missing price and currency.
+-   The retry decision tree detects `required_field_missing` and escalates the fetch mode to `browser_rendered` with an interaction scroll trigger.
+-   If the rendered page yields valid product data, the pipeline emits clean JSON; if not, the record is rejected with an evidence packet.
+-   Either way, no corrupt records enter the database.
 
 ## 10. Enterprise deployment architecture & security considerations
 
@@ -421,7 +426,7 @@ Deploying schema-driven extraction at scale requires treating data contracts as 
 graph LR
     Sub1[Scraper Worker 1] --> SR[Central Schema Registry]
     Sub2[Scraper Worker 2] --> SR
-    SR --> Engine[Ollagraph Extraction Cluster]
+    SR --> Engine[Candidate Extraction Workers]
     Engine --> Gate{Schema Gate}
     Gate -- Valid --> Kafka[Kafka Data Pipeline]
     Gate -- Invalid --> Storage[S3 Evidence Vault]
@@ -454,7 +459,7 @@ You do not need to pause product feature development for three months to refacto
 1.  **Phase 1: Wrap Existing Selectors (Days 1–7):** Add Schema Validation Gate after BeautifulSoup/Cheerio parsers.
 2.  **Phase 2: Enable Evidence Logging (Days 8–14):** Capture Evidence Packets on validation failures to analyze DOM drift.
 3.  **Phase 3: Introduce Deterministic Retries (Days 15–30):** Implement browser escalation when static HTML validation fails.
-4.  **Phase 4: Full Schema-Driven Engine (Days 31+):** Delegate extraction to Ollagraph Schema API; deprecate manual selector code.
+4.  **Phase 4: Full Schema-Driven Engine (Days 31+):** Move fetching and rendering to the Ollagraph API, generate candidates from structured data; deprecate manual selector code.
 
 ### Phase 1: Wrap Legacy Selectors with a Schema Gate (Week 1)
 
@@ -481,9 +486,9 @@ Modify your failure handlers to save raw HTML snippets, HTTP response headers, a
 
 When `ValidationError` flags missing required fields, configure your worker task queue (Celery, BullMQ, Temporal) to re-queue the task with `fetch_mode="browser_rendered"`.
 
-### Phase 4: Delegate to Ollagraph API (Month 2+)
+### Phase 4: Move Fetching to the Ollagraph API (Month 2+)
 
-Replace custom selector maintenance entirely by sending target URLs and JSON Schema objects directly to the Ollagraph Extraction Endpoint.
+Hand fetching, JavaScript rendering, and proxy rotation to the Ollagraph API: `/v1/extract/structured` for a page's embedded JSON-LD, microdata, and OpenGraph, and `/v1/render` for post-JavaScript HTML. Your candidate extractors, schema contracts, and validation gate stay in your own code, and selector maintenance shrinks to the fields that structured data doesn't cover.
 
 ## 12. Troubleshooting checklist for data engineers
 
@@ -508,10 +513,10 @@ Avoid these five common traps when implementing schema-driven extraction:
 
 ## 14. Comparison matrix: extraction approaches
 
-| Feature / Capability | CSS Selectors (BeautifulSoup/Cheerio) | Heuristic / XPath Parsers | Unconstrained LLM Extraction | Ollagraph Schema-Driven Extraction |
+| Feature / Capability | CSS Selectors (BeautifulSoup/Cheerio) | Heuristic / XPath Parsers | Unconstrained LLM Extraction | Schema-Driven Extraction |
 | :--- | :--- | :--- | :--- | :--- |
 | **Primary Coupling** | DOM Classes & Hierarchy | DOM Tree Paths | Probabilistic Prompts | Semantic Domain Schema |
-| **Resilience to Layout Refactors** | Extremely Low (Breaks immediately) | Low | High | Extremely High (99.4%) |
+| **Resilience to Layout Refactors** | Extremely Low (Breaks immediately) | Low | High | Extremely High |
 | **Silent Data Corruption Protection** | None (Returns empty/null) | None | Medium (Hallucinations possible) | 100% Guaranteed Gate |
 | **Debuggability** | Manual Reproduction Required | Manual Reproduction Required | Black Box | Structured Evidence Packets |
 | **Automated Recovery Routing** | None | Limited | Retries Same Prompt | Deterministic Retry Tree |
@@ -536,7 +541,7 @@ Schema contracts define target fields as standard ISO-8601 strings (`type: strin
 If a required field is permanently removed by the target site, the schema gate will consistently reject the payload and emit an Evidence Packet. Your engineering team can inspect the packet, confirm the field no longer exists on the source website, and issue a minor version update (`v1.1.0`) to the schema contract.
 
 ### 6. Can I use schema-driven extraction with OpenAI or Anthropic LLMs?
-Yes. Modern LLM APIs support Structured Outputs backed by JSON Schema. However, calling an LLM directly without an external validation gate and evidence logger leaves you vulnerable to latency spikes, hallucinations, and unhandled schema drift. Ollagraph encapsulates model calls, fast candidate heuristics, and strict validation in a unified endpoint.
+Yes. Modern LLM APIs support Structured Outputs backed by JSON Schema. However, calling an LLM directly without an external validation gate and evidence logger leaves you vulnerable to latency spikes, hallucinations, and unhandled schema drift. Treat the LLM as one more candidate source and run its output through the same validation gate and evidence logging as everything else.
 
 ### 7. How does schema-driven extraction compare to schema.org / JSON-LD microdata?
 Microdata and JSON-LD embedded by web publishers are great candidate sources. Schema-driven extraction automatically parses embedded `<script type="application/ld+json">` blocks as candidate inputs, normalizes them, and validates them against your business contract.
@@ -557,13 +562,13 @@ Evidence packets are standard JSON objects. You can route validation failure log
 For unstructured pages, such as blog posts or raw editorial content, focus schema constraints on structural bounds rather than rigid formatting: mandate `title` (string, minLength: 5), `body_markdown` (string, minLength: 100), and `author` (optional string).
 
 ### 13. What is the cost difference between selector parsing and schema-driven APIs?
-While raw local CSS selector parsing is computationally free, engineering maintenance, broken database cleanups, and lost business continuity make selector scraping far more expensive in production. Schema-driven pipelines reduce total cost of ownership (TCO) by up to 70%.
+While raw local CSS selector parsing is computationally free, engineering maintenance, broken database cleanups, and lost business continuity make selector scraping far more expensive in production.
 
 ### 14. Can I use Pydantic in Python and Zod in TypeScript with the same JSON Schema?
 Yes. Both Pydantic and Zod can export and import standardized JSON Schema (Draft 2020-12) definitions, allowing your front-end TypeScript applications and backend Python data pipelines to share the exact same domain data contracts.
 
 ### 15. How does Ollagraph simplify schema-driven web scraping?
-Ollagraph provides a single API endpoint that accepts target URLs and JSON Schema contracts. It handles proxy rotation, headless browser escalation, candidate extraction, type normalization, schema validation, and evidence packet creation out of the box.
+Ollagraph handles the fetching side: proxy rotation, JavaScript rendering (`/v1/render`, `/v1/scrape`), and returning a page's embedded JSON-LD, microdata, and OpenGraph (`/v1/extract/structured`) as candidate sources. It does not accept schema contracts or run LLM extraction; normalization, validation, and evidence packets stay in your pipeline.
 
 ## 16. References & standards
 
@@ -572,17 +577,17 @@ Ollagraph provides a single API endpoint that accepts target URLs and JSON Schem
 -   **Zod TypeScript Schema Validation:** https://zod.dev/
 -   **W3C DOM Specification:** https://www.w3.org/TR/DOM-Level-3-Core/
 -   **OpenTelemetry Logging & Tracing Standards:** https://opentelemetry.io/docs/specs/otel/logs/
--   **Ollagraph Extraction API Documentation:** https://ollagraph.com/docs/api/extract
+-   **Ollagraph API Documentation:** https://ollagraph.com/docs
 
 ## 17. Conclusion
 
 Building production data pipelines on top of CSS selectors is like building a house on shifting sand. You are coupling your core data assets to visual layout decisions made by third-party web developers who will inevitably update, refactor, and redesign their pages.
 
-Schema-driven extraction replaces DOM-path fragility with contract-driven certainty. By establishing strict JSON Schema contracts, enforcing automated validation gates before data ingestion, generating structured evidence packets when failures occur, and executing deterministic recovery trees, engineering teams can eliminate silent data corruption and reduce scraper maintenance overhead from hours to minutes.
+Schema-driven extraction replaces DOM-path fragility with contract-driven certainty. By establishing strict JSON Schema contracts, enforcing automated validation gates before data ingestion, generating structured evidence packets when failures occur, and executing deterministic recovery trees, engineering teams can eliminate silent data corruption and reduce scraper maintenance overhead.
 
 Stop chasing broken CSS classes across the web. Define your schema contract, validate at the boundary, and build web data pipelines that survive real-world change.
 
-Ready to stop fixing broken scrapers? Learn how the Ollagraph Structured Extraction API transforms web pages into verified, production-ready JSON.
+Ready to stop fixing broken scrapers? Let the Ollagraph API fetch and render pages and return their embedded structured data, so your pipeline can focus on the contract.
 
 ## Common questions
 

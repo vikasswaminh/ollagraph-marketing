@@ -213,7 +213,7 @@ Validate that all dynamically discovered links use standard HTML `<a href="/path
 
 ## 6. Auditing JavaScript-Heavy Sites with Ollagraph: Setup and Code
 
-Instead of managing high-maintenance Puppeteer clusters to catch memory leaks, proxy bans, and rendering timeouts, Ollagraph handles headless execution, static-vs-dynamic diffing, and AI crawler simulation via clean REST endpoints.
+Instead of managing high-maintenance Puppeteer clusters to catch memory leaks, proxy bans, and rendering timeouts, Ollagraph handles headless execution and AI crawler simulation via clean REST endpoints; the static-vs-dynamic diff is a few lines of your own code.
 
 ### Prerequisites & Setup
 
@@ -222,40 +222,49 @@ Instead of managing high-maintenance Puppeteer clusters to catch memory leaks, p
 export OLLAGRAPH_API_KEY="ol_live_your_actual_api_key_here"
 
 # Install dependencies (Python or Node.js)
-pip install requests tabulate
+pip install requests tabulate beautifulsoup4
 npm install axios dotenv
 ```
 
 ### 1. Python Dual-Pass Audit Script (js_seo_audit.py)
 
-Fetches both raw wire HTML and the hydrated DOM, then flags the Render Gap, missing links, and metadata drift.
+Fetches the raw wire HTML with a plain GET and the hydrated DOM with Ollagraph's `/v1/render`, then flags the Render Gap, missing links, and metadata drift.
 
 ```python
 import os, requests
+from bs4 import BeautifulSoup
 from tabulate import tabulate
 
 API_KEY = os.getenv("OLLAGRAPH_API_KEY")
 HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
 BASE_URL = "https://api.ollagraph.com/v1"
 
+def page_signals(html: str) -> dict:
+    soup = BeautifulSoup(html, "html.parser")
+    canonical = soup.find("link", rel="canonical")
+    schema_blocks = len(soup.find_all("script", type="application/ld+json"))
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    return {
+        "words": len(soup.get_text(" ").split()),
+        "links": {a["href"] for a in soup.find_all("a", href=True)},
+        "canonical": canonical.get("href") if canonical else "MISSING",
+        "schema_blocks": schema_blocks,
+    }
+
 def audit_js_page(url: str):
-    # Pass 1: Static wire response (no JS execution)
-    static = requests.post(f"{BASE_URL}/scrape", json={"url": url, "render_js": False, "extract_metadata": True, "include_links": True}, headers=HEADERS).json()
-    
-    # Pass 2: Hydrated headless Chromium render
-    dynamic = requests.post(f"{BASE_URL}/scrape", json={"url": url, "render_js": True, "wait_until": "networkidle0", "extract_metadata": True, "include_links": True}, headers=HEADERS).json()
+    # Pass 1: Static wire response (plain HTTP GET, no JS execution)
+    static = page_signals(requests.get(url, timeout=30).text)
+
+    # Pass 2: Hydrated headless render (/v1/render returns the post-JS HTML)
+    rendered = requests.post(f"{BASE_URL}/render", json={"url": url}, headers=HEADERS, timeout=90).json()
+    dynamic = page_signals(rendered.get("html") or "")
 
     # Calculate metrics
-    s_words = len(static.get("clean_text", "").split())
-    d_words = len(dynamic.get("clean_text", "").split())
+    s_words, d_words = static["words"], dynamic["words"]
     render_gap = round(((d_words - s_words) / max(d_words, 1)) * 100, 2)
-    
-    s_links = set(static.get("links", []))
-    d_links = set(dynamic.get("links", []))
-    missing_links = len(d_links - s_links)
-
-    s_canon = static.get("metadata", {}).get("canonical", "MISSING")
-    d_canon = dynamic.get("metadata", {}).get("canonical", "MISSING")
+    missing_links = len(dynamic["links"] - static["links"])
+    s_canon, d_canon = static["canonical"], dynamic["canonical"]
 
     # Output concise diagnostic table
     report = [
@@ -263,7 +272,7 @@ def audit_js_page(url: str):
         ["Content Render Gap", f"{render_gap}% (Flag if > 25%)"],
         ["Links Missing from Wire HTML", f"{missing_links} links"],
         ["Canonical Drift", "YES (Risk)" if s_canon != d_canon else "Stable"],
-        ["Client-Side Injected Schema", f"{len(dynamic.get('structured_data', [])) - len(static.get('structured_data', []))} entities"]
+        ["Client-Side Injected Schema", f"{dynamic['schema_blocks'] - static['schema_blocks']} JSON-LD blocks"]
     ]
     print(f"\nAudit Report: {url}")
     print(tabulate(report, headers=["Audit Metric", "Value"], tablefmt="fancy_grid"))
@@ -274,29 +283,34 @@ audit_js_page("https://example.com/products/security-suite")
 
 ### 2. Node.js / TypeScript Structural Extract (js-audit.ts)
 
-Validates that client-rendered content converts into clean, extractable markdown suitable for AI retrieval engines using `/v1/convert/html-to-markdown` (as explored in [markdown conversion for dynamic websites](/blog/markdown-conversion-for-dynamic-websites-javascript-rendering-for-ai-ready/)).
+Validates that client-rendered content converts into clean, extractable markdown suitable for AI retrieval engines: `/v1/render` returns the post-JS HTML, and `/v1/convert/html-to-markdown` converts it (as explored in [markdown conversion for dynamic websites](/blog/markdown-conversion-for-dynamic-websites-javascript-rendering-for-ai-ready/)).
 
 ```typescript
 import axios from 'axios';
 
+const headers = { Authorization: `Bearer ${process.env.OLLAGRAPH_API_KEY}` };
+
 async function auditRenderedMarkdown(targetUrl: string) {
+  // 1. Render the page and get the post-JS HTML
+  const { data: rendered } = await axios.post(
+    'https://api.ollagraph.com/v1/render',
+    { url: targetUrl },
+    { headers }
+  );
+
+  // 2. Convert the rendered HTML to Markdown, dropping page chrome
   const { data } = await axios.post(
     'https://api.ollagraph.com/v1/convert/html-to-markdown',
-    {
-      url: targetUrl,
-      render_js: true,
-      wait_for_selector: 'main',
-      strip_boilerplate: true
-    },
-    { headers: { Authorization: `Bearer ${process.env.OLLAGRAPH_API_KEY}` } }
+    { html: rendered.html, strip_tags: ['nav', 'header', 'footer'] },
+    { headers }
   );
 
   const md = data.markdown || '';
   const h1Count = (md.match(/^# /gm) || []).length;
 
   console.log(`\nURL: ${targetUrl}`);
-  console.log(`Render Time: ${data.metrics?.render_time_ms}ms`);
-  console.log(`Markdown Word Count: ${md.split(/\s+/).length}`);
+  console.log(`Final URL: ${rendered.final_url}`);
+  console.log(`Markdown Word Count: ${data.word_count}`);
   console.log(`H1 Headings Detected: ${h1Count}`);
   console.log(`AI Extractable: ${md.length >= 800 && h1Count === 1 ? 'YES' : 'NO'}`);
 }
@@ -304,70 +318,69 @@ async function auditRenderedMarkdown(targetUrl: string) {
 auditRenderedMarkdown('https://example.com/solutions/enterprise-mesh');
 ```
 
-### Core Diagnostic Checks Handled by Ollagraph
+### Core Diagnostic Checks These Scripts Run
 
 - **Content Render Gap:** Flags when >25% of substantive text exists only after JavaScript execution.
 - **Link Discovery Loss:** Detects navigation links trapped behind client-side event triggers.
 - **Canonical Drift:** Catches silent overrides where `useEffect` injects a different canonical URL than the static HTML.
 - **AEO Readability:** Verifies that rendered pages produce clean semantic markdown for Google AI Overviews, ChatGPT Search, and Perplexity.
 
-## 7. Real-World Case Studies and Audit Evidence
+## 7. Example Scenarios
 
-### Case Study 1: Next.js E-Commerce Migration (74% Traffic Drop on Facet Pages)
+The two scenarios below are hypothetical. They show what a dual-pass audit surfaces on common JavaScript architectures.
 
-**The Problem:** An apparel retailer migrated to Next.js App Router. Over 60 days, organic impressions on category and filter pages dropped by 74%.  
-**The Static False Positive:** Static crawlers reported 100% 200 OK responses, fast 68ms response times, and self-referencing canonical tags.
+### Example Scenario 1: Next.js E-Commerce Migration (Facet Pages Drop Out of the Index)
 
-**The Ollagraph Dual-Pass Finding:**
-- Initial wire HTML contained only an empty mount: `<div id="facet-grid-mount"></div>`.
-- Product cards and pagination hydrated client-side via GraphQL inside `useEffect`.
-- Pagination used unparseable `onClick` spans (`<span onClick={...}>2</span>`) instead of `<a href>`.
-- In Wave 1, Googlebot crawled 50,000 pages with identical generic descriptions and 0 products, classifying them as near-duplicate thin content; 82% never received Wave 2 rendering.
+**The Problem:** Imagine an apparel retailer that migrates to Next.js App Router. Over the following weeks, organic impressions on category and filter pages fall sharply.  
+**The Static False Positive:** Static crawlers report 200 OK responses, fast response times, and self-referencing canonical tags.
 
-| Audit Metric | Static Wire Crawl | Ollagraph Hydrated DOM | Business Outcome |
+**What a Dual-Pass Audit Shows:**
+- Initial wire HTML contains only an empty mount: `<div id="facet-grid-mount"></div>`.
+- Product cards and pagination hydrate client-side via GraphQL inside `useEffect`.
+- Pagination uses unparseable `onClick` spans (`<span onClick={...}>2</span>`) instead of `<a href>`.
+- In Wave 1, Googlebot sees pages with identical generic descriptions and no products, which look like near-duplicate thin content.
+
+| Audit Metric | Static Wire Crawl | Hydrated DOM | Risk |
 | :--- | :--- | :--- | :--- |
-| **Word Count** | 124 words | 2,840 words | Thin content penalty |
-| **Visible Products** | 0 cards | 48 cards | Zero products indexed |
-| **Internal Links** | 14 (Header/Footer) | 186 (Grid + Facets) | Massive crawl orphaning |
+| **Word Count** | Template boilerplate only | Full category copy | Thin content |
+| **Visible Products** | None | Full product grid | Products not indexed |
+| **Internal Links** | Header/footer only | Grid + facet links | Crawl orphaning |
 | **Pagination Links** | Unparseable `onClick` | Semantic `<a href>` | Deep pages dropped |
-| **Index State** | "Crawled - Not Indexed" | Restored to Primary Index | 88% recovery post-fix |
 
-**The Remediation:** Re-architected product grids to Next.js Server Components. Product data and semantic pagination `<a href="/shop/mens-jackets?page=2">` were rendered server-side in the initial HTML. Organic impressions recovered by 88% in 4 weeks.
+**The Remediation:** Re-architect product grids as Next.js Server Components, so product data and semantic pagination `<a href="/shop/mens-jackets?page=2">` are rendered server-side in the initial HTML.
 
-### Case Study 2: B2B SaaS Knowledge Base on Vite/React SPA (Invisible to AI Search)
+### Example Scenario 2: B2B SaaS Knowledge Base on Vite/React SPA (Invisible to AI Search)
 
-**The Problem:** A cybersecurity company hosted documentation on a single-page React app (Vite). Only the root page was indexed by Google, and AI answer engines (ChatGPT, Perplexity) cited zero articles.  
-**The Static False Positive:** Every documentation URL returned an HTTP 200 OK status.
+**The Problem:** Suppose a cybersecurity company hosts its documentation on a single-page React app (Vite). Only the root page is indexed by Google, and AI answer engines (ChatGPT, Perplexity) never cite its articles.  
+**The Static False Positive:** Every documentation URL returns an HTTP 200 OK status.
 
-**The Ollagraph Dual-Pass Finding (`/v1/aeo/llm-fetch-simulator`):**
-- Every URL returned the identical 400-byte `index.html` shell; routing was purely client-side via `react-router-dom`.
-- The document `<title>` was hardcoded to "Documentation" across all routes.
-- Markdown content was fetched from S3 client-side only after user authentication checks.
-- While Googlebot experienced a 9-day Wave 2 rendering lag, AI search bots dropped the URLs instantly because the static payload contained zero extractable text.
+**What a Dual-Pass Audit Shows (`/v1/aeo/llm-fetch-simulator`):**
+- Every URL returns the identical small `index.html` shell; routing is purely client-side via `react-router-dom`.
+- The document `<title>` is hardcoded to "Documentation" across all routes.
+- Markdown content is fetched from S3 client-side only after user authentication checks.
+- Googlebot has to wait for Wave 2 rendering, while AI search bots that do not execute JavaScript find no extractable text at all.
 
-**The Remediation:** Migrated the documentation to an Astro Static Site Generation (SSG) pipeline, emitting pure semantic HTML for each markdown document at build time. The Content Render Gap dropped to 0.0%, driving a 310% increase in AI search citations across ChatGPT and Perplexity within 45 days.
+**The Remediation:** Migrate the documentation to an Astro Static Site Generation (SSG) pipeline that emits semantic HTML for each markdown document at build time, closing the Content Render Gap.
 
-## 8. Performance Benchmarks: Empirical Crawl Experiments
+## 8. Benchmarking Your Own Site
 
-To quantify the prevalence and impact of the Render Gap across the web, we executed dual-pass audits across 250 enterprise websites utilizing modern JavaScript frameworks (Next.js, Nuxt, React SPA, Angular, Vue).
+To measure the Render Gap on your own site, run dual-pass audits (static wire fetch, then hydrated DOM) across a sample of your key templates and record these dimensions:
 
-Each URL was evaluated using Ollagraph's dual-pass audit engine, measuring static wire metrics against hydrated DOM metrics.
+| Audit Dimension | What to Record | Critical Risk Threshold |
+| :--- | :--- | :--- |
+| **Content Render Gap (% Missing Text)** | Mean and median across templates | Greater than 25% (Critical) |
+| **Internal Links Missing in Static HTML** | Mean and median across templates | Greater than 10% (High Risk) |
+| **Dynamic Canonical Drift Rate** | Share of pages whose canonical changes after hydration | Greater than 0% (Severe) |
+| **Delayed Client-Side JSON-LD Injection** | Share of pages whose JSON-LD appears only after hydration | Greater than 0% (High Risk) |
+| **Hydration Execution Delay (DOM Ready)** | Mean and median seconds | Greater than 3.0 seconds |
+| **Console Errors Captured During Render** | Errors per page | Greater than 0 (Warning) |
 
-| Audit Dimension Evaluated | Mean Empirical Result | Median Empirical Result | Critical Risk Threshold |
-| :--- | :--- | :--- | :--- |
-| **Content Render Gap (% Missing Text)** | 64.2% missing | 78.5% missing | Greater than 25% (Critical) |
-| **Internal Links Missing in Static HTML** | 41.8% missing | 53.0% missing | Greater than 10% (High Risk) |
-| **Dynamic Canonical Drift Rate** | 18.4% drift rate | Not Applicable | Greater than 0% (Severe) |
-| **Delayed Client-Side JSON-LD Injection** | 31.2% delayed | Not Applicable | Greater than 0% (High Risk) |
-| **Hydration Execution Delay (DOM Ready)** | 2.84 seconds | 2.41 seconds | Greater than 3.0 seconds |
-| **Console Errors Captured During Render** | 4.1 errors / page | 2.0 errors / page | Greater than 0 (Warning) |
+### Reading the Results
 
-### Analysis of the Benchmark Findings
-
-- **The Majority of Content is Trapped Behind JavaScript:** Over 64% of total text content across these modern sites did not exist in the initial wire HTML. Crawlers that fail to execute scripts encounter less than half of the site's substantive content.
-- **Navigational Blind Spots are Pervasive:** Over 41% of internal navigation paths, sub-category links, and pagination structures were generated dynamically. Static crawlers cannot map these sites' architecture accurately.
-- **Canonical Drift is a Silent Ranking Killer:** Nearly one in five websites (18.4%) served a different canonical URL in their static wire HTML than what was injected after JavaScript hydration. This contradiction forces search engines to guess which signal to honor, frequently invalidating canonicalization directives entirely.
-- **Execution Delays Approach Crawler Timeouts:** The median hydration delay of 2.41 seconds leaves dangerously little margin for error when crawlers enforce a 3- to 5-second total rendering budget under heavy server load.
+- **Content trapped behind JavaScript:** A high Content Render Gap means crawlers that do not execute scripts see only a fraction of the site's substantive content.
+- **Navigational blind spots:** Internal links, sub-category links, and pagination generated only after hydration mean static crawlers cannot map the site's architecture accurately.
+- **Canonical drift:** Any page that serves a different canonical URL in its static wire HTML than the one injected after hydration forces search engines to guess which signal to honor.
+- **Execution delays near crawler timeouts:** Hydration delays that approach a crawler's rendering budget leave little margin for error under heavy server load.
 
 ## 9. Security Considerations, Bot Protection, and WAF Governance
 
@@ -518,12 +531,12 @@ Auditing JavaScript-heavy web applications requires selecting the right tooling 
 | Feature / Architectural Capability | Static Crawlers (Screaming Frog Default) | DIY Headless Puppeteer Clusters | Ollagraph Enterprise API Pipeline |
 | :--- | :--- | :--- | :--- |
 | **JavaScript Script Execution** | None (Wire response stream only) | Full (Custom self-managed setup) | Full (Optimized Chromium cluster) |
-| **Automated Render Gap Metric** | Unsupported (Zero DOM diffing) | Manual custom coding required | Automated Native Metric Output |
+| **Automated Render Gap Metric** | Unsupported (Zero DOM diffing) | Manual custom coding required | A few lines of your code over `/v1/render` output |
 | **AEO / AI Search Bot Simulation** | Unsupported | Difficult to maintain headers/IPs | Built-in Multi-Bot Fetch Profiles |
 | **Crawl Scaling & Throughput** | Extremely Fast (Raw HTML only) | Highly constrained / Memory heavy | High Throughput (Distributed Cloud) |
 | **Infrastructure Maintenance** | Zero (Desktop application) | High (Zombie Chrome, Memory leaks) | Zero (Fully managed API surface) |
 | **CI/CD Pipeline Integration** | Limited (Desktop CLI scripts) | Custom container orchestration | Native REST API, Webhooks, JSON |
-| **Structured Data Diffing** | Static Wire Tags Only | Manual DOM tree extraction | Automated Static vs. Hydrated Diff |
+| **Structured Data Diffing** | Static Wire Tags Only | Manual DOM tree extraction | Diff rendered vs. wire HTML in your code |
 | **Operational Cost Profile** | Fixed annual software license | High cloud server compute bills | Predictable usage-based credits |
 
 ### Why DIY Headless Browser Clusters Break Down at Scale
@@ -567,15 +580,18 @@ jobs:
         run: |
           python -c '
           import os, sys, requests
-          headers = {"Authorization": f"Bearer {os.environ[\"OLLAGRAPH_API_KEY\"]}", "Content-Type": "application/json"}
+          api = "https://api.ollagraph.com/v1"
+          key = os.environ["OLLAGRAPH_API_KEY"]
+          headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
           url = os.environ["PREVIEW_URL"]
-          
-          # Static vs Hydrated Scraping
-          s_res = requests.post("https://api.ollagraph.com/v1/scrape", json={"url": url, "render_js": False}, headers=headers).json()
-          d_res = requests.post("https://api.ollagraph.com/v1/scrape", json={"url": url, "render_js": True, "wait_until": "networkidle0"}, headers=headers).json()
 
-          s_len = len(s_res.get("clean_text", "").split())
-          d_len = len(d_res.get("clean_text", "").split())
+          def words(html):
+              res = requests.post(f"{api}/convert/html-to-markdown", json={"html": html}, headers=headers).json()
+              return res.get("word_count", 0)
+
+          # Static wire HTML (plain GET, no JS) vs hydrated HTML (/v1/render)
+          s_len = words(requests.get(url, timeout=30).text)
+          d_len = words(requests.post(f"{api}/render", json={"url": url}, headers=headers, timeout=90).json().get("html") or "")
           gap = ((d_len - s_len) / max(d_len, 1)) * 100
 
           print(f"Static: {s_len} words | Hydrated: {d_len} words | Render Gap: {gap:.2f}%")
@@ -628,7 +644,7 @@ Both SSR and SSG solve the fundamental Render Gap by delivering fully populated 
 
 ### Q6: How does Ollagraph's /v1/scrape handle client-side Single-Page Applications differently than standard libraries?
 
-Standard HTTP libraries (requests, axios, curl) only download the raw bytes sent by the server. Ollagraph's `/v1/scrape` with `render_js: true` spins up an optimized headless Chromium instance, executes JavaScript bundles, resolves asynchronous network requests (`networkidle0`), captures console errors, and extracts the fully reconciled DOM tree.
+Standard HTTP libraries (requests, axios, curl) only download the raw bytes sent by the server. Ollagraph's `/v1/scrape` loads the page in a headless browser with no flag to set, executes JavaScript bundles, waits for the `wait_until` event you choose (for example `networkidle0`), and returns the rendered content as Markdown, HTML, text, or links. `/v1/render` returns the post-JS HTML directly.
 
 ### Q7: Does using CSS display: none for mobile responsive design hurt JavaScript SEO?
 
@@ -638,7 +654,7 @@ If content is present in the rendered DOM but toggled via standard responsive CS
 
 Modern front-end engineering frameworks deliver rich, interactive user experiences. However, when architectural decisions overlook the mechanics of search engine crawlers, they create brittle, invisible websites.
 
-The belief that modern search engines "just handle JavaScript" has been thoroughly disproven by production data. Static crawlers provide a false sense of security by reporting HTTP 200 OK statuses across pages that are functionally invisible to search engines and AI answer bots.
+The belief that modern search engines "just handle JavaScript" does not hold up. Static crawlers provide a false sense of security by reporting HTTP 200 OK statuses across pages that are functionally invisible to search engines and AI answer bots.
 
 ### Four-Phase Implementation Roadmap
 

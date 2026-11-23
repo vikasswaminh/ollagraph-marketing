@@ -29,7 +29,7 @@ A B2B sales team needs 500 qualified leads this quarter. They buy a list. Half t
 
 This is the company data problem: the data you can buy is stale, the data you can scrape is noisy, and the data you need — accurate, current, structured firmographics — is locked inside public websites never designed to be machine-read.
 
-I have watched teams throw engineering months at this. They build scrapers for LinkedIn, Crunchbase, and company homepages. They stitch data from six sources. They write custom deduplication logic. Six months later, they still cannot answer: "Which companies in our pipeline use Snowflake and have more than 200 employees?"
+Teams throw engineering months at this. They build scrapers for LinkedIn, Crunchbase, and company homepages. They stitch data from six sources. They write custom deduplication logic. Six months later, they still cannot answer: "Which companies in our pipeline use Snowflake and have more than 200 employees?"
 
 The root cause is not a lack of data. Public websites contain enormous amounts of company information. The root cause is that extracting it reliably — at scale, with validation, without manual curation — requires a pipeline designed for the job, not a collection of scripts.
 

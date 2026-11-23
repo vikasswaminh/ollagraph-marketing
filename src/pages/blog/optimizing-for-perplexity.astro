@@ -238,24 +238,27 @@ Disallow: /</code></pre>
 <p>Breadcrumb schema helps Perplexity understand site hierarchy. WebSite schema with SearchAction is less directly useful for citations but improves overall site understanding.</p>
 
 <h3>How to Audit Schema Coverage</h3>
-<p>Use the Ollagraph /v1/aeo/schema-coverage endpoint to scan your pages for missing or incomplete schema. The endpoint returns a report of schema types, required fields, and gaps.</p>
+<p>Use the Ollagraph /v1/aeo/schema-coverage endpoint to scan your pages for missing schema. It parses every JSON-LD, Microdata, and OpenGraph block on the page and scores coverage against 12 AEO-critical schema.org types (Article, FAQPage, HowTo, Organization, Person, BreadcrumbList, and others). It reports which types are present and missing; it does not check individual fields such as dateModified, so check those yourself.</p>
 <p>Example request:</p>
 <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/schema-coverage \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://ollagraph.com/blog/optimizing-for-perplexity",
-    "schema_types": ["Article", "Author", "Organization", "FAQPage"]
+    "url": "https://ollagraph.com/blog/optimizing-for-perplexity"
   &#125;'</code></pre>
-<p>Example response:</p>
+<p>Example response (abridged):</p>
 <pre><code>&#123;
+  "status": "success",
   "url": "https://ollagraph.com/blog/optimizing-for-perplexity",
   "score": 78,
-  "missing": ["dateModified", "author.sameAs"],
-  "warnings": ["publisher.logo missing recommended dimensions"],
-  "present": ["Article.headline", "Article.author", "Organization.name"]
+  "grade": "B",
+  "json_ld_types_present": ["Article", "FAQPage", "Organization"],
+  "aeo_critical_present": ["Article", "FAQPage", "Organization"],
+  "aeo_critical_missing": ["BreadcrumbList", "Person", "..."],
+  "open_graph_present": true,
+  "recommendations": ["Add BreadcrumbList — improves SERP display and helps LLMs understand site hierarchy."]
 &#125;</code></pre>
-<p>Fix the missing fields and re-run the audit.</p>
+<p>Add the missing types and re-run the audit.</p>
 
 <h2>12. Authorship, EEAT, and Trust Signals</h2>
 <p>Perplexity does not publish an EEAT score, but the concept still applies in a different form. The model is more likely to cite sources that demonstrate expertise, experience, authority, and trust because those signals reduce the risk of generating a wrong or unsupported answer. A citation is essentially a trust transfer: Perplexity puts its own credibility behind your page when it quotes you. Your content needs to earn that transfer.</p>
@@ -279,41 +282,46 @@ Disallow: /</code></pre>
 <p>Pick a page that answers a specific question your audience asks. For this example, we use a page about vector database latency.</p>
 
 <h3>Step 2: Fetch as PerplexityBot</h3>
-<p>Use the Ollagraph LLM fetch simulator to see what PerplexityBot would see:</p>
+<p>Use the Ollagraph LLM fetch simulator to see what PerplexityBot would see. It fetches the page as each of 10 named AI crawlers, PerplexityBot included, plus a browser baseline:</p>
 <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/llm-fetch-simulator \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://example.com/vector-database-latency-2026",
-    "user_agent": "PerplexityBot/1.0"
+    "url": "https://example.com/vector-database-latency-2026"
   &#125;'</code></pre>
-<p>Review the returned HTML. Is the content present? Is the structure clean? Are there unexpected scripts or blocks?</p>
+<p>Find the PerplexityBot entry in <code>results</code>. Check its <code>status</code>, <code>visible_words</code>, and <code>visible_text_preview</code>: is the content present, or did the bot get a block page or an empty JavaScript shell? The <code>summary</code> block flags JS-only pages and cloaking across all bots.</p>
 
 <h3>Step 3: Run a Citation Readiness Audit</h3>
 <pre><code>curl -X POST https://api.ollagraph.com/v1/aeo/citation-readiness \
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "url": "https://example.com/vector-database-latency-2026",
-    "query": "vector database latency benchmark 2026"
+    "url": "https://example.com/vector-database-latency-2026"
   &#125;'</code></pre>
-<p>The response includes a score and a breakdown of signals:</p>
+<p>The response includes a score and a breakdown of signals (abridged):</p>
 <pre><code>&#123;
+  "status": "success",
   "url": "https://example.com/vector-database-latency-2026",
   "score": 64,
+  "grade": "C",
+  "score_breakdown": &#123;
+    "numerical_specifics_max20": 20,
+    "named_entities_max20": 16,
+    "authoritative_outbound_links_max25": 18,
+    "author_byline_max15": 0,
+    "last_updated_max10": 0,
+    "content_length_max10": 10
+  &#125;,
   "signals": &#123;
-    "crawl_accessible": true,
-    "direct_answer_present": true,
-    "named_entities": 8,
-    "schema_article": true,
-    "date_modified": false,
-    "author_visible": false,
-    "external_citations": 2
+    "named_entities": &#123; "count": 8, "examples": ["..."] &#125;,
+    "authoritative_outbound_links": &#123; "count": 2, "domains": ["..."] &#125;,
+    "has_author_byline": false,
+    "has_last_updated": false,
+    "word_count": 1840
   &#125;,
   "recommendations": [
-    "Add a visible author byline and Author schema.",
-    "Update the page and set dateModified.",
-    "Add more external citations for benchmark methodology."
+    "Add a visible author byline + meta name='author'. ...",
+    "Add a visible 'last updated' date + article:modified_time meta tag. ..."
   ]
 &#125;</code></pre>
 
@@ -369,13 +377,11 @@ Average citations per answer    0.3                 1.2              Perplexity 
   -H "Authorization: Bearer $OLLAGRAPH_API_KEY" \
   -H "Content-Type: application/json" \
   -d '&#123;
-    "your_url": "https://example.com/page",
-    "competitor_url": "https://competitor.com/page",
-    "query": "target query here"
+    "urls": ["https://example.com/page", "https://competitor.com/page"]
   &#125;'
 </code></pre>
 
-<p>The report highlights content gaps, entity differences, and structural weaknesses.</p>
+<p>Put your page first; you can add up to four competitors. The endpoint runs a full page audit on each URL and returns overall rankings, a head-to-head ranking per audit category, and the categories where your page wins and loses (<code>your_wins</code>, <code>your_loses</code>).</p>
 
 <ul>
 <li><strong>Citations Disappear After a Redesign</strong><br>A redesign often breaks schema, changes URL structure, or introduces JavaScript rendering. Re-run your full AEO audit after any major site change.</li>

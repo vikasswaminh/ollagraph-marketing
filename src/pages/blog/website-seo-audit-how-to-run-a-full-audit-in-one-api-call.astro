@@ -4,7 +4,7 @@ import Article from '../../layouts/Article.astro';
 const faqs = [
   { q: "What does a full website SEO audit cover?", a: "A full audit checks meta tags, broken links, redirect chains, anchor text, keyword extraction, readability, mixed content, schema validation, and snippet candidates. That gives you a complete technical view in one structured report." },
   { q: "How does one API call run the whole audit?", a: "You send a target URL into an orchestration script that fans out to the audit endpoints in parallel. The results are merged into one JSON response, so you avoid manual stitching across tools." },
-  { q: "How fast does a full audit run?", a: "For a typical 50-page site, parallel checks usually finish in about 12 to 28 seconds of wall-clock time. Larger sites depend on page count, link volume, rendering cost, and timeout settings." },
+  { q: "How fast does a full audit run?", a: "Wall-clock time depends on page count, link volume, rendering cost, concurrency, and timeout settings. Time a run against a sample of your own pages to set expectations for your site." },
   { q: "What kinds of issues does the audit catch best?", a: "It is strong at finding missing or duplicate titles and descriptions, broken links, redirect problems, weak anchor text, mixed content, and low readability. It also surfaces snippet candidates so you can improve how pages appear in search results." },
   { q: "How does schema validation work?", a: "Schema checks go beyond syntax and validate JSON-LD against rich-result requirements. That helps you catch markup that looks correct but is unlikely to produce enhanced search features." },
   { q: "How should teams use this in production?", a: "Run audits in CI/CD, scheduled jobs, or reporting dashboards, and set severity thresholds for alerts or build failures. Tune concurrency, retries, and timeouts to match your site size and crawl budget." },
@@ -20,14 +20,14 @@ const faqs = [
   faqs={faqs}
 >
 <h2>Executive Summary</h2>
-<p>A full website SEO audit traditionally requires stitching together a crawler, a schema validator, a redirect tracer, a readability scorer, a mixed-content scanner, and half a dozen other tools. Ollagraph collapses that entire stack into nine API endpoints — and you can call them all in parallel with a single orchestration script. This article walks through every endpoint, shows real cURL and Python examples, shares benchmark data from 500 production audits, and gives you a production-ready checklist. By the end, you'll be able to audit any website's technical SEO posture in under 30 seconds of wall-clock time.</p>
+<p>A full website SEO audit traditionally requires stitching together a crawler, a schema validator, a redirect tracer, a readability scorer, a mixed-content scanner, and half a dozen other tools. Ollagraph collapses that entire stack into nine API endpoints — and you can call them all in parallel with a single orchestration script. This article walks through every endpoint, shows real cURL and Python examples, explains how to benchmark the audit on your own pages, and gives you a production-ready checklist. By the end, you'll be able to audit any website's technical SEO posture in under 30 seconds of wall-clock time.</p>
 
 <h2>Key Takeaways</h2>
 <ul>
   <li>Nine SEO audit endpoints cover meta tags, broken links, redirect chains, anchor text, keyword extraction, readability, mixed content, schema validation, and snippet candidates.</li>
-  <li>Running all nine endpoints in parallel against a typical 50-page site completes in 12–28 seconds — 40x faster than traditional crawler-based tools.</li>
-  <li>The meta audit endpoint alone catches 94% of title-tag, description, and OpenGraph issues in a single call.</li>
-  <li>Broken link audits scale to 1,000+ links per request with configurable concurrency and timeout controls.</li>
+  <li>Running all nine endpoints in parallel avoids the sequential crawl cycle that traditional crawler-based tools rely on.</li>
+  <li>The meta audit endpoint checks title tags, descriptions, and OpenGraph tags in a single call.</li>
+  <li>Broken link audits check up to 200 links per request with configurable concurrency and timeout controls.</li>
   <li>Schema validation checks JSON-LD against Google's rich-result requirements, not just syntax correctness.</li>
   <li>The real value isn't any single endpoint — it's the combination. You can wrap all nine calls in a Python script under 60 lines and integrate the results into CI/CD pipelines, dashboards, or automated reporting. Ollagraph's SEO audit API replaces Screaming Frog, Ahrefs Site Audit, SEMrush Site Audit, and half a dozen specialty tools — with a single API key and a single bill.</li>
 </ul>
@@ -100,7 +100,7 @@ const faqs = [
 
 <p>The architecture is straightforward. Your application makes parallel HTTP POST requests to the nine endpoints. Each request passes through the same gateway for authentication, rate limiting, and proxy routing. The rendering layer fetches the page in a headless Chrome instance (or a lightweight HTML parser for simpler endpoints), runs the analysis, and returns structured JSON.</p>
 
-<p>The critical design choice: all nine endpoints share the same underlying page fetch. When you call them in parallel against the same URL, the gateway deduplicates the fetch — so you're not loading the same page nine times. This cuts latency by roughly 8x compared to sequential calls.</p>
+<p>The critical design choice: each endpoint is an independent call that fetches the page itself. Calling them in parallel rather than one after another keeps the wall-clock time close to the slowest single call instead of the sum of all nine.</p>
 
 <h2>5. Components &amp; Workflow</h2>
 
@@ -109,7 +109,7 @@ const faqs = [
 <ol>
   <li>
     <p><strong>Endpoint:</strong> POST /v1/seo/meta-audit</p>
-    <p><strong>What It Checks:</strong> Title tags, meta descriptions, OpenGraph, Twitter Cards, viewport, charset, canonical, hreflang, robots meta</p>
+    <p><strong>What It Checks:</strong> Title tag, meta description, H1, canonical, robots meta (indexability), viewport, OpenGraph, and likely soft-404s</p>
     <p><strong>Why It Matters:</strong> 68% of pages with missing or duplicate titles lose click-through rate. Google uses the meta description as a snippet source 37% of the time.</p>
   </li>
   <li>
@@ -134,7 +134,7 @@ const faqs = [
   </li>
   <li>
     <p><strong>Endpoint:</strong> POST /v1/seo/readability</p>
-    <p><strong>What It Checks:</strong> Flesch-Kincaid Grade Level, Flesch Reading Ease, sentence length, paragraph length</p>
+    <p><strong>What It Checks:</strong> Flesch Reading Ease, Flesch-Kincaid Grade, Gunning Fog, SMOG and other grade-level scores, plus word, sentence, and reading-time counts. It scores text you send, so pass it the page text.</p>
     <p><strong>Why It Matters:</strong> Google's helpful content system favors readable content. Pages written above a grade 12 level see 23% lower engagement.</p>
   </li>
   <li>
@@ -144,12 +144,12 @@ const faqs = [
   </li>
   <li>
     <p><strong>Endpoint:</strong> POST /v1/seo/schema-validate</p>
-    <p><strong>What It Checks:</strong> JSON-LD syntax, required properties, Google rich-result eligibility, entity completeness</p>
+    <p><strong>What It Checks:</strong> JSON-LD syntax, required properties for each recognized schema.org type, and which rich-result types the page is eligible for</p>
     <p><strong>Why It Matters:</strong> Valid schema increases rich-result eligibility by 3x. Invalid schema is ignored entirely — no error, no rich result.</p>
   </li>
   <li>
     <p><strong>Endpoint:</strong> POST /v1/seo/snippet-candidates</p>
-    <p><strong>What It Checks:</strong> Paragraph, list, table, and definition blocks that match featured-snippet formats</p>
+    <p><strong>What It Checks:</strong> Paragraph, list, and table blocks shaped like featured snippets</p>
     <p><strong>Why It Matters:</strong> 42% of search clicks go to the featured snippet. If your content isn't snippet-shaped, you can't win the position-zero slot.</p>
   </li>
 </ol>
@@ -159,7 +159,7 @@ const faqs = [
 <ul>
   <li><strong>Seed URL list</strong> — Start with your sitemap, a list of priority pages, or a single homepage.</li>
   <li><strong>Parallel dispatch</strong> — Fire all nine endpoints simultaneously for each URL. Use asyncio or Promise.all to avoid sequential waits.</li>
-  <li><strong>Collect responses</strong> — Each endpoint returns within 2–8 seconds for a typical page.</li>
+  <li><strong>Collect responses</strong> — Gather each endpoint's JSON response for the page.</li>
   <li><strong>Aggregate results</strong> — Merge the JSON responses into a single audit document.</li>
   <li><strong>Score &amp; prioritize</strong> — Apply your own scoring logic or use Ollagraph's built-in grades.</li>
   <li><strong>Alert or report</strong> — Push results to a dashboard, send Slack alerts for critical failures, or file tickets in your issue tracker.</li>
@@ -191,32 +191,28 @@ const faqs = [
 <p>Expected response (truncated):</p>
 
 <pre><code>&#123;
+  "status": "success",
   "url": "https://example.com",
+  "final_url": "https://example.com/",
+  "score": 50,
+  "grade": "D",
   "title": "Example Domain",
   "title_length": 14,
   "meta_description": null,
   "meta_description_length": 0,
+  "h1_count": 1,
+  "h1_text": "Example Domain",
+  "canonical": "https://example.com",
+  "robots_directive": null,
+  "is_indexable": true,
+  "viewport": "width=device-width, initial-scale=1",
+  "og_image": null,
   "og_title": null,
   "og_description": null,
-  "og_image": null,
-  "twitter_card": null,
-  "canonical": "https://example.com",
-  "viewport": null,
-  "charset": "utf-8",
-  "hreflangs": [],
-  "robots": "all",
-  "grade": "C",
   "issues": [
-    &#123;
-      "severity": "warning",
-      "field": "meta_description",
-      "message": "Meta description is missing. Google may auto-generate a snippet."
-    &#125;,
-    &#123;
-      "severity": "warning",
-      "field": "og_title",
-      "message": "OpenGraph title is missing. Social shares may not render correctly."
-    &#125;
+    "Title is 14 characters; aim for 30–60.",
+    "Missing meta description.",
+    "Missing og:image (used by social previews and many AI crawlers)."
   ]
 &#125;</code></pre>
 
@@ -242,11 +238,11 @@ ENDPOINTS = [
     "/v1/seo/snippet-candidates",
 ]
 
-async def call_endpoint(session, endpoint, url):
+async def call_endpoint(session, endpoint, body):
     try:
         async with session.post(
             f"&#123;BASE_URL&#125;&#123;endpoint&#125;",
-            json=&#123;"url": url&#125;,
+            json=body,
             headers=&#123;"Authorization": f"Bearer &#123;API_KEY&#125;"&#125;
         ) as resp:
             data = await resp.json()
@@ -256,7 +252,13 @@ async def call_endpoint(session, endpoint, url):
 
 async def full_audit(url):
     async with aiohttp.ClientSession() as session:
-        tasks = [call_endpoint(session, ep, url) for ep in ENDPOINTS]
+        # /v1/seo/readability scores text, not a URL, so fetch the page text first.
+        _, page, _ = await call_endpoint(session, "/v1/scrape", &#123;"url": url, "format": "text"&#125;)
+        page_text = page.get("content", "")
+        tasks = [
+            call_endpoint(session, ep, &#123;"text": page_text&#125; if ep == "/v1/seo/readability" else &#123;"url": url&#125;)
+            for ep in ENDPOINTS
+        ]
         results = await asyncio.gather(*tasks)
         return &#123;ep: data for ep, data, status in results&#125;
 
@@ -265,7 +267,7 @@ if __name__ == "__main__":
     report = asyncio.run(full_audit(url))
     print(json.dumps(report, indent=2))</code></pre>
 
-<p>This script is 38 lines. It runs all nine audits in parallel and returns a single JSON document with the complete audit. Wall-clock time for a typical page: 4–8 seconds.</p>
+<p>This script is 46 lines. It fetches the page text once with <code>/v1/scrape</code> (the readability endpoint takes text, not a URL), then runs all nine audits in parallel and returns a single JSON document with the complete audit.</p>
 
 <h2>Step 4: Scale to Multiple Pages</h2>
 
@@ -280,16 +282,16 @@ if __name__ == "__main__":
     results = await asyncio.gather(*tasks)
     return dict(results)</code></pre>
 
-<p>With max_concurrent=5, a 50-page site completes in roughly 40–80 seconds. With max_concurrent=20, it drops to 15–30 seconds.</p>
+<p>Raising max_concurrent cuts wall-clock time for multi-page runs; keep it within your rate limit.</p>
 
 <h3>Common Configuration Options</h3>
 
 <ul>
-  <li><strong>max_links</strong> — <em>Endpoints:</em> broken-links-audit — <em>Description:</em> Max links to check — <em>Default:</em> 100</li>
-  <li><strong>concurrency</strong> — <em>Endpoints:</em> broken-links-audit — <em>Description:</em> Parallel link checks — <em>Default:</em> 10</li>
-  <li><strong>timeout_seconds</strong> — <em>Endpoints:</em> broken-links-audit — <em>Description:</em> Per-link timeout — <em>Default:</em> 10</li>
+  <li><strong>max_links</strong> — <em>Endpoints:</em> broken-links-audit — <em>Description:</em> Max links to check (up to 200) — <em>Default:</em> 50</li>
+  <li><strong>concurrency</strong> — <em>Endpoints:</em> broken-links-audit — <em>Description:</em> Parallel link checks (up to 24) — <em>Default:</em> 8</li>
+  <li><strong>timeout_seconds</strong> — <em>Endpoints:</em> broken-links-audit — <em>Description:</em> Per-link timeout — <em>Default:</em> 8</li>
   <li><strong>top_k</strong> — <em>Endpoints:</em> keyword-extract — <em>Description:</em> Number of keywords — <em>Default:</em> 20</li>
-  <li><strong>use_residential_proxy</strong> — <em>Endpoints:</em> meta-audit, schema-validate, snippet-candidates — <em>Description:</em> Route through residential IP — <em>Default:</em> false</li>
+  <li><strong>use_residential_proxy</strong> — <em>Endpoints:</em> meta-audit, snippet-candidates — <em>Description:</em> Route through residential IP — <em>Default:</em> false</li>
 </ul>
 
 <h2>7. Examples: Running a Full Audit</h2>
@@ -304,74 +306,95 @@ if __name__ == "__main__":
 
 <pre><code>&#123;
   "title": "Wireless Headphones | Free Shipping | Example Store",
-  "title_length": 52,
+  "title_length": 51,
   "meta_description": "Shop wireless headphones with active noise cancellation. Free shipping on orders over $50.",
-  "meta_description_length": 98,
+  "meta_description_length": 90,
+  "score": 90,
   "grade": "A",
-  "issues": []
+  "issues": ["Meta description is 90 characters; aim for 120–160."]
 &#125;</code></pre>
 
-<p><strong>Broken links audit:</strong></p>
+<p><strong>Broken links audit</strong> (<code>links</code> truncated to the broken one):</p>
 
 <pre><code>&#123;
-  "total_links_checked": 87,
-  "broken_links": [
+  "status": "success",
+  "url": "https://example-store.com/products/wireless-headphones",
+  "link_count": 50,
+  "broken_count": 1,
+  "internal_broken": 1,
+  "external_broken": 0,
+  "links": [
     &#123;
       "url": "https://example-store.com/old-promo",
-      "status": 404,
-      "type": "internal",
-      "selector": "nav a[href='/old-promo']"
+      "anchor_text": "Summer sale",
+      "rel": "",
+      "is_internal": true,
+      "is_external": false,
+      "status_code": 404,
+      "final_url": "https://example-store.com/old-promo",
+      "elapsed_ms": 142,
+      "ok": false
     &#125;
-  ],
-  "broken_count": 1,
-  "error_count": 0
+  ]
 &#125;</code></pre>
 
 <p><strong>Schema validation:</strong></p>
 
 <pre><code>&#123;
-  "has_ld_json": true,
-  "ld_json_count": 2,
-  "valid": true,
-  "types": ["Product", "BreadcrumbList"],
-  "rich_result_eligible": true,
-  "missing_recommended": ["review", "aggregateRating"],
-  "errors": [],
-  "warnings": [
-    &#123;
-      "path": "$.Product",
-      "message": "Recommended property 'review' is missing. Add reviews to improve rich result eligibility."
-    &#125;
-  ]
+  "status": "success",
+  "blocks_found": 2,
+  "json_ld_blocks": [
+    &#123;"block_index": 0, "node_index": 0, "type": "Product", "status": "valid", "valid": true, "missing_required_fields": []&#125;,
+    &#123;"block_index": 1, "node_index": 0, "type": "BreadcrumbList", "status": "valid", "valid": true, "missing_required_fields": []&#125;
+  ],
+  "eligible_rich_result_types": ["BreadcrumbList", "Product"],
+  "any_eligible": true,
+  "source": "url_fetched",
+  "url": "https://example-store.com/products/wireless-headphones"
 &#125;</code></pre>
 
-<p><strong>Readability:</strong></p>
+<p><strong>Readability</strong> (on the page text):</p>
 
 <pre><code>&#123;
-  "flesch_kincaid_grade": 8.2,
-  "flesch_reading_ease": 62.4,
-  "avg_sentence_length": 14.3,
-  "avg_paragraph_length": 32.1,
-  "grade_level": "8th grade",
-  "target_range": "8th-9th grade",
-  "verdict": "good"
+  "status": "success",
+  "text_byte_count": 2387,
+  "word_count": 412,
+  "sentence_count": 29,
+  "syllable_count": 598,
+  "reading_time_min": 2,
+  "scores": &#123;
+    "flesch_reading_ease": 62.4,
+    "flesch_kincaid_grade": 8.2,
+    "gunning_fog": 10.1,
+    "smog_index": 9.6,
+    "automated_readability_index": 8.9,
+    "coleman_liau_index": 9.4
+  &#125;,
+  "summary": &#123;"band": "plain_english", "label": "8th–9th-grade level; plain English."&#125;
 &#125;</code></pre>
 
 <p><strong>Snippet candidates:</strong></p>
 
 <pre><code>&#123;
-  "candidates": [
+  "status": "success",
+  "paragraphs": [
     &#123;
-      "type": "paragraph",
-      "text": "Active noise cancellation reduces ambient noise by up to 35dB, making these headphones ideal for commuting and open offices.",
-      "relevance_score": 0.89
-    &#125;,
-    &#123;
-      "type": "list",
-      "items": ["40-hour battery life", "USB-C fast charging", "IPX4 water resistance"],
-      "relevance_score": 0.92
+      "heading": "How does active noise cancellation work?",
+      "snippet": "Active noise cancellation uses microphones on each ear cup to sample ambient sound and play an inverted signal that cancels it. It works best on steady low-frequency noise such as engine hum, which is why these headphones suit commuting, flights, and open-plan offices.",
+      "word_count": 43,
+      "quality": "ideal"
     &#125;
-  ]
+  ],
+  "lists": [
+    &#123;
+      "kind": "ul",
+      "heading": "Key features",
+      "items": ["40-hour battery life", "USB-C fast charging", "IPX4 water resistance"],
+      "item_count": 3
+    &#125;
+  ],
+  "tables": [],
+  "total_candidates": 2
 &#125;</code></pre>
 
 <h3>Example 2: Full Site Audit (50 Pages)</h3>
@@ -380,7 +403,7 @@ if __name__ == "__main__":
 
 <pre><code>python full_site_audit.py --urls urls.txt --concurrency 10 --output audit-report.json</code></pre>
 
-<p><strong>Aggregated findings:</strong></p>
+<p><strong>Example aggregated findings (illustrative):</strong></p>
 
 <ul>
   <li>12 pages missing meta descriptions (24%)</li>
@@ -390,7 +413,7 @@ if __name__ == "__main__":
   <li>4 pages with mixed content (HTTP images on HTTPS)</li>
   <li>8 pages below grade-9 readability target</li>
   <li>15 pages missing OpenGraph tags</li>
-  <li>1 schema validation error (missing @id on Organization)</li>
+  <li>1 schema validation error (Organization block missing name)</li>
   <li>0 pages with featured-snippet candidates</li>
 </ul>
 
@@ -398,7 +421,7 @@ if __name__ == "__main__":
 
 <h3>Example 3: CI/CD Integration</h3>
 
-<p>Add SEO auditing to your GitHub Actions deployment pipeline. The workflow below runs six essential checks on every production deployment and fails the pipeline if any endpoint returns a non-200 status:</p>
+<p>Add SEO auditing to your GitHub Actions deployment pipeline. The workflow below runs five URL-based checks on every production deployment and fails the pipeline if any endpoint returns a non-200 status:</p>
 
 <pre><code>name: SEO Audit on Deploy
 on:
@@ -418,7 +441,7 @@ API_KEY = '$&#123;&#123; secrets.OLLAGRAPH_API_KEY &#125;&#125;'
 BASE = 'https://api.ollagraph.com'
 ENDPOINTS = ['/v1/seo/meta-audit', '/v1/seo/broken-links-audit',
              '/v1/seo/redirect-chain-map', '/v1/seo/schema-validate',
-             '/v1/seo/mixed-content', '/v1/seo/readability']
+             '/v1/seo/mixed-content']
 async def audit():
     async with aiohttp.ClientSession() as s:
         for ep in ENDPOINTS:
@@ -433,37 +456,35 @@ async def audit():
 asyncio.run(audit())
 "</code></pre>
 
-<h2>8. Performance &amp; Benchmarks</h2>
+<h2>8. How to Benchmark the Audit on Your Own Site</h2>
 
-<p>We tested the Ollagraph SEO audit API against 500 production websites across five categories: ecommerce (150), SaaS (100), media/publishing (100), enterprise portals (100), and small business (50). Here's what we found.</p>
+<p>To see how the audit performs on your site, run all nine endpoints in parallel against a sample of your own pages. Include different page types (lightweight HTML pages and JavaScript-heavy SPAs) and record the results by page type.</p>
 
 <h3>Single-Page Audit Latency (All 9 Endpoints, Parallel)</h3>
 
 <ul>
-  <li><strong>P50 (median):</strong> 5.2s</li>
-  <li><strong>P75:</strong> 7.8s</li>
-  <li><strong>P95:</strong> 12.4s</li>
-  <li><strong>P99:</strong> 18.1s</li>
-  <li><strong>Fastest page:</strong> 2.1s</li>
-  <li><strong>Slowest page:</strong> 24.7s</li>
+  <li><strong>P50, P75, P95, and P99</strong> latency per page</li>
+  <li><strong>Fastest and slowest page</strong>, with the page type of each</li>
 </ul>
 
-<p>The slowest pages were typically JavaScript-heavy SPAs that required full browser rendering. Lightweight HTML pages completed in 2–4 seconds.</p>
+<p>Expect JavaScript-heavy SPAs that need full browser rendering to be the slowest. Segment by page type so they don't hide the numbers for lightweight HTML pages.</p>
 
 <h3>Multi-Page Audit Throughput</h3>
 
+<p>Record wall time at a few batch sizes and concurrency levels. At nine calls per page:</p>
+
 <ul>
-  <li><strong>10 pages</strong> — <em>Concurrency:</em> 5 — <em>Wall Time:</em> 12–18s — <em>Total API Calls:</em> 90</li>
-  <li><strong>50 pages</strong> — <em>Concurrency:</em> 10 — <em>Wall Time:</em> 28–45s — <em>Total API Calls:</em> 450</li>
-  <li><strong>100 pages</strong> — <em>Concurrency:</em> 20 — <em>Wall Time:</em> 40–70s — <em>Total API Calls:</em> 900</li>
-  <li><strong>500 pages</strong> — <em>Concurrency:</em> 50 — <em>Wall Time:</em> 3–5 min — <em>Total API Calls:</em> 4,500</li>
+  <li><strong>10 pages</strong> — <em>Concurrency:</em> 5 — <em>Total API Calls:</em> 90</li>
+  <li><strong>50 pages</strong> — <em>Concurrency:</em> 10 — <em>Total API Calls:</em> 450</li>
+  <li><strong>100 pages</strong> — <em>Concurrency:</em> 20 — <em>Total API Calls:</em> 900</li>
+  <li><strong>500 pages</strong> — <em>Concurrency:</em> 50 — <em>Total API Calls:</em> 4,500</li>
 </ul>
 
 <h3>Comparison: API vs Traditional Tools</h3>
 
+<p>If you are comparing against a crawler you already use, run it on the same URL list from the same machine with default settings, and record wall time for both. Feature differences to weigh alongside time:</p>
+
 <ul>
-  <li><strong>Time (50 pages)</strong> — <em>Ollagraph API:</em> 28–45s — <em>Screaming Frog:</em> 15–30 min — <em>Ahrefs Site Audit:</em> 30–60 min — <em>SEMrush Site Audit:</em> 20–45 min</li>
-  <li><strong>Time (500 pages)</strong> — <em>Ollagraph API:</em> 3–5 min — <em>Screaming Frog:</em> 2–4 hours — <em>Ahrefs Site Audit:</em> 4–8 hours — <em>SEMrush Site Audit:</em> 3–6 hours</li>
   <li><strong>Parallel execution</strong> — <em>Ollagraph API:</em> Native — <em>Screaming Frog:</em> Single-threaded — <em>Ahrefs Site Audit:</em> Cloud (opaque) — <em>SEMrush Site Audit:</em> Cloud (opaque)</li>
   <li><strong>API-first</strong> — <em>Ollagraph API:</em> Yes — <em>Screaming Frog:</em> Limited — <em>Ahrefs Site Audit:</em> Yes (extra cost) — <em>SEMrush Site Audit:</em> Yes (extra cost)</li>
   <li><strong>Schema validation</strong> — <em>Ollagraph API:</em> Rich-result aware — <em>Screaming Frog:</em> Syntax only — <em>Ahrefs Site Audit:</em> Syntax only — <em>SEMrush Site Audit:</em> Syntax only</li>
@@ -473,8 +494,6 @@ asyncio.run(audit())
   <li><strong>CI/CD ready</strong> — <em>Ollagraph API:</em> Native — <em>Screaming Frog:</em> No — <em>Ahrefs Site Audit:</em> Partial — <em>SEMrush Site Audit:</em> Partial</li>
   <li><strong>White-label output</strong> — <em>Ollagraph API:</em> Yes (JSON) — <em>Screaming Frog:</em> CSV/Excel — <em>Ahrefs Site Audit:</em> Limited — <em>SEMrush Site Audit:</em> Limited</li>
 </ul>
-
-<p>Methodology: All tests run from an AWS us-east-1 instance. Ollagraph API calls used default parameters. Screaming Frog v20.0 ran with default settings on a c5.xlarge instance. Ahrefs and SEMrush audits were triggered via their respective APIs with standard crawl settings. Results are median of 3 runs.</p>
 
 <h3>Cost Comparison</h3>
 
@@ -506,7 +525,7 @@ asyncio.run(audit())
 
 <h3>Data at Rest</h3>
 
-<p>Audit results are stored for 30 days for billing and debugging. You can request immediate deletion via the API. Ollagraph does not use your audit data for model training or share it with third parties.</p>
+<p>Ollagraph does not store audit results: the response is returned to you and not kept. Usage logs record which endpoint you called and the target URL (for billing and your request history), not page content. Ollagraph does not use your audit data for model training or share it with third parties.</p>
 
 <h3>Rate Limiting &amp; Abuse Prevention</h3>
 
@@ -544,7 +563,7 @@ Internal server error | 500 | Unexpected error on Ollagraph side | Retry with ba
 <h3>Production Checklist</h3>
 <ul>
   <li>Store API keys in a secrets manager, not in code.</li>
-  <li>Set max_links to a reasonable value (100 for small sites, 500 for large sites).</li>
+  <li>Set max_links to a reasonable value (the default is 50; the maximum is 200).</li>
   <li>Use concurrency of 10–20 for broken link checks.</li>
   <li>Run audits during off-peak hours.</li>
   <li>Cache audit results for at least 24 hours unless you need real-time monitoring.</li>
@@ -565,10 +584,10 @@ On-demand | After site migrations, redesigns, or CMS updates</code></pre>
 
 <h3>Optimizing for Speed</h3>
 <ul>
-  <li>Run audits in parallel, not sequentially. Nine parallel calls take 4–8 seconds vs 40–70 seconds sequentially.</li>
+  <li>Run audits in parallel, not sequentially. Nine parallel calls take about as long as the slowest one.</li>
   <li>Use use_residential_proxy only when needed. Datacenter IPs are faster.</li>
-  <li>For broken link audits, set max_links to the number you actually need. Checking 1,000 links when you need 100 wastes time and money.</li>
-  <li>The gateway deduplicates page fetches automatically when you call multiple endpoints against the same URL.</li>
+  <li>For broken link audits, set max_links to the number you actually need. Checking 200 links when you need 25 wastes time.</li>
+  <li>Each endpoint fetches the page on its own, so calling all nine against one URL means nine fetches. Run only the checks you need.</li>
 </ul>
 
 <h2>12. Common Mistakes</h2>
@@ -576,19 +595,19 @@ On-demand | After site migrations, redesigns, or CMS updates</code></pre>
 <ol>
   <li>
     <strong>Running Endpoints Sequentially</strong>
-    <p>Nine sequential calls take 40–70 seconds. Nine parallel calls take 4–8 seconds. Use asyncio (Python), Promise.all (Node.js), or curl_parallel (shell).</p>
+    <p>Nine sequential calls take as long as all nine added together. Nine parallel calls take about as long as the slowest one. Use asyncio (Python), Promise.all (Node.js), or curl_parallel (shell).</p>
   </li>
   <li>
     <strong>Ignoring the Redirect Chain Endpoint</strong>
-    <p>Most SEOs check the final URL and call it done. The redirect chain endpoint reveals intermediate hops that dilute link equity. We've seen chains with 8 hops — each passing through a different domain. The final URL looked fine. The chain was a disaster.</p>
+    <p>Most SEOs check the final URL and call it done. The redirect chain endpoint reveals intermediate hops that dilute link equity.</p>
   </li>
   <li>
     <strong>Not Setting max_links on Broken Link Audits</strong>
-    <p>The default of 100 links is reasonable for most pages. But a sitemap page with 5,000 links will check all 5,000. Set max_links to match your actual needs.</p>
+    <p>The default of 50 links is reasonable for most pages. But on a sitemap-style page with thousands of links, only the first 50 (or up to 200, if you raise it) are checked. Set max_links to match your actual needs, and audit very link-heavy pages in parts.</p>
   </li>
   <li>
     <strong>Treating Schema Validation as a Syntax Check</strong>
-    <p>Valid JSON-LD can still be ineligible for rich results. The schema-validate endpoint checks for Google's required and recommended properties. A Product schema without review or aggregateRating is valid JSON-LD but won't get product rich results.</p>
+    <p>Valid JSON-LD can still be ineligible for rich results. The schema-validate endpoint checks each recognized schema.org type for its required properties and lists the rich-result types the page is eligible for. A Recipe block without recipeIngredient, for example, parses as valid JSON but is reported as missing_fields and not eligible.</p>
   </li>
   <li>
     <strong>Auditing Only the Homepage</strong>
@@ -596,7 +615,7 @@ On-demand | After site migrations, redesigns, or CMS updates</code></pre>
   </li>
   <li>
     <strong>Forgetting Mixed Content After HTTPS Migration</strong>
-    <p>We audited a site six months post-HTTPS migration. The mixed-content endpoint found 47 HTTP image references across 12 pages. The SEO team had no idea.</p>
+    <p>Old templates and content can keep referencing HTTP images long after an HTTPS migration. Run the mixed-content endpoint across your full URL set, not just the pages you changed.</p>
   </li>
   <li>
     <strong>Not Checking Snippet Candidates</strong>
@@ -645,7 +664,7 @@ Starting price | Pay-per-call | $259/yr | $129/mo | $139/mo | $149/yr | $500+/mo
 
 <h3>Scaling to Thousands of Pages</h3>
 <p>For enterprise deployments with 10,000+ pages, the parallel orchestration approach still works, but you need to manage concurrency carefully.</p>
-<p><strong>Recommended approach:</strong> Split the URL list into batches of 500 pages. Process each batch with max_concurrent=50. Between batches, pause for 10 seconds to let rate limits reset. A 10,000-page site completes in roughly 60–90 minutes.</p>
+<p><strong>Recommended approach:</strong> Split the URL list into batches of 500 pages. Process each batch with max_concurrent=50. Between batches, pause for 10 seconds to let rate limits reset.</p>
 
 <pre><code>async def audit_enterprise_site(urls, batch_size=500, concurrency=50):
     all_results = &#123;&#125;
@@ -675,28 +694,28 @@ Starting price | Pay-per-call | $259/yr | $129/mo | $139/mo | $149/yr | $500+/mo
 <p>A traditional crawl visits every page sequentially, building an index before reporting. An API-based audit makes targeted parallel requests to specific endpoints. The API approach is faster (seconds vs hours), more flexible, and easier to integrate into automated workflows.</p>
 
 <h3>Q3. Can I run a full SEO audit in one API call?</h3>
-<p>Yes — dispatch calls to all nine endpoints in parallel. The Ollagraph gateway deduplicates the page fetch, so you're not loading the page nine times. Wall-clock time is typically 4–8 seconds per page.</p>
+<p>Yes — dispatch calls to all nine endpoints in parallel. Each call fetches the page on its own, so parallel dispatch keeps wall-clock time close to the slowest single call.</p>
 
 <h3>Q4. What does the meta audit endpoint check?</h3>
-<p>Title tags, meta descriptions, OpenGraph tags, Twitter Cards, viewport, charset, canonical URL, hreflang tags, and robots meta directives. It returns a letter grade (A–F) and a list of specific issues.</p>
+<p>Title tag, meta description, H1, canonical URL, robots meta (indexability), viewport, and OpenGraph tags, plus a soft-404 check. It returns a 0–100 score, a letter grade (A–F), and a list of specific issues.</p>
 
 <h3>Q5. How does the broken links audit work?</h3>
-<p>It extracts all href and src attributes, then makes HTTP HEAD/GET requests to each link. Reports 4xx/5xx status codes, connection errors, and timeouts. Configurable via max_links, concurrency, and timeout_seconds.</p>
+<p>It extracts the page's &lt;a href&gt; links (up to max_links), then makes an HTTP HEAD request, with a GET fallback, to each one. Reports each link's status code and flags 4xx/5xx responses, connection errors, and timeouts. Configurable via max_links, concurrency, and timeout_seconds.</p>
 
 <h3>Q6. What makes Ollagraph's schema validation different?</h3>
-<p>Most validators check JSON-LD syntax only. Ollagraph's schema-validate endpoint checks for Google's required and recommended properties, validates entity relationships, and reports rich-result eligibility. A Product schema without review or aggregateRating passes syntax validation but fails rich-result eligibility.</p>
+<p>Most validators check JSON-LD syntax only. Ollagraph's schema-validate endpoint also checks each recognized schema.org type for its required properties and reports which rich-result types the page is eligible for. A Recipe block missing recipeIngredient passes syntax validation but is reported as missing_fields and not eligible.</p>
 
 <h3>Q7. How do I integrate SEO audits into my CI/CD pipeline?</h3>
 <p>Use the Python orchestration script as a pipeline step. Set your API key as a secret environment variable. Run the audit against the deployment URL after a successful deploy. Fail the pipeline if critical issues are detected. The article includes a complete GitHub Actions example.</p>
 
 <h3>Q8. What is a featured snippet candidate?</h3>
-<p>A content block matching Google's snippet formats: paragraph answers, lists, tables, or definitions. The snippet-candidates endpoint extracts these blocks and scores them by relevance. Pages with well-structured candidates are more likely to win position zero.</p>
+<p>A content block matching Google's snippet formats: paragraph answers, lists, tables, or definitions. The snippet-candidates endpoint extracts paragraph, list, and table blocks and tags paragraph answers of 40–55 words as ideal. Pages with well-structured candidates are more likely to win position zero.</p>
 
 <h3>Q9. How much does an API-based SEO audit cost?</h3>
 <p>Ollagraph charges per call. A full audit of a single page (9 endpoints) costs 9 calls. A 50-page audit runs roughly $2.25; a 500-page audit runs $22.50. No monthly minimums, no page-count tiers.</p>
 
 <h3>Q10. Can I audit JavaScript-heavy single-page applications?</h3>
-<p>Yes. The endpoints use headless Chrome for rendering, so JS-rendered content is fully accessible. Expect 2–4 seconds for JS-heavy pages vs 1–2 seconds for static HTML.</p>
+<p>Yes. The endpoints use headless Chrome for rendering, so JS-rendered content is fully accessible. JS-heavy pages take longer than static HTML.</p>
 
 <h3>Q11. What happens if a page requires authentication?</h3>
 <p>The endpoints only access publicly available URLs. If a page returns 401 or 403, it's reported as inaccessible. Ollagraph does not support authenticated crawling.</p>
@@ -712,7 +731,7 @@ Starting price | Pay-per-call | $259/yr | $129/mo | $139/mo | $149/yr | $500+/mo
 
 <h2>17. References</h2>
 <ul>
-  <li>Ollagraph API Documentation: https://docs.ollagraph.com</li>
+  <li>Ollagraph API Documentation: https://ollagraph.com/docs</li>
   <li>Ollagraph SEO Endpoints Reference: /v1/seo/* namespace</li>
   <li>Google Search Central: "Technical SEO" — https://developers.google.com/search/docs/fundamentals/technical-seo</li>
   <li>Google Rich Results Test: https://search.google.com/test/rich-results</li>

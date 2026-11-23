@@ -27,14 +27,14 @@ const faqs = [
 <h2>Executive Summary</h2>
 <p>Every data extraction pipeline produces incorrect values at some point. A price is off by a factor of ten. A description contains navigation menu text. A stock status says "in_stock" for a discontinued product. The standard response is to open a ticket, pull the logs, and spend hours reproducing the extraction manually. This workflow is broken because logs record that an event occurred — they do not record how a specific value was derived.</p>
 <p>Field-level provenance solves this by attaching a structured metadata envelope to every extracted value. The envelope contains the source URL, the exact DOM element the value came from, the raw text before normalization, the extraction strategy used, a confidence score, and a trace of every transformation applied. When a value is wrong, the provenance envelope tells you why within seconds instead of hours.</p>
-<p>This article covers the complete architecture of a provenance-aware extraction pipeline: the JSON schema for provenance envelopes, Python and Node.js implementations, storage strategies for PostgreSQL, MongoDB, and Parquet, quality gates that catch problems before data reaches downstream systems, and benchmarks showing that full provenance adds 5.5% latency overhead while reducing debugging time by 91%.</p>
+<p>This article covers the complete architecture of a provenance-aware extraction pipeline: the JSON schema for provenance envelopes, Python and Node.js implementations, storage strategies for PostgreSQL, MongoDB, and Parquet, quality gates that catch problems before data reaches downstream systems, and a method for measuring what provenance costs and saves in your own pipeline.</p>
 
 <h2>Key Takeaways</h2>
 <ul>
   <li>Field-level provenance attaches a structured evidence envelope to every extracted value, documenting its origin, extraction method, confidence, and normalization history.</li>
-  <li>Full provenance tracking adds 5.5% latency and 350% storage overhead — and reduces mean time to resolution from 4.2 hours to 22 minutes.</li>
+  <li>Full provenance tracking costs some latency and a lot of extra storage per record. What it buys is faster root-cause analysis when a value is wrong.</li>
   <li>The provenance envelope schema covers seven dimensions: source, DOM location, extraction metadata, confidence scoring, normalization trace, quality gate results, and field identification.</li>
-  <li>Quality gates built on provenance data catch extraction failures before they reach downstream systems, reducing false positive alerts by 20 percentage points.</li>
+  <li>Quality gates built on provenance data catch extraction failures before they reach downstream systems.</li>
   <li>Tiered storage (hot/warm/cold) keeps provenance queryable without unbounded storage growth.</li>
   <li>The key insight is that provenance is not an optional add-on. It is a structural property of the extraction pipeline, and it must be designed in from the start. Retrofitting provenance after a pipeline is built means the extraction engine likely does not capture the raw metadata needed for a complete envelope, and the cost of adding it later is far higher than building it in from day one.</li>
 </ul>
@@ -43,7 +43,6 @@ const faqs = [
 <p>You run an extraction pipeline that pulls product data from fifty competitor websites every six hours. The pipeline works — mostly. But every few days, someone on the data team notices something off. A price that should be $89.00 shows up as $8,900.00. A product description contains navigation menu text instead of the actual description. A stock status says "in_stock" for a product that has been discontinued for six months.</p>
 <p>Each time, the same ritual plays out. Someone opens a ticket. A data engineer pulls the extraction logs. The logs show that the API returned HTTP 200 and the pipeline completed without errors. But the logs do not show what the page actually contained at extraction time, which CSS selector was used, what the raw HTML looked like, or whether the value passed through a normalization step that introduced the error.</p>
 <p>The engineer spends two hours reproducing the extraction manually. They open the URL in a browser. The page looks correct. They check the Wayback Machine to see if the page changed. They run the extraction script locally with debug flags. Eventually they find the problem: the site added a new CSS class to its price element, the selector stopped matching, and the pipeline fell back to a different element that happened to contain a different number.</p>
-<p>This scenario is not hypothetical. In a 2025 survey of 200 data engineering teams, 73% reported spending at least four hours per week debugging extraction failures. The median team could not determine the root cause of a data quality incident within the first two hours of investigation. And 41% admitted they had shipped incorrect data to production because they could not prove the extraction was wrong before the data reached downstream consumers.</p>
 
 <h2>2. History &amp; Context</h2>
 
@@ -615,46 +614,19 @@ def store_provenance_parquet(records: list, path: str = "s3://your-provenance-bu
     pq.write_to_dataset(pa.Table.from_pandas(df), root_path=path, partition_cols=["extraction_date", "schema_name"], compression="zstd")</code></pre>
 
 <h2>10. Performance &amp; Benchmarks</h2>
-<p>Benchmarked across 5,000 product pages from 50 e-commerce sites comparing three configurations.</p>
+<p>Provenance overhead depends on your pages, your envelope, and your storage engine, so measure it on your own pipeline. Run the same sample of pages through three configurations — no provenance, minimal provenance (source, selector, raw text, confidence), and full provenance (the complete envelope plus DOM snapshot and normalization trace) — and compare them on the dimensions below.</p>
 
 <p><strong>Latency Overhead</strong></p>
-<pre><code>Stage                 None      Minimal   Full
-Fetch &amp; render        1,420 ms  1,420 ms  1,420 ms
-Element location      45 ms     45 ms     45 ms
-Text extraction       12 ms     12 ms     12 ms
-Provenance capture    0 ms      18 ms     62 ms
-Normalization         8 ms      8 ms      12 ms
-Quality gate          0 ms      3 ms      15 ms
-Total per page        1,485 ms  1,506 ms  1,566 ms
-Overhead              —         +1.4%     +5.5%</code></pre>
+<p>Time each stage per page: fetch and render, element location, text extraction, provenance capture, normalization, and quality gate. Fetch and render usually dominate total time, so judge the provenance-capture and quality-gate stages against that baseline rather than in isolation.</p>
 
 <p><strong>Storage Overhead</strong></p>
-<pre><code>Metric              None    Minimal  Full
-Per-record data     1.2 KB  1.2 KB   1.2 KB
-Provenance size     0 KB    0.8 KB   4.2 KB
-Total per record    1.2 KB  2.0 KB   5.4 KB
-Overhead            —       +67%     +350%
-Daily (10K records) 12 MB   20 MB    54 MB</code></pre>
-
-<p>Full provenance for 10K records/day adds ~42 MB — roughly one high-res photo.</p>
+<p>Measure the extracted data per record and the provenance envelope per record, then multiply by your daily record volume to project daily and monthly growth. DOM snapshots tend to be the largest part of a full envelope, so measure with and without them.</p>
 
 <p><strong>Debugging Impact</strong></p>
-<pre><code>Metric                 None     Minimal  Full
-MTTR                   4.2 hrs  1.8 hrs  22 min
-Re-extraction needed   68%      31%      8%
-Root cause in 30 min   12%      47%      89%
-False positive alerts  23%      11%      3%</code></pre>
-
-<p>Full provenance cuts MTTR by 91% — saving ~190 engineering hours/year for a team handling 50 incidents.</p>
+<p>The payoff shows up in incident handling, so track real incidents before and after you add provenance: mean time to resolution (MTTR), the share of incidents that needed a manual re-extraction, the share where the root cause was found within 30 minutes, and the false positive rate of your data quality alerts.</p>
 
 <p><strong>Cost Analysis</strong></p>
-<pre><code>Cost Factor            None      Minimal   Full
-Compute                $500/mo   $510/mo   $530/mo
-Storage                $50/mo    $80/mo    $150/mo
-Engineering debug time $8,400/mo $3,600/mo $733/mo
-Total                  $8,950    $4,190    $1,413</code></pre>
-
-<p>Full provenance saves ~$7,500/month — a 6:1 ROI on compute + storage costs.</p>
+<p>Put the extra compute and storage cost of each configuration next to the engineering time your team spends debugging extraction incidents under it. If provenance shortens investigations, the saved debugging time is what pays for the storage.</p>
 
 <p><strong>Live Query: Finding Low-Confidence Fields</strong></p>
 <pre><code>SELECT p.sku, f.field_name, f.confidence, f.raw_text, f.selector, f.strategy
@@ -786,18 +758,18 @@ def strip_currency(v: str) -&gt; str: return v.replace("$", "").replace(",", "")
   <li><strong>Storing Only the Normalized Value</strong><p>This is the most common provenance mistake. The pipeline extracts a value, normalizes it, and stores only the final result. When the normalized value is wrong, there is no way to tell whether the source page had the wrong value, the extraction picked the wrong element, or the normalization introduced the error. Always store the raw text alongside the normalized value.</p></li>
   <li><strong>Using a Single Confidence Threshold for All Fields</strong><p>A single threshold of 0.7 applied to all fields means a critical field like price and a non-critical field like description are held to the same standard. Either the threshold is too low for critical fields (allowing bad prices through) or too high for non-critical fields (generating false positives). Set field-specific thresholds based on business impact.</p></li>
   <li><strong>Not Indexing Provenance Data</strong><p>Provenance is only useful if you can find it. Storing provenance in a JSONB column without indexes means every query requires a full table scan. Index the fields you query most often: confidence score, strategy type, field name, and extraction timestamp.</p></li>
-  <li><strong>Keeping Provenance Forever</strong><p>Provenance data accumulates fast. A pipeline extracting 10,000 records per day with full provenance generates about 54 MB per day, or 1.6 GB per month. Without a retention policy, storage costs grow linearly and query performance degrades. Implement tiered retention and delete or archive after 90 days.</p></li>
+  <li><strong>Keeping Provenance Forever</strong><p>Provenance data accumulates fast. At an assumed 5 KB of provenance per record, a pipeline extracting 10,000 records per day generates about 50 MB per day, or 1.5 GB per month. Without a retention policy, storage costs grow linearly and query performance degrades. Implement tiered retention and delete or archive after 90 days.</p></li>
 </ol>
 
 <h2>16. Alternatives &amp; Comparison</h2>
 
 <h3>Provenance Approaches Compared</h3>
 <pre><code>Approach                         Depth                                                  Overhead                        Debugging Value   Compliance Readiness   Complexity
-No provenance                    None                                                   0%                              None              None                   Low
-Pipeline logging                 Job-level only                                         &lt;1%                             Minimal           None                   Low
-Field-level provenance (minimal) Source, selector, raw text, confidence                 +1–2% latency, +67% storage     High              Partial                Medium
-Field-level provenance (full)    Full envelope + DOM snapshot + normalization trace     +5–8% latency, +350% storage    Very high         Full                   Medium-High
-Full lineage tracking            End-to-end from source to consumer                     +10–15% latency, +500% storage  Maximum           Full                   High</code></pre>
+No provenance                    None                                                   None                            None              None                   Low
+Pipeline logging                 Job-level only                                         Negligible                      Minimal           None                   Low
+Field-level provenance (minimal) Source, selector, raw text, confidence                 Low latency, moderate storage   High              Partial                Medium
+Field-level provenance (full)    Full envelope + DOM snapshot + normalization trace     Low latency, high storage       Very high         Full                   Medium-High
+Full lineage tracking            End-to-end from source to consumer                     Highest                         Maximum           Full                   High</code></pre>
 
 <h3>When to Use Each Approach</h3>
 <pre><code>Use Case                                        Recommended Approach                   Rationale
@@ -872,7 +844,7 @@ PROVENANCE_LATENCY = Histogram("provenance_capture_latency_ms", "", ["schema_nam
 <p>Logging records that an event occurred — "extraction job #4421 completed at 14:32:05." Provenance records how a specific value was derived — "field price = 1299.00, extracted from div.price span.amount via CSS selector, raw text was '$1,299.00', confidence 0.97, normalized by stripping currency symbol and parsing as float." Logging tells you that something happened. Provenance tells you exactly what happened for each individual value.</p>
 
 <h3>3. How much overhead does provenance tracking add?</h3>
-<p>In our benchmarks across 5,000 pages, full provenance tracking added 5.5% latency overhead (from 1,485 ms to 1,566 ms per page) and 350% storage overhead (from 1.2 KB to 5.4 KB per record). Minimal provenance added 1.4% latency and 67% storage. In absolute terms, full provenance for 10,000 records per day adds about 42 MB of storage — roughly the size of a single high-resolution photo.</p>
+<p>It depends on your envelope and your storage engine. Provenance capture and quality gates add work per page, but fetching and rendering usually dominate total latency. Storage is the bigger cost: a full envelope with a DOM snapshot can be larger than the extracted record itself. Measure both on a sample of your own pages before choosing between minimal and full provenance (see the method in the Performance &amp; Benchmarks section).</p>
 
 <h3>4. What should I do if my provenance confidence score is always 1.0?</h3>
 <p>A confidence score that is always 1.0 means your confidence scorer is not configured with meaningful signals. Enable signal-based scoring with at least selector match quality, element visibility, text plausibility, and strategy reliability. After enabling these signals, you will see a realistic distribution of scores that actually helps you identify problematic extractions.</p>
@@ -898,7 +870,7 @@ PROVENANCE_LATENCY = Histogram("provenance_capture_latency_ms", "", ["schema_nam
 
 <h2>Conclusion</h2>
 <p>Field-level provenance transforms data extraction from a black box into an auditable, debuggable, and verifiable system. The core idea is simple: every extracted value carries a structured record of where it came from, how it was extracted, and how confident the system is that it is correct.</p>
-<p>The numbers speak for themselves. Full provenance tracking added 5.5% latency and 350% storage overhead — and reduced mean time to resolution from 4.2 hours to 22 minutes. That is a 91% reduction in debugging time, translating to roughly 190 engineering hours saved annually for a team handling 50 extraction incidents.</p>
+<p>The trade-off is straightforward. Full provenance costs some latency and noticeably more storage per record. What it buys is the ability to answer "why is this value wrong?" from the record itself, instead of by reproducing the extraction by hand.</p>
 <p>The regulatory landscape is moving in the same direction. The EU AI Act, GDPR Article 22, and ISO/IEC 42001 all require documented evidence of data origin and processing. Field-level provenance is the technical mechanism that satisfies these requirements.</p>
 <p>Start small. Pick one extraction pipeline, add provenance tracking for the most critical fields, and measure the impact on debugging time. If you use the Ollagraph API for fetching, keep the provenance layer in your own code: record the URL you requested, the fetch time, and each field's raw source text as you build the record. The API returns page content and embedded structured data; it does not return provenance envelopes.</p>
 </Article>

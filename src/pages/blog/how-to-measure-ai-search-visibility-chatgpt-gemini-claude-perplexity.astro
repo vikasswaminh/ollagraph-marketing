@@ -351,7 +351,7 @@ if __name__ == "__main__":
   <p><strong>Remediation:</strong> Verify that your target landing page contains explicit canonical metadata and micro-formatting that matches the LLM's entity dictionary.</p>
   <p><strong>Failure Mode 2: Unparsed JavaScript Content</strong></p>
   <p><strong>Cause:</strong> Client-side SPA rendering times out during the LLM crawler's fetch window.</p>
-  <p><strong>Remediation:</strong> Run the URL through Ollagraph with JavaScript rendering enabled ("rendered_with_js": true). Review the returned markdown structure to verify if content hydrates properly.</p>
+  <p><strong>Remediation:</strong> Run the URL through Ollagraph's /v1/scrape/llm-ready, which renders JavaScript automatically when the static HTML is too thin; "rendered_with_js": true in the response tells you rendering was needed. Review the returned chunks to verify the content hydrates properly.</p>
   <p><strong>Failure Mode 3: Zero-Click Brand Mentions</strong></p>
   <p><strong>Cause:</strong> The AI engine attributes solution capabilities to your brand by name but links to an aggregator or directory site instead of your canonical website.</p>
   <p><strong>Remediation:</strong> Add W3C JSON-LD Organization and SameAs schema properties pointing directly to primary domain assets.</p>

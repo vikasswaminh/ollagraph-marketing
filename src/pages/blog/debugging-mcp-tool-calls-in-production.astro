@@ -550,19 +550,19 @@ const faqs = [
 <h3>Cost visibility</h3>
 <p>The biggest “performance” win is cost visibility. If you can see that retries are consuming 80% of your token budget, you can fix the root cause (e.g., deterministic validation failures) rather than increasing retry limits.</p>
 
-<h3>Benchmark table template (fill with your lab results)</h3>
-<p>Use this table in your publication. Replace the numbers with your own lab measurements.</p>
+<h3>Benchmark table template</h3>
+<p>Record your own lab measurements in a table like this.</p>
 <pre><code>Scenario	Tool calls	Evidence write mode	P50 latency (ms)	P95 latency (ms)	Overhead	Notes
-Success-only	1000	async minimal	120	240	2%	sampled evidence
-Mixed failures	1000	async full on failure	140	310	4%	full evidence on failures
-Validation-heavy	1000	async full	160	360	6%	schema checks dominate
-Storage stress	1000	sync writes	220	520	15%	avoid sync writes</code></pre>
+Success-only	1000	async minimal	—	—	—	sampled evidence
+Mixed failures	1000	async full on failure	—	—	—	full evidence on failures
+Validation-heavy	1000	async full	—	—	—	schema checks
+Storage stress	1000	sync writes	—	—	—	sync vs async comparison</code></pre>
 <p>If you want a single rule of thumb: keep evidence writes asynchronous and cap payload sizes.</p>
 
-<h3>We tested this (lab results)</h3>
-<p>To make this guide actionable, here’s a small lab pattern you can replicate. The goal is not to claim universal numbers; it’s to show what to measure and what “good” looks like.</p>
+<h3>A lab pattern you can replicate</h3>
+<p>To make this guide actionable, here’s a small lab pattern you can run yourself. The goal is to show what to measure, not to claim universal numbers.</p>
 
-<p><strong>Lab setup (representative):</strong></p>
+<p><strong>Lab setup:</strong></p>
 <ul>
   <li>1 MCP tool that fetches page state and returns a structured payload.</li>
   <li>3 validation modes: strict schema, schema + content checks, and schema + content + policy.</li>
@@ -570,17 +570,17 @@ Storage stress	1000	sync writes	220	520	15%	avoid sync writes</code></pre>
   <li>Workload: 1,000 runs with a mix of success (70%), deterministic validation failures (20%), and transport failures (10%).</li>
 </ul>
 
-<p><strong>Measured outcomes (single region, non-production network):</strong></p>
+<p><strong>What to measure:</strong></p>
 <ul>
-  <li>Evidence packet write time: P50 18 ms, P95 64 ms.</li>
-  <li>Tool call end-to-end latency overhead: P50 +3.2%, P95 +4.8%.</li>
-  <li>Validation failure triage time (engineer time): median 22 minutes with evidence packets vs. 2.5 hours without.</li>
-  <li>Retry loop prevention: deterministic validation failures were rejected on attempt 1 in 99.1% of cases (remaining 0.9% were “unknown classification” until the error taxonomy mapping was updated).</li>
+  <li>Evidence packet write time (P50 and P95).</li>
+  <li>Tool call end-to-end latency overhead (P50 and P95), with and without evidence writes.</li>
+  <li>Validation failure triage time (engineer time), with and without evidence packets.</li>
+  <li>Retry loop prevention: the share of deterministic validation failures rejected on attempt 1, and how many fall into “unknown classification” until the error taxonomy mapping is updated.</li>
 </ul>
 
-<p><strong>What to take from this:</strong></p>
+<p><strong>What to look for:</strong></p>
 <ul>
-  <li>Async evidence writes keep latency overhead low.</li>
+  <li>Whether async evidence writes keep latency overhead low.</li>
   <li>The biggest win is not speed of the tool; it’s speed of debugging and postmortems.</li>
   <li>You should treat error classification coverage as a measurable KPI.</li>
 </ul>
@@ -865,7 +865,7 @@ Storage stress	1000	sync writes	220	520	15%	avoid sync writes</code></pre>
 
 <h2>16. Conclusion</h2>
 <p>Debugging MCP tool calls in production is not about finding the one log line that explains everything. It’s about building a system where every tool invocation leaves behind a correlated trail: trace IDs, structured logs, and evidence packets that capture inputs, outputs, validation results, and decisions.</p>
-<p>If you implement correlation context, evidence packets, and a retry decision tree that distinguishes transient from deterministic failures, you’ll reduce incident time from hours to minutes. More importantly, you’ll stop paying for retries that can never succeed.</p>
+<p>If you implement correlation context, evidence packets, and a retry decision tree that distinguishes transient from deterministic failures, you can diagnose incidents from recorded evidence instead of guesswork. More importantly, you’ll stop paying for retries that can never succeed.</p>
 <p>Next step: implement evidence packets for failures first, add tool call completeness checks, and then expand coverage to successes once you’re confident in your redaction and schema versioning.</p>
 
 <p><strong>Related reading:</strong> Website to RAG Pipeline with MCP: Build an AI Knowledge Base Without Custom Scrapers and Structured Extraction with MCP: Evidence Packets and Retry Decision Trees for JSON Schema Pipelines.</p>

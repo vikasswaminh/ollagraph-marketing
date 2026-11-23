@@ -484,30 +484,26 @@ tables_detected	integer	Number of tables found</code></pre>
 <p>A question about the motivation for the transformer architecture retrieves the introduction chunk, which contains the relevant reasoning.</p>
 
 <h2>Performance and Benchmarks</h2>
-<p>We tested three extraction approaches on a set of 50 real-world PDFs: annual reports, API manuals, research papers, and legal contracts. We then built a RAG pipeline with the same embedding model and LLM, changing only the extraction method.</p>
+<p>To compare extraction approaches, run them on a sample of your own PDFs: annual reports, API manuals, research papers, legal contracts, or whatever your corpus actually contains. Build one RAG pipeline with a fixed embedding model and LLM, and change only the extraction method.</p>
 <h3>Test Setup</h3>
 <ul>
-  <li><strong>Documents:</strong> 50 PDFs, 12,400 pages total</li>
-  <li><strong>Embedding model:</strong> text-embedding-3-large</li>
-  <li><strong>LLM:</strong> gpt-4o-mini</li>
-  <li><strong>Chunking:</strong> 512-token chunks with 64-token overlap</li>
-  <li><strong>Questions:</strong> 200 manually written questions across documents</li>
-  <li><strong>Metrics:</strong> answer correctness, citation precision, table question accuracy</li>
+  <li><strong>Documents:</strong> a representative sample of your PDFs, including multi-column and table-heavy files</li>
+  <li><strong>Embedding model and LLM:</strong> held constant across every run</li>
+  <li><strong>Chunking:</strong> the same settings for every method (for example, 512-token chunks with 64-token overlap)</li>
+  <li><strong>Questions:</strong> a set of manually written questions with known answers and source pages</li>
+  <li><strong>Metrics:</strong> answer correctness, citation precision, table question accuracy, average tokens per page</li>
 </ul>
 <h3>Results</h3>
+<p>Record each method in a table like this and fill it in from your own runs:</p>
 <pre><code>| Extraction Method | Answer Correctness | Citation Precision | Table Question Accuracy | Avg. Tokens per Page |
 |-------------------|--------------------|--------------------|-------------------------|----------------------|
-| Plain text (PyPDF2) | 47% | 38% | 22% | 380 |
-| Operator-based + heuristics | 61% | 55% | 48% | 410 |
-| Structure-aware Markdown | 78% | 71% | 69% | 425 |</code></pre>
-<p>The structure-aware Markdown approach improved answer correctness by 31 percentage points over plain text and table question accuracy by 47 percentage points. The token cost was only slightly higher because Markdown markup is compact.</p>
-<h3>Latency Observations</h3>
-<ul>
-  <li><strong>Plain text extraction:</strong> ~0.3 seconds per page</li>
-  <li><strong>Operator-based with heuristics:</strong> ~0.8 seconds per page</li>
-  <li><strong>Vision-based layout parsing:</strong> ~2-5 seconds per page on CPU, ~0.5-1 second on GPU</li>
-</ul>
-<p>For most production pipelines, the accuracy gain is worth the latency. If latency is critical, use operator-based extraction for native PDFs and reserve vision models for scanned or complex pages.</p>
+| Plain text (PyPDF2) | | | | |
+| Operator-based + heuristics | | | | |
+| Structure-aware Markdown | | | | |</code></pre>
+<p>Pay particular attention to table question accuracy, since that is where flattened text loses headers and units. Compare tokens per page too: Markdown markup is compact, so check whether the extra structure costs you meaningfully more.</p>
+<h3>Latency</h3>
+<p>Measure per-page extraction time for each method on the same hardware. Vision-based layout parsing is typically much slower on CPU than on GPU, so test it on the hardware you would run in production.</p>
+<p>Weigh any accuracy gain against the latency. If latency is critical, use operator-based extraction for native PDFs and reserve vision models for scanned or complex pages.</p>
 <h3>Cost Estimate</h3>
 <p>At 10,000 pages per day:</p>
 <ul>

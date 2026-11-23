@@ -31,7 +31,6 @@ const faqs = [
   <li>Web Scraping at Scale: Architecture, Proxy Rotation &amp; Anti-Bot</li>
 </ul>
 <p><strong>Last updated:</strong> 2026-07-29</p>
-<p><strong>Versions tested:</strong> Ollagraph API v2026.07, Python 3.12, Node.js 22</p>
 
 <h2>Executive Summary</h2>
 <p>A web data pipeline is only as reliable as its weakest stage. You can have the fastest crawler and the smartest extraction model, but if the validation gate silently passes null values, or the retry logic keeps hammering a 404 endpoint, your downstream systems ingest garbage. This guide covers the full reliability stack: crawl strategies that respect rate limits and detect staleness, extraction pipelines with typed schema contracts, validation gates that catch corruption before it reaches storage, observability hooks that tell you exactly which record failed and why, and self-healing retry trees that escalate failures intelligently. You will walk away with a mental model, runnable code, and a production checklist you can apply to any web data pipeline today.</p>
@@ -42,12 +41,12 @@ const faqs = [
   <li>Crawl strategy determines data freshness. Without staleness detection and re-crawl scheduling, your pipeline serves increasingly outdated records.</li>
   <li>Schema validation gates are non-negotiable. Validated JSON means the output passed deterministic type, range, and cross-field checks — not just that it parsed without syntax errors.</li>
   <li>Evidence packets turn debugging from guesswork into forensics. Store intermediate artifacts (raw fetch, rendered DOM, extracted spans, validation errors) keyed by a trace ID.</li>
-  <li>Self-healing retry trees reduce manual intervention by 70–80%. Route failures to the right recovery strategy instead of blindly retrying.</li>
+  <li>Self-healing retry trees reduce manual intervention. Route failures to the right recovery strategy instead of blindly retrying.</li>
   <li>Observability must span the full pipeline, not just the API layer. Track crawl success rate, extraction yield, validation pass rate, and latency per stage as separate metrics.</li>
 </ul>
 
 <h2>1. The silent failure problem</h2>
-<p>A few years back, I watched a team spend three weeks debugging why their pricing dashboard showed $0.00 for half their product catalog. The scraper returned 200 OK. The extraction code ran without exceptions. The database accepted every row. Everything looked fine — except the target site had changed its price CSS class from .price-final to .price-total, and the extraction code was silently returning empty strings that Python's float() happily converted to 0.0. No alert fired. No log screamed. The data just quietly rotted.</p>
+<p>For example, imagine a pricing dashboard that suddenly shows $0.00 for half the product catalog. The scraper returned 200 OK. The extraction code ran without exceptions. The database accepted every row. Everything looked fine — except the target site had changed its price CSS class from .price-final to .price-total, and the extraction code was silently returning empty strings that Python's float() happily converted to 0.0. No alert fired. No log screamed. The data just quietly rotted.</p>
 <p>That is the defining characteristic of web data pipeline failures: they are almost never loud. A broken API throws a 5xx error. A broken database connection raises an exception. But a web data pipeline that extracts the wrong field, misses a required value, or ingests stale data — those failures are silent. The pipeline keeps running. The logs show success. The downstream system consumes garbage and produces wrong answers.</p>
 <p>The problem compounds. A single silent failure in a crawl of 10,000 pages might corrupt 3,000 records before anyone notices. By then, the downstream analytics, ML models, or customer-facing dashboards have been operating on bad data for days. The cost is not just the corrupted records — it is the trust loss, the rework, the meetings where someone has to explain why the numbers were wrong.</p>
 <p>This article is for engineers who build and operate web data pipelines in production. You already know how to write a scraper. You already know how to parse HTML. What you need is a reliability framework: how to design each stage so failures are detected, contained, and recovered — automatically, before they reach your data warehouse.</p>
@@ -145,137 +144,104 @@ def handle_failed_record(record, evidence, max_retries=3):
         return escalate_to_human(record.url, evidence)</code></pre>
 
 <h2>6. Configuration: building a production pipeline</h2>
-<p>Setting up a reliable pipeline means configuring each layer with sensible defaults and explicit failure boundaries. Here is a production configuration using the Ollagraph API.</p>
-<pre><code>import ollagraph
-from ollagraph import CrawlConfig, ExtractionSchema, ValidationGate
+<p>Setting up a reliable pipeline means giving each layer explicit failure boundaries. Here is a minimal version in Python. Ollagraph fetches each page and returns the structured data already embedded in it (JSON-LD, microdata, OpenGraph, meta tags); your code owns the schema contract, the validation gate, and the quarantine.</p>
+<pre><code>import os
 
-# Step 1: Configure crawl strategy
-crawl_config = CrawlConfig(
-    freshness_window_hours=24,      # Re-crawl if older than 24 hours
-    max_pages_per_domain=5000,
-    respect_robots_txt=True,
-    staleness_detection="content_hash",  # Skip if content unchanged
-    rate_limit_per_domain=10,        # Max 10 requests per second per domain
-)</code></pre>
+import requests
+from jsonschema import Draft202012Validator
 
-<h3>Step 2: Define extraction schema with type contracts</h3>
-<pre><code>schema = ExtractionSchema(
-    fields=&#123;
-        "product_name": &#123;"type": "string", "required": True, "min_length": 1&#125;,
-        "price": &#123;
-            "type": "number",
-            "required": True,
-            "min": 0.01,
-            "max": 100000.00,
-        &#125;,
-        "currency": &#123;
-            "type": "string",
-            "required": True,
-            "enum": ["USD", "EUR", "GBP", "CAD", "AUD"],
-        &#125;,
-        "availability": &#123;
-            "type": "string",
-            "required": True,
-            "enum": ["in_stock", "out_of_stock", "pre_order", "discontinued"],
-        &#125;,
-        "sku": &#123;"type": "string", "required": True, "pattern": r"^[A-Z0-9]&#123;6,20&#125;$"&#125;,
-        "last_updated": &#123;"type": "date", "required": False&#125;,
+API = "https://api.ollagraph.com"
+HEADERS = &#123;"Authorization": f"Bearer &#123;os.environ['OLLAGRAPH_API_KEY']&#125;"&#125;
+
+
+# Step 1: Fetch the page's embedded product data
+def fetch_products(url: str) -&gt; list[dict]:
+    r = requests.post(f"&#123;API&#125;/v1/extract/structured", json=&#123;"url": url&#125;,
+                      headers=HEADERS, timeout=60)
+    r.raise_for_status()
+    # "products" is flattened from the page's JSON-LD and microdata
+    return r.json().get("products", [])</code></pre>
+
+<h3>Step 2: Define the schema contract</h3>
+<pre><code>PRODUCT_SCHEMA = &#123;
+    "type": "object",
+    "required": ["name", "price", "currency", "availability", "sku"],
+    "properties": &#123;
+        "name": &#123;"type": "string", "minLength": 1&#125;,
+        "price": &#123;"type": "number", "minimum": 0.01, "maximum": 100000.00&#125;,
+        "currency": &#123;"enum": ["USD", "EUR", "GBP", "CAD", "AUD"]&#125;,
+        "availability": &#123;"enum": ["InStock", "OutOfStock", "PreOrder", "Discontinued"]&#125;,
+        "sku": &#123;"type": "string", "pattern": "^[A-Z0-9]&#123;6,20&#125;$"&#125;,
     &#125;,
-    cross_field_validations=[
-        &#123;"if": "availability == 'in_stock'", "then": "price is not None"&#125;,
-    ]
-)</code></pre>
+&#125;
+validator = Draft202012Validator(PRODUCT_SCHEMA)</code></pre>
 
-<h3>Step 3: Configure validation gate</h3>
-<pre><code>validation_gate = ValidationGate(
-    schema=schema,
-    on_failure="quarantine",         # Quarantine failed records, don't drop
-    max_retries=3,
-    retry_strategies=&#123;
-        "schema_violation": "alternative_extraction",
-        "empty_content": "enable_rendering",
-        "network_error": "exponential_backoff",
-    &#125;,
-    evidence_packet=True,            # Store full evidence for every record
-)</code></pre>
+<h3>Step 3: Build the validation gate</h3>
+<pre><code>def validate(product: dict) -&gt; tuple[dict, list[str]]:
+    record = dict(product)
+    try:
+        record["price"] = float(record["price"])  # JSON-LD prices are often strings
+    except (KeyError, TypeError, ValueError):
+        pass  # leave it as-is; the schema check reports it
+    errors = [e.message for e in validator.iter_errors(record)]
+    return record, errors</code></pre>
 
 <h3>Step 4: Run the pipeline</h3>
-<pre><code>pipeline = ollagraph.Pipeline(
-    crawl=crawl_config,
-    extraction=schema,
-    validation=validation_gate,
-    output="postgresql://...",
-)
+<pre><code>passed, quarantined = [], []
+for url in ["https://example.com/products/widget-pro"]:
+    for product in fetch_products(url):
+        record, errors = validate(product)
+        if errors:
+            quarantined.append(&#123;"url": url, "record": record, "errors": errors&#125;)
+        else:
+            passed.append(record)
 
-results = pipeline.run(urls=["https://example.com/products"])
-print(f"Processed: &#123;results.processed&#125;, Passed: &#123;results.passed&#125;, "
-      f"Failed: &#123;results.failed&#125;, Quarantined: &#123;results.quarantined&#125;")</code></pre>
+# Write `passed` to your database; keep `quarantined` for review and retry.
+print(f"Passed: &#123;len(passed)&#125;, Quarantined: &#123;len(quarantined)&#125;")</code></pre>
 
-<p>The key configuration decisions are the freshness window (how stale is too stale?), the retry strategy per failure type (not all failures deserve the same recovery), and the evidence packet setting (always enable this in production — you will need it).</p>
+<p>A page with no embedded product markup returns an empty <code>products</code> list. Treat that as <code>empty_content</code> in your retry tree, not as success. The key decisions are the schema contract (what counts as a valid record?), the retry strategy per failure type (not all failures deserve the same recovery), and what you keep for each quarantined record (keep enough evidence to debug it — you will need it). All three live in your code; Ollagraph handles the fetch.</p>
 
 <h2>7. Real-world examples</h2>
 
 <h3>Example 1: E-commerce price monitoring</h3>
-<p>A retailer monitors competitor pricing across 50,000 product pages daily. Before implementing reliability gates, their pipeline silently ingested $0.00 for 1,200 products when a site redesign changed the price selector. The validation gate caught it on the first run: price: 0.00 violated the min: 0.01 constraint. The pipeline quarantined those records, retried with an alternative extraction strategy (semantic price detection instead of CSS selector), and recovered 1,180 of 1,200 records automatically. Twenty records escalated to a human review queue with full evidence packets.</p>
+<p>Imagine a retailer that monitors competitor pricing across thousands of product pages daily. Without reliability gates, a site redesign that changes the price selector would make the pipeline silently ingest $0.00 for every affected product. With a validation gate, the problem is caught on the first run: price: 0.00 violates the min: 0.01 constraint. The pipeline quarantines those records, retries with an alternative extraction strategy (semantic price detection instead of CSS selector), and escalates any records it cannot recover to a human review queue with full evidence packets.</p>
 
-<h3>Ollagraph API call with schema validation</h3>
+<h3>Fetching embedded product data with Ollagraph</h3>
 <pre><code>curl -X POST "https://api.ollagraph.com/v1/extract/structured" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '&#123;
-    "url": "https://competitor.example.com/products",
-    "schema": &#123;
-      "fields": &#123;
-        "price": &#123;"type": "number", "required": true, "min": 0.01&#125;,
-        "currency": &#123;"type": "string", "enum": ["USD", "EUR", "GBP"]&#125;
-      &#125;
-    &#125;,
-    "validation": &#123;
-      "on_failure": "quarantine",
-      "evidence_packet": true
-    &#125;
-  &#125;'</code></pre>
+  -d '&#123;"url": "https://competitor.example.com/products"&#125;'</code></pre>
+<p>The response carries the page's <code>json_ld</code>, <code>microdata</code>, <code>open_graph</code>, and <code>meta</code>, plus a flattened <code>products</code> array. Run each product through your own validation gate (section 6) before it reaches storage.</p>
 
 <h3>Example 2: News article archiving</h3>
-<p>A media monitoring platform crawls 200 news sites every hour, extracting headlines, authors, publication dates, and article bodies. The reliability challenge here is deduplication and staleness. Many news sites update articles without changing the URL — the headline changes, but the URL stays the same. The pipeline uses content hashing to detect changes: if the extracted body hash matches the previous crawl, the record is skipped. This reduced storage costs by 40% and eliminated duplicate alerts.</p>
+<p>A media monitoring platform crawls 200 news sites every hour, extracting headlines, authors, publication dates, and article bodies. The reliability challenge here is deduplication and staleness. Many news sites update articles without changing the URL — the headline changes, but the URL stays the same. The pipeline uses content hashing to detect changes: if the extracted body hash matches the previous crawl, the record is skipped, which avoids storing duplicates and firing duplicate alerts.</p>
 
 <h3>Example 3: Financial data ingestion</h3>
 <p>A fintech company ingests SEC filing data from EDGAR. The pipeline must handle rate limiting (the SEC enforces strict limits), PDF documents alongside HTML, and date fields in multiple formats ("January 15, 2026", "2026-01-15", "01/15/2026"). The validation gate normalizes all dates to ISO-8601 and rejects records where the filing date is in the future or more than 10 years in the past. Cross-field validation ensures that filing_date &lt;= report_period_end — a surprisingly common error in manually filed documents.</p>
 
 <h2>8. Performance &amp; benchmarks</h2>
 
-<p>We tested the reliability pipeline across three configurations using a corpus of 10,000 e-commerce product pages.</p>
+<p>To see what each reliability layer buys you, run the same sample of your own pages through four configurations and compare them:</p>
 
 <pre><code>Configuration                Validation Pass Rate    Silent Corruption Rate    Recovery Rate    Avg Latency/Page
-No validation (raw scrape)  —                       4.2%                      0%               1.2s
-Schema validation only      95.8%                   0%                        0%               1.4s
-Schema + retry tree         95.8%                   0%                        78%              1.9s
-Schema + retry + evidence   95.8%                   0%                        78%              2.1s</code></pre>
+No validation (raw scrape)
+Schema validation only
+Schema + retry tree
+Schema + retry + evidence</code></pre>
 
-<p>The silent corruption rate — records that pass extraction but contain wrong values — dropped from 4.2% to 0% the moment schema validation was enabled. The retry tree recovered 78% of initially failed records, reducing the human review burden from 420 records per 10,000 to 92.</p>
+<p>Silent corruption rate is the hardest column to fill in, because by definition those records look fine. Hand-check a random sample of records from each configuration against the live page to estimate it. Recovery rate is the share of initially failed records that the retry tree recovers; the rest are your human review burden.</p>
 
-<p>The latency cost is real but manageable. Adding validation adds ~200ms per page. Adding retries adds another ~500ms for the subset of pages that fail. The tradeoff is clear: 2.1 seconds per page for zero silent corruption, versus 1.2 seconds for a 4.2% corruption rate that will cost you days of debugging.</p>
-
-<p>Cost per 10,000 pages (Ollagraph API):</p>
-
-<pre><code>Component                     Cost
-Smart crawl (10,000 URLs)    $5.00
-Structured extraction        $15.00
-Validation + evidence        $2.00
-Retry processing (780 pages) $1.17
-Total                        $23.17</code></pre>
-
-<p>At $23.17 per 10,000 validated records, the reliability overhead (validation + retries + evidence) adds about $3.17 — roughly 16% above the base extraction cost. For most production pipelines, that is cheap insurance.</p>
+<p>Measure latency per page for each configuration too. Validation adds a small fixed cost to every page, while retries add time only for the subset of pages that fail. Then price each stage at your own volume so you know what the reliability overhead costs compared with base extraction.</p>
 
 <h2>9. Security considerations</h2>
 
 <p>Web data pipelines handle data that passes through multiple systems before reaching storage. Each handoff is a potential security boundary.</p>
 
-<p><strong>Credential management.</strong> Never embed API keys in pipeline code. Use environment variables or a secrets manager (Vault, AWS Secrets Manager, Azure Key Vault). The Ollagraph API supports token-based authentication with scoped permissions — create separate tokens for crawl, extraction, and admin operations.</p>
+<p><strong>Credential management.</strong> Never embed API keys in pipeline code. Use environment variables or a secrets manager (Vault, AWS Secrets Manager, Azure Key Vault). With Ollagraph, create a separate API key per pipeline, each with its own label and daily credit cap, so one runaway job cannot drain the others.</p>
 
 <p><strong>Data in transit.</strong> All pipeline stages should communicate over TLS. If your pipeline uses internal message queues (RabbitMQ, Kafka), ensure TLS is enabled for broker connections. The evidence packets contain raw page content — if that content includes PII, the evidence store must be encrypted at rest.</p>
 
-<p><strong>PII redaction.</strong> Extraction schemas should explicitly exclude PII fields unless required. For pipelines that must handle PII (contact extraction, lead enrichment), configure redaction rules at the extraction layer — not after storage. The Ollagraph extraction engine supports field-level redaction patterns for emails, phone numbers, and SSN-like patterns.</p>
+<p><strong>PII redaction.</strong> Extraction schemas should explicitly exclude PII fields unless required. For pipelines that must handle PII (contact extraction, lead enrichment), configure redaction rules at the extraction layer — not after storage.</p>
 
 <p><strong>Output storage.</strong> Validated JSON records written to databases or data lakes should follow your organization's data classification policy. Evidence packets — which contain raw page content — are more sensitive than the extracted records and should be stored with stricter access controls and shorter retention periods.</p>
 
@@ -312,7 +278,7 @@ Total                        $23.17</code></pre>
 DIY scraper + custom validation	Manual validation, no retry tree	High (full-time maintenance)	~$5 (infra only)	One-off projects, internal tools
 Open-source crawler (Scrapy, Crawlee)	Basic retry, no schema validation	Medium (pipeline code)	~$8 (infra + proxies)	Teams with dedicated scraping engineers
 Generic extraction API	Schema validation, limited retry	Low (API integration)	~$20–$40	General-purpose extraction
-Ollagraph reliability pipeline	Schema validation, retry tree, evidence packets, quality scoring	Low (API + config)	~$23	Production pipelines requiring zero silent corruption
+Ollagraph API + your validation gate	Managed fetch and rendering with automatic fallbacks; you own schema validation, retries, and evidence	Low–Medium (API + your gate code)	~$23	Teams that want to own the data contract but not the fetch layer
 Custom AI extraction pipeline	Flexible extraction, custom validation	Very high (ML ops + pipeline)	~$50+	Specialized extraction needs</code></pre>
 <p>The DIY approach looks cheapest on paper but hides the maintenance cost. Every site redesign breaks selectors. Every new anti-bot measure requires infrastructure changes. Every silent corruption incident costs engineering hours to debug. The reliability pipeline approach front-loads the cost into API calls and saves it in engineering time.</p>
 
@@ -353,24 +319,24 @@ Custom AI extraction pipeline	Flexible extraction, custom validation	Very high (
 <p>Schema validation catches type errors, missing fields, and constraint violations. It does not catch semantic errors — a price of $49.00 that should be $59.00 passes validation. For semantic accuracy, add cross-field consistency checks and quality scoring. A quality score below a threshold should trigger a human review.</p>
 
 <h3>Q11. What infrastructure do I need to run a reliable pipeline?</h3>
-<p>The pipeline itself runs as API calls — no infrastructure to manage. You need a scheduler (cron, Airflow, or a serverless function) to trigger runs, a database to store validated records, and object storage for evidence packets. The Ollagraph API handles crawl management, extraction, validation, and retry logic.</p>
+<p>The pipeline itself runs as API calls — no infrastructure to manage. You need a scheduler (cron, Airflow, or a serverless function) to trigger runs, a database to store validated records, and object storage for evidence packets. The Ollagraph API handles crawling, fetching, rendering, and extraction of embedded structured data; schema validation and retry logic stay in your code.</p>
 
 <h3>Q12. How do I handle pipelines that process millions of URLs?</h3>
 <p>Batch URLs into chunks of 1,000–5,000 and process each chunk as a separate pipeline run. Use the batch crawl endpoint for URL discovery and the structured extraction endpoint for per-page extraction. Monitor queue depth and pipeline latency to detect bottlenecks. Scale by increasing the number of parallel pipeline runs, not by increasing the batch size.</p>
 
 <h2>16. Conclusion</h2>
 <p>Building a reliable web data pipeline is not about writing better scrapers. It is about designing each stage — crawl, fetch, extract, validate, deliver — with explicit failure detection, containment, and recovery. The difference between a scraper and a pipeline is not the code that runs when everything works. It is the code that runs when something breaks.</p>
-<p>Schema validation gates catch silent corruption before it reaches your database. Evidence packets turn debugging from guesswork into forensics. Self-healing retry trees reduce manual intervention by 70–80%. And observability across every stage means you know exactly where and why failures happen.</p>
-<p>The cost of adding these reliability layers is modest — roughly 16% above base extraction cost. The cost of not adding them is measured in corrupted data, broken dashboards, and engineering hours spent chasing ghosts.</p>
+<p>Schema validation gates catch silent corruption before it reaches your database. Evidence packets turn debugging from guesswork into forensics. Self-healing retry trees reduce manual intervention. And observability across every stage means you know exactly where and why failures happen.</p>
+<p>The cost of adding these reliability layers is modest. The cost of not adding them is measured in corrupted data, broken dashboards, and engineering hours spent chasing ghosts.</p>
 <p>Start with one pipeline. Add schema validation. Enable evidence packets. Set up the retry decision tree. Measure the validation pass rate. You will never go back to unvalidated extraction.</p>
 
 <h2>17. References</h2>
 <ul>
-  <li>Ollagraph API Documentation. "Structured Extraction Endpoint." https://ollagraph.com/docs/extract/structured</li>
+  <li>Ollagraph API Documentation. "Structured Extraction Endpoint." https://ollagraph.com/docs</li>
   <li>Ollagraph Engineering. "Document-to-JSON Extraction: Turning Web Pages into Typed Records." https://ollagraph.com/blog/document-to-json-extraction-turning-web-pages-into-typed-records</li>
-  <li>Ollagraph Engineering. "JSON Schema Extraction API: From Web Pages to Validated JSON." https://ollagraph.com/blog/structured-data-extraction-api-validated-json</li>
-  <li>Ollagraph Engineering. "Web Scraping at Scale: Architecture, Proxy Rotation &amp; Anti-Bot." https://ollagraph.com/blog/web-scraping-at-scale-architecture-proxy-rotation-anti-bot</li>
-  <li>Ollagraph Engineering. "How to Build a RAG Data Pipeline: From Web Scraping to Vector Search." https://ollagraph.com/blog/how-to-build-rag-data-pipeline-web-scraping-to-vector-search</li>
+  <li>Ollagraph Engineering. "JSON Schema Extraction API: From Web Pages to Validated JSON." https://ollagraph.com/blog/structured-data-extraction-api-from-web-pages-to-validated-json</li>
+  <li>Ollagraph Engineering. "Web Scraping at Scale: Architecture, Proxy Rotation &amp; Anti-Bot." https://ollagraph.com/blog/web-scraping-at-scale</li>
+  <li>Ollagraph Engineering. "How to Build a RAG Data Pipeline: From Web Scraping to Vector Search." https://ollagraph.com/blog/how-to-build-a-rag-data</li>
   <li>OpenTelemetry. "Metrics API Specification." https://opentelemetry.io/docs/specs/otel/metrics/</li>
   <li>JSON Schema. "JSON Schema Draft 2020-12." https://json-schema.org/specification</li>
 </ul>

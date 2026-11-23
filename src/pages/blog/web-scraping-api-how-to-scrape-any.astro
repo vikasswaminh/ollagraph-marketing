@@ -119,7 +119,7 @@ print(html)</code></pre>
 └─────────┬──────────┘
 ▼
 RESPONSE
-&#123; status, content, format, time_ms, rendered_via, ... &#125;
+&#123; status, content, format, time_ms, fallback, ... &#125;
 headers: x-credits-cost, x-credits-charged, x-credits-balance
 </code></pre>
 <p>The single most important idea in that diagram is the orchestrator's job: try the cheapest path first, escalate only on failure. A well-built scraping API does not launch a browser and a residential proxy for a page that a plain HTTP GET would have returned in 140 ms. It attempts the cheap path, detects that the result is empty or blocked, and then climbs the cost ladder. You benefit twice: lower latency on easy pages, and you're not paying browser prices for static content.</p>
@@ -156,8 +156,8 @@ headers: x-credits-cost, x-credits-charged, x-credits-balance
 "url": "https://example.com",
 "content": "# Example Domain\n\nThis domain is for use in documentation examples...",
 "format": "markdown",
+"eval_result": null,
 "time_ms": 146,
-"rendered_via": "direct",
 "fallback": false
 &#125;</code></pre>
 
@@ -186,12 +186,12 @@ headers: x-credits-cost, x-credits-charged, x-credits-balance
 <p>Here's how the pieces come together in a project that grows from "one page" to "a million pages," with the decision points called out.</p>
 <ol>
 <li>(1) Prototype → single POST /v1/scrape, format=markdown works? ship the prototype.</li>
-<li>(2) Getting blocked? → add "stealth": true still blocked? add "proxy": "residential"</li>
+<li>(2) Getting blocked? → keep "stealth": true (the default); the API already retries through fallback exits and residential proxies on a block. Need a specific IP pool? pass your own "proxy" URL</li>
 <li>(3) JS-only content? → add "wait_until": "networkidle" (+ actions if interaction needed)</li>
 <li>(4) Many URLs? → switch to POST /v1/scrape/batch (set concurrency)</li>
 <li>(5) Long-running / don't want to wait → switch to POST /v1/scrape/async or /batch/async deliver results to a webhook_url</li>
 <li>(6) Feeding an LLM? → use POST /v1/scrape/llm-ready (chunks + offsets)</li>
-<li>(7) Production → log rendered_via + x-credits-cost, alert on status!=success, add idempotency, respect robots + rate limits</li>
+<li>(7) Production → log egress + x-credits-cost, alert on status!=success, add idempotency, respect robots + rate limits</li>
 </ol>
 <p>The golden rule embedded here: change one variable at a time, in order of cost. When a page fails, don't reach for the residential-proxy-plus-CAPTCHA-plus-browser sledgehammer immediately. Add stealth. Re-test. Add a proxy. Re-test. Each rung you climb costs more, so climb deliberately and stop at the first rung that works.</p>
 
@@ -249,16 +249,16 @@ console.log("cost:", res.headers.get("x-credits-cost"));</code></pre></p>
 
 <ul>
 <li><strong>Parameter:</strong> url | <strong>Type:</strong> string (required) What it does: The page to fetch Reach for it when: Always</li>
-<li><strong>Parameter:</strong> format | <strong>Type:</strong> string What it does: Output shape: markdown, html, text Reach for it when: You want raw HTML for your own parser, or plain text for embeddings</li>
-<li><strong>Parameter:</strong> stealth | <strong>Type:</strong> boolean What it does: Enables anti-fingerprinting Reach for it when: You get 403s or challenge pages on a default fetch</li>
-<li><strong>Parameter:</strong> proxy | <strong>Type:</strong> string What it does: Proxy class, e.g. residential Reach for it when: Stealth alone still gets blocked; the target is IP-sensitive</li>
+<li><strong>Parameter:</strong> format | <strong>Type:</strong> string What it does: Output shape: markdown, html, text, links Reach for it when: You want raw HTML for your own parser, or plain text for embeddings</li>
+<li><strong>Parameter:</strong> stealth | <strong>Type:</strong> boolean (default true) What it does: Enables anti-fingerprinting Reach for it when: Leave it on; turn it off only to compare against a plain fetch</li>
+<li><strong>Parameter:</strong> proxy | <strong>Type:</strong> string What it does: Your own proxy URL, used for a single attempt instead of the built-in fallback chain Reach for it when: You need requests to exit from a specific IP pool you control</li>
 <li><strong>Parameter:</strong> wait_until | <strong>Type:</strong> string What it does: When to consider the page "loaded" (load, domcontentloaded, networkidle) Reach for it when: JS content appears late; you're getting a half-rendered DOM</li>
-<li><strong>Parameter:</strong> timeout | <strong>Type:</strong> integer (ms) What it does: Max time before giving up Reach for it when: Slow targets; you'd rather fail fast and retry</li>
+<li><strong>Parameter:</strong> timeout | <strong>Type:</strong> integer (seconds, 1–60, default 30) What it does: Max time before giving up Reach for it when: Slow targets; you'd rather fail fast and retry</li>
 <li><strong>Parameter:</strong> js_eval | <strong>Type:</strong> string What it does: Run custom JS in page context, return its result Reach for it when: You need a computed value or must trigger client-side logic</li>
-<li><strong>Parameter:</strong> actions | <strong>Type:</strong> object[] What it does: Scripted interactions: click, scroll, type, wait Reach for it when: Content is behind a click, infinite scroll, or a form</li>
+<li><strong>Parameter:</strong> actions | <strong>Type:</strong> object[] What it does: Scripted interactions: click, type, scroll_to_bottom Reach for it when: Content is behind a click, infinite scroll, or a form</li>
 <li><strong>Parameter:</strong> user_agent | <strong>Type:</strong> string What it does: Override the UA string Reach for it when: A target serves different HTML to specific UAs</li>
 <li><strong>Parameter:</strong> solve_captcha | <strong>Type:</strong> boolean What it does: Turn on CAPTCHA solving Reach for it when: Content is gated behind a solvable challenge</li>
-<li><strong>Parameter:</strong> captcha_action | <strong>Type:</strong> string What it does: How to handle a detected CAPTCHA Reach for it when: You need explicit control over challenge flow</li>
+<li><strong>Parameter:</strong> captcha_action | <strong>Type:</strong> string What it does: The reCAPTCHA v3 action name passed to the solver (default submit) Reach for it when: The target's reCAPTCHA expects a specific action</li>
 </ul>
 
 <p>A word on wait_until. This one causes more confusion than any other parameter, so here's the mental model. domcontentloaded fires when the HTML is parsed but before images and late XHRs finish — fast, but you may miss content that loads via JavaScript afterward. load waits for the full page including sub-resources. networkidle waits until the network goes quiet, which is the safest choice for SPAs that fetch their data after the shell renders, but also the slowest. Rule of thumb: start without it; if you're getting a skeleton, add "wait_until": "networkidle".</p>
@@ -274,7 +274,7 @@ console.log("cost:", res.headers.get("x-credits-cost"));</code></pre></p>
 -H "Content-Type: application/json" \
 -d '&#123;"url": "https://en.wikipedia.org/wiki/Web_scraping", "format": "markdown"&#125;'</code></pre></p>
 
-<p>Most documentation, blogs, and news sites resolve on the direct path. Check rendered_via: "direct" in the response to confirm you didn't pay for a browser you didn't need.</p>
+<p>Most documentation, blogs, and news sites resolve on the direct path. The response only includes an egress field when the request had to fall back to another exit, so its absence confirms the page came straight from the origin.</p>
 
 <h3>10.2 JavaScript-Rendered SPA</h3>
 
@@ -300,9 +300,8 @@ console.log("cost:", res.headers.get("x-credits-cost"));</code></pre></p>
   "url": "https://example.com/listings",
   "wait_until": "networkidle",
   "actions": [
-    &#123; "type": "click", "selector": "#load-more" &#125;,
-    &#123; "type": "scroll", "direction": "down", "times": 3 &#125;,
-    &#123; "type": "wait", "ms": 1000 &#125;
+    &#123; "action": "click", "selector": "#load-more" &#125;,
+    &#123; "action": "scroll_to_bottom" &#125;
   ]
 &#125;'</code></pre></p>
 
@@ -336,7 +335,8 @@ console.log("cost:", res.headers.get("x-credits-cost"));</code></pre></p>
 <p><pre><code>&#123;
   "status": "success",
   "title": "Web scraping - Wikipedia",
-  "rendered_via": "direct",
+  "rendered_with_js": false,
+  "rendered_via": null,
   "chunks": [
     &#123;
       "text": "Web scraping is the process of automatically extracting data...",
@@ -359,7 +359,7 @@ console.log("cost:", res.headers.get("x-credits-cost"));</code></pre></p>
 <li>Success rate — the percentage of requests that returned usable content, not just HTTP 200. A challenge page is a 200 with no data; count it as a failure. This is the single most important number and the one vendors most often obscure.</li>
 <li>p50 / p95 / p99 latency — averages lie. A provider with a great median and a terrible p99 will still blow up your job's tail. Watch the p95 especially.</li>
 <li>Cost per successful page — not cost per request. With refund-on-failure, these differ, and the successful-page number is what hits your budget.</li>
-<li>Render rate — the fraction of your pages that escalated to a browser (rendered_via == "render_backend"). This drives both cost and latency, and it's specific to your target mix.</li>
+<li>Fallback rate — the fraction of your pages that the direct path couldn't serve, so the request fell back to another exit (the response carries an egress field). This drives latency, and it's specific to your target mix.</li>
 </ul>
 
 <p>A reproducible harness:</p>
@@ -370,7 +370,7 @@ API = "https://api.ollagraph.com/v1/scrape"
 KEY = os.environ["OLLAGRAPH_API_KEY"]
 URLS = [ ... ]  # a representative sample of YOUR targets, not example.com
 
-latencies, successes, rendered, cost = [], 0, 0, 0.0
+latencies, successes, fell_back, cost = [], 0, 0, 0.0
 
 for url in URLS:
   t0 = time.perf_counter()
@@ -383,14 +383,14 @@ for url in URLS:
   body = r.json()
   ok = body.get("status") == "success" and len(body.get("content", "")) > 200
   successes += 1 if ok else 0
-  rendered += 1 if body.get("rendered_via") == "render_backend" else 0
+  fell_back += 1 if "egress" in body else 0
   cost += float(r.headers.get("x-credits-charged", 0))
 
 n = len(URLS)
 latencies.sort()</code></pre></p>
 
 <pre><code>print(f"success rate : &#123;successes/n:.1%&#125;")
-print(f"render rate  : &#123;rendered/n:.1%&#125;")
+print(f"fallback rate: &#123;fell_back/n:.1%&#125;")
 print(f"p50 latency  : &#123;statistics.median(latencies):.0f&#125; ms")
 print(f"p95 latency  : &#123;latencies[int(n*0.95)-1]:.0f&#125; ms")
 print(f"cost / ok    : &#123;cost/max(successes,1):.2f&#125; credits")</code></pre>
@@ -449,7 +449,7 @@ A: Those are libraries you host and operate — you run the browsers, manage mem
 A: Markdown for LLMs and human-readable storage (it keeps structure without noise). Plain text for embeddings where you don't need structure. HTML when you have your own parser or need a specific element the converters don't expose.</p>
 
 <p><strong>Q: How do I keep costs down?</strong><br>
-A: Don't pay for rendering you don't need. Start with a default fetch, add stealth/residential only when a target actually blocks you, cache repeat URLs, and log rendered_via to catch targets that silently start requiring a browser.</p>
+A: A scrape costs 1 credit whether or not the page needs JavaScript, and failed calls are refunded, so cost tracks volume. Cache repeat URLs, dedupe your URL list, and log the egress field to catch targets that silently stop working on the direct path.</p>
 
 <p><strong>Q: What happens when a scrape fails — do I still pay?</strong><br>
 A: With a refund-on-failure provider, no: failed upstream fetches are refunded before the response returns, and the cost headers show x-credits-charged: 0. This is why bounded retries are cheap insurance rather than a budget risk. Confirm this behavior with any provider you evaluate.</p>
@@ -478,6 +478,6 @@ A: Sometimes. If a provider bundles scraping with conversion (PDF/DOCX → Markd
 <p>(Validate all endpoint names and parameters against the live docs before shipping; APIs evolve, and this article states the version and date it was tested against in the front matter.)</p>
 
 <h2>15. Conclusion</h2>
-<p>The title promised you could scrape any website in one API call, and for the everyday case that's the literal truth: one POST, a URL, clean Markdown back. But the more useful takeaway is the shape of the journey after that first call. You start cheap. You escalate — stealth, then residential, then CAPTCHA — only when a specific target forces you to, and only one rung at a time. You move to batch and async the moment volume shows up. You reach for llm-ready when the destination is a model instead of a database. And through all of it, you keep two fields in view — rendered_via and the cost headers — because measurement is what turns guesswork into a system.</p>
+<p>The title promised you could scrape any website in one API call, and for the everyday case that's the literal truth: one POST, a URL, clean Markdown back. But the more useful takeaway is the shape of the journey after that first call. You start cheap. You escalate — stealth, then residential, then CAPTCHA — only when a specific target forces you to, and only one rung at a time. You move to batch and async the moment volume shows up. You reach for llm-ready when the destination is a model instead of a database. And through all of it, you keep two fields in view — egress and the cost headers — because measurement is what turns guesswork into a system.</p>
 <p>The reason a web scraping API is worth it isn't that scraping is impossible without one. It's that the interesting part of your project was never the proxy rotation or the browser babysitting — it was the data, and what you build on top of it. Renting the boring, brittle infrastructure buys back the time and attention to focus on that. Send the one call, read the response, and go build the thing that actually needed the data.</p>
 </Article>
