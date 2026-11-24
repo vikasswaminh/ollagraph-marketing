@@ -21,6 +21,8 @@ jobs:
     runs-on: [self-hosted, nh-marketing]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # purge-cache.mjs diffs against the previous push
 
       - uses: actions/setup-node@v4
         with:
@@ -43,3 +45,5 @@ jobs:
           # The Pages-deploy token above lacks Cache-Purge, so without this the purge
           # step fails (code 10000) and HTML changes sit on the 1-day edge TTL.
           CF_PURGE_TOKEN: ${{ secrets.CF_PURGE_TOKEN }}
+          # Previous deployed commit; purge-cache.mjs purges exactly the pages changed since it.
+          PURGE_BASE_SHA: ${{ github.event.before }}
